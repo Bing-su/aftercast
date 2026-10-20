@@ -162,6 +162,34 @@ public static class EntryPoint
         catch { return -1; }
     }
 
+    public static int ImportLog(nint buffer, int sizeBytes) => Run(() =>
+    {
+        const int headerSize = 64;
+        // Validate input and reserve the entire result before invoking any plugin or touching history.
+        if (buffer == 0 || sizeBytes < headerSize || sizeBytes > 65536)
+            throw new ArgumentException("Import request must contain 64..65536 bytes", nameof(buffer));
+        if (!BitConverter.IsLittleEndian || Marshal.ReadInt32(buffer, 0) != sizeBytes || Marshal.ReadInt32(buffer, 4) != 1)
+            throw new ArgumentException("Import ABI size/version mismatch", nameof(buffer));
+        Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
+        var offset = Marshal.ReadInt32(buffer, 16);
+        var length = Marshal.ReadInt32(buffer, 20);
+        if (offset < headerSize || offset > sizeBytes || length <= 0 || length > sizeBytes - offset)
+            throw new ArgumentException("Import path is outside the request", nameof(buffer));
+        var bytes = new byte[length];
+        Marshal.Copy(buffer + offset, bytes, 0, length);
+        var path = new UTF8Encoding(false, true).GetString(bytes);
+        if (path.Contains('\0') || !Path.IsPathFullyQualified(path))
+            throw new ArgumentException("Import path must be absolute and contain no NUL", nameof(buffer));
+        var result = plugins.Value.ImportLog(path);
+        Marshal.WriteInt64(buffer, 24, result.LinesRead);
+        Marshal.WriteInt64(buffer, 32, result.RecordsDispatched);
+        Marshal.WriteInt32(buffer, 40, result.Encounters);
+        Marshal.WriteInt32(buffer, 44, result.Combatants);
+        Marshal.WriteInt64(buffer, 48, result.Damage);
+        Marshal.WriteInt64(buffer, 56, result.Healed);
+        return 0;
+    });
+
     public static int ReadDiagnostics(nint buffer, int sizeBytes) => Run(() =>
     {
         const int headerSize = 32;

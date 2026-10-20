@@ -2,8 +2,8 @@
 
 An in-process ACT-compatible host for Rust. Implements the .NET 10/C# bridge
 lifecycle, initial ACT contracts, and trusted plugin construction/initialization.
-Original FFXIV initialization returns `Started` on Linux; complete semantic imports,
-live capture and Windows execution remain unverified.
+Original FFXIV initializes and imports a synthetic 400-damage fixture on Linux.
+Representative gameplay imports, live capture and Windows execution remain unverified.
 
 Consumers need an installed .NET 10 runtime, but no .NET SDK. The prebuilt bridge
 is embedded in the crate. Runtime installation and downloads are never automatic.
@@ -36,6 +36,12 @@ Call `initialize_plugin(id)` for bounded status text and `deinitialize_plugin(id
 for explicit cleanup; stop also cleans up initialized plugins. Linux supports
 headless status controls, with no rendering or native handles. Windows requires
 the .NET 10 Desktop Runtime and a caller-owned STA/UI loop; execution is unverified.
+
+After initialization, `host.import_log(path)` reads a fixed UTF-8 file prefix and
+returns transport counts and actual allied combat totals after submitted actions
+drain. End live combat first. Failure restores live context and retains partial
+import history. Dispatch counts are not parsed counts, and EOF does not flush
+the plugin's private deferred events. Check host and plugin diagnostics.
 
 On Linux, the pinned FFXIV 3.0.3.3 build receives an in-memory compatibility
 adjustment: its embedded memory component reports Windows administrator status

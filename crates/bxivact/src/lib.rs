@@ -6,18 +6,24 @@
 
 mod bridge;
 mod diagnostics;
+mod import;
 mod runtime;
 
 use camino::Utf8PathBuf;
 
 pub use bridge::extract_bridge;
 pub use diagnostics::HostDiagnostics;
+pub use import::ImportReport;
 pub use runtime::{Host, HostConfig, PluginConfig, PluginId};
 
 /// Failures that callers can distinguish without parsing diagnostic messages.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("invalid import request: {0}")]
+    InvalidImportRequest(String),
+    #[error("invalid managed import response: {0}")]
+    InvalidImportResponse(String),
     #[error("invalid managed diagnostic response: {0}")]
     InvalidDiagnosticResponse(String),
     #[error("invalid plugin request: {0}")]

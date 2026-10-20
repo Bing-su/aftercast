@@ -59,7 +59,7 @@ internal static class RegistrationLifetimeChecks
             CheckEmpty();
             using (var second = new HostEnvironment(directory.FullName))
             {
-                CheckEmpty();
+                CheckEmpty(hostInitialized: true);
                 Check(!ReferenceEquals(retained, CombatantData.ColumnDefs) && retained.ContainsKey("old"));
                 // A new session must not invoke a callback that belonged to a disposed plugin session.
                 var zone = new ZoneData(DateTime.UnixEpoch, "Fixture", false, false, false);
@@ -70,17 +70,21 @@ internal static class RegistrationLifetimeChecks
         finally { directory.Delete(true); }
     }
 
-    private static void CheckEmpty()
+    private static void CheckEmpty(bool hostInitialized = false)
     {
         Check(CombatantData.IncomingDamageTypeDataObjects.Count == 0);
         Check(CombatantData.OutgoingDamageTypeDataObjects.Count == 0);
         Check(CombatantData.SwingTypeToDamageTypeDataLinksIncoming.Count == 0);
         Check(CombatantData.SwingTypeToDamageTypeDataLinksOutgoing.Count == 0);
         Check(CombatantData.DamageSwingTypes.Count == 0 && CombatantData.HealingSwingTypes.Count == 0);
-        Check(CombatantData.DamageTypeDataOutgoingDamage == "" && CombatantData.DamageTypeDataIncomingDamage == "");
-        Check(CombatantData.DamageTypeDataOutgoingHealing == "" && CombatantData.DamageTypeDataIncomingHealing == "");
-        Check(CombatantData.DamageTypeDataNonSkillDamage == "" && CombatantData.DamageTypeDataOutgoingCures == "");
-        Check(CombatantData.DamageTypeDataOutgoingPowerReplenish == "" && CombatantData.DamageTypeDataOutgoingPowerDamage == "");
+        Check(CombatantData.DamageTypeDataOutgoingDamage == (hostInitialized ? "Outgoing Damage" : ""));
+        Check(CombatantData.DamageTypeDataIncomingDamage == (hostInitialized ? "Incoming Damage" : ""));
+        Check(CombatantData.DamageTypeDataOutgoingHealing == (hostInitialized ? "Healed (Out)" : ""));
+        Check(CombatantData.DamageTypeDataIncomingHealing == (hostInitialized ? "Healed (Inc)" : ""));
+        Check(CombatantData.DamageTypeDataNonSkillDamage == (hostInitialized ? "Auto-Attack (Out)" : ""));
+        Check(CombatantData.DamageTypeDataOutgoingCures == (hostInitialized ? "Cure/Dispel (Out)" : ""));
+        Check(CombatantData.DamageTypeDataOutgoingPowerReplenish == (hostInitialized ? "Power Replenish (Out)" : ""));
+        Check(CombatantData.DamageTypeDataOutgoingPowerDamage == (hostInitialized ? "Power Drain (Out)" : ""));
         Check(ActGlobals.mainTableShowCommas && ActGlobals.blockIsHit && !ActGlobals.disableIncrementalCaching);
         Check(!ActGlobals.restrictToAll && !ActGlobals.longDuration);
         Check(CombatantData.ExportVariables.Count == 0 && EncounterData.ExportVariables.Count == 0);

@@ -11,6 +11,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .ok_or("provide the fully qualified plugin type")?
         .into_string()
         .map_err(|_invalid| "plugin type must be UTF-8")?;
+    let import = args.next().map(Utf8PathBuf::try_from).transpose()?;
     extract_bridge(&directory)?;
     let mut host = Host::start(
         HostConfig::builder()
@@ -29,6 +30,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     while std::time::Instant::now() < until {
         host.pump()?;
         std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    if let Some(path) = import {
+        println!("Import summary: {:?}", host.import_log(path)?);
     }
     println!("Worker diagnostics: {:?}", host.diagnostics()?);
     host.stop()?;

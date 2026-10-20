@@ -22,8 +22,9 @@ use netcorehost::{
 use scopeguard::{ScopeGuard, guard};
 
 use crate::{
-    Error, HostDiagnostics,
+    Error, HostDiagnostics, ImportReport,
     diagnostics::{DIAGNOSTIC_CAPACITY, decode_diagnostics},
+    import::{decode_import, import_packet},
     io_error,
 };
 
@@ -94,6 +95,7 @@ pub struct Host {
     read_diagnostics: ManagedFunctionWithDefaultSignature,
     create_plugin: ManagedFunctionWithDefaultSignature,
     plugin_command: ManagedFunctionWithDefaultSignature,
+    import_log: ManagedFunctionWithDefaultSignature,
     session: u64,
     running: bool,
     // Keep the native library and delegate loader alive for every managed function call.
@@ -145,12 +147,17 @@ impl Host {
             pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
             pdcstr!("PluginCommand"),
         )?;
+        let import_log = loader.get_function_with_default_signature(
+            pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
+            pdcstr!("ImportLog"),
+        )?;
         let mut host = Self {
             entry,
             read_error,
             read_diagnostics,
             create_plugin,
             plugin_command,
+            import_log,
             session: 0,
             running: false,
             _loader: loader,
@@ -220,6 +227,30 @@ impl Host {
             });
         }
         decode_diagnostics(&packet)
+    }
+
+    /// Imports the initial contents of a UTF-8 file through initialized plugins and drains actions.
+    ///
+    /// Call on the creation thread while live combat is idle. Live file delivery is paused and
+    /// restored, including after failure. Appends after opening are excluded; malformed UTF-8,
+    /// records over 8 MiB and premature truncation fail visibly. Partial imported history remains
+    /// after failure. Hook delivery alone does not establish that a plugin accepted the records.
+    pub fn import_log(&mut self, path: impl AsRef<Utf8Path>) -> Result<ImportReport, Error> {
+        let path = canonicalize(path.as_ref())?;
+        let mut packet = import_packet(self.session, path.as_str())?;
+        // The encoder bounds this request to 64 KiB before conversion.
+        let length = packet.len() as i32;
+        // SAFETY: ImportLog borrows this initialized allocation for the call, validates every
+        // range before importing, and writes only the fixed result in its 64-byte header.
+        let status = unsafe { (self.import_log)(packet.as_mut_ptr().cast(), length) };
+        if status != 0 {
+            return Err(Error::Managed {
+                command: 8,
+                status,
+                message: self.error_message(),
+            });
+        }
+        decode_import(&packet)
     }
 
     /// Constructs a trusted plugin and retains it until this host stops.

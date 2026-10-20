@@ -50,8 +50,8 @@ public partial class FormActMain
                 lastHostileTime = time;
                 return null;
             }
-            if (zoneContext.Name != combatZone.ZoneName && currentZone != combatZone.ZoneName ||
-                zoneContext.Start < combatZone.StartTime)
+            if (!importingLogs && (zoneContext.Name != combatZone.ZoneName && currentZone != combatZone.ZoneName ||
+                zoneContext.Start < combatZone.StartTime))
             {
                 var existing = combatZones.Find(zone => zone.StartTime == zoneContext.Start && zone.ZoneName == zoneContext.Name);
                 if (existing is not null) combatZone = existing;
@@ -98,8 +98,9 @@ public partial class FormActMain
         }
     }
 
-    private CombatToggleEventArgs LastEncounterEvent(EncounterData encounter) =>
-        new(combatZones.Count - 1, combatZones[^1].Items.Count - 1, encounter);
+    private CombatToggleEventArgs LastEncounterEvent(EncounterData encounter) => importingLogs
+        ? new(0, combatZone.Items.Count - 1, encounter)
+        : new(combatZones.Count - 1, combatZones[^1].Items.Count - 1, encounter);
 
     private void EnsureCombatStateInitialized()
     {

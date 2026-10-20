@@ -26,6 +26,12 @@ internal sealed class PluginSession
     internal T OnOwner<T>(Func<T> action) => context is null ? action() : context.Run(action);
     internal int Pump() => context?.Pump() ?? 0;
     internal void EnsureCanStop() => environment?.EnsureCanStop();
+    internal ImportResult ImportLog(string path) => OnOwner(() =>
+    {
+        if (!plugins.Values.Any(plugin => plugin.State == PluginState.Initialized))
+            throw new InvalidOperationException("File import requires an initialized plugin");
+        return Host().ImportLog(path);
+    });
     // Keep the native Application type outside Linux JIT paths; Windows uses the actual Desktop Runtime.
     private static Action WindowsPump() => Application.DoEvents;
     private PluginRecord Find(long id) => plugins.TryGetValue(id, out var plugin)

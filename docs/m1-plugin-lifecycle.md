@@ -12,7 +12,7 @@ of M1 or parser readiness.
 | Contract | Behavior |
 | --- | --- |
 | HostConfig.data_directory | Required UTF-8 path; Rust creates the directory and passes its canonical path to the managed session; existing contents are preserved |
-| ActGlobals.oFormActMain / charName | Actual public static CLI fields; root is established lazily before the first InitPlugin attempt, character initially empty, both cleared on stop |
+| ActGlobals.oFormActMain / charName | Actual public static CLI fields; root is established lazily before the first InitPlugin attempt, character alias defaults to genuine ACT's `YOU`, both cleared on stop |
 | FormActMain | Form-derived startup object with AppDataFolder: DirectoryInfo and PluginGetSelfData(IActPluginV1) returning the registered instance by reference identity or null |
 | ActPluginData | Original public instance fields pluginFile: FileInfo, pluginObj: IActPluginV1, tpPluginSpace: TabPage, lblPluginStatus: Label |
 | WriteExceptionLog(Exception,string) | Bounded in-memory diagnostic capture with separate owner-thread initialization counts; no ACT file logging or Rust log delivery |

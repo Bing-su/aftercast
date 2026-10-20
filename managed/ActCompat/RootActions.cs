@@ -132,7 +132,7 @@ public partial class FormActMain
                 // Do not hold the graph monitor while arbitrary subscribers synchronously invoke the owner thread.
                 NotifyCombatActions(AfterCombatAction, entry.Import, new(entry.Action), "AfterCombatAction subscriber");
             }
-            catch (Exception error) { WriteExceptionLog(error, "Combat action aggregation"); }
+            catch (Exception error) { RecordImportFailure(error); WriteExceptionLog(error, "Combat action aggregation"); }
             finally
             {
                 lock (CombatGate)
@@ -158,7 +158,7 @@ public partial class FormActMain
             foreach (var callback in handlers?.GetInvocationList() ?? [])
             {
                 try { ((CombatActionDelegate)callback)(import, info); }
-                catch (Exception error) { WriteExceptionLog(error, context); }
+                catch (Exception error) { RecordImportFailure(error); WriteExceptionLog(error, context); }
                 // Use ACT's isolated-handler mode: a cancellation cannot be undone by later subscribers.
                 if (cancelable && info.cancelAction) break;
             }
@@ -170,7 +170,7 @@ public partial class FormActMain
     {
         foreach (var callback in handlers?.GetInvocationList() ?? [])
             try { ((CombatToggleEventDelegate)callback)(import, info); }
-            catch (Exception error) { WriteExceptionLog(error, "Combat transition subscriber"); }
+            catch (Exception error) { RecordImportFailure(error); WriteExceptionLog(error, "Combat transition subscriber"); }
     }
 
     public void EndCombat(bool force)
@@ -179,6 +179,7 @@ public partial class FormActMain
         bool import;
         lock (CombatGate)
         {
+            EnsureImportAdmission();
             if (!InCombat) return;
             ObjectDisposedException.ThrowIf(actionsStopped, this);
             if (actionAdmissionPaused && actionPauseOwner != Environment.CurrentManagedThreadId)
@@ -234,6 +235,7 @@ public partial class FormActMain
         EnsureCanWaitForCombatActions();
         lock (CombatGate)
         {
+            if (importRunning) throw new InvalidOperationException("Log import is already in progress");
             if (actionAdmissionPaused) throw new InvalidOperationException("Plugin teardown is already in progress");
             if ((startingCombat || endingCombat) && (combatTransitionOwner == Environment.CurrentManagedThreadId ||
                 Environment.CurrentManagedThreadId == ownerThread && IsDispatchingCallback?.Invoke() == true))
@@ -300,6 +302,7 @@ public partial class FormActMain
     private void EnsureCombatOpen()
     {
         ObjectDisposedException.ThrowIf(actionsClosed, this);
+        EnsureImportAdmission();
         if (actionAdmissionPaused) throw new InvalidOperationException("Combat action admission is suspended during plugin teardown");
     }
     private void EnsureCombatTransitionIdle()

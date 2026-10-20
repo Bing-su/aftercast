@@ -13,11 +13,13 @@ using Bxivact.Bridge;
 
 internal static class Program
 {
-    private static void Check(bool condition)
+    private sealed record ImportedAction(bool Import, string Attacker, string Victim, string Attack,
+        int Swing, long Damage, DateTime Time, int Sorter);
+    private static void Check(bool condition, [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(condition))] string? expression = null)
     {
-        if (!condition) throw new Exception("Managed contract check failed");
+        if (!condition) throw new Exception("Managed contract check failed: " + expression);
     }
-    private static string Diagnostic()
+    internal static string Diagnostic()
     {
         var output = Marshal.AllocHGlobal(8192);
         try
@@ -38,7 +40,7 @@ internal static class Program
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.DataVisualization.dll"));
         }
         // Modes keep artifact-dependent checks separate from ordinary ABI tests without a test framework dependency.
-        if (mode == "original") Platform.Prepare();
+        if (mode is "original" or "original-import") Platform.Prepare();
         switch (mode)
         {
             case "bridge": Bridge(); break;
@@ -46,12 +48,13 @@ internal static class Program
             case "prepare-act": PrepareAct(); break;
             case "act": ActBinding(); break;
             case "linux": LinuxCompatibility(); break;
-            case "original": ObserveOriginal(args[1], args[2]); break;
+            case "original": ObserveOriginal(args[1], args[2], args.Length > 3 ? args[3] : null); break;
+            case "original-import": ObserveOriginal(args[1], args[2], "managed/tests/fixtures/ffxiv-synthetic.log"); break;
             default: throw new ArgumentException("Unknown managed test mode");
         }
         Console.WriteLine($"Managed {args[0]} contract checks passed.");
     }
-    private static void ObserveOriginal(string pluginPath, string statePath)
+    private static void ObserveOriginal(string pluginPath, string statePath, string? importPath)
     {
         // Run only an explicitly supplied trusted copy; wait long enough to observe caught worker failures.
         var session = new PluginSession();
@@ -66,6 +69,50 @@ internal static class Program
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
             while (elapsed.Elapsed < TimeSpan.FromMilliseconds(1500)) { session.Pump(); Thread.Sleep(10); }
             var root = ActGlobals.oFormActMain!;
+            if (importPath is not null)
+            {
+                Check(Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(importPath))) ==
+                    "05e458eaa5f376db6424042a8d16ed1ed28b4e99ab3c14b0d4339fa013e3f35e");
+                var actions = new List<ImportedAction>();
+                var live = (root.ActiveZone, root.CurrentZone, root.LogFilePath, root.LastKnownTime, ActGlobals.charName);
+                Check(live.charName == "YOU");
+                root.AfterCombatAction += (import, info) =>
+                {
+                    lock (actions) actions.Add(new(import, info.attacker, info.victim,
+                        info.theAttackType, info.swingType, info.damage.Number, info.time, info.timeSorter));
+                };
+                for (var iteration = 0; iteration < 3; iteration++)
+                {
+                    // Reset state between repeated imports and recover after a source failure without inventing an EOF event.
+                    if (iteration == 2)
+                    {
+                        var invalid = Path.GetFullPath(Path.Combine(statePath, "invalid-utf8.log"));
+                        File.WriteAllBytes(invalid, [0xff]);
+                        try { session.ImportLog(invalid); throw new Exception("Invalid original-import source succeeded"); }
+                        catch (InvalidDataException) { }
+                    }
+                    lock (actions) actions.Clear();
+                    var report = session.ImportLog(Path.GetFullPath(importPath));
+                    Console.WriteLine("Original import summary: " + System.Text.Json.JsonSerializer.Serialize(report));
+                    Check(report == new ImportResult(7, 7, 1, 2, 400, 0));
+                    Check(!root.InCombat && ReferenceEquals(root.ActiveZone, live.ActiveZone));
+                    Check(root.CurrentZone == live.CurrentZone && root.LogFilePath == live.LogFilePath);
+                    Check(root.LastKnownTime == live.LastKnownTime && ActGlobals.charName == live.charName);
+                    lock (actions)
+                    {
+                        Console.WriteLine("Original imported actions: " + System.Text.Json.JsonSerializer.Serialize(actions));
+                        Check(actions.Count == 2);
+                        for (var index = 0; index < actions.Count; index++)
+                        {
+                            var action = actions[index];
+                            Check(action.Import && action.Attacker == "YOU" && action.Victim == "Fixture Enemy");
+                            Check(action.Attack == "attack" && action.Swing == 0 && action.Damage == (index == 0 ? 100 : 300));
+                            Check(action.Time.ToUniversalTime() == new DateTime(2026, 1, 1, 0, 0, index == 0 ? 1 : 3, DateTimeKind.Utc));
+                        }
+                        Check(actions[1].Sorter == actions[0].Sorter + 1);
+                    }
+                }
+            }
             var errors = (Tuple<long, string>)root.GetType().GetProperty("Errors", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(root)!;
             Console.WriteLine($"Original worker diagnostics: {errors.Item1}; {errors.Item2}");
             foreach (var diagnostic in (string[])root.GetType().GetProperty("RecentDiagnostics", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(root)!)
@@ -118,6 +165,7 @@ internal static class Program
             var session = Marshal.ReadInt64(buffer, 16);
             Check(session > 0 && Marshal.ReadInt32(buffer, 12) == 10);
             DiagnosticAbiChecks.Run(session);
+            ImportAbiChecks.Run(session);
             ReentrantSessionChecks.Run(session);
             Marshal.WriteInt32(buffer, 8, 4);
             Check(EntryPoint.Invoke(buffer, 24) == 0 && Marshal.ReadInt32(buffer, 12) == 0);
@@ -246,6 +294,7 @@ internal static class Program
             catch (TargetInvocationException error) when (error.InnerException is not null)
             { ExceptionDispatchInfo.Capture(error.InnerException).Throw(); throw; }
         }
+        Check((string)Call("DefaultGlobalsProbe", "Run")! == "Default globals");
         Check((long)Call("ContractProbe", "Run")! == 123);
         Check((string)Call("DnumValueProbe", "Run")! == "Dnum values");
         Check((string)Call("ChartProbe", "Run")! == "Network");
@@ -316,6 +365,8 @@ internal static class Program
         CombatPolicyChecks.Run();
         RootCombatStateChecks.Run();
         RootActionChecks.Run();
+        ImportLogReaderChecks.Run();
+        ImportChecks.Run();
         OwnerContextChecks.Run();
         HostLifetimeChecks.Run();
         DiagnosticChecks.Run();

@@ -130,10 +130,11 @@ public partial class FormActMain
             throw new InvalidOperationException("Cannot wait for a log callback from its own dispatched UI callback");
     }
 
-    internal void RunWithLogReadingSuspended(Action action)
+    internal void RunWithLogReadingSuspended(Action action, bool importOperation = false)
     {
         ArgumentNullException.ThrowIfNull(action);
-        EnsureCanWaitForLogReader();
+        // Import has already performed lifecycle preflight before reserving its exclusive scope.
+        if (!importOperation) EnsureCanWaitForLogReader();
         LogFollower[] readers;
         lock (logGate)
         {
@@ -185,7 +186,7 @@ public partial class FormActMain
         {
             if (generation is { } active && !IsCurrentLog(active)) return;
             try { ((LogLineEventDelegate)callback)(isImport, info); }
-            catch (Exception error) { WriteExceptionLog(error, "Log line subscriber"); }
+            catch (Exception error) { RecordImportFailure(error); WriteExceptionLog(error, "Log line subscriber"); }
         }
     }
 

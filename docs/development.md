@@ -3,8 +3,10 @@
 The prebuilt C# lifecycle bridge runs inside a Rust process. M1 adds the first
 [ACT contract-binding slice](m1-contract-binding.md). The original FFXIV plugin
 returns a started status in Linux observation with a caller-owned message pump.
-Raw file following works; combat aggregation, live capture, streamed Rust batches,
-and runtime installation remain open. See the [blueprint](blueprint.md) for later
+Raw file following, configured combat aggregation and synchronous file import
+are implemented. See [import boundaries](m2-file-import.md) for semantic validation
+and limitations. Live capture, streamed Rust batches and runtime installation
+remain open. See the [blueprint](blueprint.md) for later
 milestones and the original-artifact research reports for compatibility work.
 
 ## Requirements
@@ -32,6 +34,7 @@ so workspace publication is disabled rather than inventing a license.
 | `mise run test:act-binding` | Check the pinned local ACT hash, compile the legacy-reference probe, and run it against the replacement; requires the original local ACT artifact |
 | `mise run test:original-reference` | Execute genuine ACT constructors, value cases and configured action fixtures in an isolated process; requires the pinned local ACT artifact |
 | `mise run test:original-contracts` | Execute the same compiled value/state probes against both replacement and genuine ACT in separate processes |
+| `mise run test:original-import -- /trusted/plugin-copy/FFXIV_ACT_Plugin.dll /private/new-state` | Repeated original-plugin synthetic imports, emitted action assertions, invalid-input recovery and private parser diagnostics; use a disposable plugin copy |
 | `mise run test:linux-plugin-compat` | Check the pinned FFXIV memory IL adjustment, unknown-build rejection and original-file preservation; requires supplied FFXIV artifacts |
 | `dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- original /trusted/plugin-copy/FFXIV_ACT_Plugin.dll /private/state` | Observe original startup/workers for 1.5 seconds with an explicit owner-thread pump and bounded diagnostics; use a disposable plugin copy |
 | `DOTNET_ROOT=/usr/lib/dotnet mise run test:plugins` | Build fixtures; check plugin request bounds and construct instances through the Rust API, including dependency and constructor failures |
@@ -65,6 +68,7 @@ executes the plugin constructor only.
 | Host::session_id() | Makes a real managed call to validate the current component-local session identity |
 | Host::pump() | Processes bounded queued Linux control callbacks on the host's creation thread; call regularly while workers are active |
 | Host::diagnostics() | Returns an owned atomic snapshot of total host errors and up to 32 recent bounded messages; repeated reads do not consume history |
+| Host::import_log(path) | Imports a fixed UTF-8 file prefix through initialized plugins, drains submitted actions, restores live context and returns an owned transport/aggregate summary |
 | Host::create_plugin(PluginConfig) | Selects and constructs a trusted IActPluginV1, returns an opaque session-scoped PluginId; never calls InitPlugin |
 | Host::initialize_plugin(PluginId) | Calls InitPlugin once, returns bounded status text; rejects exceptions reported to the host during the callback |
 | Host::deinitialize_plugin(PluginId) | Calls DeInitPlugin once for a successfully initialized instance; unregisters and disposes owned controls even on failure |
@@ -122,7 +126,7 @@ code units; this is diagnostic text, not a serialized exception object.
 | Bxivact.Bridge.runtimeconfig.json | .NET 10 LatestPatch requirement |
 | Bxivact.Bridge.runtimeconfig.windows.json | Cargo extraction uses this Desktop Runtime configuration on Windows |
 | Bxivact.Bridge.deps.json | Dependency resolver input |
-| Advanced Combat Tracker.dll | Public-signed ACT 3.8.5.288 identity; session scaffold and initial Dnum contract slice |
+| Advanced Combat Tracker.dll | Public-signed ACT 3.8.5.288 identity; host, combat graph, action processing and import contracts |
 | System.Security.Permissions.dll | Official 10.0.13 legacy permission type support for older serializers |
 | System.Windows.Extensions.dll / System.Windows.Extensions.windows.dll | Transitive 10.0.13 dependency; extraction chooses the platform asset and writes System.Windows.Extensions.dll |
 | Dotnet.Compatibility*.LICENSE | Upstream .NET runtime MIT notice and identical third-party notices for both compatibility packages |
@@ -223,5 +227,5 @@ The packaged smoke example also ran offline with a failing dotnet CLI shim first
 on PATH: extraction, startup, probe, and stop succeeded without invoking the SDK.
 
 Windows checks compile Rust only. Actual Windows CLR/plugin/WinForms execution,
-original ACT comparisons, native Linux FFXIV capture, live throughput, disk
+representative gameplay comparisons, native Linux FFXIV capture, live throughput, disk
 recording behavior, FF Logs acceptance, and runtime-download remain unchecked.

@@ -1,0 +1,114 @@
+using System.Text;
+
+namespace Advanced_Combat_Tracker;
+
+// Read a bounded file prefix so a concurrently growing live log cannot make an import endless.
+internal sealed class ImportLogReader : IDisposable
+{
+    private const int MaximumRecordLength = 8 * 1024 * 1024;
+    private readonly Stream stream;
+    private readonly long initialLength;
+    private readonly byte[] buffer = new byte[4096];
+    private readonly MemoryStream pending = new();
+    private readonly UTF8Encoding encoding = new(false, true);
+    private long bytesRead;
+    private int offset, count;
+    private bool prefixChecked, skipLf, disposed;
+
+    internal ImportLogReader(string path) : this(new FileStream(path, FileMode.Open, FileAccess.Read,
+        FileShare.ReadWrite | FileShare.Delete)) { }
+
+    // The deterministic stream seam has the same ownership and byte-zero contract as a newly opened file.
+    internal ImportLogReader(Stream stream)
+    {
+        ArgumentNullException.ThrowIfNull(stream);
+        try
+        {
+            if (!stream.CanRead || !stream.CanSeek || stream.Position != 0)
+                throw new ArgumentException("An import stream must be readable, seekable and positioned at byte zero.", nameof(stream));
+            initialLength = stream.Length;
+            this.stream = stream;
+        }
+        catch { stream.Dispose(); pending.Dispose(); throw; }
+    }
+
+    internal bool TryRead(out string line)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        CheckPrefix();
+        while (true)
+        {
+            if (offset == count && !ReadChunk())
+            {
+                if (pending.Length == 0) { line = ""; return false; }
+                line = DecodeRecord();
+                return true;
+            }
+            var remaining = buffer.AsSpan(offset, count - offset);
+            if (skipLf)
+            {
+                skipLf = false;
+                if (remaining[0] == (byte)'\n') { offset++; continue; }
+            }
+            var delimiter = remaining.IndexOfAny((byte)'\r', (byte)'\n');
+            var fragment = delimiter < 0 ? remaining : remaining[..delimiter];
+            if (pending.Length + fragment.Length > MaximumRecordLength)
+                throw new InvalidDataException($"Import record exceeds {MaximumRecordLength} UTF-8 bytes.");
+            pending.Write(fragment);
+            offset += fragment.Length;
+            if (delimiter < 0) continue;
+            skipLf = buffer[offset++] == (byte)'\r';
+            line = DecodeRecord();
+            return true;
+        }
+    }
+
+    private void CheckPrefix()
+    {
+        if (prefixChecked) return;
+        prefixChecked = true;
+        var prefixLength = (int)Math.Min(3, initialLength);
+        while (count < prefixLength)
+        {
+            ValidateLength();
+            var read = stream.Read(buffer, count, prefixLength - count);
+            if (read == 0) throw new EndOfStreamException("The import file ended before its captured length.");
+            count += read;
+            bytesRead += read;
+        }
+        // A BOM is framing only at byte zero; later U+FEFF characters belong to the original record.
+        if (count == 3 && buffer[0] == 0xef && buffer[1] == 0xbb && buffer[2] == 0xbf) offset = count;
+    }
+
+    private bool ReadChunk()
+    {
+        // Validate at chunk boundaries and EOF, avoiding a filesystem length query for every short record.
+        ValidateLength();
+        if (bytesRead == initialLength) return false;
+        count = stream.Read(buffer, 0, (int)Math.Min(buffer.Length, initialLength - bytesRead));
+        offset = 0;
+        if (count == 0) throw new EndOfStreamException("The import file ended before its captured length.");
+        bytesRead += count;
+        return true;
+    }
+
+    private void ValidateLength()
+    {
+        if (stream.Length < initialLength) throw new EndOfStreamException("The import file was truncated during reading.");
+    }
+
+    private string DecodeRecord()
+    {
+        try { return encoding.GetString(pending.GetBuffer(), 0, (int)pending.Length); }
+        catch (DecoderFallbackException error) { throw new InvalidDataException("The import record is not valid UTF-8.", error); }
+        finally { pending.SetLength(0); }
+    }
+
+    public void Dispose()
+    {
+        if (disposed) return;
+        disposed = true;
+        try { stream.Dispose(); }
+        finally { pending.Dispose(); }
+    }
+}

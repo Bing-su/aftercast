@@ -61,6 +61,11 @@ run = [
   'dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release --no-build -- "binaries/act/Advanced Combat Tracker.exe" crates/bxivact-winforms/managed actions',
 ]
 
+[tasks."test:original-import"]
+description = "Import the fixed synthetic fixture through a trusted original plugin copy; pass plugin-copy and state-directory arguments"
+depends = ["managed:test-runner"]
+run = "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- original-import"
+
 [tasks."test:original-contracts"]
 description = "Run the same compiled value/state probes against replacement and genuine ACT in separate processes"
 depends = ["test:act-binding"]
@@ -69,4 +74,4 @@ run = 'dotnet run --project managed/tests/OriginalReference/OriginalReference.cs
 [tasks."test:plugins"]
 description = "Check trusted plugin construction, initialization and cleanup; requires DOTNET_ROOT"
 depends = ["managed:test-runner"]
-run = ["dotnet build managed/tests/PluginFixture/PluginFixture.csproj -c Release -p:RestoreLockedMode=true", "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- plugins", "cargo test -p bxivact --test plugins --test lifecycle -- --ignored"]
+run = ["dotnet build managed/tests/PluginFixture/PluginFixture.csproj -c Release -p:RestoreLockedMode=true", "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- plugins", "cargo test -p bxivact --test plugins --test lifecycle --test import -- --ignored"]

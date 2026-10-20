@@ -22,8 +22,8 @@ claiming a successful original main-form execution.
 
 History databases, root settings UI, user rename/redirect rules, automatic exports,
 silence-based segmentation, selective parsing and trigger commands are outside
-this policy. The import sentinel is prepared, but a file-import API and original
-semantic imports are not implemented by this orchestration milestone.
+this policy. The later [file-import slice](m2-file-import.md) uses the import
+sentinel and adds a Rust API with separate semantic acceptance checks.
 
 ## Delivery and ordering
 

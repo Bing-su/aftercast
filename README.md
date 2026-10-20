@@ -4,9 +4,9 @@ An ACT-compatible Rust library that hosts a prebuilt C# component on .NET 10.
 Reuses the existing FFXIV ACT plugin rather than replacing its parser.
 
 **Status:** Host contracts and fixture plugin initialization/shutdown work on Linux.
-Original FFXIV initialization returns `Started` on Linux; worker observation uses
-an explicit owner-thread pump. Configured combat-action comparisons pass against
-original ACT; complete imports, native capture and Windows execution remain open.
+Original FFXIV initializes and imports a synthetic 400-damage fixture on Linux.
+Configured combat-action comparisons pass against original ACT. Representative
+gameplay imports, native capture and Windows execution remain unverified.
 
 - [Implementation plan](docs/blueprint.md)
 - [Development and validation](docs/development.md)
@@ -21,6 +21,7 @@ original ACT; complete imports, native capture and Windows execution remain open
 - [M1 controls, startup events and settings](docs/m1-controls-and-settings.md)
 - [M1 combat registration and log following](docs/m1-registration-and-log-following.md)
 - [M2 combat orchestration and verification](docs/m2-root-combat.md)
+- [M2 file import and its boundaries](docs/m2-file-import.md)
 - [ACT compatibility research](docs/act-host-compatibility-analysis.md)
 - [Event delivery research](docs/act-event-delivery-analysis.md)
 

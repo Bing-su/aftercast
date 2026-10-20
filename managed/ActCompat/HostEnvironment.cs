@@ -66,7 +66,7 @@ namespace Advanced_Combat_Tracker
     public static partial class ActGlobals
     {
         public static FormActMain? oFormActMain;
-        public static string? charName;
+        public static string? charName = "YOU";
     }
 }
 
@@ -90,8 +90,10 @@ namespace Bxivact.ActCompat
                 throw new InvalidOperationException("ACT globals are already owned by another environment");
             }
             ActGlobals.oFormActMain = main;
-            ActGlobals.charName = "";
+            // The original parser substitutes this ACT alias for the current player's actor name.
+            ActGlobals.charName = "YOU";
             RegistrationLifetime.Reset();
+            RegistrationLifetime.InitializeHostCategoryNames();
             main.CurrentZone = "Unknown Zone";
             main.InitializeCombatState(DateTime.Now);
         }
@@ -101,6 +103,7 @@ namespace Bxivact.ActCompat
         public Tuple<long, string> Diagnostics => main.Errors;
         public string[] RecentDiagnostics => main.RecentDiagnostics;
         public Tuple<long, string[]> DiagnosticsSnapshot => main.DiagnosticsSnapshot;
+        public ImportResult ImportLog(string path) => main.ImportLog(path);
         public void EnsureCanStop() => main.EnsureCanWaitForLogReader();
         public void StopLogReading() => main.StopLogFollower();
         public void StopProcessing()

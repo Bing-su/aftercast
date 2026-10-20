@@ -2,6 +2,19 @@ namespace Advanced_Combat_Tracker;
 
 internal static class RegistrationLifetime
 {
+    internal static void InitializeHostCategoryNames()
+    {
+        // InitACT assigns these literal keys before plugins replace category definitions; bare ACT statics stay empty.
+        CombatantData.DamageTypeDataNonSkillDamage = "Auto-Attack (Out)";
+        CombatantData.DamageTypeDataOutgoingDamage = "Outgoing Damage";
+        CombatantData.DamageTypeDataOutgoingHealing = "Healed (Out)";
+        CombatantData.DamageTypeDataIncomingDamage = "Incoming Damage";
+        CombatantData.DamageTypeDataIncomingHealing = "Healed (Inc)";
+        CombatantData.DamageTypeDataOutgoingPowerReplenish = "Power Replenish (Out)";
+        CombatantData.DamageTypeDataOutgoingPowerDamage = "Power Drain (Out)";
+        CombatantData.DamageTypeDataOutgoingCures = "Cure/Dispel (Out)";
+    }
+
     internal static void Reset()
     {
         // Release callbacks from the previous plugin session without mutating a consumer's retained dictionary.
