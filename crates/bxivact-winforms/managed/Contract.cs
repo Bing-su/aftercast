@@ -52,4 +52,4 @@ public class UserControl : ContainerControl
 {
     public AutoSizeMode AutoSizeMode { get; set; } = AutoSizeMode.GrowOnly;
 }
-public class Form : ContainerControl { }
+public partial class Form : ContainerControl { }

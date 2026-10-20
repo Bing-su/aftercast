@@ -14,7 +14,7 @@ run = "dotnet run --project crates/bxivact-winforms/managed/tests/ContractTests.
 
 [tasks."managed:restore"]
 description = "Restore and lock maintainer-only managed dependencies"
-run = ["dotnet restore managed/Bridge/Bridge.csproj", "dotnet restore crates/bxivact-winforms/managed/Charting/Charting.csproj", "dotnet restore crates/bxivact-winforms/managed/tests/ContractTests.csproj", "dotnet restore managed/tests/PluginFixture/PluginFixture.csproj", "dotnet restore managed/tests/LegacyReference/LegacyReference.csproj", "dotnet restore managed/tests/ManagedTests/ManagedTests.csproj"]
+run = ["dotnet restore managed/Bridge/Bridge.csproj", "dotnet restore crates/bxivact-winforms/managed/Charting/Charting.csproj", "dotnet restore crates/bxivact-winforms/managed/tests/ContractTests.csproj", "dotnet restore managed/tests/PluginFixture/PluginFixture.csproj", "dotnet restore managed/tests/LegacyReference/LegacyReference.csproj", "dotnet restore managed/tests/OriginalReference/OriginalReference.csproj", "dotnet restore managed/tests/ManagedTests/ManagedTests.csproj"]
 
 [tasks.check]
 description = "Check formatting, Rust lints, and bridge tests"
@@ -51,6 +51,20 @@ run = ["dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c R
 description = "Verify the pinned in-memory Linux adjustment; requires the supplied original FFXIV artifacts"
 depends = ["managed:test-runner"]
 run = "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- linux"
+
+[tasks."test:original-reference"]
+description = "Execute pinned original ACT data constructors and configured value/action fixtures without its main form"
+depends = ["winforms:build"]
+run = [
+  'dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release -p:RestoreLockedMode=true -- "binaries/act/Advanced Combat Tracker.exe" crates/bxivact-winforms/managed',
+  'dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release --no-build -- "binaries/act/Advanced Combat Tracker.exe" crates/bxivact-winforms/managed values',
+  'dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release --no-build -- "binaries/act/Advanced Combat Tracker.exe" crates/bxivact-winforms/managed actions',
+]
+
+[tasks."test:original-contracts"]
+description = "Run the same compiled value/state probes against replacement and genuine ACT in separate processes"
+depends = ["test:act-binding"]
+run = 'dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release -p:RestoreLockedMode=true -- "binaries/act/Advanced Combat Tracker.exe" crates/bxivact-winforms/managed contracts managed/tests/LegacyReference/bin/Release/net10.0/Bxivact.LegacyReference.dll'
 
 [tasks."test:plugins"]
 description = "Check trusted plugin construction, initialization and cleanup; requires DOTNET_ROOT"

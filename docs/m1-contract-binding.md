@@ -9,8 +9,8 @@ prerequisite, not completion of plugin initialization or ACT aggregation.
 | --- | --- |
 | Can an original ACT reference bind to our C# assembly? | A probe compiled against the original EXE runs against the replacement DLL and calls selected Dnum members |
 | Does reference identity match? | Name Advanced Combat Tracker, version 3.8.5.288, neutral culture, public key token a946b61e93d97868 |
-| Is the original ACT executed? | The original file is read as metadata/compiler reference only; the probe checks the replacement identity and matches its bytes to the published DLL |
-| Does this initialize FFXIV? | No. Later construction/lifecycle slices add plugin loading, selected host globals and fixture initialization; original FFXIV initialization remains blocked |
+| Is the original ACT executed? | This binding probe uses original metadata only; the separate OriginalReference process now executes genuine numeric/aggregate constructors |
+| Does this initialize FFXIV? | Later slices now reach `Started`; see [registration and log following](m1-registration-and-log-following.md) for the precise worker observation boundary |
 | Can Rust receive a useful managed failure? | Command/status plus bounded UTF-8 diagnostic text; an unknown-command regression also checks the session still works afterward |
 
 ## Identity and public signing
@@ -38,18 +38,32 @@ contract, not parsed FFXIV packets.
 | op_Implicit(int64) -> Dnum | Preserve values >= -10; clamp lower values to -9 | 0x0600069c |
 | NoDamage/Miss/Unknown/Death/ThreatPosition | Convert 0/-1/-9/-10/-11 through the implicit operator; ThreatPosition therefore has Number=-9 | 0x060006a0-a4 |
 | Number | Read-only int64 property | 0x060006a5 |
-| DamageString | Mutable explicit text; null/empty delegates to ToString, currently unsupported | 0x060006a6-a7 |
+| DamageString | Mutable explicit text; null/empty delegates to ToString | 0x060006a6-a7 |
 | DamageString2 | Mutable string, initially null | 0x060006a8-a9 |
 
 Direct construction of -11 or Int64.MinValue is not normalized. Implicit conversion
 of those numbers is normalized. The original-reference probe checks both paths
 and Int64.MaxValue. Numeric getters/conversions are not limited to 32-bit values.
 
-Formatting/localization, addition, comparison/IComparable, equality, and hashing
-remain outside this slice. ToString(), Equals(), and GetHashCode() explicitly
-throw NotSupportedException so inherited Object behavior cannot masquerade as
-ACT semantics. The other missing member signatures are not yet provided. Do not
-use this as a complete Dnum implementation or a working combat engine.
+## Value semantics added on 2026-10-21
+
+| Member | Verified behavior |
+| --- | --- |
+| Numeric formatting | Current culture with `0` or `#,0`, controlled by public `ActGlobals.mainTableShowCommas` (default true) |
+| Default terms | Original English No Damage, Miss, Resist, Parry, Riposte, Block and Death; other values use explicit text/suffix |
+| `ToString(bool)` | Preserve original compact/detail branches, including shortened explicit negative labels and null-return/exception behavior |
+| Addition | Add nonnegative values with unchecked Int64 overflow; ignore negative operands when paired with nonnegative values; two negative values produce zero |
+| `Equals`, `==`, `!=` | Compare Number and DamageString; retain original null/type exceptions and derived-type behavior |
+| `IComparable.CompareTo` | Compare numbers; two Unknown (-9) values compare their explicit strings |
+| `GetHashCode` | Hash `ToString(false)` with the current runtime string hash; do not compare fixed hash integers across processes |
+
+For example, under en-US the default display for `new Dnum(1234)` is `1,234`.
+The original-reference probe checks en-US, fr-FR and ko-KR, both grouping modes,
+reserved/labelled values, Int64 limits and exceptional comparisons. Genuine ACT
+execution in an isolated process confirms these rules after its own localization
+initialization. External ACT localization overrides remain unsupported; the
+replacement uses the verified built-in English terms. This is a value contract,
+not a working combat engine.
 
 ## Reproduce the experiment
 
@@ -92,6 +106,7 @@ loader-stage context as that loader is implemented.
 | Supplemental IL check | act-contract-m1-selected-il.txt: 14 selected method IL hashes/instruction counts matched REA using the existing PEReader helper |
 
 The subsequent [construction slice](m1-plugin-construction.md) tests the original
-FFXIV plugin constructor. Host globals, initialization and cleanup remain pending.
-Windows runtime tests, native Linux WinForms UI, original ACT differential execution,
-live capture, aggregation and FF Logs acceptance have not been exercised here.
+FFXIV plugin constructor. Later slices add host globals, initialization, cleanup,
+file following and cooperative dispatch. See [M2 research](m2-import-research.md)
+for genuine constructor observations. Windows execution, native Linux rendering,
+live capture, aggregation equivalence and FF Logs acceptance remain unverified.

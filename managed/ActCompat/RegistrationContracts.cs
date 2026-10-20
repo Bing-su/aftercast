@@ -5,7 +5,6 @@ namespace Advanced_Combat_Tracker;
 // These registries retain plugin definitions and callbacks; they do not manufacture combat state.
 public partial class CombatantData
 {
-    private CombatantData() { }
     public static Dictionary<string, DamageTypeDef> IncomingDamageTypeDataObjects = new();
     public static Dictionary<string, DamageTypeDef> OutgoingDamageTypeDataObjects = new();
     public static SortedDictionary<int, List<string>> SwingTypeToDamageTypeDataLinksIncoming = new();
@@ -51,7 +50,6 @@ public partial class CombatantData
 
 public partial class EncounterData
 {
-    private EncounterData() { }
     public static Dictionary<string, TextExportFormatter> ExportVariables = new();
     public static Dictionary<string, ColumnDef> ColumnDefs = new();
     public string GetColumnByName(string name) => ColumnDefs.TryGetValue(name, out var column) ? column.GetCellData(this) : string.Empty;
@@ -104,7 +102,6 @@ public partial class MasterSwing
 
 public partial class AttackType
 {
-    private AttackType() { }
     public static Dictionary<string, ColumnDef> ColumnDefs = new();
     public string GetColumnByName(string name) => ColumnDefs.TryGetValue(name, out var column) ? column.GetCellData(this) : string.Empty;
     public delegate string StringDataCallback(AttackType data);
@@ -126,7 +123,6 @@ public partial class AttackType
 
 public partial class DamageTypeData
 {
-    private DamageTypeData() { }
     public static Dictionary<string, ColumnDef> ColumnDefs = new();
     public string GetColumnByName(string name) => ColumnDefs.TryGetValue(name, out var column) ? column.GetCellData(this) : string.Empty;
     public delegate string StringDataCallback(DamageTypeData data);

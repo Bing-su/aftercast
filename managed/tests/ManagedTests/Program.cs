@@ -247,16 +247,19 @@ internal static class Program
             { ExceptionDispatchInfo.Capture(error.InnerException).Throw(); throw; }
         }
         Check((long)Call("ContractProbe", "Run")! == 123);
+        Check((string)Call("DnumValueProbe", "Run")! == "Dnum values");
         Check((string)Call("ChartProbe", "Run")! == "Network");
         Check((string)Call("ListViewProbe", "Run")! == "42");
         Check((int)Call("TimerProbe", "Run")! == 1);
         Check((int)Call("ButtonProbe", "Run")! == 2);
         Check((int)Call("ControlModelProbe", "Run")! == 200);
+        Check((int)Call("FormStateProbe", "Run")! == 2);
         Check((int)Call("SettingsControlProbe", "Run")! == 2);
         Check((string)Call("RegistrationProbe", "Run")! == "changed callback");
+        Check((string)Call("CombatStateProbe", "Run")! == "Combat state");
+        Check((string)Call("DamageStateProbe", "Run")! == "Fixture attack");
         Check(typeof(Dnum).GetProperty("Number")!.GetSetMethod() is null && new Dnum(-11).Number == -11);
-        try { new Dnum(1).ToString(); throw new Exception("Unimplemented formatting succeeded"); }
-        catch (NotSupportedException) { }
+        Check(new Dnum(1).ToString() == "1");
         var directory = Directory.CreateTempSubdirectory("bxivact-contract-");
         try
         {
