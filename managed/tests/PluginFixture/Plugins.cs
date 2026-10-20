@@ -48,6 +48,14 @@ public class LifecyclePlugin(string mode) : IActPluginV1
     {
         // Compile against the genuine WinForms reference and execute against the headless adapter.
         using var settings = new UserControl { Text = "Settings" };
+        // Use original ListView signatures through the plugin load context as well as the direct probe.
+        using var list = new ListView { View = View.Details };
+        list.Columns.AddRange(new[] { new ColumnHeader { Text = "Network" } });
+        var row = list.Items.Add(new ListViewItem(new[] { "Capture", "0" }));
+        row.Name = "capture";
+        list.Items["capture"].SubItems[1].Text = "42";
+        if (list.Items["capture"].SubItems[1].Text != "42" || list.SelectedItems.Count != 0)
+            throw new Exception("ListView contract failed");
         // Resolve the separate chart assembly through the plugin context and share its Control base type.
         using var chart = new Chart();
         chart.Series.Add(new Series { Name = "Capture", XValueType = ChartValueType.DateTime });

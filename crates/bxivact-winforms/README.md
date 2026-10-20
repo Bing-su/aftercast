@@ -10,6 +10,7 @@ The crate has no Rust dependencies and never starts .NET or invokes its SDK.
 | Control hierarchy, TabPage / Label / Form / UserControl construction | Headless objects only; no rendering or native handles |
 | Text / Name / IsDisposed and disposal notification | No message loop, layout, control tree or cross-thread dispatch |
 | Chart, Series / ChartArea / Legend metadata and named collections | No data binding, plotting or rendering; BeginInit/EndInit have no invalidation work |
+| ListView columns, keyed rows, subitem text and enumeration | No native selection; SelectedItems stays empty; collection interfaces and APIs are partial |
 | Unsigned assembly, version 4.0.0.0 | No original WinForms strong-name identity |
 
 The host supplies .NET 10, deployment and assembly-context

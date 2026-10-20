@@ -3,8 +3,8 @@
 Checked on Linux x86-64 / .NET 10.0.13 on 2026-10-20. Fixture initialization and
 cleanup work. The pinned FFXIV build passes UserControl, legacy permission binding
 and the Windows administrator query with a Linux compatibility adjustment. It now
-fails on missing System.Windows.Forms.ListView after the
-[chart contract slice](m1-chart-contract.md). This is not completion
+fails on missing System.Windows.Forms.Timer after the
+[chart](m1-chart-contract.md) and [ListView](m1-listview-contract.md) slices. This is not completion
 of M1 or parser readiness.
 
 ## Implemented slice
