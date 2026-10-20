@@ -9,6 +9,9 @@ public class Control : Component
     private string text = "";
     public string Name { get; set; } = "";
     public virtual string Text { get => text; set => text = value ?? ""; }
+    // Keep event wiring usable without synthesizing mouse input or a native window.
+    public event EventHandler? Click;
+    protected virtual void OnClick(EventArgs e) => Click?.Invoke(this, e);
     public bool IsDisposed => disposed;
     public nint Handle => throw new PlatformNotSupportedException("Linux WinForms native handles are not implemented");
     public void CreateControl() => throw new PlatformNotSupportedException("Linux WinForms rendering is not implemented");

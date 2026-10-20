@@ -1,8 +1,9 @@
 # M1: headless timer contract
 
-Checked on Linux x86-64 / .NET 10.0.13 on 2026-10-20. The supplied FFXIV plugin's
-failure advances from missing System.Windows.Forms.Timer to missing
-System.Windows.Forms.CheckBox. Original initialization, capture and parsing remain
+Checked on Linux x86-64 / .NET 10.0.13 on 2026-10-20. This slice advanced the
+supplied FFXIV plugin from missing Timer to missing CheckBox. See the
+[current status](../README.md) for subsequent compatibility work.
+Original initialization, capture and parsing remain
 incomplete. JIT resolution can fail before the settings constructor executes.
 
 ## Supported behavior

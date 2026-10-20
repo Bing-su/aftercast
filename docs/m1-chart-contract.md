@@ -1,9 +1,8 @@
 # M1: headless chart contract
 
-Checked on Linux x86-64 / .NET 10.0.13 on 2026-10-20. The FFXIV main plugin now
-passes the missing DataVisualization assembly/member barriers. The subsequent
-[ListView](m1-listview-contract.md) and [timer](m1-timer-contract.md) slices
-advance the failure to CheckBox.
+Checked on Linux x86-64 / .NET 10.0.13 on 2026-10-20. This slice advanced the
+FFXIV main plugin past the DataVisualization barriers to missing ListView.
+See the [current status](../README.md) for subsequent compatibility work.
 Initialization, capture and parsing are incomplete.
 
 ## Implemented model
@@ -64,4 +63,4 @@ Use `mise run test:winforms`, `mise run test:act-binding`, and
 requires the supplied ACT artifact. Use a fresh bridge extraction to rerun the
 trusted original plugin. Windows runtime execution and a functioning original
 settings page are unverified. The later ListView slice handles the observed list model;
-the later timer contract advances the runtime boundary to CheckBox.
+see the current README status for later runtime boundaries.

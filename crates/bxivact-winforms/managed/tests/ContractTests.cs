@@ -30,3 +30,4 @@ Console.WriteLine("Independent WinForms identity, text, disposal and native-hand
 ChartContracts.Run();
 ListViewContracts.Run();
 TimerContracts.Run();
+ButtonContracts.Run();

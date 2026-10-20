@@ -48,6 +48,18 @@ public class LifecyclePlugin(string mode) : IActPluginV1
     {
         // Compile against the genuine WinForms reference and execute against the headless adapter.
         using var settings = new UserControl { Text = "Settings" };
+        // Bind original button and event signatures through the plugin's shared Forms context.
+        using var checkBox = new CheckBox { UseVisualStyleBackColor = true };
+        using var button = new Button { Text = "Reset" };
+        var changes = 0;
+        EventHandler changed = (_, _) => changes++;
+        checkBox.CheckedChanged += changed;
+        checkBox.Checked = true;
+        checkBox.CheckedChanged -= changed;
+        EventHandler click = (_, _) => throw new Exception("Unexpected native click");
+        button.Click += click;
+        button.Click -= click;
+        if (!checkBox.Checked || changes != 1) throw new Exception("Button contract failed");
         // Designer timers share the plugin context and component container, without a hidden UI pump.
         using var components = new System.ComponentModel.Container();
         var timer = new System.Windows.Forms.Timer(components) { Enabled = true, Interval = 1000 };
