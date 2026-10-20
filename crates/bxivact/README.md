@@ -1,7 +1,7 @@
 # bxivact
 
-An in-process ACT-compatible host for Rust. M0 implements the .NET 10/F# bridge
-lifecycle only; FFXIV plugin loading and parsing are not implemented yet.
+An in-process ACT-compatible host for Rust. Implements the .NET 10/F# bridge
+lifecycle and initial ACT contract binding; plugin initialization and parsing are not implemented yet.
 
 Consumers need an installed .NET 10 runtime, but no .NET SDK. The prebuilt bridge
 is embedded in the crate. Runtime installation and downloads are never automatic.

@@ -10,6 +10,7 @@ use std::{
 };
 
 use bon::Builder;
+use bytes::BytesMut;
 use netcorehost::{
     hostfxr::{
         AssemblyDelegateLoader, Hostfxr, HostfxrContext, InitializedForRuntimeConfig,
@@ -63,6 +64,7 @@ fn acquire_lease() -> Result<ActiveLease, Error> {
 /// migrate between threads. Stopping releases the ACT session, not the process-wide CLR.
 pub struct Host {
     entry: ManagedFunctionWithDefaultSignature,
+    read_error: ManagedFunctionWithDefaultSignature,
     session: u64,
     running: bool,
     // Keep the native library and delegate loader alive for every managed function call.
@@ -93,8 +95,13 @@ impl Host {
             pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
             pdcstr!("Invoke"),
         )?;
+        let read_error = loader.get_function_with_default_signature(
+            pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
+            pdcstr!("ReadError"),
+        )?;
         let mut host = Self {
             entry,
+            read_error,
             session: 0,
             running: false,
             _loader: loader,
@@ -143,9 +150,31 @@ impl Host {
         // is initialized, exclusively borrowed for the call, and never retained by the bridge.
         let status = unsafe { (self.entry)((&raw mut packet).cast(), 24) };
         if status != 0 {
-            return Err(Error::Managed { command, status });
+            return Err(Error::Managed {
+                command,
+                status,
+                message: self.error_message(),
+            });
         }
         Ok(packet)
+    }
+
+    fn error_message(&self) -> String {
+        let mut output = BytesMut::zeroed(8192);
+        // SAFETY: ReadError uses ComponentEntryPoint, writes only within capacity, and retains
+        // no pointer. All 8192 output bytes are initialized and exclusively borrowed for the call.
+        let length = unsafe { (self.read_error)(output.as_mut_ptr().cast(), 8192) };
+        let Ok(length) = usize::try_from(length) else {
+            return "Managed diagnostic retrieval failed".to_owned();
+        };
+        let Some(bytes) = output.get(..length) else {
+            return format!("Managed diagnostic length exceeds capacity: {length}");
+        };
+        match std::str::from_utf8(bytes) {
+            Ok(text) if !text.is_empty() => text.to_owned(),
+            Ok(_) => "Managed bridge returned no diagnostic text".to_owned(),
+            Err(error) => format!("Invalid UTF-8 in managed diagnostics: {error}"),
+        }
     }
 }
 
@@ -237,5 +266,39 @@ mod tests {
         for name in ["9.0.13", "11.0.0", "10.0.0-preview.1", "10.0", "10.0.13.1"] {
             assert_eq!(stable_net10_version(name), None);
         }
+    }
+
+    #[test]
+    #[ignore = "requires .NET 10; set DOTNET_ROOT and run mise run test:hosting"]
+    fn managed_errors_keep_status_and_diagnostic_text() {
+        let root = std::env::var_os("DOTNET_ROOT").expect("set DOTNET_ROOT for managed testing");
+        let temporary = tempfile::tempdir().expect("create private test fixture");
+        let directory = temporary.path().join("bridge");
+        crate::extract_bridge(&directory).expect("extract managed component");
+        let host = Host::start(
+            HostConfig::builder()
+                .dotnet_root(root)
+                .bridge_directory(directory)
+                .build(),
+        )
+        .expect("start managed component");
+        match host.call(99) {
+            Err(Error::Managed {
+                command,
+                status,
+                message,
+            }) => {
+                assert_eq!(command, 99);
+                assert_eq!(status, 6);
+                assert_eq!(message, "Unknown bridge command: 99");
+            }
+            _ => panic!("unknown command must return its managed diagnostic"),
+        }
+        assert_ne!(
+            host.session_id()
+                .expect("command failure must preserve the session"),
+            0
+        );
+        host.stop().expect("stop managed component");
     }
 }

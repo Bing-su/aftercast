@@ -8,9 +8,8 @@
     ".NETCoreApp,Version=v10.0": {
       "Bxivact.Bridge/0.1.0": {
         "dependencies": {
-          "Bxivact.ActCompat": "0.1.0",
           "FSharp.Core": "10.0.113",
-          "Bxivact.ActCompat.Reference": "0.1.0.0"
+          "Advanced Combat Tracker.Reference": "3.8.5.288"
         },
         "runtime": {
           "Bxivact.Bridge.dll": {}
@@ -24,21 +23,21 @@
           }
         }
       },
-      "Bxivact.ActCompat/0.1.0": {
+      "Advanced Combat Tracker/3.8.5.288": {
         "dependencies": {
           "FSharp.Core": "10.0.113"
         },
         "runtime": {
-          "Bxivact.ActCompat.dll": {
+          "Advanced Combat Tracker.dll": {
             "fileVersion": "0.0.0.0"
           }
         }
       },
-      "Bxivact.ActCompat.Reference/0.1.0.0": {
+      "Advanced Combat Tracker.Reference/3.8.5.288": {
         "runtime": {
-          "Bxivact.ActCompat.dll": {
-            "assemblyVersion": "0.1.0.0",
-            "fileVersion": "0.1.0.0"
+          "Advanced Combat Tracker.dll": {
+            "assemblyVersion": "3.8.5.288",
+            "fileVersion": "3.8.5.288"
           }
         }
       }
@@ -57,12 +56,12 @@
       "path": "fsharp.core/10.0.113",
       "hashPath": "fsharp.core.10.0.113.nupkg.sha512"
     },
-    "Bxivact.ActCompat/0.1.0": {
+    "Advanced Combat Tracker/3.8.5.288": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
     },
-    "Bxivact.ActCompat.Reference/0.1.0.0": {
+    "Advanced Combat Tracker.Reference/3.8.5.288": {
       "type": "reference",
       "serviceable": false,
       "sha512": ""

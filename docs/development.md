@@ -1,8 +1,9 @@
-# Development and M0 validation
+# Development and validation
 
-M0 runs a prebuilt F# lifecycle bridge inside a Rust process. It does not yet load
-the original FFXIV plugin, provide ACT-compatible types, parse logs, aggregate
-combat, stream batches, or install .NET. See the [blueprint](blueprint.md) for later
+The prebuilt F# lifecycle bridge runs inside a Rust process. M1 adds the first
+[ACT contract-binding slice](m1-contract-binding.md), but does not yet initialize
+the original FFXIV plugin, parse logs, aggregate combat, stream batches, or install
+.NET. See the [blueprint](blueprint.md) for later
 milestones and the original-artifact research reports for compatibility work.
 
 ## Requirements
@@ -25,6 +26,7 @@ so workspace publication is disabled rather than inventing a license.
 | `mise run managed:restore` | Intentionally refresh maintainer NuGet restore/lock state when changing managed dependencies |
 | `mise run managed:build` | Locked restore and portable Release publish into the Cargo payload |
 | `mise run managed:test` | Build, then verify ABI validation and managed session ownership through F# Interactive |
+| `mise run test:act-binding` | Check the pinned local ACT hash, compile the legacy-reference probe, and run it against the replacement; requires the original local ACT artifact |
 | `mise run check` | Rust formatting, Clippy with warnings denied, ordinary tests |
 | `DOTNET_ROOT=/usr/lib/dotnet mise run test:hosting` | Run the explicitly ignored real CLR integration test on this Linux installation |
 | `mise run smoke -- /usr/lib/dotnet /private/new-bridge-directory` | Extract the bundled bridge, start/call/stop it; the parent must exist |
@@ -36,6 +38,8 @@ smoke example deliberately leaves the extracted component on disk; a loaded CLR
 can still need component files after an ACT session stops. It refuses existing
 directories. Reuse deployed files by passing their directory directly to HostConfig,
 or extract into another new versioned directory for another process.
+After a payload update, extract the new payload into a new directory; M0 deployment
+directories do not contain the renamed ACT assembly or the ReadError entry point.
 
 The default test suite skips real CLR integration because consumers may not have
 a runtime installed at test time. Running test:hosting is required to claim real
@@ -76,6 +80,13 @@ failures to typed errors and keeps all dynamic-loader handles alive during calls
 This header is private implementation detail, not a stable public C ABI or a
 batch/event protocol.
 
+ReadError is a second ComponentEntryPoint delegate. It returns the required UTF-8
+byte count and writes nothing when capacity is insufficient. Diagnostics persist
+until the next Invoke and are read immediately on the owning thread. Rust uses an
+initialized 8192-byte BytesMut, validates length/UTF-8, and includes the text with
+command/status in Error::Managed. Exception summaries are capped at 2048 UTF-16
+code units; this is diagnostic text, not a serialized exception object.
+
 ## Managed payload
 
 | File | Purpose |
@@ -83,7 +94,7 @@ batch/event protocol.
 | Bxivact.Bridge.dll | ComponentEntryPoint implementation |
 | Bxivact.Bridge.runtimeconfig.json | .NET 10 LatestPatch requirement |
 | Bxivact.Bridge.deps.json | Dependency resolver input |
-| Bxivact.ActCompat.dll | Initial session scaffold; not yet the original ACT contract assembly |
+| Advanced Combat Tracker.dll | Public-signed ACT 3.8.5.288 identity; session scaffold and initial Dnum contract slice |
 | FSharp.Core.dll | Locked NuGet 10.0.113 runtime dependency |
 | FSharp.Core.LICENSE | Upstream MIT notice, also extracted with the payload |
 

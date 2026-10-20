@@ -135,7 +135,7 @@ shutdown duration. No throughput or ACT-equivalence claim follows from static
 metadata inspection or M0 success. Native plugin crashes can affect the entire
 consumer process.
 
-M0 is implemented; see [development evidence](development.md). The managed
-ActCompat project currently contains only session identity, not substitute ACT
-types. Plugin binding, WinForms, modern-.NET Framework compatibility, native Linux
-capture, full aggregation, and licensing remain open work.
+M0 is implemented; see [development evidence](development.md). M1 has an initial
+[binary-contract binding slice](m1-contract-binding.md): a public-signed ACT identity
+and selected Dnum members used by an original-reference probe. Full plugin binding,
+initialization, WinForms, native Linux capture, aggregation, and licensing remain open work.

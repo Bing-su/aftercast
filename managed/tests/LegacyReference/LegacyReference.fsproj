@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Bxivact.LegacyReference</AssemblyName>
+    <ActReferencePath Condition="'$(ActReferencePath)' == ''">$(MSBuildThisFileDirectory)../../../binaries/act/Advanced Combat Tracker.exe</ActReferencePath>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Compile against the original metadata, but never copy or execute the original assembly. -->
+    <Reference Include="Advanced Combat Tracker">
+      <HintPath>$(ActReferencePath)</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Compile Include="ContractProbe.fs" />
+  </ItemGroup>
+</Project>

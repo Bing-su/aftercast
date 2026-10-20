@@ -1,6 +1,6 @@
 //! In-process ACT-compatible hosting.
 //!
-//! M0 provides a managed bridge handshake, not FFXIV plugin execution or combat parsing.
+//! Provides bridge lifecycle and an initial ACT contract slice, not plugin execution or parsing.
 //! Call [`extract_bridge`] once to deploy the bundled, prebuilt F# component, then use
 //! [`Host::start`] with a trusted .NET 10 installation. No SDK or download is used at runtime.
 
@@ -36,8 +36,12 @@ pub enum Error {
     EntryPoint(#[from] netcorehost::hostfxr::GetManagedFunctionError),
     #[error("an ACT host is already active in this process")]
     AlreadyActive,
-    #[error("managed bridge command {command} failed with status {status}")]
-    Managed { command: u32, status: i32 },
+    #[error("managed bridge command {command} failed with status {status}: {message}")]
+    Managed {
+        command: u32,
+        status: i32,
+        message: String,
+    },
     #[error("expected .NET 10, but the managed bridge reports major version {0}")]
     RuntimeMismatch(u32),
     #[error(

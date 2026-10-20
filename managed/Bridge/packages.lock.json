@@ -8,7 +8,7 @@
         "resolved": "10.0.113",
         "contentHash": "QfU6LsrPw9uSq/10z0MMaZ2xMWAKCo1oeTg8FFtCyyAuPv+lFEIoaHEi191QSxvadJ9jRaKNR+GndDocqOZMog=="
       },
-      "Bxivact.ActCompat": {
+      "Advanced Combat Tracker": {
         "type": "Project",
         "dependencies": {
           "FSharp.Core": "[10.0.113, )"

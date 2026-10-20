@@ -1,8 +1,15 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <AssemblyName>Bxivact.ActCompat</AssemblyName>
+    <AssemblyName>Advanced Combat Tracker</AssemblyName>
+    <Version>3.8.5.288</Version>
+    <AssemblyVersion>3.8.5.288</AssemblyVersion>
+    <!-- Preserve reference identity using public metadata, not the unavailable original private key. -->
+    <SignAssembly>true</SignAssembly>
+    <PublicSign>true</PublicSign>
+    <AssemblyOriginatorKeyFile>ACT.publickey</AssemblyOriginatorKeyFile>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="Dnum.fs" />
     <Compile Include="HostSession.fs" />
   </ItemGroup>
 </Project>

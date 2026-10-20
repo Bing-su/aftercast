@@ -16,9 +16,13 @@ run = "cargo run -p bxivact --example smoke --"
 
 [tasks."test:hosting"]
 description = "Exercise real CLR lifecycle tests; requires DOTNET_ROOT"
-run = "cargo test -p bxivact --test hosting -- --ignored"
+run = "cargo test -p bxivact -- --ignored"
 
 [tasks."managed:test"]
 description = "Validate the managed ABI header and session ownership"
 depends = ["managed:build"]
 run = "dotnet fsi --exec managed/tests/BridgeTests.fsx"
+
+[tasks."test:act-binding"]
+description = "Verify original ACT reference identity and bind a compiled probe to the replacement"
+run = ["dotnet fsi --exec managed/tests/PrepareActReference.fsx", "dotnet build managed/tests/LegacyReference/LegacyReference.fsproj -c Release -p:RestoreLockedMode=true", "mise run managed:build", "dotnet fsi --exec managed/tests/ActBindingTests.fsx"]

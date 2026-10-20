@@ -71,8 +71,9 @@ Hiding a settings window does not remove control/thread/message-loop dependencie
 Direct SDK composition is an alternative, not proof of ordinary InitPlugin support.
 
 Main and Common reference Advanced Combat Tracker, Version=3.8.5.288,
-PublicKeyToken=a946b61e93d97868. Actual replacement binding on the selected CLR
-remains unverified. Observed VerifyAssemblyVersions messages name Machina 2.3.1.3,
+PublicKeyToken=a946b61e93d97868. Full original-plugin binding remains unverified;
+the later [M1 experiment](m1-contract-binding.md) verifies a selected Dnum reference
+against our replacement on .NET 10. Observed VerifyAssemblyVersions messages name Machina 2.3.1.3,
 Machina.FFXIV 2.4.8.1, Common 3.0.0.0 and embedded libraries; do not infer that this
 method directly checks ACT's public key. F# does not solve assembly identity,
 Framework API availability, WinForms, or Windows native dependencies by itself.

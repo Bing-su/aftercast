@@ -21,8 +21,8 @@ const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../managed/Bxivact.Bridge.runtimeconfig.json"),
     ),
     (
-        "Bxivact.ActCompat.dll",
-        include_bytes!("../managed/Bxivact.ActCompat.dll"),
+        "Advanced Combat Tracker.dll",
+        include_bytes!("../managed/Advanced Combat Tracker.dll"),
     ),
     (
         "FSharp.Core.dll",
