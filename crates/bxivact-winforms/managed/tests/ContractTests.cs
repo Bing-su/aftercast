@@ -29,3 +29,4 @@ foreach (var control in new Control[] { new TabPage(), new Label(), new UserCont
 Console.WriteLine("Independent WinForms identity, text, disposal and native-handle rejection passed.");
 ChartContracts.Run();
 ListViewContracts.Run();
+TimerContracts.Run();

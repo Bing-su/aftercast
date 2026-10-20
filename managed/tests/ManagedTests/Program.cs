@@ -205,6 +205,7 @@ internal static class Program
         Check((long)Call("ContractProbe", "Run")! == 123);
         Check((string)Call("ChartProbe", "Run")! == "Network");
         Check((string)Call("ListViewProbe", "Run")! == "42");
+        Check((int)Call("TimerProbe", "Run")! == 1);
         Check(typeof(Dnum).GetProperty("Number")!.GetSetMethod() is null && new Dnum(-11).Number == -11);
         try { new Dnum(1).ToString(); throw new Exception("Unimplemented formatting succeeded"); }
         catch (NotSupportedException) { }

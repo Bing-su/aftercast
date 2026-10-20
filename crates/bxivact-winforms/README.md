@@ -11,6 +11,7 @@ The crate has no Rust dependencies and never starts .NET or invokes its SDK.
 | Text / Name / IsDisposed and disposal notification | No message loop, layout, control tree or cross-thread dispatch |
 | Chart, Series / ChartArea / Legend metadata and named collections | No data binding, plotting or rendering; BeginInit/EndInit have no invalidation work |
 | ListView columns, keyed rows, subitem text and enumeration | No native selection; SelectedItems stays empty; collection interfaces and APIs are partial |
+| Timer configuration, container lifetime and event registration | Enabled stores requested state; no automatic Tick callbacks or UI pump |
 | Unsigned assembly, version 4.0.0.0 | No original WinForms strong-name identity |
 
 The host supplies .NET 10, deployment and assembly-context

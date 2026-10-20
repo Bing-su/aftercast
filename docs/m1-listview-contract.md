@@ -1,8 +1,9 @@
 # M1: headless ListView contract
 
 Checked on Linux x86-64 / .NET 10.0.13 on 2026-10-20. The supplied FFXIV plugin
-now passes the missing ListView type barrier and reports missing
-System.Windows.Forms.Timer. This does not prove that BenchmarkPropertyPage's
+passes the missing ListView type barrier. The subsequent
+[timer slice](m1-timer-contract.md) advances the failure to CheckBox.
+This does not prove that BenchmarkPropertyPage's
 constructor, original initialization or parsing completed: JIT resolution can
 fail before the method executes.
 

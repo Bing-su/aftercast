@@ -203,7 +203,7 @@ payload to a new directory.
 | Rust integration | Real CLR hosting, construction, failed-initialization cleanup, shutdown and restart pass; workspace tests and strict Linux/Windows-target Clippy pass |
 | Independent package | The extracted WinForms Cargo package rebuilds and runs its C# contract tests without the ACT projects |
 | SDK-free consumer | Extracted host Cargo package initializes and stops ReadyPlugin with a failing dotnet CLI shim first on PATH |
-| Original FFXIV at migration | Same DataVisualization dependency failure as before the migration; later chart and ListView slices advance to missing WinForms Timer; successful initialization and parsing are not claimed |
+| Original FFXIV at migration | Same DataVisualization dependency failure as before the migration; later chart, ListView and timer slices advance to missing CheckBox; successful initialization and parsing are not claimed |
 
 Context7 was used for netcorehost's standard delegate flow and scopeguard's
 Always/into_inner semantics, and compared with the resolved crate source.

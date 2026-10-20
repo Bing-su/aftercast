@@ -2,7 +2,8 @@
 
 Checked on Linux x86-64 / .NET 10.0.13 on 2026-10-20. The FFXIV main plugin now
 passes the missing DataVisualization assembly/member barriers. The subsequent
-[ListView slice](m1-listview-contract.md) advances the failure to WinForms Timer.
+[ListView](m1-listview-contract.md) and [timer](m1-timer-contract.md) slices
+advance the failure to CheckBox.
 Initialization, capture and parsing are incomplete.
 
 ## Implemented model
@@ -63,4 +64,4 @@ Use `mise run test:winforms`, `mise run test:act-binding`, and
 requires the supplied ACT artifact. Use a fresh bridge extraction to rerun the
 trusted original plugin. Windows runtime execution and a functioning original
 settings page are unverified. The later ListView slice handles the observed list model;
-the next runtime dependency is WinForms Timer.
+the later timer contract advances the runtime boundary to CheckBox.

@@ -48,6 +48,14 @@ public class LifecyclePlugin(string mode) : IActPluginV1
     {
         // Compile against the genuine WinForms reference and execute against the headless adapter.
         using var settings = new UserControl { Text = "Settings" };
+        // Designer timers share the plugin context and component container, without a hidden UI pump.
+        using var components = new System.ComponentModel.Container();
+        var timer = new System.Windows.Forms.Timer(components) { Enabled = true, Interval = 1000 };
+        EventHandler tick = (_, _) => throw new Exception("Unexpected headless timer callback");
+        timer.Tick += tick;
+        timer.Tick -= tick;
+        components.Dispose();
+        if (timer.Enabled || timer.Container is not null) throw new Exception("Timer contract failed");
         // Use original ListView signatures through the plugin load context as well as the direct probe.
         using var list = new ListView { View = View.Details };
         list.Columns.AddRange(new[] { new ColumnHeader { Text = "Network" } });

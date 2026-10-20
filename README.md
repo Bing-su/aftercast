@@ -4,7 +4,7 @@ An ACT-compatible Rust library that hosts a prebuilt C# component on .NET 10.
 Reuses the existing FFXIV ACT plugin rather than replacing its parser.
 
 **Status:** Host contracts and fixture plugin initialization/shutdown work on Linux.
-Original FFXIV initialization now reaches the missing WinForms Timer after the ListView slice;
+Original FFXIV initialization now reaches the missing CheckBox after the timer contract slice;
 parsing and Windows execution remain open.
 
 - [Implementation plan](docs/blueprint.md)
@@ -15,6 +15,7 @@ parsing and Windows execution remain open.
 - [M1 plugin lifecycle](docs/m1-plugin-lifecycle.md)
 - [M1 chart contract](docs/m1-chart-contract.md)
 - [M1 ListView contract](docs/m1-listview-contract.md)
+- [M1 timer contract](docs/m1-timer-contract.md)
 - [ACT compatibility research](docs/act-host-compatibility-analysis.md)
 - [Event delivery research](docs/act-event-delivery-analysis.md)
 
