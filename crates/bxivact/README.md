@@ -3,7 +3,8 @@
 An in-process ACT-compatible host for Rust. Implements the .NET 10/C# bridge
 lifecycle, initial ACT contracts, and trusted plugin construction/initialization.
 Original FFXIV initializes and imports a synthetic 400-damage fixture on Linux.
-Representative gameplay imports, live capture and Windows execution remain unverified.
+A recorded Zeromus corpus passes per-action consistency checks. Broader gameplay
+coverage, live capture and Windows execution remain unverified.
 
 Consumers need an installed .NET 10 runtime, but no .NET SDK. The prebuilt bridge
 is embedded in the crate. Runtime installation and downloads are never automatic.
@@ -54,8 +55,10 @@ Check the status for partial imports; this API retains only the latest result.
 `end_combat()` also publishes the final live result without another log record.
 
 On Linux, the pinned FFXIV 3.0.3.3 build receives an in-memory compatibility
-adjustment: its embedded memory component reports Windows administrator status
-as false. Original files remain unchanged; other builds are not rewritten.
+adjustments: its memory component reports Windows administrator status as false,
+and its writer exits through disposal after post-flush cancellation. This does
+not drain the vendor's pending writer queue. Original files remain unchanged;
+other builds are not rewritten.
 
 The project license is undecided; publication is disabled.
 System.Security.Permissions and System.Windows.Extensions 10.0.13 provide legacy

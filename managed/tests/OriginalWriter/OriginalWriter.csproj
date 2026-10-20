@@ -3,4 +3,8 @@
     <OutputType>Exe</OutputType>
     <AssemblyName>Bxivact.OriginalWriter</AssemblyName>
   </PropertyGroup>
+  <ItemGroup>
+    <!-- Exercise the exact production byte rewrite without loading the ACT host or its workers. -->
+    <Compile Include="../../Bridge/LinuxPluginCompatibility.cs" Link="LinuxPluginCompatibility.cs" />
+  </ItemGroup>
 </Project>

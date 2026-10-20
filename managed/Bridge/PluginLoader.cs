@@ -22,8 +22,12 @@ internal sealed class PluginContext(string path, byte[] hash) : AssemblyLoadCont
         // The chart contract must use the same Control identity as the shared WinForms adapter.
         if (OperatingSystem.IsLinux() && name.Name == "System.Windows.Forms.DataVisualization")
             return GetLoadContext(typeof(PluginContext).Assembly)!.LoadFromAssemblyName(name);
-        if (name.Name == "FFXIV_ACT_Plugin.Memory" && LinuxPluginCompatibility.IsKnownPlugin(hash))
-            return LinuxPluginCompatibility.LoadMemory(this, Assemblies.First(assembly => assembly.Location == path));
+        if (name.Name is "FFXIV_ACT_Plugin.Memory" or "FFXIV_ACT_Plugin.Logfile" && LinuxPluginCompatibility.IsKnownPlugin(hash))
+        {
+            var plugin = Assemblies.First(assembly => assembly.Location == path);
+            return name.Name == "FFXIV_ACT_Plugin.Memory" ? LinuxPluginCompatibility.LoadMemory(this, plugin)
+                : LinuxPluginCompatibility.LoadLogfile(this, plugin);
+        }
         // Share these with both file-loaded and Costura byte-loaded dependencies.
         if (name.Name is "System.Security.Permissions" or "System.Windows.Extensions")
             return Default.LoadFromAssemblyName(name);

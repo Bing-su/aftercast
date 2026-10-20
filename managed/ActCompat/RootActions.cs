@@ -311,5 +311,14 @@ public partial class FormActMain
         if (startingCombat || endingCombat) throw new InvalidOperationException("A combat transition is already in progress");
     }
 
-    public void ActCommands(string command) => throw new NotSupportedException("ACT UI/chat commands are not implemented by the embedded host");
+    public void ActCommands(string command)
+    {
+        // ACT compares this literal before any normalization; headless completion omits UI refresh and command sound.
+        if (command == "end")
+        {
+            if (InCombat) EndCombat(true);
+            return;
+        }
+        throw new NotSupportedException("This ACT UI/chat command is not implemented by the embedded host");
+    }
 }

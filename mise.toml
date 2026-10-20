@@ -75,6 +75,11 @@ run = "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Re
 description = "Characterize the pinned original writer in watchdog-protected child processes; pass its SDK deployment directory"
 run = "dotnet run --project managed/tests/OriginalWriter/OriginalWriter.csproj -c Release -p:RestoreLockedMode=true --"
 
+[tasks."test:original-corpus"]
+description = "Import the pinned public Zeromus corpus three times; pass trusted plugin-copy, new state directory and input file"
+depends = ["managed:test-runner"]
+run = "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- original-corpus"
+
 [tasks."test:original-contracts"]
 description = "Run the same compiled value/state probes against replacement and genuine ACT in separate processes"
 depends = ["test:act-binding"]

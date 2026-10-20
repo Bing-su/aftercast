@@ -161,11 +161,16 @@ The [file-import API](m2-file-import.md) now drives the original FFXIV parser th
 repeated synthetic imports and failure recovery, with 400-damage action/aggregate
 assertions. Representative gameplay, complete deferred effects and table exports,
 native capture and Windows execution remain open.
+The [recorded Zeromus corpus](m2-original-corpus.md) additionally checks 104,744
+records per import against exact submitted-action totals. Original parser RNG and
+retained private import state remain observable; this is not a complete Windows
+ACT oracle or cross-encounter-family validation.
 
 The [original recording investigation](m4-recording-research.md) and isolated
 writer harness establish actual bytes, flush visibility, private I/O diagnostics
-and a known cancellation failure. They do not establish safe loaded-writer
-shutdown, durable storage or FF Logs acceptance.
+and a known cancellation failure. A guarded Linux in-memory correction now
+exits through the existing disposal handlers; pending queue records still remain.
+These checks do not establish lossless shutdown, durable storage or FF Logs acceptance.
 The [resource portability investigation](m4-resource-portability.md) also confirms
 a Windows newline assumption in original territory/action resources on Linux.
 The host preserves those original values; a resource correction remains open.

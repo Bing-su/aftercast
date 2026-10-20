@@ -68,6 +68,7 @@ internal static class RootActionChecks
     {
         HostLifetimeChecks.RunBounded(Pipeline);
         HostLifetimeChecks.RunBounded(IdleBoundary);
+        HostLifetimeChecks.RunBounded(EndCommand);
         HostLifetimeChecks.RunBounded(AdmittedProducerDuringEnd);
         HostLifetimeChecks.RunBounded(PumpedShutdown);
         HostLifetimeChecks.RunBounded(() => ShutdownDuringTransition(starting: true));
@@ -137,6 +138,27 @@ internal static class RootActionChecks
         Check(fixture.Environment.Diagnostics.Item1 == 2);
         Check(!root.InCombat);
         Throws<NotSupportedException>(() => root.ActCommands("unsupported command"));
+    }
+
+    private static void EndCommand()
+    {
+        using var fixture = new Fixture();
+        var root = fixture.Root;
+        root.ActCommands("end");
+        Check(fixture.Environment.ReadCombatSnapshot(0) is null);
+        root.SetEncounter(Epoch, "Source", "Target");
+        root.AddCombatAction(Swing(100, 0, 1));
+        root.AddCombatAction(Swing(300, 2, 2));
+        foreach (var unsupported in new[] { "END", " end", "end ", "clear", "", null })
+        {
+            Throws<NotSupportedException>(() => root.ActCommands(unsupported!));
+            Check(root.InCombat);
+        }
+        root.ActCommands("end");
+        var result = fixture.Environment.ReadCombatSnapshot(0)!;
+        Check(!root.InCombat && result.Damage == 400 && result.DurationTicks == TimeSpan.FromSeconds(2).Ticks);
+        root.ActCommands("end");
+        Check(fixture.Environment.ReadCombatSnapshot(result.Revision) is null);
     }
 
     private static void IdleBoundary()

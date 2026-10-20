@@ -4,10 +4,13 @@ using System.Runtime.Loader;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using Bxivact.Bridge;
 
 // Only this separate test process loads copied vendor assemblies; no game or capture workers are constructed.
-if (args.Length > 0 && args[0] == "child") return RunChild(args[1], args[2], args[3]);
-if (args.Length != 1) throw new ArgumentException("Pass the absolute pinned SDK deployment directory.");
+if (args.Length > 0 && args[0] == "child") return RunChild(args[1], args[2], args[3], bool.Parse(args[4]));
+if (args.Length is < 1 or > 2 || args.Length == 2 && args[1] != "--patched")
+    throw new ArgumentException("Pass the pinned SDK deployment directory and optionally --patched.");
+var patched = args.Length == 2;
 var temporary = Directory.CreateTempSubdirectory("bxivact-original-writer-");
 try
 {
@@ -24,8 +27,13 @@ try
         Check(Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(Path.Combine(deployment.FullName,
             $"FFXIV_ACT_Plugin.{name}.dll")))) == expected, $"{name} does not match pinned SDK 3.0.3.3 evidence.");
     }
+    if (patched)
+    {
+        var path = Path.Combine(deployment.FullName, "FFXIV_ACT_Plugin.Logfile.dll");
+        File.WriteAllBytes(path, LinuxPluginCompatibility.RewriteLogfile(File.ReadAllBytes(path)));
+    }
     foreach (var scenario in new[] { "success", "io-open", "cancel-after-flush" })
-        RunIsolated(scenario, deployment.FullName, temporary.FullName);
+        RunIsolated(scenario, deployment.FullName, temporary.FullName, patched);
     return 0;
 }
 finally { temporary.Delete(true); }
@@ -37,12 +45,12 @@ static void Check(bool condition, string message)
 
 static void Report(object value) => Console.WriteLine(JsonSerializer.Serialize(value));
 
-static void RunIsolated(string scenario, string deployment, string temporary)
+static void RunIsolated(string scenario, string deployment, string temporary, bool patched)
 {
     var output = Path.Combine(temporary, scenario);
     Directory.CreateDirectory(output);
     var start = new ProcessStartInfo("dotnet") { RedirectStandardOutput = true, RedirectStandardError = true };
-    foreach (var argument in new[] { Assembly.GetExecutingAssembly().Location, "child", scenario, deployment, output })
+    foreach (var argument in new[] { Assembly.GetExecutingAssembly().Location, "child", scenario, deployment, output, patched.ToString() })
         start.ArgumentList.Add(argument);
     using var process = Process.Start(start)!;
     var stdout = process.StandardOutput.ReadToEndAsync();
@@ -56,7 +64,7 @@ static void RunIsolated(string scenario, string deployment, string temporary)
     }
     var text = stdout.GetAwaiter().GetResult();
     var errors = stderr.GetAwaiter().GetResult();
-    if (scenario == "cancel-after-flush")
+    if (scenario == "cancel-after-flush" && !patched)
     {
         Check(!exited && text.Contains("cancellation-requested-after-flush", StringComparison.Ordinal),
             $"Expected bounded reproduction of the original cancellation spin: {text} {errors}");
@@ -69,7 +77,7 @@ static void RunIsolated(string scenario, string deployment, string temporary)
     }
 }
 
-static int RunChild(string scenario, string deployment, string output)
+static int RunChild(string scenario, string deployment, string output, bool patched)
 {
     AssemblyLoadContext.Default.Resolving += (_, name) =>
     {
@@ -149,10 +157,14 @@ static int RunChild(string scenario, string deployment, string output)
         if (scenario == "cancel-after-flush")
         {
             // A deterministic cancellation point follows genuine Flush and precedes the vendor's next loop test.
-            thread.Join();
-            throw new InvalidOperationException("Original cancellation unexpectedly stopped; update the known-failure baseline.");
+            if (!patched)
+            {
+                thread.Join();
+                throw new InvalidOperationException("Original cancellation unexpectedly stopped; update the known-failure baseline.");
+            }
+            Check(SpinWait.SpinUntil(() => cancellation.IsCancellationRequested, 2000), "Patched writer did not reach Flush cancellation.");
         }
-        if (scenario == "io-open")
+        else if (scenario == "io-open")
         {
             Check(SpinWait.SpinUntil(() => { lock (privateMessages) return privateMessages.Count != 0; }, 2000), "No private I/O diagnostic.");
             lock (privateMessages) Check(privateMessages.All(message => message.Contains("LogOutput Error writing to log file.", StringComparison.Ordinal)), "Wrong I/O sink message.");
@@ -182,7 +194,21 @@ static int RunChild(string scenario, string deployment, string output)
         cancellation.Cancel();
         Check(thread.Join(1500), "Original writer worker did not stop; parent watchdog must reap this process.");
     }
-    Report(new { scenario, status = "passed", flushes = flushCount, followedPath = currentPath, workerJoined = true, privateErrors = privateMessages.Count, hostErrors = hostMessages.Count });
+    var pending = ((System.Collections.ICollection)writerType.GetField("_LogQueue", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(writer)!).Count;
+    // Correcting cancellation termination does not invent a vendor queue-drain guarantee.
+    if (scenario == "cancel-after-flush") Check(pending == payloads.Length - 1, "Cancellation unexpectedly drained pending records.");
+    Report(new
+    {
+        scenario,
+        patched,
+        status = "passed",
+        flushes = flushCount,
+        pendingRecords = pending,
+        followedPath = currentPath,
+        workerJoined = true,
+        privateErrors = privateMessages.Count,
+        hostErrors = hostMessages.Count
+    });
     return 0;
 }
 

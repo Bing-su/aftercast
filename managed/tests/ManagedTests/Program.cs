@@ -40,7 +40,7 @@ internal static class Program
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.DataVisualization.dll"));
         }
         // Modes keep artifact-dependent checks separate from ordinary ABI tests without a test framework dependency.
-        if (mode is "original" or "original-import") Platform.Prepare();
+        if (mode is "original" or "original-import" or "original-corpus") Platform.Prepare();
         switch (mode)
         {
             case "bridge": Bridge(); break;
@@ -51,11 +51,12 @@ internal static class Program
             case "linux": LinuxCompatibility(); break;
             case "original": ObserveOriginal(args[1], args[2], args.Length > 3 ? args[3] : null); break;
             case "original-import": ObserveOriginal(args[1], args[2], "managed/tests/fixtures/ffxiv-synthetic.log"); break;
+            case "original-corpus": ObserveOriginal(args[1], args[2], args[3], fixedFixture: false); break;
             default: throw new ArgumentException("Unknown managed test mode");
         }
         Console.WriteLine($"Managed {args[0]} contract checks passed.");
     }
-    private static void ObserveOriginal(string pluginPath, string statePath, string? importPath)
+    private static void ObserveOriginal(string pluginPath, string statePath, string? importPath, bool fixedFixture = true)
     {
         // Run only an explicitly supplied trusted copy; wait long enough to observe caught worker failures.
         var session = new PluginSession();
@@ -67,10 +68,21 @@ internal static class Program
         try
         {
             Console.WriteLine("Original status: " + session.Initialize(id));
+            if (OperatingSystem.IsLinux())
+            {
+                // Verify the actual plugin binding, not only the standalone byte-rewrite helper.
+                var logfile = AssemblyLoadContext.GetLoadContext(instance.GetType().Assembly)!.Assemblies
+                    .Single(assembly => assembly.GetName().Name == "FFXIV_ACT_Plugin.Logfile");
+                var run = logfile.GetType("FFXIV_ACT_Plugin.Logfile.LogOutput")!
+                    .GetMethod("Run", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance)!;
+                Check(logfile.Location == "" && Convert.ToHexStringLower(SHA256.HashData(run.GetMethodBody()!.GetILAsByteArray()!)) ==
+                    "c37628922371e34b053e65a3f21ea456c9c7e502bc879d139332b6f68dae8ce8");
+            }
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
             while (elapsed.Elapsed < TimeSpan.FromMilliseconds(1500)) { session.Pump(); Thread.Sleep(10); }
             var root = ActGlobals.oFormActMain!;
-            if (importPath is not null)
+            if (importPath is not null && !fixedFixture) OriginalCorpusChecks.Run(session, importPath);
+            if (importPath is not null && fixedFixture)
             {
                 Check(Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(importPath))) ==
                     "05e458eaa5f376db6424042a8d16ed1ed28b4e99ab3c14b0d4339fa013e3f35e");
@@ -143,12 +155,16 @@ internal static class Program
             var parserMessages = ((System.Collections.IEnumerable)list.GetType().GetProperty("Items")!.GetValue(list)!)
                 .Cast<object>().Select(item => item.ToString()!).ToArray();
             var expectedPrefixes = new[] { "FFXIV_ACT_Plugin Version:", "Selected Language ID:", "Selected Process ID:" };
-            foreach (var message in parserMessages) Console.WriteLine("Original parser message: " + message);
-            Check(parserMessages.Length == expectedPrefixes.Length);
-            for (var index = 0; index < parserMessages.Length; index++)
+            if (!fixedFixture) OriginalCorpusChecks.CheckMessages(parserMessages);
+            else
             {
-                var delimiter = parserMessages[index].IndexOf("] ", StringComparison.Ordinal);
-                Check(delimiter >= 0 && parserMessages[index][(delimiter + 2)..].StartsWith(expectedPrefixes[index], StringComparison.Ordinal));
+                foreach (var message in parserMessages) Console.WriteLine("Original parser message: " + message);
+                Check(parserMessages.Length == expectedPrefixes.Length);
+                for (var index = 0; index < parserMessages.Length; index++)
+                {
+                    var delimiter = parserMessages[index].IndexOf("] ", StringComparison.Ordinal);
+                    Check(delimiter >= 0 && parserMessages[index][(delimiter + 2)..].StartsWith(expectedPrefixes[index], StringComparison.Ordinal));
+                }
             }
             Check(errors.Item1 == 0);
         }
@@ -437,6 +453,7 @@ internal static class Program
     }
     private static void LinuxCompatibility()
     {
+        WriterCompatibilityChecks.Run();
         var path = "binaries/FFXIV_ACT_Plugin_SDK_3.0.3.3/SDK\\FFXIV_ACT_Plugin.Memory.dll";
         var original = File.ReadAllBytes(path);
         var before = SHA256.HashData(original);

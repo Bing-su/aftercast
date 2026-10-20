@@ -37,7 +37,7 @@ from the compact REA instruction anchors.
 | Stream | `Run`, `0x06000048`, IL 83–86 opens `FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite)`, then `StreamWriter(Stream)` | Readers and other writers may open the file. There is no explicit encoding argument or delete sharing; the runtime's StreamWriter default determines encoding. Actual bytes still need a fixture test. |
 | Write/flush | Closure `0x06000054` dequeues one line; `0x06000055` writes it; `0x06000052` calls `TextWriter.Flush`, in that order for each record | Flush reaches the underlying stream but is not an explicit durable disk synchronization. A line is already removed if write or flush throws. There is no retry/requeue of that line in this path. |
 | Empty queue | `Run` waits up to 50 ms on cancellation when no line is available | This is polling, not a queue notification or acknowledged write protocol. |
-| Rotation | The open-loop checks whether the settings folder still equals a folder captured once before the outer loop | No midnight/date/size rotation check appears while that folder remains equal. Reopening after a failure recomputes the date. Directly changing the folder can cause repeated reopen because the captured comparison value is not updated; the intended settings/restart path needs runtime verification. |
+| Rotation | IL 318 compares the settings folder with a value captured once before the outer loop, but normal noncancelled delivery branches directly from IL 313 to dequeue at IL 125 | The folder check runs at initial stream entry and after cancellation, not on each healthy iteration. Ordinary active folder changes and midnight/date/size rotation are not polled. Reopening after a failure recomputes the date; a folder change racing initial configuration can repeatedly reopen because the captured comparison value is not updated. |
 | Cancellation | The empty-queue wait at IL 285–301 exits through disposal when cancelled. However, IL 306 branches to dequeue only while cancellation is false; on cancellation it falls through IL 318, whose unchanged-folder branch returns to IL 306 | Cancellation after a write/flush can enter a tight cancellation/folder-check loop. This path needs an isolated runtime regression. Neither path drains `_LogQueue`; disposal flushes stream buffers, not queued records. Shutdown is not a lossless recording boundary. |
 
 ## Errors and lifecycle
@@ -113,3 +113,50 @@ The command succeeds when the expected behavior is characterized, including the
 explicit `known-failure` cancellation result. Its exit status must not be read as
 proof of safe original-writer shutdown. Successful cases must join their workers;
 the known-failure child must time out, be killed and be reaped.
+
+## Pinned Linux cancellation correction
+
+The bridge now corrects only this cancellation loop when the main plugin hash
+matches the inspected build and the host runs on Linux. `PluginContext` resolves
+the embedded Logfile assembly through `LinuxPluginCompatibility.LoadLogfile`,
+which bounds decompression to 26,112 bytes, validates the pinned file and method,
+and loads a rewritten byte-array clone. The original deployment and embedded
+resource remain unchanged. Unknown and already-rewritten images are rejected.
+Windows and other plugin versions do not receive this adjustment.
+
+| Guard/result | Exact value |
+| --- | --- |
+| Method | `LogOutput.Run(object) : void`, token `0x06000048`, signature blob `20 01 01 1c` |
+| Original Run IL SHA-256 | `253503df897ee91a7aaebaee04e3009cf55691a703c6aacb946e3c1125440972` |
+| Corrected Run IL SHA-256 | `c37628922371e34b053e65a3f21ea456c9c7e502bc879d139332b6f68dae8ce8` |
+| Corrected assembly SHA-256 | `2530772a8582b7fe5d180964f42eebd49440fbc8dbc9d4f10cd9d859dc9364fa` |
+| Method shape | RVA 12872, IL file offset 5204, 485 bytes, max stack 5, initialized locals `0x1100000a` |
+| Preserved exception regions | Writer finally: try `[120,344)`, handler `[344,366)`; stream finally: try `[92,368)`, handler `[368,378)`; three catches retain try `[77,380)` and their original handlers |
+
+| Original CFG | Corrected CFG |
+| --- | --- |
+| Successful write branch `283→306`; initial folder branch `340→306` | Both reach the relocated cancellation test at 303 |
+| Empty-queue wait false branch `299→306` | False branch reaches 303 |
+| Empty-queue cancellation `leave301→484` | Same-size window reuses shorter `leave.s301→366` and the existing disposal chain |
+| Cancellation test at 306; false jumps to dequeue 125; true enters folder check and can spin | Test moves to 303; false still jumps to 125; true executes `leave.s315→366` |
+
+The replacement occupies the same 19-byte window `[299,318)`, with two additional
+short-branch operand changes at 284 and 341. No method-header, metadata, section
+or exception-table bytes change. Each new leave starts with an empty evaluation
+stack inside the writer try and runs the existing writer-disposal handler,
+followed by stream disposal through `366→378→465`. The cancellation-aware wait
+at 465 then exits. Initial branch `120→318` and folder block `[318,344)` are
+unchanged; healthy noncancelled delivery still dequeues at 125.
+
+`mise run test:original-writer -- /absolute/pinned-sdk-deployment --patched`
+links the actual production rewriter into the isolated harness. The three
+controlled cases passed with that exact implementation: ordered bytes and flush
+visibility, private I/O-error reporting, and cancellation immediately after a
+genuine flush. The last case joined after one record while **two records remained
+queued**. This deliberately preserves the vendor's cancellation policy; the
+correction adds no drain, retry, queue bound, rotation or durability guarantee.
+The unmodified harness still reports the original cancellation as a known
+failure. Original-plugin integration also checks that the actual plugin context
+loaded the stream-backed Logfile assembly with this exact corrected Run IL hash.
+Live gameplay capture and loaded recording behavior still require their own
+validation; these checks do not complete M4.

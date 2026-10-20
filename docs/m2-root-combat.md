@@ -18,7 +18,7 @@ claiming a successful original main-form execution.
 | Root properties | Preserve public setters for `ZoneList`, `ActiveZone`, `InCombat`; `LastHostileTime` has a private setter |
 | Combat counts | Damage/healing, hits, criticals, misses, blocked actions, kills/deaths, allied totals and numeric DPS getters use actual linked actions |
 | Kill classification | Preserve original `Killing`/`All` fallback, Dnum equality, ally membership and literal-space filtering, including cache quirks |
-| Commands | `ActCommands` explicitly rejects unsupported ACT UI/chat commands |
+| Commands | `ActCommands("end")` matches genuine ACT's exact lowercase command and ends active combat with `EndCombat(true)`; other UI/chat commands fail explicitly |
 | Incoming hit rate | Install ACT's `DamageTypeData` `ToHit` base column so the original FFXIV `IncToHit` callback can chain it |
 
 History databases, root settings UI, user rename/redirect rules, automatic exports,

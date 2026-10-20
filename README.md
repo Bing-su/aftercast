@@ -4,9 +4,9 @@ An ACT-compatible Rust library that hosts a prebuilt C# component on .NET 10.
 Reuses the existing FFXIV ACT plugin rather than replacing its parser.
 
 **Status:** Host contracts and fixture plugin initialization/shutdown work on Linux.
-Original FFXIV initializes and imports a synthetic 400-damage fixture on Linux.
-Configured combat-action comparisons pass against original ACT. Representative
-gameplay imports, native capture and Windows execution remain unverified.
+Original FFXIV initializes and imports synthetic and recorded Zeromus fixtures on
+Linux. Configured combat-action comparisons pass against original ACT. Broader
+gameplay coverage, native capture and Windows execution remain unverified.
 
 - [Implementation plan](docs/blueprint.md)
 - [Development and validation](docs/development.md)
