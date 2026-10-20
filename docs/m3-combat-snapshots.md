@@ -56,6 +56,8 @@ plugin edits to the mutable ACT object graph cannot silently change the same
 revision. Import completion changes only the frozen result's status and version.
 A copy failure is retained for query instead of interrupting parsing. Managed
 query callers receive a separate actor array as well.
+Strings preserve plugin values. The pinned plugin's Linux resource parser can
+retain a CR suffix in territory names; see [resource portability](m4-resource-portability.md).
 
 ## Private ABI
 

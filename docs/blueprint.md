@@ -166,3 +166,6 @@ The [original recording investigation](m4-recording-research.md) and isolated
 writer harness establish actual bytes, flush visibility, private I/O diagnostics
 and a known cancellation failure. They do not establish safe loaded-writer
 shutdown, durable storage or FF Logs acceptance.
+The [resource portability investigation](m4-resource-portability.md) also confirms
+a Windows newline assumption in original territory/action resources on Linux.
+The host preserves those original values; a resource correction remains open.
