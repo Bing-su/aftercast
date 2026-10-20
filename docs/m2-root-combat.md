@@ -19,6 +19,7 @@ claiming a successful original main-form execution.
 | Combat counts | Damage/healing, hits, criticals, misses, blocked actions, kills/deaths, allied totals and numeric DPS getters use actual linked actions |
 | Kill classification | Preserve original `Killing`/`All` fallback, Dnum equality, ally membership and literal-space filtering, including cache quirks |
 | Commands | `ActCommands` explicitly rejects unsupported ACT UI/chat commands |
+| Incoming hit rate | Install ACT's `DamageTypeData` `ToHit` base column so the original FFXIV `IncToHit` callback can chain it |
 
 History databases, root settings UI, user rename/redirect rules, automatic exports,
 silence-based segmentation, selective parsing and trigger commands are outside
@@ -87,3 +88,23 @@ ACT root/action evidence is retained under
 Original initialization/default-option observations are in
 `binaries/analysis/automatic-allies-evidence.json`; data comparison boundaries are
 documented in [the M2 research ledger](m2-import-research.md).
+
+## Hit-rate column boundary
+
+| Contract | Verified behavior |
+| --- | --- |
+| `AttackType.ToHit` / `DamageTypeData.ToHit` | Single-precision `Hits / Swings * 100`; empty data yields NaN; an exception while reading malformed caller-owned data yields zero |
+| Existing hit caches | Changing `blockIsHit` alone retains cached counts until explicit invalidation |
+| Base cell / SQL | Cell uses `#,0.00` or `0.00` according to `mainTableShowCommas`, current culture, no percent suffix; SQL uses the float's ordinary current-culture string |
+| Registration | Host acquisition installs only the required `DamageTypeData.ColumnDefs["ToHit"]`; disposal removes it and the next host reinstalls it |
+| Unknown/failed columns | Unknown key remains empty; null keys and callback exceptions retain their original failure behavior |
+| Original FFXIV callback | Synthetic imports verify `Fixture Enemy`'s incoming hit rate through the plugin's actual `IncToHit` callback, alongside the action/totals assertions |
+
+This is a bounded base-column slice, not the complete ACT table/export registry.
+The shared `HitRateProbe` passes against genuine ACT and the replacement; separate
+host tests cover metadata, registration lifetime and en-US/fr-FR formatting.
+Getter evidence is `ev_84bbd8e83aab244280224e1acccfac462086eb786f3068a131ab2e11cc570918`;
+the original base callbacks and plugin dependency are retained in
+`binaries/analysis/synthetic-import-evidence.json` as
+`ev_608e7e5aed8b8c71188705ebf9264a6f6f41a55fcb9c468027a7305ddbdaf275`
+and `ev_3143f16310494368a2903f087b1d67b7dd966a7a347cc15c249d7fa14aeb2692`.

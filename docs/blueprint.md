@@ -154,5 +154,7 @@ The Rust host provides cooperative owner-thread dispatch through `Host::pump`;
 applications must call it regularly. Shared constructor, Dnum and configured
 combat-action probes now pass against both the replacement and genuine ACT in
 separate Linux processes; see [M2 evidence and remaining policies](m2-import-research.md).
-Original semantic imports, complete aggregation, native capture and Windows
-execution remain open.
+The [file-import API](m2-file-import.md) now drives the original FFXIV parser through
+repeated synthetic imports and failure recovery, with 400-damage action/aggregate
+assertions. Representative gameplay, complete deferred effects and table exports,
+native capture and Windows execution remain open.

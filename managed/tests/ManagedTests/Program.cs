@@ -98,6 +98,10 @@ internal static class Program
                     Check(!root.InCombat && ReferenceEquals(root.ActiveZone, live.ActiveZone));
                     Check(root.CurrentZone == live.CurrentZone && root.LogFilePath == live.LogFilePath);
                     Check(root.LastKnownTime == live.LastKnownTime && ActGlobals.charName == live.charName);
+                    var imported = root.ZoneList[0].Items[^1];
+                    // Exercise the original plugin's actual callback chain through the restored ACT base column.
+                    var expectedHitRate = 100f.ToString(ActGlobals.mainTableShowCommas ? "#,0.00" : "0.00");
+                    Check(imported.GetCombatant("Fixture Enemy")!.GetColumnByName("IncToHit") == expectedHitRate);
                     lock (actions)
                     {
                         Console.WriteLine("Original imported actions: " + System.Text.Json.JsonSerializer.Serialize(actions));
@@ -314,6 +318,7 @@ internal static class Program
         Check((string)Call("EncounterFinalizationProbe", "Run")! == "Encounter finalization");
         Check((string)Call("CombatDurationProbe", "Run")! == "Combat durations");
         Check((string)Call("AggregateQueryProbe", "Run")! == "Aggregate queries");
+        Check((string)Call("HitRateProbe", "Run")! == "Hit rates");
         Check(typeof(Dnum).GetProperty("Number")!.GetSetMethod() is null && new Dnum(-11).Number == -11);
         Check(new Dnum(1).ToString() == "1");
         var directory = Directory.CreateTempSubdirectory("bxivact-contract-");
@@ -365,6 +370,7 @@ internal static class Program
         CombatPolicyChecks.Run();
         RootCombatStateChecks.Run();
         RootActionChecks.Run();
+        HitRateColumnChecks.Run();
         ImportLogReaderChecks.Run();
         ImportChecks.Run();
         OwnerContextChecks.Run();

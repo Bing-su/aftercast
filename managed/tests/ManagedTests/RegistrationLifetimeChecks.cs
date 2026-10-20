@@ -89,6 +89,8 @@ internal static class RegistrationLifetimeChecks
         Check(!ActGlobals.restrictToAll && !ActGlobals.longDuration);
         Check(CombatantData.ExportVariables.Count == 0 && EncounterData.ExportVariables.Count == 0);
         Check(CombatantData.ColumnDefs.Count == 0 && EncounterData.ColumnDefs.Count == 0);
-        Check(MasterSwing.ColumnDefs.Count == 0 && AttackType.ColumnDefs.Count == 0 && DamageTypeData.ColumnDefs.Count == 0);
+        Check(MasterSwing.ColumnDefs.Count == 0 && AttackType.ColumnDefs.Count == 0);
+        Check(DamageTypeData.ColumnDefs.Count == (hostInitialized ? 1 : 0));
+        if (hostInitialized) Check(DamageTypeData.ColumnDefs.ContainsKey("ToHit"));
     }
 }

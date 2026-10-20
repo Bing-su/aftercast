@@ -94,6 +94,7 @@ namespace Bxivact.ActCompat
             ActGlobals.charName = "YOU";
             RegistrationLifetime.Reset();
             RegistrationLifetime.InitializeHostCategoryNames();
+            DefaultColumns.Initialize();
             main.CurrentZone = "Unknown Zone";
             main.InitializeCombatState(DateTime.Now);
         }

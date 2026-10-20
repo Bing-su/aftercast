@@ -87,7 +87,7 @@ internal static class Program
     private static int RunContracts(string path)
     {
         var probes = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(path));
-        foreach (var name in new[] { "DefaultGlobalsProbe", "DnumValueProbe", "CombatStateProbe", "DamageStateProbe", "ChildActionProbe", "CombatActionProbe", "CombatEventProbe", "AutomaticAlliesProbe", "EncounterFinalizationProbe", "CombatDurationProbe", "AggregateQueryProbe" })
+        foreach (var name in new[] { "DefaultGlobalsProbe", "DnumValueProbe", "CombatStateProbe", "DamageStateProbe", "ChildActionProbe", "CombatActionProbe", "CombatEventProbe", "AutomaticAlliesProbe", "EncounterFinalizationProbe", "CombatDurationProbe", "AggregateQueryProbe", "HitRateProbe" })
             Probe("Original " + name, () => probes.GetType("Bxivact.LegacyReference." + name, throwOnError: true)!
                 .GetMethod("Run", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, null)!);
         return 0;
