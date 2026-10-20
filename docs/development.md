@@ -118,6 +118,9 @@ code units; this is diagnostic text, not a serialized exception object.
 | Advanced Combat Tracker.dll | Public-signed ACT 3.8.5.288 identity; session scaffold and initial Dnum contract slice |
 | FSharp.Core.dll | Locked NuGet 10.0.113 runtime dependency |
 | FSharp.Core.LICENSE | Upstream MIT notice, also extracted with the payload |
+| System.Security.Permissions.dll | Official 10.0.13 legacy permission type support for older serializers |
+| System.Windows.Extensions.dll / System.Windows.Extensions.windows.dll | Transitive 10.0.13 dependency; extraction chooses the platform asset and writes System.Windows.Extensions.dll |
+| Dotnet.Compatibility*.LICENSE | Upstream .NET runtime MIT notice and identical third-party notices for both compatibility packages |
 | System.Windows.Forms.dll | Linux-only headless control hierarchy, status text and disposal; native handles/rendering unsupported; never extracted on Windows |
 
 The WinForms DLL, F# source and independent contract tests belong to
@@ -126,6 +129,13 @@ dependencies. bxivact depends on it only on Linux, combines its bytes with the
 host payload during extraction, and retains managed context selection in the bridge.
 Direct F# bridge tests use `target/managed/test-bridge`, staged from both crates
 by `managed:test-payload`; the host crate no longer owns a second WinForms DLL.
+
+The bridge preloads its two legacy compatibility assemblies into the default
+assembly context: Costura's byte-loaded dependencies do not bind through the
+plugin context. They remain loaded after host shutdown. This adds neither CAS
+enforcement nor Linux implementations of Windows identity APIs. The publish target
+copies the Windows asset to a flat alternative filename and retains upstream
+notices; consumers need neither NuGet restore nor the SDK.
 
 The WinForms F# project declares its own build settings and can be rebuilt from
 its extracted Cargo package without ACT projects or the root managed props.

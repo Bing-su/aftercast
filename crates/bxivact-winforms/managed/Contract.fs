@@ -35,5 +35,9 @@ type Label() = inherit Control()
 [<AllowNullLiteral>]
 type ContainerControl() = inherit ScrollableControl()
 
+/// Let plugin settings types resolve their base class without claiming a rendered settings panel.
+[<AllowNullLiteral>]
+type UserControl() = inherit ContainerControl()
+
 [<AllowNullLiteral>]
 type Form() = inherit ContainerControl()

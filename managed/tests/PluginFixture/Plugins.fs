@@ -46,6 +46,14 @@ type LifecyclePlugin(mode: string) =
     let mutable controls: (TabPage * Label) option = None
     interface IActPluginV1 with
         member this.InitPlugin(tab, status) =
+            // Compile against the genuine WinForms reference and execute against the Linux adapter.
+            use settings = new UserControl()
+            settings.Text <- "Settings"
+            if settings.IsDisposed || settings.Text <> "Settings" then failwith "UserControl contract failed"
+            Bxivact.PluginDependency.Value.CheckPermissions()
+            let dependency = Path.Combine(Path.GetDirectoryName(this.GetType().Assembly.Location), "Bxivact.PluginDependency.dll")
+            let embedded = System.Reflection.Assembly.Load(File.ReadAllBytes(dependency))
+            embedded.GetType("Bxivact.PluginDependency.Value").GetMethod("CheckPermissions").Invoke(null, [||]) |> ignore
             let globals = typeof<IActPluginV1>.Assembly.GetType("Advanced_Combat_Tracker.ActGlobals", true)
             let root = globals.GetField("oFormActMain").GetValue(null)
             failedInstance |> Option.iter (fun failed ->

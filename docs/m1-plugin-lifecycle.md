@@ -1,8 +1,10 @@
 # M1: startup contracts and plugin lifecycle
 
 Checked on Linux x86-64 / .NET 10.0.13 on 2026-10-20. Fixture initialization and
-cleanup work. Original FFXIV initialization is attempted and fails on missing
-System.Windows.Forms.UserControl. This is not completion of M1 or parser readiness.
+cleanup work. Original FFXIV initialization passes the missing UserControl and
+legacy permission-assembly barriers, then fails with "Windows Principal
+functionality is not supported on this platform." This is not completion of M1
+or parser readiness.
 
 ## Implemented slice
 
@@ -14,8 +16,9 @@ System.Windows.Forms.UserControl. This is not completion of M1 or parser readine
 | ActPluginData | Original public instance fields pluginFile: FileInfo, pluginObj: IActPluginV1, tpPluginSpace: TabPage, lblPluginStatus: Label |
 | WriteExceptionLog(Exception,string) | Bounded in-memory diagnostic capture with separate owner-thread initialization counts; no ACT file logging or Rust log delivery |
 | RestartACT(bool,string) -> void | Throws PlatformNotSupportedException; an embedded library must not restart the application |
-| Linux controls | Control -> ScrollableControl -> Panel -> TabPage; Control -> Label; ScrollableControl -> ContainerControl -> Form; Component disposal, Text, Name, IsDisposed |
-| Unsupported UI | Handle and CreateControl throw; UserControl, control trees, layout, drawing, timers, handles and message dispatch are absent |
+| Linux controls | Control -> ScrollableControl -> Panel -> TabPage; Control -> Label; ScrollableControl -> ContainerControl -> Form / UserControl; Component disposal, Text, Name, IsDisposed |
+| Legacy permission binding | Official System.Security.Permissions 10.0.13 plus transitive System.Windows.Extensions 10.0.13; shared with plugin and byte-loaded dependency contexts |
+| Unsupported UI | Handle and CreateControl throw; control trees, layout, drawing, timers, handles and message dispatch are absent |
 
 Host globals are unavailable to constructors before the first initialization
 attempt. This remains a limitation for other plugins whose constructors use ACT
@@ -126,11 +129,40 @@ not proof that all calls execute on every path.
 InitPlugin has 297 IL bytes / 90 instructions, SHA-256
 be1e64438308bdf20ed8b4654516a2474b4de34e29d9539d8b88ccd1d1ac0ea1.
 Its exception handler covers offsets 32..254 and returns at offset 296. The Linux
-runtime attempt reports the missing UserControl through WriteExceptionLog; Rust
-therefore returns an initialization error instead of treating this return as success.
+runtime attempts report caught failures through WriteExceptionLog; Rust therefore
+returns an initialization error instead of treating this return as success.
 No successful original initialization, game capture or original DeInitPlugin run
-is claimed. The next work is the observed UserControl/settings/control-tree
-dependency chain, before native capture and actual parser validation.
+is claimed.
+
+## UserControl follow-up
+
+| Runtime probe, same original plugin hash | Observed outcome |
+| --- | --- |
+| Add UserControl : ContainerControl | No missing base-type error; InitPlugin reports Definitions.Astrologian.json deserialization failing because System.Security.Permissions cannot load |
+| Bundle permissions but resolve only through PluginContext | Same missing assembly: Costura's byte-loaded Newtonsoft.Json binds outside that context |
+| Preload official compatibility dependencies into Default | Previous missing assembly is no longer reported; InitPlugin reports unsupported Windows Principal functionality |
+
+The permission package was selected from the official
+[10.0.13 NuGet release](https://www.nuget.org/packages/System.Security.Permissions/10.0.13).
+Context7's [.NET dependency migration guidance](https://github.com/dotnet/docs/blob/main/docs/core/porting/third-party-deps.md)
+was checked; package compatibility still requires runtime validation. The packages
+are process-owned and do not restore .NET Framework CAS enforcement or Windows
+identity support on Linux. No principal check is bypassed or made to return a
+fabricated administrator identity. The exact original Windows principal call site
+and the remaining settings/control-tree dependencies still need investigation.
+
+The independent control test checks UserControl inheritance, text, disposal and
+native-handle rejection. The lifecycle fixture compiles its UserControl constructor
+against the genuine WinForms reference. It also exercises permission construction
+and Demand through both file-loaded and byte-loaded dependency assemblies, without
+the original plugin. This validates binding, not a security boundary.
+
+Both Cargo packages were verified offline. The extracted host package initialized
+and stopped ReadyPlugin with the dotnet CLI replaced by a failing shim, then
+reproduced the original plugin's Windows Principal failure in a separate process.
+Rust formatting, workspace tests, strict Linux and Windows-target Clippy, managed
+ABI/control tests and real CLR lifecycle/construction tests passed. Windows runtime
+execution and successful original parser startup remain unverified.
 
 ## Reproduce and checks
 

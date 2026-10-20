@@ -9,6 +9,7 @@
       "Bxivact.Bridge/0.1.0": {
         "dependencies": {
           "FSharp.Core": "10.0.113",
+          "System.Security.Permissions": "10.0.13",
           "Advanced Combat Tracker.Reference": "3.8.5.288"
         },
         "runtime": {
@@ -20,6 +21,33 @@
           "lib/netstandard2.1/FSharp.Core.dll": {
             "assemblyVersion": "10.0.0.0",
             "fileVersion": "10.1.1326.50504"
+          }
+        }
+      },
+      "System.Security.Permissions/10.0.13": {
+        "dependencies": {
+          "System.Windows.Extensions": "10.0.13"
+        },
+        "runtime": {
+          "lib/net10.0/System.Security.Permissions.dll": {
+            "assemblyVersion": "10.0.0.0",
+            "fileVersion": "10.0.1326.50504"
+          }
+        }
+      },
+      "System.Windows.Extensions/10.0.13": {
+        "runtime": {
+          "lib/net10.0/System.Windows.Extensions.dll": {
+            "assemblyVersion": "10.0.0.0",
+            "fileVersion": "10.0.1326.50504"
+          }
+        },
+        "runtimeTargets": {
+          "runtimes/win/lib/net10.0/System.Windows.Extensions.dll": {
+            "rid": "win",
+            "assetType": "runtime",
+            "assemblyVersion": "10.0.0.0",
+            "fileVersion": "10.0.1326.50504"
           }
         }
       },
@@ -55,6 +83,20 @@
       "sha512": "sha512-QfU6LsrPw9uSq/10z0MMaZ2xMWAKCo1oeTg8FFtCyyAuPv+lFEIoaHEi191QSxvadJ9jRaKNR+GndDocqOZMog==",
       "path": "fsharp.core/10.0.113",
       "hashPath": "fsharp.core.10.0.113.nupkg.sha512"
+    },
+    "System.Security.Permissions/10.0.13": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-RRyTWLzyZhC8PhiIov8V4PRUwO1Ku781t/eF4vqxGRuuCmuvSljMSgiEmIFY0qkkY/Si3IQoXVUghpUPn2wExA==",
+      "path": "system.security.permissions/10.0.13",
+      "hashPath": "system.security.permissions.10.0.13.nupkg.sha512"
+    },
+    "System.Windows.Extensions/10.0.13": {
+      "type": "package",
+      "serviceable": true,
+      "sha512": "sha512-/PgQPr51A/DDy8JQbyl+ihrsVlePn+nRAs9wN26AHWJ5nSW9LIDqG30O7VCfm4y0p5qcTUFQiKONsHZSgM9jNQ==",
+      "path": "system.windows.extensions/10.0.13",
+      "hashPath": "system.windows.extensions.10.0.13.nupkg.sha512"
     },
     "Advanced Combat Tracker/3.8.5.288": {
       "type": "project",

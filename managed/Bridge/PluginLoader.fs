@@ -23,12 +23,17 @@ type private PluginContext(path: string) =
                 invalidOp ("Unsupported ACT reference: " + name.FullName)
             assembly
         | None ->
-            let resolved = resolver.ResolveAssemblyToPath(name)
-            let sibling = Path.Combine(Path.GetDirectoryName(path), name.Name + ".dll")
-            if not (isNull resolved) then this.LoadFromAssemblyPath(resolved)
-            elif File.Exists(sibling) then this.LoadFromAssemblyPath(sibling)
-            // Let framework and Costura's embedded-assembly resolution run when no file exists.
-            else null
+            match name.Name with
+            // Share the preloaded packages with both file-loaded and Costura byte-loaded dependencies.
+            | "System.Security.Permissions" | "System.Windows.Extensions" ->
+                AssemblyLoadContext.Default.LoadFromAssemblyName(name)
+            | _ ->
+                let resolved = resolver.ResolveAssemblyToPath(name)
+                let sibling = Path.Combine(Path.GetDirectoryName(path), name.Name + ".dll")
+                if not (isNull resolved) then this.LoadFromAssemblyPath(resolved)
+                elif File.Exists(sibling) then this.LoadFromAssemblyPath(sibling)
+                // Let framework and Costura's embedded-assembly resolution run when no file exists.
+                else null
     override this.LoadUnmanagedDll(name) =
         let resolved = resolver.ResolveUnmanagedDllToPath(name)
         if isNull resolved then IntPtr.Zero else this.LoadUnmanagedDllFromPath(resolved)

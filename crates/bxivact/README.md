@@ -38,3 +38,6 @@ the .NET 10 Desktop Runtime and a caller-owned STA/UI loop; execution is unverif
 
 The project license is undecided; publication is disabled. The bundled FSharp.Core
 10.0.113 dependency is MIT-licensed; its notice is in `managed/FSharp.Core.LICENSE`.
+System.Security.Permissions and System.Windows.Extensions 10.0.13 provide legacy
+binding support; their MIT notice and upstream notices are bundled as
+`managed/Dotnet.Compatibility*.LICENSE`. These packages do not provide a sandbox.

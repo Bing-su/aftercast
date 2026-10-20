@@ -6,7 +6,7 @@ The crate has no Rust dependencies and never starts .NET or invokes its SDK.
 
 | Current support | Limit |
 | --- | --- |
-| Control hierarchy, TabPage / Label / Form construction | Headless objects only; no rendering or native handles |
+| Control hierarchy, TabPage / Label / Form / UserControl construction | Headless objects only; no rendering or native handles |
 | Text / Name / IsDisposed and disposal notification | No message loop, layout, control tree or cross-thread dispatch |
 | Unsigned assembly, version 4.0.0.0 | No original WinForms strong-name identity |
 

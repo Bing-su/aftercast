@@ -11,9 +11,10 @@ check (identity.Name = "System.Windows.Forms")
 check (identity.Version = Version(4, 0, 0, 0))
 check (identity.GetPublicKeyToken().Length = 0)
 check (typeof<Label>.Assembly = assembly)
+check (typeof<UserControl>.BaseType = typeof<ContainerControl>)
 check (assembly.GetReferencedAssemblies() |> Array.forall (fun reference -> reference.Name <> "Advanced Combat Tracker"))
 
-for create in [ (fun () -> new TabPage() :> Control); (fun () -> new Label() :> Control) ] do
+for create in [ (fun () -> new TabPage() :> Control); (fun () -> new Label() :> Control); (fun () -> new UserControl() :> Control) ] do
     use control = create ()
     let mutable disposedEvents = 0
     control.Disposed.Add(fun _ -> disposedEvents <- disposedEvents + 1)

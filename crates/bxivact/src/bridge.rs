@@ -6,6 +6,25 @@ use crate::{Error, io_error};
 
 const FILES: &[(&str, &[u8])] = &[
     (
+        "System.Security.Permissions.dll",
+        include_bytes!("../managed/System.Security.Permissions.dll"),
+    ),
+    (
+        "System.Windows.Extensions.dll",
+        #[cfg(not(windows))]
+        include_bytes!("../managed/System.Windows.Extensions.dll"),
+        #[cfg(windows)]
+        include_bytes!("../managed/System.Windows.Extensions.windows.dll"),
+    ),
+    (
+        "Dotnet.Compatibility.LICENSE",
+        include_bytes!("../managed/Dotnet.Compatibility.LICENSE"),
+    ),
+    (
+        "Dotnet.Compatibility.NOTICES.LICENSE",
+        include_bytes!("../managed/Dotnet.Compatibility.NOTICES.LICENSE"),
+    ),
+    (
         "FSharp.Core.LICENSE",
         include_bytes!("../managed/FSharp.Core.LICENSE"),
     ),

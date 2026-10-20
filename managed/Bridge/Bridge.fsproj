@@ -11,9 +11,16 @@
       <Private>false</Private>
     </Reference>
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" GeneratePathProperty="true" PrivateAssets="all" ExcludeAssets="all" />
+    <!-- Older plugin JSON serializers reference these legacy permission types during reflection. -->
+    <PackageReference Include="System.Security.Permissions" Version="10.0.13" GeneratePathProperty="true" />
     <Compile Include="Platform.fs" />
     <Compile Include="PluginLoader.fs" />
     <Compile Include="PluginSession.fs" />
     <Compile Include="EntryPoint.fs" />
   </ItemGroup>
+  <Target Name="PrepareCompatibilityPayload" AfterTargets="Publish">
+    <!-- Cargo keeps a flat payload; preserve the Windows implementation separately for extraction. -->
+    <Copy SourceFiles="$(PublishDir)runtimes/win/lib/net10.0/System.Windows.Extensions.dll" DestinationFiles="$(PublishDir)System.Windows.Extensions.windows.dll" />
+    <Copy SourceFiles="$(PkgSystem_Security_Permissions)/THIRD-PARTY-NOTICES.TXT" DestinationFiles="$(PublishDir)Dotnet.Compatibility.NOTICES.LICENSE" />
+  </Target>
 </Project>
