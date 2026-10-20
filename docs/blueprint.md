@@ -56,6 +56,7 @@ version; the current build uses Rust 1.99.1.
 | netcorehost | 0.22.0 | hostfxr hosting; default features off, net10_0 enabled |
 | bon | 3.10.2 | Configuration builders |
 | bytes | 1.12.1 | Owned batch buffers and shared byte slices in the batch milestone |
+| camino | 1.2.6 | UTF-8 host/plugin paths and path-bearing errors |
 | thiserror | 2.0.21 | Typed errors |
 | tracing | 0.1.44 | Application-controlled diagnostics |
 | scopeguard | 1.2.0 | Release host ownership and roll back incomplete extraction |

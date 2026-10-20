@@ -61,6 +61,18 @@ executes the plugin constructor only.
 | Host::create_plugin(PluginConfig) | Selects and constructs a trusted IActPluginV1, returns an opaque session-scoped PluginId; never calls InitPlugin |
 | Host::stop() / Drop | Ends session; hostfxr and CLR remain process-owned |
 
+Public paths use camino 1.2.6: configuration fields and path-bearing errors contain
+`Utf8PathBuf`, and `extract_bridge` accepts `AsRef<Utf8Path>`. String callers remain
+supported. Existing `std::path::PathBuf` callers must convert explicitly with
+`camino::Utf8PathBuf::try_from(path_buf)`; borrowed paths can use
+`camino::Utf8Path::from_path(path)`. Neither conversion replaces invalid bytes.
+Canonicalization uses `canonicalize_utf8`, so a UTF-8 symlink resolving to a
+non-UTF-8 target returns `Error::Io` with `InvalidData` and the requested UTF-8 path.
+Runtime discovery still skips unrelated non-UTF-8 directory entry names.
+Only the OS/native interop edges use OsStr/std paths; .NET receives its existing
+platform-native path representation, and plugin requests use `Utf8Path::as_str()`.
+See the [camino documentation](https://docs.rs/camino/1.2.6/camino/struct.Utf8Path.html#method.canonicalize_utf8).
+
 Use trusted runtime/component files and an application-controlled parent directory.
 The library executes native/managed code; it is not a sandbox for hostile files.
 The host is !Send/!Sync to preserve its creation thread. Runtime selection is fixed
@@ -148,6 +160,7 @@ batch milestone and bounds the new plugin request buffer; there is no event-stre
 | Reproducible payload | SDK assembly metadata appended the current Git revision, making checked-in assemblies change after a commit | Set managed version to 0.1.0 and disable revision suffixes in informational versions |
 | WinForms ownership | Moving the DLL left direct F# bridge tests without their colocated adapter | Stage both crates' payloads in target/managed/test-bridge; independent managed tests and Rust plugin construction pass |
 | Independent packaging | An unpublished workspace dependency cannot resolve from crates.io during host packaging | Verify the WinForms package first and patch its extracted copy into host verification; the packaged F# project rebuilds without ACT props, and the packaged host constructs the original FFXIV plugin with the SDK CLI blocked |
+| UTF-8 paths | PathBuf configuration deferred UTF-8 validation until plugin construction | Use camino across host paths and errors; check Unicode runtime discovery, Unicode bridge/plugin deployment, non-UTF-8 symlink rejection, unrelated OS entry skipping and native NUL rejection |
 
 Context7 was used for netcorehost's standard delegate flow and scopeguard's
 Always/into_inner semantics, and compared with the resolved crate source.

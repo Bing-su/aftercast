@@ -7,6 +7,8 @@
 mod bridge;
 mod runtime;
 
+use camino::Utf8PathBuf;
+
 pub use bridge::extract_bridge;
 pub use runtime::{Host, HostConfig, PluginConfig, PluginId};
 
@@ -18,18 +20,18 @@ pub enum Error {
     InvalidPluginRequest(String),
     #[error("I/O operation failed for {path}: {source}")]
     Io {
-        path: std::path::PathBuf,
+        path: Utf8PathBuf,
         #[source]
         source: std::io::Error,
     },
     #[error("path contains an embedded NUL: {path}: {source}")]
     InvalidPath {
-        path: std::path::PathBuf,
+        path: Utf8PathBuf,
         #[source]
         source: netcorehost::pdcstring::ContainsNul,
     },
     #[error("no stable .NET 10 hostfxr was found under {0}")]
-    RuntimeNotFound(std::path::PathBuf),
+    RuntimeNotFound(Utf8PathBuf),
     #[error("cannot load hostfxr: {0}")]
     Hostfxr(#[from] netcorehost::dlopen2::Error),
     #[error(".NET hosting failed: {0}")]
@@ -50,12 +52,12 @@ pub enum Error {
         "hostfxr is already loaded from {loaded}; cannot switch to {requested} in this process"
     )]
     RuntimeAlreadyLoaded {
-        loaded: std::path::PathBuf,
-        requested: std::path::PathBuf,
+        loaded: Utf8PathBuf,
+        requested: Utf8PathBuf,
     },
 }
 
-fn io_error(path: impl Into<std::path::PathBuf>, source: std::io::Error) -> Error {
+fn io_error(path: impl Into<Utf8PathBuf>, source: std::io::Error) -> Error {
     Error::Io {
         path: path.into(),
         source,

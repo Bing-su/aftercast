@@ -9,6 +9,7 @@ include = ["src/**", "examples/**", "tests/**", "managed/*.dll", "managed/*.json
 [dependencies]
 bon.workspace = true
 bytes.workspace = true
+camino.workspace = true
 netcorehost.workspace = true
 thiserror.workspace = true
 tracing.workspace = true

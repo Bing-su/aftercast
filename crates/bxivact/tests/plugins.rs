@@ -1,13 +1,13 @@
-use std::path::Path;
+use camino::Utf8Path;
 
 use bxivact::{Error, Host, HostConfig, PluginConfig, extract_bridge};
 
-fn create(host: &mut Host, path: &Path, name: &str) -> bxivact::PluginId {
+fn create(host: &mut Host, path: &Utf8Path, name: &str) -> bxivact::PluginId {
     host.create_plugin(PluginConfig::builder().path(path).type_name(name).build())
         .expect("construct the selected fixture")
 }
 
-fn failure(host: &mut Host, path: &Path, name: Option<&str>, expected: &str) {
+fn failure(host: &mut Host, path: &Utf8Path, name: Option<&str>, expected: &str) {
     let error = host
         .create_plugin(
             PluginConfig::builder()
@@ -27,9 +27,10 @@ fn failure(host: &mut Host, path: &Path, name: Option<&str>, expected: &str) {
 #[test]
 #[ignore = "requires .NET 10 and built F# fixtures; run mise run test:plugins"]
 fn constructs_trusted_plugins_without_initialization_and_recovers_from_errors() {
-    let root = std::env::var_os("DOTNET_ROOT").expect("set DOTNET_ROOT");
+    let root = std::env::var("DOTNET_ROOT").expect("set a UTF-8 DOTNET_ROOT");
     let temporary = tempfile::tempdir().expect("create isolated plugin test");
-    let bridge = temporary.path().join("bridge");
+    let temporary_path = Utf8Path::from_path(temporary.path()).expect("UTF-8 test directory");
+    let bridge = temporary_path.join("bridge");
     extract_bridge(&bridge).expect("extract bundled bridge");
     let config = || {
         HostConfig::builder()
@@ -38,9 +39,9 @@ fn constructs_trusted_plugins_without_initialization_and_recovers_from_errors() 
             .build()
     };
     let mut host = Host::start(config()).expect("start managed component");
-    let path = Path::new(env!("CARGO_MANIFEST_DIR"))
+    let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Bxivact.PluginFixture.dll")
-        .canonicalize()
+        .canonicalize_utf8()
         .expect("build the plugin fixture first");
     let good = "Bxivact.PluginFixture.GoodPlugin";
     let first = create(&mut host, &path, good);
@@ -74,7 +75,7 @@ fn constructs_trusted_plugins_without_initialization_and_recovers_from_errors() 
         "Linux WinForms UI is not implemented",
     );
 
-    let isolated = temporary.path().join("isolated");
+    let isolated = temporary_path.join("isolated 플러그인");
     std::fs::create_dir(&isolated).expect("create missing dependency fixture");
     let missing = isolated.join("Bxivact.PluginFixture.dll");
     std::fs::copy(&path, &missing).expect("copy without its dependency");

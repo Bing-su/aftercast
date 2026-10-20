@@ -1,8 +1,9 @@
-use std::{env, path::Path};
+use camino::Utf8Path;
+use std::env;
 
 use bxivact::{Error, Host, HostConfig, extract_bridge};
 
-fn config(root: &Path, bridge: &Path) -> HostConfig {
+fn config(root: &Utf8Path, bridge: &Utf8Path) -> HostConfig {
     HostConfig::builder()
         .dotnet_root(root)
         .bridge_directory(bridge)
@@ -12,7 +13,9 @@ fn config(root: &Path, bridge: &Path) -> HostConfig {
 #[test]
 fn extraction_preserves_existing_directories() {
     let temporary = tempfile::tempdir().expect("create isolated extraction fixture");
-    let directory = temporary.path().join("bridge");
+    let directory = Utf8Path::from_path(temporary.path())
+        .expect("UTF-8 test directory")
+        .join("bridge");
     extract_bridge(&directory).expect("extract bundled bridge");
     #[cfg(target_os = "linux")]
     assert_eq!(
@@ -39,19 +42,20 @@ fn extraction_preserves_existing_directories() {
 #[ignore = "requires a .NET 10 installation; set DOTNET_ROOT and run mise run test:hosting"]
 fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
     let root =
-        env::var_os("DOTNET_ROOT").expect("set DOTNET_ROOT to a trusted .NET 10 installation");
-    let root = Path::new(&root);
+        env::var("DOTNET_ROOT").expect("set a UTF-8 DOTNET_ROOT to a trusted .NET 10 installation");
+    let root = Utf8Path::new(&root);
     let temporary = tempfile::tempdir().expect("create isolated bridge fixture");
-    let bridge = temporary.path().join("bridge");
+    let temporary_path = Utf8Path::from_path(temporary.path()).expect("UTF-8 test directory");
+    let bridge = temporary_path.join("bridge 한글");
     extract_bridge(&bridge).expect("extract prebuilt managed component");
 
-    let missing_root = temporary.path().join("missing-runtime");
+    let missing_root = temporary_path.join("missing-runtime");
     match Host::start(config(&missing_root, &bridge)) {
         Err(Error::Io { .. }) => (),
         _ => panic!("missing runtime must fail before acquiring a managed session"),
     }
 
-    let invalid_bridge = temporary.path().join("invalid-bridge");
+    let invalid_bridge = temporary_path.join("invalid-bridge");
     std::fs::create_dir(&invalid_bridge).expect("create invalid configuration fixture");
     std::fs::write(
         invalid_bridge.join("Bxivact.Bridge.runtimeconfig.json"),
@@ -73,7 +77,7 @@ fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
     host.stop().expect("explicit shutdown succeeds");
 
     // A loaded CLR cannot move to another installation merely because the ACT session stopped.
-    let alternate = temporary.path().join("alternate-runtime");
+    let alternate = temporary_path.join("alternate-runtime");
     let alternate_fxr = alternate.join("host/fxr/10.0.0");
     std::fs::create_dir_all(&alternate_fxr).expect("create alternate runtime fixture");
     let name = if cfg!(windows) {

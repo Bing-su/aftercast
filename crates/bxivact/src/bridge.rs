@@ -1,5 +1,6 @@
+use camino::Utf8Path;
 use scopeguard::{ScopeGuard, guard};
-use std::{fs, path::Path};
+use std::fs;
 
 use crate::{Error, io_error};
 
@@ -41,7 +42,7 @@ const FILES: &[(&str, &[u8])] = &[
 /// deploy to a versioned subdirectory of the application's private data directory. Keep the
 /// files available while the process uses .NET; stopping a host does not unload the CLR.
 /// No compiler, SDK, or network access is needed.
-pub fn extract_bridge(directory: impl AsRef<Path>) -> Result<(), Error> {
+pub fn extract_bridge(directory: impl AsRef<Utf8Path>) -> Result<(), Error> {
     let directory = directory.as_ref();
     let builder = fs::DirBuilder::new();
     #[cfg(unix)]
@@ -57,7 +58,7 @@ pub fn extract_bridge(directory: impl AsRef<Path>) -> Result<(), Error> {
     // Roll back this new directory on any early return, including unwinding during extraction.
     let rollback = guard((), |()| {
         if let Err(error) = fs::remove_dir_all(directory) {
-            tracing::warn!(%error, path = %directory.display(), "bridge extraction rollback failed");
+            tracing::warn!(%error, path = %directory, "bridge extraction rollback failed");
         }
     });
     FILES.iter().try_for_each(|(name, bytes)| {

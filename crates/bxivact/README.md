@@ -22,7 +22,9 @@ host.stop()?;
 # }
 ```
 
-Use a new extraction directory with an existing, application-controlled parent.
+Paths use camino UTF-8 types; strings work directly. Convert existing PathBuf values
+with `camino::Utf8PathBuf::try_from`. Use a new extraction directory with an existing,
+application-controlled parent.
 Keep deployed files while the process uses the CLR. Only one host is active at a
 time, and the host stays on its creation thread. Stopping it does not unload .NET.
 Use `Host::create_plugin(PluginConfig::builder().path(path).build())` to construct

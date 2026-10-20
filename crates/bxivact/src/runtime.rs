@@ -1,7 +1,6 @@
 use std::{
     fs,
     marker::PhantomData,
-    path::{Path, PathBuf},
     rc::Rc,
     sync::{
         OnceLock,
@@ -11,6 +10,7 @@ use std::{
 
 use bon::Builder;
 use bytes::{BufMut, BytesMut};
+use camino::{Utf8Path, Utf8PathBuf};
 use netcorehost::{
     hostfxr::{
         AssemblyDelegateLoader, Hostfxr, HostfxrContext, InitializedForRuntimeConfig,
@@ -25,17 +25,17 @@ use crate::{Error, io_error};
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 // CoreCLR keeps hostpolicy state after a session closes; unloading hostfxr breaks reinitialization.
-static HOSTFXR: OnceLock<(PathBuf, Hostfxr)> = OnceLock::new();
+static HOSTFXR: OnceLock<(Utf8PathBuf, Hostfxr)> = OnceLock::new();
 
-/// Paths are explicit so a library never silently selects or downloads a runtime.
+/// UTF-8 paths are explicit so a library never silently selects or downloads a runtime.
 #[derive(Debug, Builder)]
 pub struct HostConfig {
     /// Trusted .NET installation containing `host/fxr/10.*` and the .NET 10 shared runtime.
     #[builder(into)]
-    dotnet_root: PathBuf,
+    dotnet_root: Utf8PathBuf,
     /// Trusted directory previously prepared with [`crate::extract_bridge`].
     #[builder(into)]
-    bridge_directory: PathBuf,
+    bridge_directory: Utf8PathBuf,
 }
 
 /// Constructor-only loading of a trusted ACT plugin; no initialization or parsing occurs.
@@ -43,7 +43,7 @@ pub struct HostConfig {
 pub struct PluginConfig {
     /// Plugin assembly path; dependencies are resolved from its deployment directory.
     #[builder(into)]
-    path: PathBuf,
+    path: Utf8PathBuf,
     /// Fully qualified type name. Omit only when exactly one eligible plugin type exists.
     #[builder(into)]
     type_name: Option<String>,
@@ -157,10 +157,7 @@ impl Host {
     /// `PluginConfig::builder().path("plugin.dll").type_name("Example.Plugin").build()`.
     pub fn create_plugin(&mut self, config: PluginConfig) -> Result<PluginId, Error> {
         let path = canonicalize(&config.path)?;
-        let path = path.to_str().ok_or_else(|| {
-            Error::InvalidPluginRequest("plugin paths must be valid UTF-8".to_owned())
-        })?;
-        let mut packet = plugin_packet(self.session, path, config.type_name.as_deref())?;
+        let mut packet = plugin_packet(self.session, path.as_str(), config.type_name.as_deref())?;
         let length = i32::try_from(packet.len())
             .map_err(|error| Error::InvalidPluginRequest(error.to_string()))?;
         // SAFETY: CreatePlugin uses ComponentEntryPoint, borrows this initialized buffer only
@@ -277,11 +274,12 @@ impl Drop for Host {
     }
 }
 
-fn canonicalize(path: &Path) -> Result<PathBuf, Error> {
-    fs::canonicalize(path).map_err(|e| io_error(path, e))
+fn canonicalize(path: &Utf8Path) -> Result<Utf8PathBuf, Error> {
+    // UTF-8 symlink names can resolve to non-UTF-8 targets; reject these without lossy conversion.
+    path.canonicalize_utf8().map_err(|e| io_error(path, e))
 }
 
-fn process_hostfxr(path: PathBuf) -> Result<Hostfxr, Error> {
+fn process_hostfxr(path: Utf8PathBuf) -> Result<Hostfxr, Error> {
     if let Some((loaded, library)) = HOSTFXR.get() {
         if *loaded != path {
             return Err(Error::RuntimeAlreadyLoaded {
@@ -299,7 +297,7 @@ fn process_hostfxr(path: PathBuf) -> Result<Hostfxr, Error> {
     Ok(library)
 }
 
-fn path_string(path: &Path) -> Result<PdCString, Error> {
+fn path_string(path: &Utf8Path) -> Result<PdCString, Error> {
     PdCString::from_os_str(path.as_os_str()).map_err(|source| Error::InvalidPath {
         path: path.to_owned(),
         source,
@@ -319,7 +317,7 @@ fn stable_net10_version(name: &str) -> Option<[u32; 3]> {
     (version[0] == 10).then_some(version)
 }
 
-fn find_hostfxr(root: &Path) -> Result<PathBuf, Error> {
+fn find_hostfxr(root: &Utf8Path) -> Result<Utf8PathBuf, Error> {
     #[cfg(windows)]
     const LIBRARY: &str = "hostfxr.dll";
     #[cfg(not(windows))]
@@ -330,10 +328,15 @@ fn find_hostfxr(root: &Path) -> Result<PathBuf, Error> {
     let mut selected = None;
     for entry in entries {
         let entry = entry.map_err(|e| io_error(&directory, e))?;
-        let Some(version) = entry.file_name().to_str().and_then(stable_net10_version) else {
+        let name = entry.file_name();
+        // Unrelated non-UTF-8 entries cannot be runtime versions and must not block discovery.
+        let Some(name) = name.to_str() else {
             continue;
         };
-        let library = entry.path().join(LIBRARY);
+        let Some(version) = stable_net10_version(name) else {
+            continue;
+        };
+        let library = directory.join(name).join(LIBRARY);
         if library.is_file()
             && selected
                 .as_ref()
@@ -354,11 +357,11 @@ mod tests {
     #[test]
     fn plugin_requests_bound_lengths_and_preserve_utf8() {
         let packet =
-            plugin_packet(9, "/plugin.dll", Some("Example.Plugin")).expect("encode request");
+            plugin_packet(9, "/플러그인/測試.dll", Some("Example.Plugin")).expect("encode request");
         assert_eq!(packet.get(8..16), Some(9_u64.to_le_bytes().as_slice()));
         assert_eq!(
             packet.get(40..),
-            Some(b"/plugin.dllExample.Plugin".as_slice())
+            Some("/플러그인/測試.dllExample.Plugin".as_bytes())
         );
         for (path, name) in [
             ("/bad\0path", "Plugin".to_owned()),
@@ -391,11 +394,74 @@ mod tests {
     }
 
     #[test]
+    fn runtime_discovery_preserves_utf8_paths_and_ignores_unrelated_entries() {
+        let temporary = tempfile::tempdir().expect("create runtime discovery fixture");
+        let root = Utf8Path::from_path(temporary.path())
+            .expect("UTF-8 test directory")
+            .join("runtime 日本語");
+        let directory = root.join("host/fxr");
+        let name = if cfg!(windows) {
+            "hostfxr.dll"
+        } else {
+            "libhostfxr.so"
+        };
+        for version in ["10.0.1", "10.0.13", "9.0.99", "10.0.20-preview.1"] {
+            let path = directory.join(version);
+            fs::create_dir_all(&path).expect("create runtime version");
+            fs::write(path.join(name), []).expect("create discovery marker");
+        }
+        #[cfg(unix)]
+        {
+            use std::os::unix::ffi::OsStringExt;
+            let unrelated = std::ffi::OsString::from_vec(vec![0xff]);
+            fs::create_dir(directory.as_std_path().join(unrelated))
+                .expect("create non-UTF-8 unrelated entry");
+        }
+        assert_eq!(
+            find_hostfxr(&root).expect("select stable runtime"),
+            directory.join("10.0.13").join(name)
+        );
+    }
+
+    #[test]
+    #[cfg(unix)]
+    fn canonicalization_rejects_non_utf8_symlink_targets_without_losing_the_request() {
+        use std::os::unix::{ffi::OsStringExt, fs::symlink};
+        let temporary = tempfile::tempdir().expect("create symlink fixture");
+        let target = temporary
+            .path()
+            .join(std::ffi::OsString::from_vec(vec![0xff]));
+        fs::write(&target, []).expect("create non-UTF-8 target");
+        let link = Utf8Path::from_path(temporary.path())
+            .expect("UTF-8 test directory")
+            .join("link 한글");
+        symlink(&target, &link).expect("create UTF-8 symlink");
+        match canonicalize(&link) {
+            Err(Error::Io { path, source }) => {
+                assert_eq!(path, link);
+                assert_eq!(source.kind(), std::io::ErrorKind::InvalidData);
+            }
+            other => panic!("expected a non-UTF-8 canonical target error, received {other:?}"),
+        }
+    }
+
+    #[test]
+    fn utf8_paths_still_reject_nul_at_the_native_boundary() {
+        assert!(matches!(
+            path_string(Utf8Path::new("invalid\0path")),
+            Err(Error::InvalidPath { .. })
+        ));
+    }
+
+    #[test]
     #[ignore = "requires .NET 10; set DOTNET_ROOT and run mise run test:hosting"]
     fn managed_errors_keep_status_and_diagnostic_text() {
-        let root = std::env::var_os("DOTNET_ROOT").expect("set DOTNET_ROOT for managed testing");
+        let root =
+            std::env::var("DOTNET_ROOT").expect("set a UTF-8 DOTNET_ROOT for managed testing");
         let temporary = tempfile::tempdir().expect("create private test fixture");
-        let directory = temporary.path().join("bridge");
+        let directory = Utf8Path::from_path(temporary.path())
+            .expect("UTF-8 test directory")
+            .join("bridge");
         crate::extract_bridge(&directory).expect("extract managed component");
         let host = Host::start(
             HostConfig::builder()
