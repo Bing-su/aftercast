@@ -40,7 +40,7 @@ so workspace publication is disabled rather than inventing a license.
 | `mise run test:recorded-actions -- /private/new-state/recorded-actions-1.json` | Replay one captured corpus action stream through the same compiled probe in replacement and genuine ACT; compare four actor totals, automatic allies and encounter totals |
 | `mise run test:original-writer -- /absolute/pinned-sdk-deployment` | Isolated genuine-writer bytes/flush/error checks and watchdog-protected reproduction of its known cancellation failure; excludes game and network workers |
 | `mise run test:original-writer -- /absolute/pinned-sdk-deployment --patched` | Same isolated cases with the exact production Linux rewrite; post-flush cancellation joins while leaving queued records pending |
-| `mise run test:linux-plugin-compat` | Check pinned FFXIV memory/writer IL adjustments, unknown-build rejection and original-file preservation; requires supplied FFXIV artifacts |
+| `mise run test:linux-plugin-compat` | Check pinned FFXIV memory/writer/resource adjustments, full resource/radix/override matrix, unknown-build rejection and original-file preservation; requires supplied FFXIV artifacts |
 | `dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- original /trusted/plugin-copy/FFXIV_ACT_Plugin.dll /private/state` | Observe original startup/workers for 1.5 seconds with an explicit owner-thread pump and bounded diagnostics; use a disposable plugin copy |
 | `DOTNET_ROOT=/usr/lib/dotnet mise run test:plugins` | Build fixtures; check plugin request bounds and construct instances through the Rust API, including dependency and constructor failures |
 | `mise run check` | Rust formatting, Clippy with warnings denied, ordinary tests |

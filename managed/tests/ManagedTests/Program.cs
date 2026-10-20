@@ -89,6 +89,12 @@ internal static class Program
                     .GetMethod("Run", BindingFlags.NonPublic | BindingFlags.Public | BindingFlags.Instance)!;
                 Check(logfile.Location == "" && Convert.ToHexStringLower(SHA256.HashData(run.GetMethodBody()!.GetILAsByteArray()!)) ==
                     "c37628922371e34b053e65a3f21ea456c9c7e502bc879d139332b6f68dae8ce8");
+                var resource = AssemblyLoadContext.GetLoadContext(instance.GetType().Assembly)!.Assemblies
+                    .Single(assembly => assembly.GetName().Name == "FFXIV_ACT_Plugin.Resource");
+                var load = resource.GetType("FFXIV_ACT_Plugin.Resource.ResourceFile")!
+                    .GetMethod("LoadResourceDictionary", BindingFlags.NonPublic | BindingFlags.Instance)!;
+                Check(resource.Location == "" && Convert.ToHexStringLower(SHA256.HashData(load.GetMethodBody()!.GetILAsByteArray()!)) ==
+                    "f4f48266e0b23c7d61c12cd3cf1b10c02d2dc904f33b4e1230b54cfe8bf2d2ba");
             }
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
             while (elapsed.Elapsed < TimeSpan.FromMilliseconds(1500)) { session.Pump(); Thread.Sleep(10); }
@@ -141,6 +147,7 @@ internal static class Program
                     var snapshot = session.ReadCombatSnapshot(0)!;
                     Check(snapshot.IsImport && snapshot.Status == CombatSnapshotStatus.Ended);
                     Check(snapshot.Damage == 400 && snapshot.Healed == 0 && snapshot.Combatants.Length == 2);
+                    Check(snapshot.Zone == "Limsa Lominsa Lower Decks");
                     Check(snapshot.DurationTicks == TimeSpan.FromSeconds(2).Ticks);
                     var player = snapshot.Combatants.Single(actor => actor.Name == "YOU");
                     var enemy = snapshot.Combatants.Single(actor => actor.Name == "Fixture Enemy");
@@ -482,6 +489,7 @@ internal static class Program
     private static void LinuxCompatibility()
     {
         WriterCompatibilityChecks.Run();
+        ResourceCompatibilityChecks.Run("binaries/FFXIV_ACT_Plugin_SDK_3.0.3.3/SDK\\FFXIV_ACT_Plugin.Resource.dll");
         var path = "binaries/FFXIV_ACT_Plugin_SDK_3.0.3.3/SDK\\FFXIV_ACT_Plugin.Memory.dll";
         var original = File.ReadAllBytes(path);
         var before = SHA256.HashData(original);

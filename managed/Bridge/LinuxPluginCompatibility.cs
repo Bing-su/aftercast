@@ -9,7 +9,7 @@ using System.Security.Cryptography;
 namespace Bxivact.Bridge;
 
 // Pin the inspected bytes; never guess offsets for an unknown plugin build.
-internal static class LinuxPluginCompatibility
+internal static partial class LinuxPluginCompatibility
 {
     internal static bool IsKnownPlugin(byte[] hash) => OperatingSystem.IsLinux()
         && Convert.ToHexStringLower(hash) == "af1031cdba8eeba8f53dd9d618e58d62d4919bfa77db9b31c568bd04cb359093";
@@ -34,6 +34,9 @@ internal static class LinuxPluginCompatibility
 
     internal static Assembly LoadLogfile(AssemblyLoadContext context, Assembly plugin)
         => LoadEmbedded(context, plugin, "logfile", 26112, RewriteLogfile);
+
+    internal static Assembly LoadResource(AssemblyLoadContext context, Assembly plugin)
+        => LoadEmbedded(context, plugin, "resource", 8671232, RewriteResource);
 
     internal static byte[] RewriteLogfile(byte[] original)
     {

@@ -6,5 +6,6 @@
   <ItemGroup>
     <!-- Exercise the exact production byte rewrite without loading the ACT host or its workers. -->
     <Compile Include="../../Bridge/LinuxPluginCompatibility.cs" Link="LinuxPluginCompatibility.cs" />
+    <Compile Include="../../Bridge/LinuxResourceCompatibility.cs" Link="LinuxResourceCompatibility.cs" />
   </ItemGroup>
 </Project>

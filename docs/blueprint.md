@@ -173,6 +173,8 @@ writer harness establish actual bytes, flush visibility, private I/O diagnostics
 and a known cancellation failure. A guarded Linux in-memory correction now
 exits through the existing disposal handlers; pending queue records still remain.
 These checks do not establish lossless shutdown, durable storage or FF Logs acceptance.
-The [resource portability investigation](m4-resource-portability.md) also confirms
-a Windows newline assumption in original territory/action resources on Linux.
-The host preserves those original values; a resource correction remains open.
+The [resource portability correction](m4-resource-portability.md) restores the
+pinned original resource reader's exact CRLF semantics on Linux without trimming
+input or modifying resource text/metadata. Its full resource/radix matrix and
+embedded overrides match an independent CIL-derived Windows-separator reference;
+genuine Windows execution remains unverified.

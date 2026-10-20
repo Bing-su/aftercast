@@ -116,6 +116,12 @@ and ally contracts on the recorded action stream. It does not establish original
 ACT import orchestration, UI behavior, encounter finalization, duration, titles,
 counters or complete end-to-end Windows parity.
 
+After the guarded resource correction, all three imports again matched their
+exact submitted-action oracle, retained the same action/actor cardinalities and
+reported 42 notices, five simulator warnings and zero host diagnostics. The
+corrected-resource transcripts also pass the same genuine/replacement replay;
+source-log bytes remain unchanged.
+
 ## Limits
 
 | Boundary | Remaining limitation |
@@ -124,7 +130,7 @@ counters or complete end-to-end Windows parity.
 | Coverage | One encounter family and a legacy recorded plugin version do not establish compatibility with every expansion, log revision, locale, or plugin. |
 | EOF | The host drains actions already submitted to ACT. It does not claim to flush the original parser's private deferred events by inventing a final record. |
 | Repeated import | Restoring the host's live state does not reset every plugin-private service or guarantee the same actor/action stream. The oracle verifies each actual stream exactly, and cold sessions remain preferable for comparisons. |
-| Linux resources | Original embedded resource parsing can retain CR suffixes; see [resource portability](m4-resource-portability.md). Stable values do not imply this portability gap is repaired. |
+| Linux resources | The pinned build now receives the guarded [CRLF resource correction](m4-resource-portability.md); original recorded observations above predate it. This does not imply compatibility with another plugin build. |
 | Live capture | No native network capture, game process, or live encounter was exercised. |
 | Recording | Import and raw observation do not establish disk-writer compatibility or durability. |
 
