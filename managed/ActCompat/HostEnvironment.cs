@@ -11,7 +11,7 @@ namespace Advanced_Combat_Tracker
         public Label lblPluginStatus = null!;
     }
 
-    public class FormActMain(DirectoryInfo appDataFolder) : Form
+    public partial class FormActMain(DirectoryInfo appDataFolder) : Form
     {
         private readonly Dictionary<object, ActPluginData> plugins = new(ReferenceEqualityComparer.Instance);
         private readonly object errorGate = new();
@@ -59,6 +59,7 @@ namespace Bxivact.ActCompat
     public class HostEnvironment : IDisposable
     {
         private readonly FormActMain main;
+        private bool disposed;
         public HostEnvironment(string directory)
         {
             main = new(new DirectoryInfo(directory));
@@ -76,6 +77,9 @@ namespace Bxivact.ActCompat
         public Tuple<long, string> Diagnostics => main.Errors;
         public void Dispose()
         {
+            // A previous environment may be disposed again after another host has acquired the globals.
+            if (disposed) return;
+            disposed = true;
             // Clear globals before disposal so a later session cannot observe a disposed root.
             ActGlobals.oFormActMain = null;
             ActGlobals.charName = null;

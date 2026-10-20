@@ -147,7 +147,6 @@ aggregation, and licensing remain open work.
 
 The [lifecycle slice](m1-plugin-lifecycle.md) adds host globals/registration,
 headless startup controls and tested fixture InitPlugin/DeInitPlugin handling.
-The original FFXIV InitPlugin is attempted on Linux and reports missing
-Control.SuspendLayout after the pinned Linux administrator-query adjustment,
-chart, ListView, timer and [button contracts](m1-button-contract.md).
+The original FFXIV InitPlugin is attempted on Linux and reaches combat-definition
+registration after the [controls, events and settings slice](m1-controls-and-settings.md).
 Original initialization remains incomplete.

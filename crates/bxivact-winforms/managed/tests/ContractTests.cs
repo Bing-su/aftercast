@@ -31,3 +31,6 @@ ChartContracts.Run();
 ListViewContracts.Run();
 TimerContracts.Run();
 ButtonContracts.Run();
+ControlModelContracts.Run();
+ListControlContracts.Run();
+SettingsControlContracts.Run();

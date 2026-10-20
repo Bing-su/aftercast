@@ -8,11 +8,14 @@ The crate has no Rust dependencies and never starts .NET or invokes its SDK.
 | Current support | Limit |
 | --- | --- |
 | Control hierarchy, TabPage / Label / Form / UserControl construction | Headless objects only; no rendering or native handles |
-| Text / Name / IsDisposed and disposal notification | No message loop, layout, control tree or cross-thread dispatch |
+| Text / Name / IsDisposed and disposal notification | Headless state; no native windows |
+| Control tree, geometry, Resize and child disposal | No layout engine or Layout events; batching methods have no work |
+| InvokeRequired and same-thread Invoke | Cross-thread Invoke throws until a caller-owned pump exists |
 | Chart, Series / ChartArea / Legend metadata and named collections | No data binding, plotting or rendering; BeginInit/EndInit have no invalidation work |
 | ListView columns, keyed rows, subitem text and enumeration | No native selection; SelectedItems stays empty; collection interfaces and APIs are partial |
 | Timer configuration, container lifetime and event registration | Enabled stores requested state; no automatic Tick callbacks or UI pump |
 | Button / ButtonBase, CheckBox.Checked / CheckedChanged, Control.Click wiring | Synchronous programmatic state changes; no native input, automatic checkbox toggling, dialog-button behavior or rendering |
+| Unbound ComboBox / ListBox, text/group/link settings controls | Partial collections; no data binding or native interaction; dialogs/clipboard throw explicitly |
 | Unsigned assembly, version 4.0.0.0 | No original WinForms strong-name identity |
 
 The host supplies .NET 10, deployment and assembly-context

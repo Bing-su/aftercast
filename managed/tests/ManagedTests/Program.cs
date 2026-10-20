@@ -207,6 +207,8 @@ internal static class Program
         Check((string)Call("ListViewProbe", "Run")! == "42");
         Check((int)Call("TimerProbe", "Run")! == 1);
         Check((int)Call("ButtonProbe", "Run")! == 2);
+        Check((int)Call("ControlModelProbe", "Run")! == 200);
+        Check((int)Call("SettingsControlProbe", "Run")! == 2);
         Check(typeof(Dnum).GetProperty("Number")!.GetSetMethod() is null && new Dnum(-11).Number == -11);
         try { new Dnum(1).ToString(); throw new Exception("Unimplemented formatting succeeded"); }
         catch (NotSupportedException) { }
@@ -214,15 +216,35 @@ internal static class Program
         try
         {
             Check(Call("HostProbe", "Root") is null);
+            var previous = new HostEnvironment(directory.FullName);
+            previous.Dispose();
+            using (var current = new HostEnvironment(directory.FullName))
+            {
+                var root = ActGlobals.oFormActMain;
+                previous.Dispose();
+                Check(ReferenceEquals(root, ActGlobals.oFormActMain));
+            }
             using (var environment = new HostEnvironment(directory.FullName))
             {
                 Check(Call("HostProbe", "Root") is not null);
+                Check((string)Call("StartupProbe", "Run")! == "original");
+                var main = ActGlobals.oFormActMain!;
+                var payload = new LogLineEventArgs("initial", 1, DateTime.UnixEpoch, "zone", false);
+                var calls = 0;
+                LogLineEventDelegate line = (import, info) => { Check(import && ReferenceEquals(info, payload)); info.logLine = "updated"; calls++; };
+                main.BeforeLogLineRead += line;
+                main.GetType().GetMethod("DispatchLogLine", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(main, [true, payload]);
+                main.BeforeLogLineRead -= line;
+                main.GetType().GetMethod("DispatchLogLine", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(main, [true, payload]);
+                Check(calls == 1 && payload.logLine == "updated" && payload.originalLogLine == "initial");
                 Check((string)Call("HostProbe", "Character", "Example Character")! == "Example Character");
                 Check((string)Call("HostProbe", "AppDataPath")! == directory.FullName);
                 Check((bool)Call("HostProbe", "MissingRegistration")!);
                 Call("HostProbe", "BackgroundDiagnostic");
                 var (count, diagnostic) = environment.Diagnostics;
                 Check(count == 1 && diagnostic.Contains("background diagnostic") && environment.Errors.Item1 == 0);
+                Check((string)Call("SettingsSerializerProbe", "Run")! == "after");
+                Check(environment.Diagnostics.Item1 == 3 && environment.Errors.Item1 == 2);
                 try { Call("HostProbe", "Restart"); throw new Exception("Embedded restart succeeded"); }
                 catch (PlatformNotSupportedException) { }
             }

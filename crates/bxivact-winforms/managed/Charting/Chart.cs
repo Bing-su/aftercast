@@ -1,5 +1,4 @@
 using System.ComponentModel;
-using System.Drawing;
 
 namespace System.Windows.Forms.DataVisualization.Charting;
 
@@ -11,7 +10,6 @@ public class Chart : Control, ISupportInitialize
     public LegendCollection Legends { get; } = new();
     public object? DataSource { get; set; }
     public ChartDashStyle BorderlineDashStyle { get; set; } = ChartDashStyle.NotSet;
-    public Size Size { get; set; }
     // Native initialization batches invalidation; this metadata-only model has no invalidation pump.
     public void BeginInit() { }
     public void EndInit() { }
