@@ -10,7 +10,7 @@ prerequisite, not completion of plugin initialization or ACT aggregation.
 | Can an original ACT reference bind to our F# assembly? | A probe compiled against the original EXE runs against the replacement DLL and calls selected Dnum members |
 | Does reference identity match? | Name Advanced Combat Tracker, version 3.8.5.288, neutral culture, public key token a946b61e93d97868 |
 | Is the original ACT executed? | The original file is read as PE metadata/compiler reference only; the runtime probe checks that Dnum comes from crates/bxivact/managed/Advanced Combat Tracker.dll |
-| Does this initialize FFXIV? | No. IActPluginV1, WinForms, host globals, plugin dependency resolution and InitPlugin remain pending |
+| Does this initialize FFXIV? | No. The subsequent [construction slice](m1-plugin-construction.md) adds IActPluginV1 and dependency resolution; UI, host globals and InitPlugin remain pending |
 | Can Rust receive a useful managed failure? | Command/status plus bounded UTF-8 diagnostic text; an unknown-command regression also checks the session still works afterward |
 
 ## Identity and public signing
@@ -92,7 +92,7 @@ loader-stage context as that loader is implemented.
 | Local retained bundle | binaries/analysis/act-contract-m1-2026-10-20-evidence.json |
 | Supplemental IL check | act-contract-m1-selected-il.txt: 14 selected method IL hashes/instruction counts matched REA using the existing PEReader helper |
 
-The next M1 work is the UI-dependent plugin interface/host globals, plugin
-resolver, initialization and cleanup. Windows runtime tests, native Linux WinForms
-replacement, the original FFXIV plugin, original ACT differential execution, live
-capture, aggregation and FF Logs acceptance have not been exercised here.
+The subsequent [construction slice](m1-plugin-construction.md) tests the original
+FFXIV plugin constructor. Host globals, initialization and cleanup remain pending.
+Windows runtime tests, native Linux WinForms UI, original ACT differential execution,
+live capture, aggregation and FF Logs acceptance have not been exercised here.

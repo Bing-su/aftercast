@@ -1,6 +1,6 @@
 //! In-process ACT-compatible hosting.
 //!
-//! Provides bridge lifecycle and an initial ACT contract slice, not plugin execution or parsing.
+//! Provides bridge lifecycle, plugin construction, and an initial ACT contract slice.
 //! Call [`extract_bridge`] once to deploy the bundled, prebuilt F# component, then use
 //! [`Host::start`] with a trusted .NET 10 installation. No SDK or download is used at runtime.
 
@@ -8,12 +8,14 @@ mod bridge;
 mod runtime;
 
 pub use bridge::extract_bridge;
-pub use runtime::{Host, HostConfig};
+pub use runtime::{Host, HostConfig, PluginConfig, PluginId};
 
 /// Failures that callers can distinguish without parsing diagnostic messages.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("invalid plugin request: {0}")]
+    InvalidPluginRequest(String),
     #[error("I/O operation failed for {path}: {source}")]
     Io {
         path: std::path::PathBuf,

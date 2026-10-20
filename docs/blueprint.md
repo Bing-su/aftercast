@@ -137,5 +137,7 @@ consumer process.
 
 M0 is implemented; see [development evidence](development.md). M1 has an initial
 [binary-contract binding slice](m1-contract-binding.md): a public-signed ACT identity
-and selected Dnum members used by an original-reference probe. Full plugin binding,
-initialization, WinForms, native Linux capture, aggregation, and licensing remain open work.
+and selected Dnum members used by an original-reference probe. The next slice adds
+[plugin discovery and construction](m1-plugin-construction.md), including an original
+FFXIV plugin constructor on Linux. Initialization, WinForms UI, native Linux capture,
+aggregation, and licensing remain open work.

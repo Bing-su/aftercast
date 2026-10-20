@@ -6,6 +6,13 @@
   </PropertyGroup>
   <ItemGroup>
     <ProjectReference Include="../ActCompat/ActCompat.fsproj" />
+    <Reference Include="System.Windows.Forms">
+      <HintPath>$(PkgMicrosoft_NETFramework_ReferenceAssemblies_net48)/build/.NETFramework/v4.8/System.Windows.Forms.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" GeneratePathProperty="true" PrivateAssets="all" ExcludeAssets="all" />
+    <Compile Include="Platform.fs" />
+    <Compile Include="PluginLoader.fs" />
     <Compile Include="EntryPoint.fs" />
   </ItemGroup>
 </Project>

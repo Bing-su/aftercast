@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Bxivact.PluginDependency</AssemblyName>
+    <!-- Keep this fixture's dependency call observable instead of exporting it for F# inlining. -->
+    <OtherFlags>--nooptimizationdata</OtherFlags>
+  </PropertyGroup>
+  <ItemGroup><Compile Include="Value.fs" /></ItemGroup>
+</Project>

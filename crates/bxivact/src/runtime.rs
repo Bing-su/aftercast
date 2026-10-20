@@ -10,7 +10,7 @@ use std::{
 };
 
 use bon::Builder;
-use bytes::BytesMut;
+use bytes::{BufMut, BytesMut};
 use netcorehost::{
     hostfxr::{
         AssemblyDelegateLoader, Hostfxr, HostfxrContext, InitializedForRuntimeConfig,
@@ -36,6 +36,24 @@ pub struct HostConfig {
     /// Trusted directory previously prepared with [`crate::extract_bridge`].
     #[builder(into)]
     bridge_directory: PathBuf,
+}
+
+/// Constructor-only loading of a trusted ACT plugin; no initialization or parsing occurs.
+#[derive(Debug, Builder)]
+pub struct PluginConfig {
+    /// Plugin assembly path; dependencies are resolved from its deployment directory.
+    #[builder(into)]
+    path: PathBuf,
+    /// Fully qualified type name. Omit only when exactly one eligible plugin type exists.
+    #[builder(into)]
+    type_name: Option<String>,
+}
+
+/// Session-scoped identity of a constructed instance, not an initialized plugin.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct PluginId {
+    session: u64,
+    instance: u64,
 }
 
 #[repr(C)]
@@ -65,6 +83,7 @@ fn acquire_lease() -> Result<ActiveLease, Error> {
 pub struct Host {
     entry: ManagedFunctionWithDefaultSignature,
     read_error: ManagedFunctionWithDefaultSignature,
+    create_plugin: ManagedFunctionWithDefaultSignature,
     session: u64,
     running: bool,
     // Keep the native library and delegate loader alive for every managed function call.
@@ -99,9 +118,14 @@ impl Host {
             pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
             pdcstr!("ReadError"),
         )?;
+        let create_plugin = loader.get_function_with_default_signature(
+            pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
+            pdcstr!("CreatePlugin"),
+        )?;
         let mut host = Self {
             entry,
             read_error,
+            create_plugin,
             session: 0,
             running: false,
             _loader: loader,
@@ -122,6 +146,45 @@ impl Host {
     /// Confirms that this session still owns the managed host and returns its identity.
     pub fn session_id(&self) -> Result<u64, Error> {
         self.call(2).map(|packet| packet.session)
+    }
+
+    /// Constructs a trusted plugin and retains it until this host stops.
+    ///
+    /// Constructors execute arbitrary code in this process and may register global handlers.
+    /// No sandbox or assembly unloading is provided. `InitPlugin` and `DeInitPlugin` are not
+    /// called. On Linux only signature binding for `TabPage`/`Label` is available; creating UI
+    /// controls fails explicitly. For example, select a type with
+    /// `PluginConfig::builder().path("plugin.dll").type_name("Example.Plugin").build()`.
+    pub fn create_plugin(&mut self, config: PluginConfig) -> Result<PluginId, Error> {
+        let path = canonicalize(&config.path)?;
+        let path = path.to_str().ok_or_else(|| {
+            Error::InvalidPluginRequest("plugin paths must be valid UTF-8".to_owned())
+        })?;
+        let mut packet = plugin_packet(self.session, path, config.type_name.as_deref())?;
+        let length = i32::try_from(packet.len())
+            .map_err(|error| Error::InvalidPluginRequest(error.to_string()))?;
+        // SAFETY: CreatePlugin uses ComponentEntryPoint, borrows this initialized buffer only
+        // during the call, checks all ranges, and writes its result within the 40-byte header.
+        let status = unsafe { (self.create_plugin)(packet.as_mut_ptr().cast(), length) };
+        if status != 0 {
+            return Err(Error::Managed {
+                command: 4,
+                status,
+                message: self.error_message(),
+            });
+        }
+        let bytes: [u8; 8] = packet
+            .get(32..40)
+            .and_then(|bytes| bytes.try_into().ok())
+            .ok_or_else(|| Error::InvalidPluginRequest("missing plugin result".to_owned()))?;
+        let instance = u64::from_le_bytes(bytes);
+        if instance == 0 {
+            return Err(Error::InvalidPluginRequest("zero plugin result".to_owned()));
+        }
+        Ok(PluginId {
+            session: self.session,
+            instance,
+        })
     }
 
     /// Stops the managed session. The CLR and loaded assemblies may remain in the process.
@@ -176,6 +239,34 @@ impl Host {
             Err(error) => format!("Invalid UTF-8 in managed diagnostics: {error}"),
         }
     }
+}
+
+fn plugin_packet(session: u64, path: &str, type_name: Option<&str>) -> Result<BytesMut, Error> {
+    let type_name = type_name.unwrap_or_default();
+    if path.contains('\0') || type_name.contains('\0') || type_name.len() > 4096 {
+        return Err(Error::InvalidPluginRequest(
+            "NUL or oversized type name".to_owned(),
+        ));
+    }
+    let length = 40_usize
+        .checked_add(path.len())
+        .and_then(|size| size.checked_add(type_name.len()));
+    let size = length
+        .filter(|size| *size <= 65536)
+        .ok_or_else(|| Error::InvalidPluginRequest("request exceeds 65536 bytes".to_owned()))?;
+    let mut packet = BytesMut::with_capacity(size);
+    // These lengths are bounded by the 64 KiB ABI limit before conversion.
+    packet.put_u32_le(size as u32);
+    packet.put_u32_le(1);
+    packet.put_u64_le(session);
+    packet.put_u32_le(40);
+    packet.put_u32_le(path.len() as u32);
+    packet.put_u32_le(40 + path.len() as u32);
+    packet.put_u32_le(type_name.len() as u32);
+    packet.put_u64_le(0);
+    packet.extend_from_slice(path.as_bytes());
+    packet.extend_from_slice(type_name.as_bytes());
+    Ok(packet)
 }
 
 impl Drop for Host {
@@ -259,6 +350,37 @@ fn find_hostfxr(root: &Path) -> Result<PathBuf, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plugin_requests_bound_lengths_and_preserve_utf8() {
+        let packet =
+            plugin_packet(9, "/plugin.dll", Some("Example.Plugin")).expect("encode request");
+        assert_eq!(packet.get(8..16), Some(9_u64.to_le_bytes().as_slice()));
+        assert_eq!(
+            packet.get(40..),
+            Some(b"/plugin.dllExample.Plugin".as_slice())
+        );
+        for (path, name) in [
+            ("/bad\0path", "Plugin".to_owned()),
+            ("/plugin", "bad\0type".to_owned()),
+            ("/plugin", "x".repeat(4097)),
+        ] {
+            assert!(matches!(
+                plugin_packet(1, path, Some(&name)),
+                Err(Error::InvalidPluginRequest(_))
+            ));
+        }
+        assert_eq!(
+            plugin_packet(1, &"x".repeat(65496), None)
+                .expect("maximum request")
+                .len(),
+            65536
+        );
+        assert!(matches!(
+            plugin_packet(1, &"x".repeat(65497), None),
+            Err(Error::InvalidPluginRequest(_))
+        ));
+    }
 
     #[test]
     fn only_stable_net10_host_versions_are_candidates() {

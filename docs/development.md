@@ -27,6 +27,7 @@ so workspace publication is disabled rather than inventing a license.
 | `mise run managed:build` | Locked restore and portable Release publish into the Cargo payload |
 | `mise run managed:test` | Build, then verify ABI validation and managed session ownership through F# Interactive |
 | `mise run test:act-binding` | Check the pinned local ACT hash, compile the legacy-reference probe, and run it against the replacement; requires the original local ACT artifact |
+| `DOTNET_ROOT=/usr/lib/dotnet mise run test:plugins` | Build fixtures; check plugin request bounds and construct instances through the Rust API, including dependency and constructor failures |
 | `mise run check` | Rust formatting, Clippy with warnings denied, ordinary tests |
 | `DOTNET_ROOT=/usr/lib/dotnet mise run test:hosting` | Run the explicitly ignored real CLR integration test on this Linux installation |
 | `mise run smoke -- /usr/lib/dotnet /private/new-bridge-directory` | Extract the bundled bridge, start/call/stop it; the parent must exist |
@@ -43,7 +44,9 @@ directories do not contain the renamed ACT assembly or the ReadError entry point
 
 The default test suite skips real CLR integration because consumers may not have
 a runtime installed at test time. Running test:hosting is required to claim real
-hosting validation. No test runs original ACT or the original plugin.
+hosting validation. The standard tests do not run original ACT or the original
+plugin; the separate [FFXIV constructor experiment](m1-plugin-construction.md)
+executes the plugin constructor only.
 
 ## Consumer interface and trust
 
@@ -53,6 +56,7 @@ hosting validation. No test runs original ACT or the original plugin.
 | HostConfig::builder() | Requires explicit dotnet_root and bridge_directory paths |
 | Host::start(config) | Acquires exclusive host ownership, selects the highest stable .NET 10 hostfxr in that installation, loads the standard managed delegate, starts session |
 | Host::session_id() | Makes a real managed call to validate the current component-local session identity |
+| Host::create_plugin(PluginConfig) | Selects and constructs a trusted IActPluginV1, returns an opaque session-scoped PluginId; never calls InitPlugin |
 | Host::stop() / Drop | Ends session; hostfxr and CLR remain process-owned |
 
 Use trusted runtime/component files and an application-controlled parent directory.
@@ -82,7 +86,7 @@ batch/event protocol.
 
 ReadError is a second ComponentEntryPoint delegate. It returns the required UTF-8
 byte count and writes nothing when capacity is insufficient. Diagnostics persist
-until the next Invoke and are read immediately on the owning thread. Rust uses an
+until the next Invoke/CreatePlugin and are read immediately on the owning thread. Rust uses an
 initialized 8192-byte BytesMut, validates length/UTF-8, and includes the text with
 command/status in Error::Managed. Exception summaries are capped at 2048 UTF-16
 code units; this is diagnostic text, not a serialized exception object.
@@ -93,10 +97,12 @@ code units; this is diagnostic text, not a serialized exception object.
 | --- | --- |
 | Bxivact.Bridge.dll | ComponentEntryPoint implementation |
 | Bxivact.Bridge.runtimeconfig.json | .NET 10 LatestPatch requirement |
+| Bxivact.Bridge.runtimeconfig.windows.json | Cargo extraction uses this Desktop Runtime configuration on Windows |
 | Bxivact.Bridge.deps.json | Dependency resolver input |
 | Advanced Combat Tracker.dll | Public-signed ACT 3.8.5.288 identity; session scaffold and initial Dnum contract slice |
 | FSharp.Core.dll | Locked NuGet 10.0.113 runtime dependency |
 | FSharp.Core.LICENSE | Upstream MIT notice, also extracted with the payload |
+| System.Windows.Forms.dll | Linux-only unsigned signature adapter; only TabPage/Label, with throwing constructors; never extracted on Windows |
 
 Locale satellite assemblies are excluded. F# library diagnostics fall back to
 English; FFXIV regional resources are unrelated. Cargo include patterns restrict
@@ -104,7 +110,7 @@ the payload to flat DLL/config/license files, even if a maintainer has old local
 folders locally. Managed bin/obj output and original proprietary artifacts are
 ignored. There is no build.rs, nethost-download, automatic runtime fetch, or
 consumer-side dotnet invocation. bytes is included as requested for the planned
-batch milestone; M0 has no byte-stream API yet.
+batch milestone and bounds the new plugin request buffer; there is no event-stream API yet.
 
 ## Review and validation record — 2026-10-20
 

@@ -7,6 +7,12 @@
         "requested": "[10.0.113, )",
         "resolved": "10.0.113",
         "contentHash": "QfU6LsrPw9uSq/10z0MMaZ2xMWAKCo1oeTg8FFtCyyAuPv+lFEIoaHEi191QSxvadJ9jRaKNR+GndDocqOZMog=="
+      },
+      "Microsoft.NETFramework.ReferenceAssemblies.net48": {
+        "type": "Direct",
+        "requested": "[1.0.3, )",
+        "resolved": "1.0.3",
+        "contentHash": "zMk4D+9zyiEWByyQ7oPImPN/Jhpj166Ky0Nlla4eXlNL8hI/BtSJsgR8Inldd4NNpIAH3oh8yym0W2DrhXdSLQ=="
       }
     }
   }

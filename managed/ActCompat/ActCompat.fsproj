@@ -9,6 +9,13 @@
     <AssemblyOriginatorKeyFile>ACT.publickey</AssemblyOriginatorKeyFile>
   </PropertyGroup>
   <ItemGroup>
+    <!-- Compile the original UI signatures without shipping Windows reference assemblies. -->
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" GeneratePathProperty="true" PrivateAssets="all" ExcludeAssets="all" />
+    <Reference Include="System.Windows.Forms">
+      <HintPath>$(PkgMicrosoft_NETFramework_ReferenceAssemblies_net48)/build/.NETFramework/v4.8/System.Windows.Forms.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Compile Include="IActPluginV1.fs" />
     <Compile Include="Dnum.fs" />
     <Compile Include="HostSession.fs" />
   </ItemGroup>
