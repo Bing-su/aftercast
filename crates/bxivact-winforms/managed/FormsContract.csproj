@@ -15,5 +15,5 @@
     <AssemblyName>System.Windows.Forms</AssemblyName>
     <AssemblyVersion>4.0.0.0</AssemblyVersion>
   </PropertyGroup>
-  <ItemGroup><Compile Remove="tests/**/*.cs" /></ItemGroup>
+  <ItemGroup><Compile Remove="tests/**/*.cs;Charting/**/*.cs" /></ItemGroup>
 </Project>

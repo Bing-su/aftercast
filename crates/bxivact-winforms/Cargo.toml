@@ -4,7 +4,7 @@ description = "A prebuilt managed WinForms compatibility assembly for Linux host
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-include = ["src/**", "managed/*.dll", "managed/*.cs", "managed/*.csproj", "managed/packages.lock.json", "managed/tests/*.cs", "managed/tests/*.csproj", "managed/tests/packages.lock.json", "README.md"]
+include = ["src/**", "managed/*.dll", "managed/*.cs", "managed/*.csproj", "managed/packages.lock.json", "managed/Charting/*.cs", "managed/Charting/*.csproj", "managed/Charting/packages.lock.json", "managed/tests/*.cs", "managed/tests/*.csproj", "managed/tests/packages.lock.json", "README.md"]
 
 [lints]
 workspace = true

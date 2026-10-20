@@ -1,5 +1,6 @@
 using System.Reflection;
 using System.Windows.Forms;
+using System.Windows.Forms.DataVisualization.Charting;
 using Advanced_Combat_Tracker;
 
 namespace Bxivact.PluginFixture;
@@ -47,6 +48,13 @@ public class LifecyclePlugin(string mode) : IActPluginV1
     {
         // Compile against the genuine WinForms reference and execute against the headless adapter.
         using var settings = new UserControl { Text = "Settings" };
+        // Resolve the separate chart assembly through the plugin context and share its Control base type.
+        using var chart = new Chart();
+        chart.Series.Add(new Series { Name = "Capture", XValueType = ChartValueType.DateTime });
+        Control graph = chart;
+        graph.Text = "Capture status";
+        if (chart.Series["Capture"].XValueType != ChartValueType.DateTime || graph.Text != "Capture status")
+            throw new Exception("Chart contract failed");
         if (settings.IsDisposed || settings.Text != "Settings") throw new Exception("UserControl contract failed");
         PluginDependency.Value.CheckPermissions();
         var dependency = Path.Combine(Path.GetDirectoryName(GetType().Assembly.Location)!, "Bxivact.PluginDependency.dll");

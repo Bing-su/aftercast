@@ -19,6 +19,9 @@ internal sealed class PluginContext(string path, byte[] hash) : AssemblyLoadCont
                 throw new InvalidOperationException("Unsupported ACT reference: " + name.FullName);
             return shared;
         }
+        // The chart contract must use the same Control identity as the shared WinForms adapter.
+        if (OperatingSystem.IsLinux() && name.Name == "System.Windows.Forms.DataVisualization")
+            return GetLoadContext(typeof(PluginContext).Assembly)!.LoadFromAssemblyName(name);
         if (name.Name == "FFXIV_ACT_Plugin.Memory" && LinuxPluginCompatibility.IsKnownPlugin(hash))
             return LinuxPluginCompatibility.LoadMemory(this, Assemblies.First(assembly => assembly.Location == path));
         // Share these with both file-loaded and Costura byte-loaded dependencies.

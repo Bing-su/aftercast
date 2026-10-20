@@ -148,4 +148,5 @@ aggregation, and licensing remain open work.
 The [lifecycle slice](m1-plugin-lifecycle.md) adds host globals/registration,
 headless startup controls and tested fixture InitPlugin/DeInitPlugin handling.
 The original FFXIV InitPlugin is attempted on Linux and reports a missing
-System.Windows.Forms.DataVisualization after the pinned Linux administrator-query adjustment; original initialization remains incomplete.
+System.Windows.Forms.ListView after the pinned Linux administrator-query adjustment
+and the chart contract slice; original initialization remains incomplete.

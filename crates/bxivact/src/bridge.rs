@@ -41,6 +41,11 @@ const FILES: &[(&str, &[u8])] = &[
     ),
     #[cfg(target_os = "linux")]
     ("System.Windows.Forms.dll", bxivact_winforms::ASSEMBLY),
+    #[cfg(target_os = "linux")]
+    (
+        "System.Windows.Forms.DataVisualization.dll",
+        bxivact_winforms::DATAVISUALIZATION_ASSEMBLY,
+    ),
     (
         "Advanced Combat Tracker.dll",
         include_bytes!("../managed/Advanced Combat Tracker.dll"),

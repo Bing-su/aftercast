@@ -121,13 +121,15 @@ code units; this is diagnostic text, not a serialized exception object.
 | System.Windows.Extensions.dll / System.Windows.Extensions.windows.dll | Transitive 10.0.13 dependency; extraction chooses the platform asset and writes System.Windows.Extensions.dll |
 | Dotnet.Compatibility*.LICENSE | Upstream .NET runtime MIT notice and identical third-party notices for both compatibility packages |
 | System.Windows.Forms.dll | Linux-only headless control hierarchy, status text and disposal; native handles/rendering unsupported; never extracted on Windows |
+| System.Windows.Forms.DataVisualization.dll | Linux-only chart metadata/model contract owned by bxivact-winforms; no data binding or rendering; never extracted on Windows |
 
 The WinForms DLL, C# source and independent contract tests belong to
-`crates/bxivact-winforms`. Its only Rust export is `ASSEMBLY: &[u8]`; it has no Rust
+`crates/bxivact-winforms`. Its Rust exports are `ASSEMBLY` and
+`DATAVISUALIZATION_ASSEMBLY`, both `&[u8]`; it has no Rust
 dependencies. bxivact depends on it only on Linux, combines its bytes with the
 host payload during extraction, and retains managed context selection in the bridge.
 The C# contract runner references the managed projects and copies the independent
-WinForms DLL into its output. `managed:test-runner` builds it after publishing
+WinForms and chart DLLs into its output. `managed:test-runner` builds it after publishing
 the payload; the host crate does not own a second WinForms DLL.
 
 The bridge preloads its two legacy compatibility assemblies into the default
@@ -201,7 +203,7 @@ payload to a new directory.
 | Rust integration | Real CLR hosting, construction, failed-initialization cleanup, shutdown and restart pass; workspace tests and strict Linux/Windows-target Clippy pass |
 | Independent package | The extracted WinForms Cargo package rebuilds and runs its C# contract tests without the ACT projects |
 | SDK-free consumer | Extracted host Cargo package initializes and stops ReadyPlugin with a failing dotnet CLI shim first on PATH |
-| Original FFXIV | Same DataVisualization dependency failure as before the migration; successful initialization and parsing are not claimed |
+| Original FFXIV at migration | Same DataVisualization dependency failure as before the migration; the later chart slice advances to missing ListView; successful initialization and parsing are not claimed |
 
 Context7 was used for netcorehost's standard delegate flow and scopeguard's
 Always/into_inner semantics, and compared with the resolved crate source.

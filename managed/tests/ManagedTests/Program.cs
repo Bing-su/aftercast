@@ -32,7 +32,10 @@ internal static class Program
     {
         // Only the original-reference test calls ACT UI types before startup; ABI modes exercise normal binding.
         if (OperatingSystem.IsLinux() && args.Single() == "act")
+        {
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.dll"));
+            AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.DataVisualization.dll"));
+        }
         // Modes keep artifact-dependent checks separate from ordinary ABI tests without a test framework dependency.
         switch (args.Single())
         {
@@ -200,6 +203,7 @@ internal static class Program
             { ExceptionDispatchInfo.Capture(error.InnerException).Throw(); throw; }
         }
         Check((long)Call("ContractProbe", "Run")! == 123);
+        Check((string)Call("ChartProbe", "Run")! == "Network");
         Check(typeof(Dnum).GetProperty("Number")!.GetSetMethod() is null && new Dnum(-11).Number == -11);
         try { new Dnum(1).ToString(); throw new Exception("Unimplemented formatting succeeded"); }
         catch (NotSupportedException) { }

@@ -32,8 +32,20 @@ fn extraction_preserves_existing_directories() {
             .expect("read compatibility assembly"),
         bxivact_winforms::ASSEMBLY
     );
+    #[cfg(target_os = "linux")]
+    assert_eq!(
+        std::fs::read(directory.join("System.Windows.Forms.DataVisualization.dll"))
+            .expect("read chart compatibility assembly"),
+        bxivact_winforms::DATAVISUALIZATION_ASSEMBLY
+    );
     #[cfg(windows)]
     assert!(!directory.join("System.Windows.Forms.dll").exists());
+    #[cfg(windows)]
+    assert!(
+        !directory
+            .join("System.Windows.Forms.DataVisualization.dll")
+            .exists()
+    );
     let assembly = directory.join("Bxivact.Bridge.dll");
     let expected = std::fs::read(&assembly).expect("read extracted assembly");
     let error = extract_bridge(&directory).expect_err("existing directories must be preserved");

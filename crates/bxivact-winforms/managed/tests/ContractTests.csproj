@@ -7,5 +7,9 @@
     <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>
   </PropertyGroup>
-  <ItemGroup><ProjectReference Include="../FormsContract.csproj" /></ItemGroup>
+  <ItemGroup>
+    <!-- Both APIs are used directly; keep references explicit in isolated package builds too. -->
+    <ProjectReference Include="../FormsContract.csproj" />
+    <ProjectReference Include="../Charting/Charting.csproj" />
+  </ItemGroup>
 </Project>

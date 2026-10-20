@@ -3,7 +3,8 @@
 Checked on Linux x86-64 / .NET 10.0.13 on 2026-10-20. Fixture initialization and
 cleanup work. The pinned FFXIV build passes UserControl, legacy permission binding
 and the Windows administrator query with a Linux compatibility adjustment. It now
-fails on missing System.Windows.Forms.DataVisualization. This is not completion
+fails on missing System.Windows.Forms.ListView after the
+[chart contract slice](m1-chart-contract.md). This is not completion
 of M1 or parser readiness.
 
 ## Implemented slice
@@ -18,6 +19,7 @@ of M1 or parser readiness.
 | RestartACT(bool,string) -> void | Throws PlatformNotSupportedException; an embedded library must not restart the application |
 | Linux controls | Control -> ScrollableControl -> Panel -> TabPage; Control -> Label; ScrollableControl -> ContainerControl -> Form / UserControl; Component disposal, Text, Name, IsDisposed |
 | Legacy permission binding | Official System.Security.Permissions 10.0.13 plus transitive System.Windows.Extensions 10.0.13; shared with plugin and byte-loaded dependency contexts |
+| Linux chart model | Separate DataVisualization assembly; Chart derives shared Control and retains series, areas, legends and designer metadata; DataBind throws |
 | Unsupported UI | Handle and CreateControl throw; control trees, layout, drawing, timers, handles and message dispatch are absent |
 
 Host globals are unavailable to constructors before the first initialization
@@ -164,7 +166,7 @@ execution and successful original parser startup remain unverified.
 | Resolution | Intercept the memory dependency in PluginContext.Load before Costura fallback; decompress its embedded resource to exactly 70144 bytes and verify the full assembly and method hashes |
 | Replacement | Preserve get_Current and set_IsAdministrator; replace IL offsets 6..25 with ldc.i4.0 and nineteen nops; Windows administrator status becomes false |
 | Failure policy | Reject different memory bytes, oversized resources and unexpected IL; never guess offsets for a new build |
-| Observed next boundary | The Rust initializer now reports missing System.Windows.Forms.DataVisualization, Version=4.0.0.0, token 31bf3856ad364e35 |
+| Boundary after this adjustment | The Rust initializer reported missing System.Windows.Forms.DataVisualization, Version=4.0.0.0, token 31bf3856ad364e35; the later chart slice advances to ListView |
 
 Linux does not supply a Windows administrator token. Reporting false is a
 conservative host compatibility policy, not a Linux root/capability test or a
@@ -179,7 +181,8 @@ This changes one dependency's behavior, so this probe is the original main plugi
 with an adjusted memory dependency, rather than a byte-identical original runtime.
 Assemblies still remain process-owned, and partial initialization can leave plugin
 side effects. No original initialization completion, capture or parser success is
-claimed. The next slice is the observed DataVisualization/settings UI dependency.
+claimed. The subsequent [chart slice](m1-chart-contract.md) handles the observed
+DataVisualization contract and advances to the ListView/settings UI dependency.
 
 `mise run test:linux-plugin-compat` checks the supplied memory artifact without
 executing it: exact metadata and IL, preservation of bytes outside the twenty-byte

@@ -4,8 +4,8 @@ depends = ["winforms:build"]
 run = "dotnet publish managed/Bridge/Bridge.csproj -c Release --no-self-contained -o crates/bxivact/managed -p:RestoreLockedMode=true"
 
 [tasks."winforms:build"]
-description = "Build the independent WinForms compatibility assembly and update its crate payload"
-run = ["dotnet build crates/bxivact-winforms/managed/FormsContract.csproj -c Release -o target/managed/forms -p:RestoreLockedMode=true", "cp target/managed/forms/System.Windows.Forms.dll crates/bxivact-winforms/managed/System.Windows.Forms.dll"]
+description = "Build the independent WinForms/chart compatibility assemblies and update their crate payload"
+run = ["dotnet build crates/bxivact-winforms/managed/Charting/Charting.csproj -c Release -o target/managed/forms -p:RestoreLockedMode=true", "cp target/managed/forms/System.Windows.Forms.dll target/managed/forms/System.Windows.Forms.DataVisualization.dll crates/bxivact-winforms/managed/"]
 
 [tasks."test:winforms"]
 description = "Check managed WinForms signatures and explicit UI failures without ACT"
@@ -14,7 +14,7 @@ run = "dotnet run --project crates/bxivact-winforms/managed/tests/ContractTests.
 
 [tasks."managed:restore"]
 description = "Restore and lock maintainer-only managed dependencies"
-run = ["dotnet restore managed/Bridge/Bridge.csproj", "dotnet restore crates/bxivact-winforms/managed/FormsContract.csproj", "dotnet restore crates/bxivact-winforms/managed/tests/ContractTests.csproj", "dotnet restore managed/tests/PluginFixture/PluginFixture.csproj", "dotnet restore managed/tests/LegacyReference/LegacyReference.csproj", "dotnet restore managed/tests/ManagedTests/ManagedTests.csproj"]
+run = ["dotnet restore managed/Bridge/Bridge.csproj", "dotnet restore crates/bxivact-winforms/managed/Charting/Charting.csproj", "dotnet restore crates/bxivact-winforms/managed/tests/ContractTests.csproj", "dotnet restore managed/tests/PluginFixture/PluginFixture.csproj", "dotnet restore managed/tests/LegacyReference/LegacyReference.csproj", "dotnet restore managed/tests/ManagedTests/ManagedTests.csproj"]
 
 [tasks.check]
 description = "Check formatting, Rust lints, and bridge tests"

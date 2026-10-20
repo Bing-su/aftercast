@@ -1,17 +1,21 @@
 # bxivact-winforms
 
 A prebuilt C# `System.Windows.Forms.dll` for Linux .NET hosts, exposed as
-`bxivact_winforms::ASSEMBLY`. C# source, the DLL, and contract tests live here.
+`bxivact_winforms::ASSEMBLY`. The companion chart DLL is exposed as
+`DATAVISUALIZATION_ASSEMBLY`. C# sources, DLLs and contract tests live here.
 The crate has no Rust dependencies and never starts .NET or invokes its SDK.
 
 | Current support | Limit |
 | --- | --- |
 | Control hierarchy, TabPage / Label / Form / UserControl construction | Headless objects only; no rendering or native handles |
 | Text / Name / IsDisposed and disposal notification | No message loop, layout, control tree or cross-thread dispatch |
+| Chart, Series / ChartArea / Legend metadata and named collections | No data binding, plotting or rendering; BeginInit/EndInit have no invalidation work |
 | Unsigned assembly, version 4.0.0.0 | No original WinForms strong-name identity |
 
 The host supplies .NET 10, deployment and assembly-context
 binding. Windows hosts must use real WinForms. ACT and FFXIV are not dependencies.
+Deploy both DLLs in the same managed load context so Chart shares the Control
+identity. These are tested signature/model subsets, not full WinForms or charting.
 
 From the workspace root, use `mise run winforms:build` to rebuild the checked-in
 DLL and `mise run test:winforms` for independent managed contract checks.
