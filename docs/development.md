@@ -25,13 +25,15 @@ so workspace publication is disabled rather than inventing a license.
 | --- | --- |
 | `mise run managed:restore` | Intentionally refresh maintainer NuGet restore/lock state when changing managed dependencies |
 | `mise run managed:build` | Locked restore and portable Release publish into the Cargo payload |
-| `mise run managed:test` | Build, then verify ABI validation and managed session ownership through F# Interactive |
+| `mise run winforms:build` | Independently rebuild the prebuilt DLL owned by bxivact-winforms |
+| `mise run test:winforms` | Check WinForms signature identity and explicit UI failures without ACT or the bridge |
+| `mise run managed:test` | Build, stage both crates' DLLs, then verify ABI validation, session ownership and the independent WinForms contract |
 | `mise run test:act-binding` | Check the pinned local ACT hash, compile the legacy-reference probe, and run it against the replacement; requires the original local ACT artifact |
 | `DOTNET_ROOT=/usr/lib/dotnet mise run test:plugins` | Build fixtures; check plugin request bounds and construct instances through the Rust API, including dependency and constructor failures |
 | `mise run check` | Rust formatting, Clippy with warnings denied, ordinary tests |
 | `DOTNET_ROOT=/usr/lib/dotnet mise run test:hosting` | Run the explicitly ignored real CLR integration test on this Linux installation |
 | `mise run smoke -- /usr/lib/dotnet /private/new-bridge-directory` | Extract the bundled bridge, start/call/stop it; the parent must exist |
-| `cargo package -p bxivact --offline` | Verify the isolated Cargo package builds using cached Rust dependencies, without managed sources or SDK compilation |
+| `mise run package:check` | Verify both isolated Cargo packages offline, resolving the unpublished WinForms dependency from its extracted package |
 | `cargo clippy --workspace --all-targets --target x86_64-pc-windows-gnu -- -D warnings` | Cross-check Windows Rust code; does not link/run a Windows program |
 
 Use your actual .NET root and application-controlled deployment directory. The
@@ -104,6 +106,29 @@ code units; this is diagnostic text, not a serialized exception object.
 | FSharp.Core.LICENSE | Upstream MIT notice, also extracted with the payload |
 | System.Windows.Forms.dll | Linux-only unsigned signature adapter; only TabPage/Label, with throwing constructors; never extracted on Windows |
 
+The WinForms DLL, F# source and independent contract tests belong to
+`crates/bxivact-winforms`. Its only Rust export is `ASSEMBLY: &[u8]`; it has no Rust
+dependencies. bxivact depends on it only on Linux, combines its bytes with the
+host payload during extraction, and retains managed context selection in the bridge.
+Direct F# bridge tests use `target/managed/test-bridge`, staged from both crates
+by `managed:test-payload`; the host crate no longer owns a second WinForms DLL.
+
+The WinForms F# project declares its own build settings and can be rebuilt from
+its extracted Cargo package without ACT projects or the root managed props.
+Consumers still use the prebuilt DLL and do not run a compiler. The host supplies
+the .NET runtime and FSharp.Core; the WinForms crate does not start a runtime.
+
+Because publication is disabled, package verification first packages bxivact-winforms,
+then supplies its extracted package with a temporary command-line crates.io patch
+when packaging bxivact. This checks the packaged bytes rather than depending on
+the source checkout. `package:check` currently names version 0.1.0 explicitly;
+update that path when changing the workspace version. The host archive excludes
+its generated lockfile so the temporary registry patch does not alter the workspace
+lockfile; Cargo still extracts and verifies both packages. Future registry publication
+must publish the WinForms dependency before the host. The path-plus-version
+dependency follows the [Cargo documentation](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#multiple-locations),
+checked through Context7.
+
 Locale satellite assemblies are excluded. F# library diagnostics fall back to
 English; FFXIV regional resources are unrelated. Cargo include patterns restrict
 the payload to flat DLL/config/license files, even if a maintainer has old locale
@@ -121,6 +146,8 @@ batch milestone and bounds the new plugin request buffer; there is no event-stre
 | Packaging | Initial publish emitted translated FSharp.Core satellites | Restrict satellite language and Cargo payload; remove obsolete generated folders |
 | Cross-platform | DirBuilder mutation was unused in Windows code | Apply Unix-private permissions in a cfg-gated shadow binding; Windows Clippy rechecked |
 | Reproducible payload | SDK assembly metadata appended the current Git revision, making checked-in assemblies change after a commit | Set managed version to 0.1.0 and disable revision suffixes in informational versions |
+| WinForms ownership | Moving the DLL left direct F# bridge tests without their colocated adapter | Stage both crates' payloads in target/managed/test-bridge; independent managed tests and Rust plugin construction pass |
+| Independent packaging | An unpublished workspace dependency cannot resolve from crates.io during host packaging | Verify the WinForms package first and patch its extracted copy into host verification; the packaged F# project rebuilds without ACT props, and the packaged host constructs the original FFXIV plugin with the SDK CLI blocked |
 
 Context7 was used for netcorehost's standard delegate flow and scopeguard's
 Always/into_inner semantics, and compared with the resolved crate source.

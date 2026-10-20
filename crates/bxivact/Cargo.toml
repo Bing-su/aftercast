@@ -14,6 +14,9 @@ thiserror.workspace = true
 tracing.workspace = true
 scopeguard.workspace = true
 
+[target.'cfg(target_os = "linux")'.dependencies]
+bxivact-winforms.workspace = true
+
 [lints]
 workspace = true
 

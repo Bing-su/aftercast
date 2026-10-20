@@ -1,5 +1,5 @@
-#r "../../crates/bxivact/managed/Advanced Combat Tracker.dll"
-#r "../../crates/bxivact/managed/Bxivact.Bridge.dll"
+#r "../../target/managed/test-bridge/Advanced Combat Tracker.dll"
+#r "../../target/managed/test-bridge/Bxivact.Bridge.dll"
 
 open System
 open System.Runtime.InteropServices

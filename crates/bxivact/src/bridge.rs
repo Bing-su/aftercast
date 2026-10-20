@@ -24,10 +24,7 @@ const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../managed/Bxivact.Bridge.runtimeconfig.windows.json"),
     ),
     #[cfg(target_os = "linux")]
-    (
-        "System.Windows.Forms.dll",
-        include_bytes!("../managed/System.Windows.Forms.dll"),
-    ),
+    ("System.Windows.Forms.dll", bxivact_winforms::ASSEMBLY),
     (
         "Advanced Combat Tracker.dll",
         include_bytes!("../managed/Advanced Combat Tracker.dll"),

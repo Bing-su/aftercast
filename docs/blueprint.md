@@ -29,10 +29,12 @@ not return fabricated success or empty data.
 ## Workspace
 
 ```text
-Cargo.toml                 # Keep the initial workspace centered on one public crate.
+Cargo.toml                 # Keep the host and Linux WinForms compatibility in one workspace.
 mise.toml                  # Run maintainer builds, validation, and packaging explicitly.
 crates/bxivact/             # Provide the reusable API; no separate sys crate initially.
   managed/                 # Ship prebuilt portable F# assemblies for SDK-free consumers.
+crates/bxivact-winforms/    # Supply the Linux WinForms DLL without ACT or hosting dependencies.
+  managed/                 # Own the F# implementation, prebuilt DLL, and contract tests.
 managed/ActCompat/          # Implement ACT contracts and state in their owning language.
 managed/Bridge/             # Translate native commands and batches into managed operations.
 managed/tests/              # Check the managed ABI independently of the original plugins.

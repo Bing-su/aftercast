@@ -37,6 +37,12 @@ not undo constructor side effects or guarantee assembly unloading. See .NET's
 | Linux | .NET 10 Core runtime plus our unsigned System.Windows.Forms adapter, version 4.0.0.0; only TabPage and Label exist, and both constructors throw PlatformNotSupportedException |
 | Windows | .NET 10 Desktop Runtime requested by the extracted runtime configuration; use real WinForms, never extract the Linux adapter |
 
+The Linux adapter is owned by the independent
+[bxivact-winforms crate](../crates/bxivact-winforms/README.md), including its F#
+source, prebuilt DLL and contract tests. bxivact consumes its bytes on Linux;
+runtime hosting and AssemblyLoadContext selection remain the host's responsibility.
+`mise run test:winforms` checks this managed contract without ACT or a plugin.
+
 The adapter does **not** reproduce the original WinForms strong-name token,
 inheritance hierarchy, controls, message loop or UI behavior. Tested modern .NET
 resolution binds the original signatures to the shared adapter despite its unsigned

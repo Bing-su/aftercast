@@ -8,6 +8,7 @@ Plugin initialization/parsing and Windows runtime execution remain unverified.
 
 - [Implementation plan](docs/blueprint.md)
 - [Development and validation](docs/development.md)
+- [Linux WinForms compatibility crate](crates/bxivact-winforms/README.md)
 - [M1 contract binding](docs/m1-contract-binding.md)
 - [M1 plugin construction](docs/m1-plugin-construction.md)
 - [ACT compatibility research](docs/act-host-compatibility-analysis.md)

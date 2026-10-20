@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/bxivact"]
+members = ["crates/bxivact", "crates/bxivact-winforms"]
 
 [workspace.package]
 version = "0.1.0"
@@ -8,6 +8,7 @@ edition = "2024"
 publish = false
 
 [workspace.dependencies]
+bxivact-winforms = { path = "crates/bxivact-winforms", version = "0.1.0" }
 bon = "3.10.2"
 bytes = "1.12.1"
 netcorehost = { version = "0.22.0", default-features = false, features = ["net10_0"] }

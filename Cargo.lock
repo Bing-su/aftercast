@@ -42,6 +42,7 @@ name = "bxivact"
 version = "0.1.0"
 dependencies = [
  "bon",
+ "bxivact-winforms",
  "bytes",
  "netcorehost",
  "scopeguard",
@@ -49,6 +50,10 @@ dependencies = [
  "thiserror",
  "tracing",
 ]
+
+[[package]]
+name = "bxivact-winforms"
+version = "0.1.0"
 
 [[package]]
 name = "bytes"

@@ -14,6 +14,14 @@ fn extraction_preserves_existing_directories() {
     let temporary = tempfile::tempdir().expect("create isolated extraction fixture");
     let directory = temporary.path().join("bridge");
     extract_bridge(&directory).expect("extract bundled bridge");
+    #[cfg(target_os = "linux")]
+    assert_eq!(
+        std::fs::read(directory.join("System.Windows.Forms.dll"))
+            .expect("read compatibility assembly"),
+        bxivact_winforms::ASSEMBLY
+    );
+    #[cfg(windows)]
+    assert!(!directory.join("System.Windows.Forms.dll").exists());
     let assembly = directory.join("Bxivact.Bridge.dll");
     let expected = std::fs::read(&assembly).expect("read extracted assembly");
     let error = extract_bridge(&directory).expect_err("existing directories must be preserved");
