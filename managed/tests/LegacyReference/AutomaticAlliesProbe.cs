@@ -15,7 +15,7 @@ public static class AutomaticAlliesProbe
         if (!condition) throw new Exception("Automatic ally probe failed: " + scenario);
     }
 
-    private static List<CombatantData> ReadAllies(EncounterData encounter, bool allowLimited = false)
+    internal static List<CombatantData> ReadAllies(EncounterData encounter, bool allowLimited = false)
     {
         try { return encounter.GetAllies(allowLimited); }
         catch (NullReferenceException error)

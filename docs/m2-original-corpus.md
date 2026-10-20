@@ -45,7 +45,7 @@ Later three-pass managed checks compared every run exactly with its own submitte
 
 ## Regression contract
 
-`OriginalCorpusChecks.Run(PluginSession, string)` requires the pinned input hash and repeats import three times within one initialized original-plugin session. Its oracle captures the committed `MasterSwing` scalars from `AfterCombatAction`, clones actual outgoing/incoming category links at observation time, and groups actions by encounter identity and resolved combatant. It does not use mutable event-copy fields or the informational damage-swing lists to classify amounts. The helper does not treat raw callback delivery as parser acceptance.
+`OriginalCorpusChecks.Run` requires the pinned input hash and verified artifact provenance and repeats import three times within one initialized original-plugin session. Its oracle captures the committed `MasterSwing` scalars from `AfterCombatAction`, clones actual outgoing/incoming category links at observation time, and groups actions by encounter identity and resolved combatant. It does not use mutable event-copy fields or the informational damage-swing lists to classify amounts. The helper does not treat raw callback delivery as parser acceptance.
 
 | Check | Purpose |
 | --- | --- |
@@ -80,11 +80,47 @@ and command sound are intentionally absent in the embedded host.
 
 The regression helper is maintained separately from the input fixture. Building the helper is not itself evidence that the three-import acceptance ran; execution results must be reported by the invoking test run.
 
+## Shared genuine-ACT replay
+
+Each corpus pass writes `recorded-actions-1.json` through `recorded-actions-3.json`
+inside its private state directory. These test artifacts contain combatant names
+and submitted action text; they are not committed or exposed as a library export
+format. The versioned schema bounds file size, action count, strings and graph
+references, rejects unknown or missing fields, and preserves registration order,
+duplicate links, constructor scalars, cultures and ACT flags.
+
+```sh
+mise run test:recorded-actions -- /private/new-state/recorded-actions-1.json
+```
+
+The task builds one probe against genuine ACT metadata, then executes that same
+probe through replacement ACT and the pinned original executable in separate
+processes. It installs captured registrations, creates actual `ZoneData` and
+`EncounterData` objects, and submits each captured `MasterSwing` through
+`ZoneData.AddCombatAction`. Expected numbers come from the import's independent
+action oracle; the replay probe does not aggregate amounts or supply ally lists
+to ACT.
+
+| Replay contract | Verified result |
+| --- | --- |
+| Source provenance | Pinned input and main-plugin hashes; decompressed Costura Parse resource hash; original ACT hash enforced by the genuine runner |
+| Ordered actions | First pass: 34,685; subsequent passes: 34,782 each; three encounters per pass |
+| Actor cardinality and four numeric totals | Exact match in both implementations: 35 actors initially, 36 on each repeated pass |
+| Automatic allies and allied damage/healing | Exact match in all nine replayed encounters |
+| Deliberately incorrect expected damage | Both implementations reject a one-point change to one actor's expected damage |
+| Original UI dependency | No main form; the existing pinned `GetAllies` debug-sink guard re-reads only an already-committed genuine cache |
+
+This comparison freezes parser output, including stochastic rounding, rather than
+rerunning the parser with an artificial RNG seed. It establishes these numeric
+and ally contracts on the recorded action stream. It does not establish original
+ACT import orchestration, UI behavior, encounter finalization, duration, titles,
+counters or complete end-to-end Windows parity.
+
 ## Limits
 
 | Boundary | Remaining limitation |
 | --- | --- |
-| Original ACT oracle | Existing genuine-reference getter probes support individual ACT semantics; this corpus has not been compared end to end with a Windows ACT run. |
+| Original ACT oracle | Recorded-action replay verifies numeric totals and automatic allies through genuine ACT objects. Complete parser/import orchestration has not been compared end to end with a Windows ACT run. |
 | Coverage | One encounter family and a legacy recorded plugin version do not establish compatibility with every expansion, log revision, locale, or plugin. |
 | EOF | The host drains actions already submitted to ACT. It does not claim to flush the original parser's private deferred events by inventing a final record. |
 | Repeated import | Restoring the host's live state does not reset every plugin-private service or guarantee the same actor/action stream. The oracle verifies each actual stream exactly, and cold sessions remain preferable for comparisons. |

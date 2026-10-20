@@ -85,6 +85,17 @@ description = "Run the same compiled value/state probes against replacement and 
 depends = ["test:act-binding"]
 run = 'dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release -p:RestoreLockedMode=true -- "binaries/act/Advanced Combat Tracker.exe" crates/bxivact-winforms/managed contracts managed/tests/LegacyReference/bin/Release/net10.0/Bxivact.LegacyReference.dll'
 
+[tasks."test:recorded-actions"]
+description = "Replay one captured action transcript through replacement and genuine ACT in isolated processes"
+depends = ["managed:test-runner"]
+usage = 'arg "<transcript>" help="Private JSON transcript emitted by test:original-corpus"'
+run = '''
+dotnet build managed/tests/LegacyReference/LegacyReference.csproj -c Release -p:RestoreLockedMode=true
+dotnet build managed/tests/OriginalReference/OriginalReference.csproj -c Release -p:RestoreLockedMode=true
+dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- recorded-actions "$usage_transcript"
+dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release --no-build -- "binaries/act/Advanced Combat Tracker.exe" crates/bxivact-winforms/managed recorded-actions managed/tests/LegacyReference/bin/Release/net10.0/Bxivact.LegacyReference.dll "$usage_transcript"
+'''
+
 [tasks."test:plugins"]
 description = "Check trusted plugin construction, initialization and cleanup; requires DOTNET_ROOT"
 depends = ["managed:test-runner"]

@@ -23,7 +23,7 @@ internal static class Program
 
     public static int Main(string[] args)
     {
-        if (args.Length is < 2 or > 4) throw new ArgumentException("Pass the original ACT EXE path, headless Forms DLL directory and optional mode");
+        if (args.Length is < 2 or > 5) throw new ArgumentException("Pass the original ACT EXE path, headless Forms DLL directory and optional mode");
         var actPath = Path.GetFullPath(args[0]);
         var formsDirectory = Path.GetFullPath(args[1]);
         var hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(actPath)));
@@ -49,6 +49,7 @@ internal static class Program
                 "values" when args.Length == 3 => DnumValues.Run(act),
                 "actions" when args.Length == 3 => AggregateValues.Run(act),
                 "contracts" when args.Length == 4 => RunContracts(args[3]),
+                "recorded-actions" when args.Length == 5 => RunRecordedActions(args[3], args[4]),
                 _ => throw new ArgumentException("Unknown original-reference mode")
             };
             return failures + unexpectedFailures == 0 ? 0 : 1;
@@ -82,6 +83,14 @@ internal static class Program
             new { zone = Read(encounter, "ZoneName"), title = Read(encounter, "Title") });
         Console.WriteLine(JsonSerializer.Serialize(new { failures }));
         return failures == 0 ? 0 : 1;
+    }
+
+    private static int RunRecordedActions(string probePath, string transcriptPath)
+    {
+        var probes = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(probePath));
+        Probe("Original recorded actions", () => probes.GetType("Bxivact.LegacyReference.RecordedActionProbe", throwOnError: true)!
+            .GetMethod("Run", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [Path.GetFullPath(transcriptPath)])!);
+        return 0;
     }
 
     private static int RunContracts(string path)

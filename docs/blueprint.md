@@ -162,9 +162,11 @@ repeated synthetic imports and failure recovery, with 400-damage action/aggregat
 assertions. Representative gameplay, complete deferred effects and table exports,
 native capture and Windows execution remain open.
 The [recorded Zeromus corpus](m2-original-corpus.md) additionally checks 104,744
-records per import against exact submitted-action totals. Original parser RNG and
-retained private import state remain observable; this is not a complete Windows
-ACT oracle or cross-encounter-family validation.
+records per import against exact submitted-action totals. Its captured actions
+also replay through the same compiled probe in genuine and replacement ACT,
+matching actor totals, automatic allies and allied encounter totals. Original
+parser RNG and retained private import state remain observable; this is not a
+complete Windows ACT oracle or cross-encounter-family validation.
 
 The [original recording investigation](m4-recording-research.md) and isolated
 writer harness establish actual bytes, flush visibility, private I/O diagnostics

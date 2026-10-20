@@ -5,6 +5,7 @@ using System.Security.Cryptography;
 using Advanced_Combat_Tracker;
 using Bxivact.ActCompat;
 using Bxivact.Bridge;
+using Bxivact.TestContracts;
 
 internal static class OriginalCorpusChecks
 {
@@ -24,7 +25,7 @@ internal static class OriginalCorpusChecks
         if (!condition) throw new Exception("Original corpus integration check failed: " + expression);
     }
 
-    internal static void Run(PluginSession session, string path)
+    internal static void Run(PluginSession session, string path, TranscriptProvenance provenance)
     {
         path = Path.GetFullPath(path);
         using (var input = File.OpenRead(path))
@@ -66,6 +67,7 @@ internal static class OriginalCorpusChecks
             {
                 values.Clear();
                 var firstEncounter = root.ZoneList[0].Items.Count;
+                using var capture = RecordedActionCapture.Begin(root, provenance);
                 var elapsed = Stopwatch.StartNew();
                 var report = session.ImportLog(path);
                 elapsed.Stop();
@@ -73,6 +75,11 @@ internal static class OriginalCorpusChecks
                 Check(values.Count > 0);
                 var imported = root.ZoneList[0].Items.Skip(firstEncounter).ToArray();
                 var expected = DeriveTotals(values, imported);
+                capture.Complete(expected.Select(encounter => new RecordedActionCapture.EncounterExpectation(
+                    encounter.Encounter, encounter.Actors.Select(pair => new TranscriptActor(pair.Key.Name,
+                        pair.Value.Damage, pair.Value.Healed, pair.Value.DamageTaken, pair.Value.HealsTaken)).ToArray(),
+                    encounter.Allies.Select(actor => actor.Name).ToArray(), encounter.Damage, encounter.Healed)).ToArray())
+                    .Write(Path.Combine(root.AppDataFolder.FullName, $"recorded-actions-{iteration + 1}.json"));
                 Check(expected.Length == report.Encounters);
                 Check(report.Combatants == expected.Sum(encounter => encounter.Actors.Count));
                 Check(report.Damage == expected.Sum(encounter => encounter.Damage));

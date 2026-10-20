@@ -34,7 +34,7 @@ internal static class Program
     {
         var mode = args[0];
         // Only the original-reference test calls ACT UI types before startup; ABI modes exercise normal binding.
-        if (OperatingSystem.IsLinux() && mode == "act")
+        if (OperatingSystem.IsLinux() && mode is "act" or "recorded-actions")
         {
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.dll"));
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.DataVisualization.dll"));
@@ -52,10 +52,22 @@ internal static class Program
             case "original": ObserveOriginal(args[1], args[2], args.Length > 3 ? args[3] : null); break;
             case "original-import": ObserveOriginal(args[1], args[2], "managed/tests/fixtures/ffxiv-synthetic.log"); break;
             case "original-corpus": ObserveOriginal(args[1], args[2], args[3], fixedFixture: false); break;
+            case "recorded-actions": RecordedActions(args[1]); break;
             default: throw new ArgumentException("Unknown managed test mode");
         }
         Console.WriteLine($"Managed {args[0]} contract checks passed.");
     }
+    private static void RecordedActions(string path)
+    {
+        var actual = typeof(Dnum).Assembly;
+        Check(SHA256.HashData(File.ReadAllBytes(actual.Location)).AsSpan().SequenceEqual(
+            SHA256.HashData(File.ReadAllBytes("crates/bxivact/managed/Advanced Combat Tracker.dll"))));
+        var legacy = Assembly.LoadFrom(Path.GetFullPath("managed/tests/LegacyReference/bin/Release/net10.0/Bxivact.LegacyReference.dll"));
+        try { Console.WriteLine(legacy.GetType("Bxivact.LegacyReference.RecordedActionProbe")!.GetMethod("Run")!.Invoke(null, [path])); }
+        catch (TargetInvocationException error) when (error.InnerException is not null)
+        { ExceptionDispatchInfo.Capture(error.InnerException).Throw(); throw; }
+    }
+
     private static void ObserveOriginal(string pluginPath, string statePath, string? importPath, bool fixedFixture = true)
     {
         // Run only an explicitly supplied trusted copy; wait long enough to observe caught worker failures.
@@ -81,7 +93,21 @@ internal static class Program
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
             while (elapsed.Elapsed < TimeSpan.FromMilliseconds(1500)) { session.Pump(); Thread.Sleep(10); }
             var root = ActGlobals.oFormActMain!;
-            if (importPath is not null && !fixedFixture) OriginalCorpusChecks.Run(session, importPath);
+            if (importPath is not null && !fixedFixture)
+            {
+                // Pin source images before attaching provenance to a replay, including the actual Costura Parse resource.
+                var plugin = instance.GetType().Assembly;
+                var mainHash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path)));
+                Check(mainHash == "af1031cdba8eeba8f53dd9d618e58d62d4919bfa77db9b31c568bd04cb359093");
+                using var resource = plugin.GetManifestResourceStream("costura.ffxiv_act_plugin.parse.dll.compressed")!;
+                using var parse = new System.IO.Compression.DeflateStream(resource, System.IO.Compression.CompressionMode.Decompress);
+                var parseHash = Convert.ToHexStringLower(SHA256.HashData(parse));
+                Check(parseHash == "aabdeedb35f0e9fb2a833cc55e11cf9f7684ca06cddbaffa2a791754676afea9");
+                using var input = File.OpenRead(importPath);
+                OriginalCorpusChecks.Run(session, importPath, new(
+                    Convert.ToHexStringLower(SHA256.HashData(input)), mainHash, parseHash,
+                    "934fc00d0a3c8325b0f7445358860b4c013c5dab3d8fff012512acf6502dd657"));
+            }
             if (importPath is not null && fixedFixture)
             {
                 Check(Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(importPath))) ==
@@ -412,6 +438,7 @@ internal static class Program
         LogBufferChecks.Run();
         CombatSnapshotChecks.Run();
         CombatSnapshotEncodingChecks.Run();
+        RecordedActionTranscriptChecks.Run();
         OwnerContextChecks.Run();
         HostLifetimeChecks.Run();
         DiagnosticChecks.Run();

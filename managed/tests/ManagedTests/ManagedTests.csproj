@@ -4,6 +4,7 @@
     <AssemblyName>Bxivact.ManagedTests</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../RecordedActionTranscript.cs" Link="RecordedActionTranscript.cs" />
     <ProjectReference Include="../../Bridge/Bridge.csproj" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" GeneratePathProperty="true" PrivateAssets="all" ExcludeAssets="all" />
     <Reference Include="System.Windows.Forms">

@@ -4,6 +4,7 @@
     <ActReferencePath Condition="'$(ActReferencePath)' == ''">$(MSBuildThisFileDirectory)../../../binaries/act/Advanced Combat Tracker.exe</ActReferencePath>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../RecordedActionTranscript.cs" Link="RecordedActionTranscript.cs" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" GeneratePathProperty="true" PrivateAssets="all" ExcludeAssets="all" />
     <Reference Include="System.Windows.Forms">
       <HintPath>$(PkgMicrosoft_NETFramework_ReferenceAssemblies_net48)/build/.NETFramework/v4.8/System.Windows.Forms.dll</HintPath>
