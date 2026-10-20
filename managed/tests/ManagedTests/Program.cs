@@ -432,6 +432,7 @@ internal static class Program
         }
         finally { directory.Delete(true); }
         LogFollowerChecks.Run();
+        InitialBoundaryChecks.Run();
         InitialSnapshotChecks.Run();
         LogHostChecks.Run();
         RegistrationLifetimeChecks.Run();

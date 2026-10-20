@@ -34,6 +34,8 @@ actual encounter relationships. The localized default-special constructor remain
 | Condition | Result |
 | --- | --- |
 | Existing file content | Excluded from live delivery; opening a file is not an import |
+| Existing incomplete final record | Discard its later continuation through the first LF; it began before following and is not a new record |
+| Initially empty or UTF-8-BOM-only file | Preserve the first newly appended complete record |
 | Partial record or split UTF-8 character | Retained until the newline arrives |
 | CRLF and blank lines | Normalize the line ending and preserve complete blank records |
 | Malformed UTF-8 record | Report a decoding error, skip that record, continue with later records |
@@ -90,6 +92,7 @@ synchronous filesystem I/O is not preemptible.
 | Managed reader checks | End-tail framing, split UTF-8, pause/resume, truncation, malformed/oversized recovery, callback isolation and disposal; equal-size/equal-mtime replacement with paused old-tail draining, incomplete-record isolation, BOM handling and temporary path absence |
 | Native snapshot fixture | Continue live parsing and publish the exact 75-damage result from a BOM-prefixed replacement without calling `OpenLog` again |
 | Initial snapshot identity check | Replace the pathname with a shorter file before scanning; require the old handle's zone, unchanged live cursor, old-tail/new-first-line delivery, invalid-range rejection and cancellation before activation |
+| Initial record boundary | Skip historical ASCII, split UTF-8 and CRLF continuations without decoding errors; preserve BOM-only first records and fresh records after truncation/replacement |
 
 Original-artifact runtime checks use a disposable copy of the FFXIV plugin
 directory because its startup can modify companion files. A started status alone

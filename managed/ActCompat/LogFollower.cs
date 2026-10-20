@@ -20,6 +20,7 @@ internal sealed class LogFollower : IDisposable
     private int suspensionDepth;
     private bool disposed;
     private bool initialSnapshotPending;
+    private readonly bool discardInitialContinuation;
     private Exception? reportingFailure;
     internal long InitialPosition { get; }
     internal bool IsAlive => worker.IsAlive;
@@ -45,6 +46,17 @@ internal sealed class LogFollower : IDisposable
             opened = Open();
             identity = LogFileIdentity.Read(opened.SafeFileHandle);
             InitialPosition = opened.Seek(0, SeekOrigin.End);
+            if (InitialPosition > 0)
+            {
+                // A suffix appended to a pre-existing partial record is historical input, not a new complete live record.
+                var count = InitialPosition == 3 ? 3 : 1;
+                Span<byte> boundary = stackalloc byte[count];
+                if (RandomAccess.Read(opened.SafeFileHandle, boundary, InitialPosition - count) != count)
+                    throw new EndOfStreamException("Log was truncated while checking its initial record boundary");
+                // A BOM-only image has encoding metadata but no historical partial record to discard.
+                discardInitialContinuation = boundary[^1] != (byte)'\n' &&
+                    !(InitialPosition == 3 && boundary.SequenceEqual(new byte[] { 0xef, 0xbb, 0xbf }));
+            }
             stream = opened;
             worker = new Thread(Read) { IsBackground = true, Name = "Bxivact log follower" };
             worker.Start();
@@ -62,7 +74,7 @@ internal sealed class LogFollower : IDisposable
         var bytes = new byte[4096];
         var encoding = new UTF8Encoding(false, true);
         using var pending = new MemoryStream();
-        var discarding = false;
+        var discarding = discardInitialContinuation;
         var firstRecord = InitialPosition == 0;
         try
         {
