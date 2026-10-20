@@ -2,6 +2,7 @@
 
 This slice reconstructs registration and raw file delivery. It does not implement
 ACT combat aggregation, triggers, historical encounters, or live game capture.
+The later [M2 root slice](m2-root-combat.md) adds actual action routing and combat state.
 
 ## Supported contracts
 
@@ -25,8 +26,8 @@ ACT combat aggregation, triggers, historical encounters, or live game capture.
 Registration dictionaries begin empty. Built-in ACT defaults and real combat
 objects are not fabricated to make initialization succeed. The legacy-reference
 probe uses uninitialized identity objects only to verify callback arguments.
-Action formatting, value equality, comparison, the localized default-special
-constructor and aggregate encounter relationships are not implemented yet.
+The later [M2 data slice](m2-import-research.md) implements value semantics and
+actual encounter relationships. The localized default-special constructor remains absent.
 
 ## Input integrity
 

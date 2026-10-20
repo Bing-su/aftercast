@@ -205,7 +205,7 @@ public partial class CombatantData
     private bool startCached, endCached;
     private DateTime cachedStart, cachedEnd;
 
-    public void InvalidateCachedValues() { startCached = endCached = false; InvalidateDurationCache(); deathsCached = false; }
+    public void InvalidateCachedValues() { startCached = endCached = false; InvalidateDurationCache(); deathsCached = false; InvalidateKillsCache(); }
     public void InvalidateCachedValues(bool recursive)
     {
         InvalidateCachedValues();
@@ -219,6 +219,7 @@ public partial class CombatantData
         startCached = endCached = false;
         InvalidateDurationCache();
         if (!outgoing && action.Damage == Dnum.Death) deathsCached = false;
+        if (outgoing && action.Damage == Dnum.Death) InvalidateKillsCache();
         var links = outgoing ? SwingTypeToDamageTypeDataLinksOutgoing : SwingTypeToDamageTypeDataLinksIncoming;
         if (!links.TryGetValue(action.SwingType, out var categories)) return;
         var definitions = outgoing ? OutgoingDamageTypeDataObjects : IncomingDamageTypeDataObjects;

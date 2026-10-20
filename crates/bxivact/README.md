@@ -2,7 +2,8 @@
 
 An in-process ACT-compatible host for Rust. Implements the .NET 10/C# bridge
 lifecycle, initial ACT contracts, and trusted plugin construction/initialization.
-Fixture lifecycles work on Linux; original FFXIV initialization and parsing remain incomplete.
+Original FFXIV initialization returns `Started` on Linux; complete semantic imports,
+live capture and Windows execution remain unverified.
 
 Consumers need an installed .NET 10 runtime, but no .NET SDK. The prebuilt bridge
 is embedded in the crate. Runtime installation and downloads are never automatic.

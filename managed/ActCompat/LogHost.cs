@@ -4,7 +4,8 @@ namespace Advanced_Combat_Tracker;
 
 public partial class FormActMain
 {
-    private readonly object logGate = new();
+    // One monitor makes timestamp/zone snapshots and combat transitions consistent without lock-order inversion.
+    private readonly object logGate = ActGlobals.actionDataLock;
     private const int MaximumRetiredFollowers = 32;
     private readonly HashSet<LogFollower> retiredFollowers = new();
     private LogFollower? follower;
@@ -119,6 +120,8 @@ public partial class FormActMain
 
     internal void EnsureCanWaitForLogReader()
     {
+        // An action callback cannot join a reader that may itself be waiting for the action drain.
+        EnsureCanWaitForCombatLifecycle();
         if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() != true) return;
         LogFollower[] readers;
         lock (logGate) readers = ReadersUnderGate();
@@ -170,8 +173,8 @@ public partial class FormActMain
             detectedTime = lastKnownTime;
             zone = currentZone;
         }
-        // No encounter or combat state exists here; these are raw log callbacks only.
-        var info = new LogLineEventArgs(line, 0, detectedTime, zone, false);
+        CheckIdleEndCombat();
+        var info = new LogLineEventArgs(line, 0, detectedTime, zone, InCombat);
         InvokeLogHandlers(BeforeLogLineRead, false, info, generation);
         InvokeLogHandlers(OnLogLineRead, false, info, generation);
     }
@@ -272,8 +275,12 @@ public partial class FormActMain
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) EnsureCanWaitForLogReader();
+        if (disposing) { EnsureCanWaitForLogReader(); BeginCombatShutdown(); }
         try { if (disposing) StopLogFollower(); }
-        finally { base.Dispose(disposing); }
+        finally
+        {
+            try { if (disposing) StopCombatProcessing(); }
+            finally { base.Dispose(disposing); }
+        }
     }
 }

@@ -22,7 +22,10 @@ namespace Advanced_Combat_Tracker
         public DirectoryInfo AppDataFolder => appDataFolder;
         public ActPluginData? PluginGetSelfData(IActPluginV1? plugin) =>
             plugin is not null && plugins.TryGetValue(plugin, out var data) ? data : null;
-        public void WriteExceptionLog(Exception? error, string context)
+        public void WriteExceptionLog(Exception? error, string context) => RecordDiagnostic(error, context, failOwner: true);
+        internal void WriteHostWarning(string message, string context) =>
+            RecordDiagnostic(new InvalidOperationException(message), context, failOwner: false);
+        private void RecordDiagnostic(Exception? error, string context, bool failOwner)
         {
             string summary, detail;
             // Plugin-defined exception formatting must not break the host's diagnostic/error path.
@@ -40,7 +43,7 @@ namespace Advanced_Combat_Tracker
                 var evidence = $"{context}: {detail}";
                 recentDiagnostics.Enqueue(evidence.Length > 8192 ? evidence[..8192] : evidence);
                 if (recentDiagnostics.Count > 32) recentDiagnostics.Dequeue();
-                if (Environment.CurrentManagedThreadId == ownerThread)
+                if (failOwner && Environment.CurrentManagedThreadId == ownerThread)
                 {
                     ownerErrorCount++;
                     lastOwnerError = lastError;
@@ -71,7 +74,7 @@ namespace Bxivact.ActCompat
 {
     using Advanced_Combat_Tracker;
 
-    // Own host globals separately from the original public ACT contract.
+    // Keep lifecycle operations on the creating thread; background plugin threads own only their action submissions.
     public class HostEnvironment : IDisposable
     {
         private readonly FormActMain main;
@@ -89,6 +92,8 @@ namespace Bxivact.ActCompat
             ActGlobals.oFormActMain = main;
             ActGlobals.charName = "";
             RegistrationLifetime.Reset();
+            main.CurrentZone = "Unknown Zone";
+            main.InitializeCombatState(DateTime.Now);
         }
         public void Register(ActPluginData data) => main.Register(data);
         public void Unregister(IActPluginV1 plugin) => main.Unregister(plugin);
@@ -98,25 +103,40 @@ namespace Bxivact.ActCompat
         public Tuple<long, string[]> DiagnosticsSnapshot => main.DiagnosticsSnapshot;
         public void EnsureCanStop() => main.EnsureCanWaitForLogReader();
         public void StopLogReading() => main.StopLogFollower();
-        public void RunWithLogReadingSuspended(Action action) => main.RunWithLogReadingSuspended(action);
+        public void StopProcessing()
+        {
+            EnsureCanStop();
+            main.BeginCombatShutdown();
+            var errors = new List<Exception>();
+            // Drain both producers while their plugin callbacks and ACT globals are still valid.
+            try { main.StopLogFollower(); } catch (Exception error) { errors.Add(error); }
+            try { main.StopCombatProcessing(); } catch (Exception error) { errors.Add(error); }
+            if (errors.Count != 0) throw new AggregateException("Host processing shutdown failed", errors);
+        }
+        public void RunWithLogReadingSuspended(Action action)
+        {
+            EnsureCanStop();
+            main.RunWithLogReadingSuspended(() => main.RunWithCombatActionsSuspended(action));
+        }
         public void Dispose()
         {
             // A previous environment may be disposed again after another host has acquired the globals.
             if (disposed) return;
-            main.EnsureCanWaitForLogReader();
+            EnsureCanStop();
             disposed = true;
+            var errors = new List<Exception>();
             try
             {
-                // Reader callbacks must finish while their ACT globals still belong to this environment.
-                main.StopLogFollower();
+                try { StopProcessing(); } catch (Exception error) { errors.Add(error); }
+                try { main.Dispose(); } catch (Exception error) { errors.Add(error); }
             }
             finally
             {
                 RegistrationLifetime.Reset();
                 ActGlobals.oFormActMain = null;
                 ActGlobals.charName = null;
-                main.Dispose();
             }
+            if (errors.Count != 0) throw new AggregateException("Host environment disposal failed", errors);
         }
     }
 }

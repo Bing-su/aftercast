@@ -250,7 +250,7 @@ logs or evidence that host `SetEncounter` is implemented.
 | --- | --- |
 | Selective action parsing | Reject before changing the encounter or action ownership |
 | Custom localization terms | Verified built-in English terms are used; external ACT localization overrides remain unsupported |
-| Host action orchestration | Root encounter selection, corrections, action hooks/queue, combat-end draining and semantic imports remain open |
+| Host action orchestration | The later [headless root slice](m2-root-combat.md) adds nonselective selection, hooks/queue and drained combat end; full corrections and semantic imports remain open |
 
 The replacement-only policy checks verify that rejected selective parsing
 does not leave a partially mutated graph. Supported constructor and action cases

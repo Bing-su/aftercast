@@ -64,7 +64,7 @@ internal static class HostLifetimeChecks
         finally { directory.Delete(true); }
     }
 
-    private static void RunBounded(Action action)
+    internal static void RunBounded(Action action)
     {
         using var done = new ManualResetEventSlim();
         Exception? failure = null;

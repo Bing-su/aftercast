@@ -197,7 +197,7 @@ impl Host {
         self.call(4).map(|packet| packet.runtime_major)
     }
 
-    /// Reads bounded worker-error history without consuming it or depending on a successful pump.
+    /// Reads bounded host-error and backlog-warning history without consuming it or requiring a pump.
     ///
     /// Compare `total` between calls, and inspect `omitted()` to detect older errors outside the
     /// retained history. This reports host diagnostics, not errors caught privately by a plugin.

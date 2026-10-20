@@ -121,7 +121,7 @@ internal sealed class PluginSession
         EnsureCanStop();
         var errors = new List<Exception>();
         // Drain file callbacks while plugin state is still valid, before invoking any DeInitPlugin.
-        try { environment?.StopLogReading(); } catch (Exception error) { errors.Add(error); }
+        try { environment?.StopProcessing(); } catch (Exception error) { errors.Add(error); }
         for (var index = initialized.Count - 1; index >= 0; index--)
             if (Find(initialized[index]).State == PluginState.Initialized)
                 try { Deinitialize(initialized[index]); } catch (Exception error) { errors.Add(error); }

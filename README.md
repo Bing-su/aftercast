@@ -20,6 +20,7 @@ original ACT; complete imports, native capture and Windows execution remain open
 - [M1 button contract](docs/m1-button-contract.md)
 - [M1 controls, startup events and settings](docs/m1-controls-and-settings.md)
 - [M1 combat registration and log following](docs/m1-registration-and-log-following.md)
+- [M2 combat orchestration and verification](docs/m2-root-combat.md)
 - [ACT compatibility research](docs/act-host-compatibility-analysis.md)
 - [Event delivery research](docs/act-event-delivery-analysis.md)
 

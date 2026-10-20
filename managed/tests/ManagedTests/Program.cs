@@ -264,6 +264,7 @@ internal static class Program
         Check((string)Call("AutomaticAlliesProbe", "Run")! == "Automatic allies");
         Check((string)Call("EncounterFinalizationProbe", "Run")! == "Encounter finalization");
         Check((string)Call("CombatDurationProbe", "Run")! == "Combat durations");
+        Check((string)Call("AggregateQueryProbe", "Run")! == "Aggregate queries");
         Check(typeof(Dnum).GetProperty("Number")!.GetSetMethod() is null && new Dnum(-11).Number == -11);
         Check(new Dnum(1).ToString() == "1");
         var directory = Directory.CreateTempSubdirectory("bxivact-contract-");
@@ -313,6 +314,8 @@ internal static class Program
         RegistrationLifetimeChecks.Run();
         DebugLogChecks.Run();
         CombatPolicyChecks.Run();
+        RootCombatStateChecks.Run();
+        RootActionChecks.Run();
         OwnerContextChecks.Run();
         HostLifetimeChecks.Run();
         DiagnosticChecks.Run();

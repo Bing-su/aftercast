@@ -4,17 +4,17 @@ use crate::Error;
 
 pub(crate) const DIAGNOSTIC_CAPACITY: usize = 32 + 1024 * 1024;
 
-/// An owned snapshot of host-reported errors, independent of synchronous command failures.
+/// An owned snapshot of host errors and backlog warnings, independent of command failures.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HostDiagnostics {
-    /// Total errors recorded in the current managed host environment.
+    /// Total diagnostic entries recorded in the current managed host environment.
     pub total: u64,
-    /// The most recent errors in recording order, capped at 32 bounded messages.
+    /// The most recent entries in recording order, capped at 32 bounded messages.
     pub recent: Vec<String>,
 }
 
 impl HostDiagnostics {
-    /// Number of older errors excluded from this snapshot's bounded message history.
+    /// Number of older entries excluded from this snapshot's bounded message history.
     pub fn omitted(&self) -> u64 {
         self.total.saturating_sub(self.recent.len() as u64)
     }

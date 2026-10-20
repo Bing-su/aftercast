@@ -17,17 +17,42 @@ public partial class MasterSwing
         Victim = victim;
     }
 
-    public string Special { get; } = null!;
+    public string Special { get; private set; } = null!;
     public EncounterData? ParentEncounter { get; set; }
-    public DateTime Time { get; }
-    public int TimeSorter { get; }
-    public int SwingType { get; }
-    public Dnum Damage { get; } = null!;
-    public string Attacker { get; } = null!;
-    public string Victim { get; } = null!;
-    public string AttackType { get; } = null!;
-    public string DamageType { get; } = null!;
+    public DateTime Time { get; private set; }
+    public int TimeSorter { get; private set; }
+    public int SwingType { get; private set; }
+    public Dnum Damage { get; private set; } = null!;
+    public string Attacker { get; private set; } = null!;
+    public string Victim { get; private set; } = null!;
+    public string AttackType { get; private set; } = null!;
+    public string DamageType { get; private set; } = null!;
     public bool Critical { get; set; }
     // Preserve the plugin's dictionary identity so later tag mutations remain visible to ACT callbacks.
     public Dictionary<string, object> Tags { get; set; } = new();
+
+    internal void NormalizeForHost()
+    {
+        // ACT normalizes the original object before building the mutable BeforeCombatAction snapshot.
+        if (string.IsNullOrWhiteSpace(Special) || Special is "hit" or "hits") Special = "None";
+        Attacker = Attacker.Trim();
+        Victim = Victim.Trim();
+        AttackType = AttackType.Trim();
+    }
+
+    internal void Apply(CombatActionEventArgs info)
+    {
+        SwingType = info.swingType;
+        Critical = info.critical;
+        // Preserve ACT's commit order and string interning, including partial mutation when Intern rejects null.
+        Special = string.Intern(info.special);
+        Damage = info.damage;
+        Time = info.time;
+        TimeSorter = info.timeSorter;
+        AttackType = string.Intern(info.theAttackType);
+        Attacker = string.Intern(info.attacker);
+        DamageType = string.Intern(info.theDamageType);
+        Victim = string.Intern(info.victim);
+        // Event tags alias Tags initially; replacing that field never replaces the original action dictionary.
+    }
 }
