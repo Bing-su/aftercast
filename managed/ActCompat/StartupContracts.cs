@@ -29,6 +29,9 @@ public class LogLineEventArgs : EventArgs
 
 public partial class FormActMain
 {
+    private volatile bool readThreadLock;
+    // Workers observe the real pause flag; companion-log propagation awaits companion-log support.
+    public bool ReadThreadLock { get => readThreadLock; set => readThreadLock = value; }
     public delegate void NullDelegate();
     public delegate DateTime DateTimeLogParser(string logLine);
 
@@ -46,7 +49,7 @@ public partial class FormActMain
     public bool LogPathHasCharName { get; set; }
     public System.Text.RegularExpressions.Regex? ZoneChangeRegex { get; set; }
 
-    internal void DispatchLogLine(bool isImport, LogLineEventArgs logInfo) => BeforeLogLineRead?.Invoke(isImport, logInfo);
+    internal void DispatchLogLine(bool isImport, LogLineEventArgs logInfo) => InvokeLogHandlers(BeforeLogLineRead, isImport, logInfo);
     internal void DispatchLogFileChanged(bool isImport, string newLogFileName) => LogFileChanged?.Invoke(isImport, newLogFileName);
     internal void DispatchUpdateCheck() => UpdateCheckClicked?.Invoke();
 }

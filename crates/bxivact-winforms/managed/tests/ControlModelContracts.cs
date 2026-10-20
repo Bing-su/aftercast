@@ -7,6 +7,7 @@ internal static class ControlModelContracts
     private static void Check(bool condition) { if (!condition) throw new Exception("Control model check failed"); }
     public static void Run()
     {
+        ControlInvokeContracts.Run();
         using var root = new UserControl();
         using var other = new Panel();
         Check(!root.InvokeRequired && (int)root.Invoke((Func<int>)(() => 42))! == 42);

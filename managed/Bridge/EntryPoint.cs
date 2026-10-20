@@ -47,10 +47,15 @@ public static class EntryPoint
             Marshal.WriteInt64(buffer, 16, unchecked((long)active.Id));
             return 0;
         }
-        if (command is not (2 or 3)) return 6;
+        if (command is not (2 or 3 or 4)) return 6;
         if (active is null) return 4;
         if (active.Id != session) return 5;
         if (command == 2) return 0;
+        if (command == 4)
+        {
+            Marshal.WriteInt32(buffer, 12, plugins.Value.Pump());
+            return 0;
+        }
         try { plugins.Value.Stop(); } finally { active = null; }
         return 0;
     }
@@ -107,8 +112,9 @@ public static class EntryPoint
     public static int CreatePlugin(nint buffer, int sizeBytes) => Run(() =>
     {
         var (path, typeName) = Request(buffer, sizeBytes);
-        var plugin = PluginLoader.Create(path, typeName == "" ? null : typeName);
-        Marshal.WriteInt64(buffer, 32, plugins.Value.Add(path, plugin));
+        var id = plugins.Value.OnOwner(() => plugins.Value.Add(path,
+            PluginLoader.Create(path, typeName == "" ? null : typeName)));
+        Marshal.WriteInt64(buffer, 32, id);
         return 0;
     });
     public static int ConfigureHost(nint buffer, int sizeBytes) => Run(() =>

@@ -147,6 +147,9 @@ aggregation, and licensing remain open work.
 
 The [lifecycle slice](m1-plugin-lifecycle.md) adds host globals/registration,
 headless startup controls and tested fixture InitPlugin/DeInitPlugin handling.
-The original FFXIV InitPlugin is attempted on Linux and reaches combat-definition
-registration after the [controls, events and settings slice](m1-controls-and-settings.md).
-Original initialization remains incomplete.
+The original FFXIV InitPlugin returns `Started` on Linux after the
+[controls, events and settings slice](m1-controls-and-settings.md) and
+[registration/file-following slice](m1-registration-and-log-following.md).
+The Rust host provides cooperative owner-thread dispatch through `Host::pump`;
+applications must call it regularly. Original parsing,
+aggregation, native capture and Windows execution remain open.

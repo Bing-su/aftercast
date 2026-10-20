@@ -29,6 +29,7 @@ public partial class Control
     private bool enabled = true;
     private int tabIndex;
     private readonly int ownerThread = Environment.CurrentManagedThreadId;
+    private readonly SynchronizationContext? ownerContext = CaptureContext();
     private Control? parent;
     private ControlCollection? controls;
     public bool Disposing { get; private set; }
@@ -37,10 +38,35 @@ public partial class Control
     {
         ArgumentNullException.ThrowIfNull(method);
         ObjectDisposedException.ThrowIf(IsDisposed, this);
-        if (InvokeRequired) throw new PlatformNotSupportedException("Linux cross-thread UI dispatch requires a caller-owned message pump");
+        if (!InvokeRequired) return InvokeOnOwner(method);
+        if (ownerContext is null) throw new PlatformNotSupportedException("Linux cross-thread UI dispatch requires a caller-owned message pump");
+        object? result = null;
+        System.Runtime.ExceptionServices.ExceptionDispatchInfo? failure = null;
+        var dispatched = false;
+        // Send delegates scheduling to the caller's pump; never substitute a pool thread or inline callback.
+        ownerContext.Send(_ =>
+        {
+            try { result = InvokeOnOwner(method); }
+            catch (Exception error) { failure = System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error); }
+            finally { dispatched = true; }
+        }, null);
+        if (!dispatched) throw new PlatformNotSupportedException("The caller-owned UI context did not dispatch synchronously");
+        failure?.Throw();
+        return result;
+    }
+    private object? InvokeOnOwner(Delegate method)
+    {
+        if (InvokeRequired) throw new PlatformNotSupportedException("The caller-owned UI context did not dispatch to the control's owner thread");
+        ObjectDisposedException.ThrowIf(IsDisposed, this);
         try { return method.DynamicInvoke(); }
         catch (System.Reflection.TargetInvocationException error) when (error.InnerException is not null)
         { System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error.InnerException).Throw(); throw; }
+    }
+    private static SynchronizationContext? CaptureContext()
+    {
+        var context = SynchronizationContext.Current;
+        // The base context sends inline, so it cannot provide cross-thread UI dispatch.
+        return context?.GetType() == typeof(SynchronizationContext) ? null : context;
     }
     public Control? Parent
     {

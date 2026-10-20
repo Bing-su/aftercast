@@ -35,6 +35,10 @@ public static class StartupProbe
         main.LogFileChanged -= fileHandler;
         main.UpdateCheckClicked -= updateHandler;
         Check(!main.GetAutomaticUpdatesAllowed());
+        Check(!main.ReadThreadLock);
+        main.ReadThreadLock = true;
+        Check(main.ReadThreadLock);
+        main.ReadThreadLock = false;
         main.TimeStampLen = 13;
         main.LogPathHasCharName = false;
         main.ZoneChangeRegex = new System.Text.RegularExpressions.Regex("^zone$");

@@ -30,23 +30,58 @@ internal static class Program
     }
     public static void Main(string[] args)
     {
+        var mode = args[0];
         // Only the original-reference test calls ACT UI types before startup; ABI modes exercise normal binding.
-        if (OperatingSystem.IsLinux() && args.Single() == "act")
+        if (OperatingSystem.IsLinux() && mode == "act")
         {
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.dll"));
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.DataVisualization.dll"));
         }
         // Modes keep artifact-dependent checks separate from ordinary ABI tests without a test framework dependency.
-        switch (args.Single())
+        if (mode == "original") Platform.Prepare();
+        switch (mode)
         {
             case "bridge": Bridge(); break;
             case "plugins": PluginRequests(); break;
             case "prepare-act": PrepareAct(); break;
             case "act": ActBinding(); break;
             case "linux": LinuxCompatibility(); break;
+            case "original": ObserveOriginal(args[1], args[2]); break;
             default: throw new ArgumentException("Unknown managed test mode");
         }
         Console.WriteLine($"Managed {args[0]} contract checks passed.");
+    }
+    private static void ObserveOriginal(string pluginPath, string statePath)
+    {
+        // Run only an explicitly supplied trusted copy; wait long enough to observe caught worker failures.
+        var session = new PluginSession();
+        Directory.CreateDirectory(statePath);
+        session.Configure(Path.GetFullPath(statePath));
+        var path = Path.GetFullPath(pluginPath);
+        var instance = session.OnOwner(() => PluginLoader.Create(path, "FFXIV_ACT_Plugin.FFXIV_ACT_Plugin"));
+        var id = session.Add(path, instance);
+        try
+        {
+            Console.WriteLine("Original status: " + session.Initialize(id));
+            var elapsed = System.Diagnostics.Stopwatch.StartNew();
+            while (elapsed.Elapsed < TimeSpan.FromMilliseconds(1500)) { session.Pump(); Thread.Sleep(10); }
+            var root = ActGlobals.oFormActMain!;
+            var errors = (Tuple<long, string>)root.GetType().GetProperty("Errors", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(root)!;
+            Console.WriteLine($"Original worker diagnostics: {errors.Item1}; {errors.Item2}");
+            foreach (var diagnostic in (string[])root.GetType().GetProperty("RecentDiagnostics", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(root)!)
+                Console.WriteLine(diagnostic);
+            void ShowParserMessages(System.Windows.Forms.Control control)
+            {
+                if (control is System.Windows.Forms.ListBox list)
+                    foreach (var item in (System.Collections.IEnumerable)list.GetType().GetProperty("Items")!.GetValue(list)!)
+                        Console.WriteLine($"Original list message ({list.Name}): {item}");
+                foreach (System.Windows.Forms.Control child in (System.Collections.IEnumerable)control.GetType().GetProperty("Controls")!.GetValue(control)!)
+                    ShowParserMessages(child);
+            }
+            ShowParserMessages(root.PluginGetSelfData((IActPluginV1)instance)!.tpPluginSpace);
+            Check(errors.Item1 == 0);
+        }
+        finally { session.Stop(); }
     }
     private static void Bridge()
     {
@@ -78,6 +113,9 @@ internal static class Program
             Check(EntryPoint.ReadError(buffer, 0) == 0);
             var session = Marshal.ReadInt64(buffer, 16);
             Check(session > 0 && Marshal.ReadInt32(buffer, 12) == 10);
+            Marshal.WriteInt32(buffer, 8, 4);
+            Check(EntryPoint.Invoke(buffer, 24) == 0 && Marshal.ReadInt32(buffer, 12) == 0);
+            Marshal.WriteInt32(buffer, 8, 1);
             Check(EntryPoint.Invoke(buffer, 24) == 3);
             Marshal.WriteInt32(buffer, 8, 3);
             Marshal.WriteInt64(buffer, 16, session + 1);
@@ -209,6 +247,7 @@ internal static class Program
         Check((int)Call("ButtonProbe", "Run")! == 2);
         Check((int)Call("ControlModelProbe", "Run")! == 200);
         Check((int)Call("SettingsControlProbe", "Run")! == 2);
+        Check((string)Call("RegistrationProbe", "Run")! == "changed callback");
         Check(typeof(Dnum).GetProperty("Number")!.GetSetMethod() is null && new Dnum(-11).Number == -11);
         try { new Dnum(1).ToString(); throw new Exception("Unimplemented formatting succeeded"); }
         catch (NotSupportedException) { }
@@ -228,7 +267,10 @@ internal static class Program
             {
                 Check(Call("HostProbe", "Root") is not null);
                 Check((string)Call("StartupProbe", "Run")! == "original");
+                Check((string)Call("LogHostProbe", "Run")! == "Network_*.log");
+                Check((int)Call("MasterSwingProbe", "Run")! == 42);
                 var main = ActGlobals.oFormActMain!;
+                CheckRegistrationViews(main);
                 var payload = new LogLineEventArgs("initial", 1, DateTime.UnixEpoch, "zone", false);
                 var calls = 0;
                 LogLineEventDelegate line = (import, info) => { Check(import && ReferenceEquals(info, payload)); info.logLine = "updated"; calls++; };
@@ -251,6 +293,47 @@ internal static class Program
             Check(Call("HostProbe", "Root") is null);
         }
         finally { directory.Delete(true); }
+        LogFollowerChecks.Run();
+        LogHostChecks.Run();
+        RegistrationLifetimeChecks.Run();
+        OwnerContextChecks.Run();
+        HostLifetimeChecks.Run();
+        DiagnosticChecks.Run();
+    }
+    private static void CheckRegistrationViews(FormActMain main)
+    {
+        var incoming = CombatantData.IncomingDamageTypeDataObjects;
+        var links = CombatantData.SwingTypeToDamageTypeDataLinksIncoming;
+        var columns = CombatantData.ColumnDefs;
+        object Read(string name) => main.GetType().GetProperty(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(main)!;
+        try
+        {
+            CombatantData.IncomingDamageTypeDataObjects = new() { ["registered"] = new("Damage", 1, System.Drawing.Color.Red) };
+            CombatantData.SwingTypeToDamageTypeDataLinksIncoming = new() { [1] = ["registered"] };
+            main.ValidateLists();
+            var categories = (string[])Read("IncomingCategories");
+            Check(categories.SequenceEqual(new[] { "registered" }));
+            CombatantData.SwingTypeToDamageTypeDataLinksIncoming[1] = ["missing"];
+            try { main.ValidateLists(); throw new Exception("Missing category accepted"); }
+            catch (InvalidOperationException) { Check(ReferenceEquals(categories, Read("IncomingCategories"))); }
+            CombatantData.ColumnDefs = new()
+            {
+                ["visible"] = new("Visible", true, "TEXT", "v", _ => "v", _ => "v", (_, _) => 0),
+                ["hidden"] = new("Hidden", false, "TEXT", "h", _ => "h", _ => "h", (_, _) => 0)
+            };
+            main.ValidateTableSetup();
+            var view = (Dictionary<Type, string[]>)Read("VisibleColumns");
+            Check(view[typeof(CombatantData)].SequenceEqual(new[] { "visible" }));
+            CombatantData.ColumnDefs = null!;
+            try { main.ValidateTableSetup(); throw new Exception("Invalid registry accepted"); }
+            catch (ArgumentNullException) { Check(ReferenceEquals(view, Read("VisibleColumns"))); }
+        }
+        finally
+        {
+            CombatantData.IncomingDamageTypeDataObjects = incoming;
+            CombatantData.SwingTypeToDamageTypeDataLinksIncoming = links;
+            CombatantData.ColumnDefs = columns;
+        }
     }
     private static void LinuxCompatibility()
     {

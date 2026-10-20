@@ -1,0 +1,248 @@
+using System.Text;
+
+namespace Advanced_Combat_Tracker;
+
+public partial class FormActMain
+{
+    private readonly object logGate = new();
+    private LogFollower? follower;
+    private long logGeneration;
+    private long readyGeneration;
+    private bool logHostStopped;
+    private int logPauseDepth;
+    internal Action? PumpCallbacks { get; set; }
+    internal Func<bool>? IsDispatchingCallback { get; set; }
+    private string logFilePath = "", logFileFilter = "", currentZone = "";
+    private DateTime lastKnownTime;
+
+    public string LogFileFilter { get { lock (logGate) return logFileFilter; } set { lock (logGate) logFileFilter = value; } }
+    public string LogFilePath { get { lock (logGate) return logFilePath; } set { lock (logGate) logFilePath = value; } }
+    public DateTime LastKnownTime { get { lock (logGate) return lastKnownTime; } set { lock (logGate) lastKnownTime = value; } }
+    public string CurrentZone { get { lock (logGate) return currentZone; } set { lock (logGate) currentZone = value; } }
+    public event LogLineEventDelegate? OnLogLineRead;
+
+    public void OpenLog(bool getCurrentZone, bool getCharNameFromFile)
+    {
+        EnsureCanWaitForLogReader();
+        if (getCharNameFromFile)
+            throw new PlatformNotSupportedException("Character-name discovery from log filenames is not implemented");
+        LogFollower? previous;
+        string path;
+        long generation;
+        lock (logGate)
+        {
+            ObjectDisposedException.ThrowIf(logHostStopped, this);
+            path = logFilePath;
+            generation = ++logGeneration;
+            previous = follower;
+            follower = null;
+        }
+        // Never join under the root gate: an in-flight subscriber may open another log or read host state.
+        previous?.Dispose(PumpOwnerCallbacks);
+        LogFollower? next = null;
+        try
+        {
+            lock (logGate)
+            {
+                if (logHostStopped || generation != logGeneration) return;
+                next = new LogFollower(path, line => ReceiveLogLine(generation, line),
+                    error => WriteExceptionLog(error, "Log follower"), () => ReadThreadLock || IsLogDeliveryPaused(generation));
+                follower = next;
+            }
+            var snapshot = getCurrentZone ? ReadZoneSnapshot(path, next.InitialPosition, generation) : null;
+            lock (logGate)
+            {
+                if (logHostStopped || generation != logGeneration) return;
+                if (getCurrentZone) currentZone = snapshot ?? "";
+                readyGeneration = generation;
+            }
+        }
+        catch
+        {
+            lock (logGate)
+            {
+                if (ReferenceEquals(follower, next))
+                {
+                    follower = null;
+                    ++logGeneration;
+                }
+            }
+            next?.Dispose(PumpOwnerCallbacks);
+            throw;
+        }
+        foreach (var callback in LogFileChanged?.GetInvocationList() ?? [])
+        {
+            if (!IsCurrentLog(generation)) return;
+            try { ((LogFileChangedDelegate)callback)(false, path); }
+            catch (Exception error) { WriteExceptionLog(error, "LogFileChanged subscriber"); }
+        }
+    }
+
+    private bool IsCurrentLog(long generation)
+    {
+        lock (logGate) return !logHostStopped && generation == logGeneration && generation == readyGeneration;
+    }
+
+    private bool IsLogDeliveryPaused(long generation)
+    {
+        lock (logGate) return logPauseDepth > 0 || logHostStopped || generation != logGeneration || generation != readyGeneration;
+    }
+
+    private void PumpOwnerCallbacks()
+    {
+        if (Environment.CurrentManagedThreadId == ownerThread) PumpCallbacks?.Invoke();
+    }
+
+    internal void EnsureCanWaitForLogReader()
+    {
+        if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() != true) return;
+        lock (logGate)
+        {
+            // A dispatched UI callback must return before its waiting reader can finish delivery.
+            if (follower?.CallbackActive == true)
+                throw new InvalidOperationException("Cannot wait for a log callback from its own dispatched UI callback");
+        }
+    }
+
+    internal void RunWithLogReadingSuspended(Action action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        EnsureCanWaitForLogReader();
+        LogFollower? current;
+        lock (logGate)
+        {
+            logPauseDepth++;
+            current = follower;
+        }
+        var suspended = false;
+        try
+        {
+            current?.Suspend(PumpOwnerCallbacks);
+            suspended = true;
+            action();
+        }
+        finally
+        {
+            if (suspended) current?.Resume();
+            lock (logGate) logPauseDepth--;
+        }
+    }
+
+    private void ReceiveLogLine(long generation, string line)
+    {
+        if (!IsCurrentLog(generation)) return;
+        var timestamp = GetDateTimeFromLog(line);
+        DateTime detectedTime;
+        string zone;
+        lock (logGate)
+        {
+            if (logHostStopped || generation != logGeneration) return;
+            if (timestamp != DateTime.MinValue) lastKnownTime = timestamp;
+            GlobalTimeSorter++;
+            UpdateRawZone(line);
+            detectedTime = lastKnownTime;
+            zone = currentZone;
+        }
+        // No encounter or combat state exists here; these are raw log callbacks only.
+        var info = new LogLineEventArgs(line, 0, detectedTime, zone, false);
+        InvokeLogHandlers(BeforeLogLineRead, false, info, generation);
+        InvokeLogHandlers(OnLogLineRead, false, info, generation);
+    }
+
+    private void InvokeLogHandlers(LogLineEventDelegate? handlers, bool isImport, LogLineEventArgs info, long? generation = null)
+    {
+        foreach (var callback in handlers?.GetInvocationList() ?? [])
+        {
+            if (generation is { } active && !IsCurrentLog(active)) return;
+            try { ((LogLineEventDelegate)callback)(isImport, info); }
+            catch (Exception error) { WriteExceptionLog(error, "Log line subscriber"); }
+        }
+    }
+
+    private string? ReadZoneSnapshot(string path, long position, long generation)
+    {
+        var regex = ZoneChangeRegex;
+        if (regex is null) return null;
+        // Search complete records backwards so large files do not require a full forward replay.
+        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        var bytes = new byte[4096];
+        var reverseLine = new List<byte>();
+        var skipTail = true;
+        var oversized = false;
+        string? MatchLine(bool atStart = false)
+        {
+            if (oversized) return null;
+            reverseLine.Reverse();
+            try
+            {
+                var text = new UTF8Encoding(false, true).GetString(reverseLine.ToArray()).TrimEnd('\r');
+                if (atStart && text.StartsWith('\uFEFF')) text = text[1..];
+                var match = regex.Match(text);
+                return match.Success && match.Groups["zone"].Success ? match.Groups["zone"].Value : null;
+            }
+            catch (DecoderFallbackException error)
+            {
+                WriteExceptionLog(error, "Skipping invalid UTF-8 zone snapshot record");
+                return null;
+            }
+        }
+        while (position > 0)
+        {
+            // A large history search must not delay shutdown or a newer file selection.
+            lock (logGate) { if (logHostStopped || generation != logGeneration) return null; }
+            var count = (int)Math.Min(position, bytes.Length);
+            position -= count;
+            stream.Seek(position, SeekOrigin.Begin);
+            stream.ReadExactly(bytes.AsSpan(0, count));
+            for (var index = count - 1; index >= 0; index--)
+            {
+                if (bytes[index] == (byte)'\n')
+                {
+                    if (!skipTail && MatchLine() is { } zone) return zone;
+                    skipTail = false;
+                    reverseLine.Clear();
+                    oversized = false;
+                }
+                else if (!skipTail && !oversized)
+                {
+                    if (reverseLine.Count == 8 * 1024 * 1024)
+                    {
+                        oversized = true;
+                        reverseLine.Clear();
+                        WriteExceptionLog(new InvalidDataException("Zone snapshot record exceeds 8 MiB"), "Skipping oversized zone snapshot record");
+                    }
+                    else reverseLine.Add(bytes[index]);
+                }
+            }
+        }
+        return !skipTail ? MatchLine(atStart: true) : null;
+    }
+
+    private void UpdateRawZone(string line)
+    {
+        var match = ZoneChangeRegex?.Match(line);
+        if (match is { Success: true } && match.Groups["zone"].Success)
+            currentZone = match.Groups["zone"].Value;
+    }
+
+    internal void StopLogFollower()
+    {
+        EnsureCanWaitForLogReader();
+        LogFollower? previous;
+        lock (logGate)
+        {
+            logHostStopped = true;
+            ++logGeneration;
+            previous = follower;
+            follower = null;
+        }
+        previous?.Dispose(PumpOwnerCallbacks);
+    }
+
+    protected override void Dispose(bool disposing)
+    {
+        if (disposing) EnsureCanWaitForLogReader();
+        try { if (disposing) StopLogFollower(); }
+        finally { base.Dispose(disposing); }
+    }
+}

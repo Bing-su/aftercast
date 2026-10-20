@@ -64,6 +64,7 @@ struct Packet {
     size: u32,
     version: u32,
     command: u32,
+    // Lifecycle commands return the runtime major; command 4 returns the number of callbacks run.
     runtime_major: u32,
     session: u64,
 }
@@ -175,6 +176,15 @@ impl Host {
     /// Confirms that this session still owns the managed host and returns its identity.
     pub fn session_id(&self) -> Result<u64, Error> {
         self.call(2).map(|packet| packet.session)
+    }
+
+    /// Runs queued Linux control callbacks on this host's creation thread.
+    ///
+    /// Call regularly from your application loop, for example before draining output. Each call
+    /// starts at most 64 callbacks within a 5 ms scheduling budget; a callback itself can take
+    /// longer. Windows UI dispatch remains the caller's native message-loop responsibility.
+    pub fn pump(&mut self) -> Result<u32, Error> {
+        self.call(4).map(|packet| packet.runtime_major)
     }
 
     /// Constructs a trusted plugin and retains it until this host stops.

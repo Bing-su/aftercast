@@ -55,6 +55,56 @@ fn failed_initializations(host: &mut Host, assembly: &Utf8Path, state: &Utf8Path
         .expect("deinitialize background fixture");
 }
 
+#[cfg(target_os = "linux")]
+fn owner_dispatch(host: &mut Host, assembly: &Utf8Path, state: &Utf8Path) {
+    use std::{fs::OpenOptions, io::Write, time::Duration};
+
+    let plugin = construct(host, assembly, "PumpPlugin");
+    assert_eq!(
+        host.initialize_plugin(plugin)
+            .expect("initialize pumped plugin"),
+        "Ready"
+    );
+    let append = |line: &str| {
+        writeln!(
+            OpenOptions::new()
+                .append(true)
+                .open(state.join("pump.log"))
+                .expect("open fixture log"),
+            "{line}"
+        )
+        .expect("append fixture line");
+    };
+    let wait = |name: &str| {
+        let deadline = std::time::Instant::now() + Duration::from_secs(5);
+        while !state.join(name).exists() {
+            assert!(
+                std::time::Instant::now() < deadline,
+                "missing dispatch evidence: {name}"
+            );
+            std::thread::sleep(Duration::from_millis(10));
+        }
+    };
+    append("explicit");
+    wait("explicit.queued");
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    while !state.join("explicit.returned").exists() {
+        assert!(
+            std::time::Instant::now() < deadline,
+            "explicit pump did not release worker"
+        );
+        host.pump().expect("pump owner callback");
+        std::thread::sleep(Duration::from_millis(10));
+    }
+    assert!(state.join("explicit.pumped").exists());
+    append("deinitialize");
+    wait("deinitialize.queued");
+    host.deinitialize_plugin(plugin)
+        .expect("drain queued callback before deinitialization");
+    assert!(state.join("deinitialize.returned").exists());
+    assert!(state.join("pump.deinit").exists());
+}
+
 #[test]
 #[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
 fn initialization_cleanup_and_shutdown_are_session_owned_and_not_retried() {
@@ -89,6 +139,8 @@ fn initialization_cleanup_and_shutdown_are_session_owned_and_not_retried() {
     assert_eq!(lines(&state, "ready.init"), 1);
     assert_eq!(lines(&state, "ready.deinit"), 1);
     assert_eq!(lines(&state, "ready.disposed"), 2);
+    #[cfg(target_os = "linux")]
+    owner_dispatch(&mut host, &assembly, &state);
     failed_initializations(&mut host, &assembly, &state);
     let long = construct(&mut host, &assembly, "LongStatusPlugin");
     assert_eq!(

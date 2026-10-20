@@ -1,9 +1,10 @@
 # Development and validation
 
 The prebuilt C# lifecycle bridge runs inside a Rust process. M1 adds the first
-[ACT contract-binding slice](m1-contract-binding.md), but does not yet initialize
-the original FFXIV plugin successfully, parse logs, aggregate combat, stream batches, or install
-.NET. See the [blueprint](blueprint.md) for later
+[ACT contract-binding slice](m1-contract-binding.md). The original FFXIV plugin
+returns a started status in Linux observation with a caller-owned message pump.
+Raw file following works; combat aggregation, live capture, streamed Rust batches,
+and runtime installation remain open. See the [blueprint](blueprint.md) for later
 milestones and the original-artifact research reports for compatibility work.
 
 ## Requirements
@@ -30,6 +31,7 @@ so workspace publication is disabled rather than inventing a license.
 | `mise run managed:test` | Build, stage both crates' DLLs, then verify ABI validation, session ownership and the independent WinForms contract |
 | `mise run test:act-binding` | Check the pinned local ACT hash, compile the legacy-reference probe, and run it against the replacement; requires the original local ACT artifact |
 | `mise run test:linux-plugin-compat` | Check the pinned FFXIV memory IL adjustment, unknown-build rejection and original-file preservation; requires supplied FFXIV artifacts |
+| `dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- original /trusted/plugin-copy/FFXIV_ACT_Plugin.dll /private/state` | Observe original startup/workers for 1.5 seconds with an explicit owner-thread pump and bounded diagnostics; use a disposable plugin copy |
 | `DOTNET_ROOT=/usr/lib/dotnet mise run test:plugins` | Build fixtures; check plugin request bounds and construct instances through the Rust API, including dependency and constructor failures |
 | `mise run check` | Rust formatting, Clippy with warnings denied, ordinary tests |
 | `DOTNET_ROOT=/usr/lib/dotnet mise run test:hosting` | Run the explicitly ignored real CLR integration test on this Linux installation |
@@ -59,6 +61,7 @@ executes the plugin constructor only.
 | HostConfig::builder() | Requires explicit dotnet_root, bridge_directory and private writable data_directory paths |
 | Host::start(config) | Acquires exclusive host ownership, selects the highest stable .NET 10 hostfxr in that installation, loads the standard managed delegate, starts session |
 | Host::session_id() | Makes a real managed call to validate the current component-local session identity |
+| Host::pump() | Processes bounded queued Linux control callbacks on the host's creation thread; call regularly while workers are active |
 | Host::create_plugin(PluginConfig) | Selects and constructs a trusted IActPluginV1, returns an opaque session-scoped PluginId; never calls InitPlugin |
 | Host::initialize_plugin(PluginId) | Calls InitPlugin once, returns bounded status text; rejects exceptions reported to the host during the callback |
 | Host::deinitialize_plugin(PluginId) | Calls DeInitPlugin once for a successfully initialized instance; unregisters and disposes owned controls even on failure |
@@ -89,8 +92,8 @@ a fallback runtime. That external-host case has not been exercised locally.
 | --- | --- | --- |
 | 0 | u32 / int32 bit pattern | Header size, exactly 24 |
 | 4 | u32 / int32 bit pattern | ABI version, 1 |
-| 8 | u32 / int32 bit pattern | Command: start=1, probe=2, stop=3 |
-| 12 | u32 / int32 bit pattern | Managed output: runtime major |
+| 8 | u32 / int32 bit pattern | Command: start=1, probe=2, stop=3, pump=4 |
+| 12 | u32 / int32 bit pattern | Managed output: runtime major; pump returns callback count instead |
 | 16 | u64 / int64 bit pattern | Component-local session identity |
 
 Rust checks size/offset at compile time. C# uses Marshal reads/writes only after

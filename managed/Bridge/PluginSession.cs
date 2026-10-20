@@ -21,6 +21,11 @@ internal sealed class PluginSession
     private long nextId;
     private string? directory;
     private HostEnvironment? environment;
+    private OwnerContext? context;
+    internal T OnOwner<T>(Func<T> action) => context is null ? action() : context.Run(action);
+    internal int Pump() => context?.Pump() ?? 0;
+    // Keep the native Application type outside Linux JIT paths; Windows uses the actual Desktop Runtime.
+    private static Action WindowsPump() => Application.DoEvents;
     private PluginRecord Find(long id) => plugins.TryGetValue(id, out var plugin)
         ? plugin : throw new ArgumentException("Unknown plugin instance", nameof(id));
     private HostEnvironment Host()
@@ -29,7 +34,9 @@ internal sealed class PluginSession
         if (OperatingSystem.IsWindows() && Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
             throw new InvalidOperationException("Windows plugin initialization requires a caller-owned STA thread and UI message loop");
         return environment = new HostEnvironment(directory
-            ?? throw new InvalidOperationException("Host data directory has not been configured"));
+            ?? throw new InvalidOperationException("Host data directory has not been configured"),
+            context is null ? OperatingSystem.IsWindows() ? WindowsPump() : null : () => context.Pump(),
+            context is null ? null : () => context.IsDispatching);
     }
     private void Cleanup(PluginRecord plugin)
     {
@@ -47,13 +54,17 @@ internal sealed class PluginSession
         if (!Path.IsPathFullyQualified(path) || !Directory.Exists(path))
             throw new ArgumentException("Host data directory must be an existing absolute directory", nameof(path));
         directory = path;
+        // Linux controls capture this cooperative context; native Windows keeps the caller's UI loop.
+        if (OperatingSystem.IsLinux())
+            context = new(error => ActGlobals.oFormActMain?.WriteExceptionLog(error, "Posted owner callback"));
     }
     internal long Add(string path, object instance)
     {
         plugins.Add(++nextId, new(path, (IActPluginV1)instance));
         return nextId;
     }
-    internal string Initialize(long id)
+    internal string Initialize(long id) => OnOwner(() => InitializeCore(id));
+    private string InitializeCore(long id)
     {
         var plugin = Find(id);
         if (plugin.State != PluginState.Constructed)
@@ -85,7 +96,13 @@ internal sealed class PluginSession
             throw new InvalidOperationException($"InitPlugin failed for {plugin.Path}: {failure.GetBaseException().Message}", failure);
         }
     }
-    internal void Deinitialize(long id)
+    internal void Deinitialize(long id) => OnOwner(() =>
+    {
+        if (environment is null) DeinitializeCore(id);
+        else environment.RunWithLogReadingSuspended(() => DeinitializeCore(id));
+        return 0;
+    });
+    private void DeinitializeCore(long id)
     {
         var plugin = Find(id);
         if (plugin.State != PluginState.Initialized)
@@ -99,6 +116,8 @@ internal sealed class PluginSession
     internal void Stop()
     {
         var errors = new List<Exception>();
+        // Drain file callbacks while plugin state is still valid, before invoking any DeInitPlugin.
+        try { environment?.StopLogReading(); } catch (Exception error) { errors.Add(error); }
         for (var index = initialized.Count - 1; index >= 0; index--)
             if (Find(initialized[index]).State == PluginState.Initialized)
                 try { Deinitialize(initialized[index]); } catch (Exception error) { errors.Add(error); }
@@ -108,6 +127,8 @@ internal sealed class PluginSession
         var previous = environment;
         environment = null;
         try { previous?.Dispose(); } catch (Exception error) { errors.Add(error); }
+        try { context?.Dispose(); } catch (Exception error) { errors.Add(error); }
+        context = null;
         if (errors.Count != 0) throw new AggregateException("Plugin shutdown failed; the session was closed", errors);
     }
 }
