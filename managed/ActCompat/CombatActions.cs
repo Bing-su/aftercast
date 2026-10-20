@@ -5,6 +5,7 @@ public static partial class ActGlobals
     // These original defaults control category detail and encounter end-time selection.
     public static bool restrictToAll;
     public static bool longDuration;
+    internal static object actionDataLock = new();
 }
 
 public partial class ZoneData
@@ -35,6 +36,7 @@ public partial class EncounterData
     private List<CombatantData>? selectedAllies;
     private bool alliesManual;
     private bool alliesCached;
+    private DateTime alliesLastCall = DateTime.Now;
 
     internal void EnsureActionSupported()
     {
@@ -90,9 +92,50 @@ public partial class EncounterData
     public List<CombatantData> GetAllies() => GetAllies(false);
     public List<CombatantData> GetAllies(bool allowLimited)
     {
-        if (alliesCached) return selectedAllies!;
+        if (alliesCached || allowLimited && DateTime.Now.Second == alliesLastCall.Second ||
+            selectedAllies is not null && Active && Title == "All") return selectedAllies!;
         if (IgnoreEnemies) return new(Items.Values);
-        throw new NotSupportedException("Automatic ally resolution requires the ACT relationship-graph policy; call SetAllies with an explicit nonempty list.");
+        var timer = System.Diagnostics.Stopwatch.StartNew();
+        var seed = GetCombatant(CharName);
+        if (seed is null) return new();
+        var graph = new SortedList<string, AllyNode> { [seed.Name.ToUpper()] = new(seed) };
+        bool added;
+        do
+        {
+            added = false;
+            // Preserve ACT's index order: adding an earlier key can change the current node mid-pass.
+            for (var index = 0; index < graph.Count; index++)
+            for (var relation = 0; relation < graph.Values[index].Actor.Allies.Count; relation++)
+            {
+                var name = graph.Values[index].Actor.Allies.Keys[relation];
+                var modifier = graph.Values[index].Actor.Allies.Values[relation];
+                if (!graph.ContainsKey(name))
+                {
+                    var actor = GetCombatant(name);
+                    if (actor is null) continue;
+                    graph.Add(name, new(actor));
+                    added = true;
+                }
+                graph[name].Weight = graph.Values[index].Weight > 0
+                    ? unchecked(graph[name].Weight + modifier)
+                    : unchecked(graph[name].Weight - modifier);
+            }
+        } while (added);
+        var negative = graph[seed.Name.ToUpper()].Weight < 0;
+        selectedAllies = graph.Values.Where(node => negative ? node.Weight < 0 : node.Weight > 0)
+            .Select(node => node.Actor).ToList();
+        alliesCached = true;
+        alliesLastCall = DateTime.Now;
+        timer.Stop();
+        // Keep real diagnostics when hosted, while standalone graph calculations need no UI root.
+        ActGlobals.oFormActMain?.WriteDebugLog("GetAllies: " + timer.ElapsedMilliseconds.ToString("F"));
+        return selectedAllies;
+    }
+
+    private sealed class AllyNode(CombatantData actor)
+    {
+        internal CombatantData Actor { get; } = actor;
+        internal int Weight;
     }
 
     private List<CombatantData> AggregateActors() => IgnoreEnemies ? new(Items.Values) : GetAllies();
@@ -133,11 +176,18 @@ public partial class EncounterData
 
     public void EndCombat(bool finalize)
     {
-        if (finalize) throw new NotSupportedException("Encounter finalization requires ACT title selection and trimming policies.");
-        var end = EndTime;
-        var start = StartTimes[EndTimes.Count];
-        Active = false;
-        EndTimes.Add(start < end ? end : start);
+        lock (ActGlobals.actionDataLock)
+        {
+            Active = false;
+            var start = StartTimes[EndTimes.Count];
+            var end = EndTime;
+            EndTimes.Add(start < end ? end : start);
+            if (finalize)
+            {
+                Trim();
+                Title = GetStrongestEnemy(ActGlobals.charName!)!;
+            }
+        }
     }
 }
 
@@ -155,7 +205,7 @@ public partial class CombatantData
     private bool startCached, endCached;
     private DateTime cachedStart, cachedEnd;
 
-    public void InvalidateCachedValues() { startCached = endCached = false; }
+    public void InvalidateCachedValues() { startCached = endCached = false; InvalidateDurationCache(); deathsCached = false; }
     public void InvalidateCachedValues(bool recursive)
     {
         InvalidateCachedValues();
@@ -167,6 +217,8 @@ public partial class CombatantData
     private void Route(MasterSwing action, bool outgoing)
     {
         startCached = endCached = false;
+        InvalidateDurationCache();
+        if (!outgoing && action.Damage == Dnum.Death) deathsCached = false;
         var links = outgoing ? SwingTypeToDamageTypeDataLinksOutgoing : SwingTypeToDamageTypeDataLinksIncoming;
         if (!links.TryGetValue(action.SwingType, out var categories)) return;
         var definitions = outgoing ? OutgoingDamageTypeDataObjects : IncomingDamageTypeDataObjects;

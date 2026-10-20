@@ -249,12 +249,44 @@ logs or evidence that host `SetEncounter` is implemented.
 | Not implemented in this slice | Visible behavior |
 | --- | --- |
 | Selective action parsing | Reject before changing the encounter or action ownership |
-| Automatic ally graph resolution | Reject when no explicit nonempty ally list was installed; ignore-enemies aggregate queries can use all actual combatants |
-| `EndCombat(true)` finalization | Reject before changing segment state; title selection and trimming remain to implement |
-| Attack/category/combatant duration and DPS | Members remain absent until their segmented rules are reconstructed |
 | Custom localization terms | Verified built-in English terms are used; external ACT localization overrides remain unsupported |
 | Host action orchestration | Root encounter selection, corrections, action hooks/queue, combat-end draining and semantic imports remain open |
 
-The replacement-only policy checks verify that rejected selection/finalization
+The replacement-only policy checks verify that rejected selective parsing
 does not leave a partially mutated graph. Supported constructor and action cases
 continue to run against genuine ACT rather than an invented aggregate baseline.
+
+## Ally graphs, finalization and segmented duration
+
+| Implemented behavior | Validation boundary |
+| --- | --- |
+| Automatic allies | Genuine and replacement action-derived signed relationship graphs agree for damage, healing, disconnected actors, unknown actors, cancellation of weights and manual-list override |
+| Graph cache | Original sorted-node traversal, invalidation and limited-read behavior are preserved; caller-supplied manual lists retain their identity |
+| Enemy/title selection | Integer damage-per-death scores convert through single precision before descending ranking; calculation is reconstructed from CIL, with the original null-root runtime limitation below |
+| Encounter finalization | `EndCombat(true)` closes the segment, recursively trims actual collections and selects the title; the genuine null-root fixture can compare segment/trim effects before its debug failure |
+| Personal duration | Attack/category/combatant scans preserve sequence-number-first action ordering, open and closed segments, original gap/boundary quirks, independent cache invalidation and malformed-list exceptions |
+| Numeric rates | Attack/category DPS guards and combatant unguarded division preserve their distinct zero-duration results, including NaN and infinity; deprecated `AttackType.ExtDPS` retains its obsolete metadata |
+| Combat event payloads | Original-reference constructor/delegate probes verify mutable scalar snapshots, readonly action/encounter references, cancellation and shared tag-dictionary identity; root notification delivery is still a separate milestone |
+| Debug messages | `WriteDebugLog` sends best-effort output to application-owned .NET trace listeners, separate from host error history; listener failure does not interrupt calculation |
+
+Original ACT's standalone `GetAllies` and segmented combatant duration getters
+cache their real result before dereferencing the absent main form for a debug
+message. The reference probes accept that failure only for the pinned genuine
+artifact, exact method and committed private cache, then read the same cached
+result. Replacement exceptions are never accepted by that path. Standalone
+replacement calculations work without a UI root; hosted calculations can use the
+trace adapter.
+
+`GetStrongestEnemy` instead reaches the original debug call before returning the
+selected name. Its null-root failure is bounded to the pinned method and observed
+IL offset 248 on .NET 10.0.13. Original title-return equivalence is therefore not
+claimed: ranking follows the inspected CIL, replacement title assertions execute,
+and genuine finalization assertions cover completed segment and trimming work.
+The fixture deliberately gives collections spare capacity before checking trims;
+`TrimExcess` need not shrink a nearly full collection.
+
+The additional graph/ranking/lock metadata is retained in
+`binaries/analysis/automatic-allies-evidence.json`, including
+`ev_d830369638953f567ce88dfa21ed5cbd4aae845bba635987f8a695c25b8eeb36`.
+Combat event metadata is retained in `continuous-startup-evidence.json` as
+`ev_25f8eae1a5f2067b4558699abe21f365b8df6e558b173ff35b10ea0744b1c10c`.

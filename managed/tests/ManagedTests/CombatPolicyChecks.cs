@@ -28,18 +28,17 @@ internal static class CombatPolicyChecks
         Check(action.ParentEncounter is null);
 
         var plain = new EncounterData("Source", "Fixture", zone);
-        Unsupported(() => plain.GetAllies());
-        Unsupported(() => plain.EndCombat(true));
+        Check(plain.GetAllies().Count == 0);
         Check(!plain.Active && plain.EndTimes.Count == 0);
         var actor = new CombatantData("Source", plain);
         var allies = new List<CombatantData> { actor };
         plain.SetAllies(allies);
         Check(ReferenceEquals(plain.GetAllies(), allies));
         plain.SetAllies([]);
-        Unsupported(() => plain.GetAllies());
+        Check(plain.GetAllies().Count == 0);
         plain.SetAllies(allies);
         plain.SetAllies(null);
-        Unsupported(() => plain.GetAllies());
-        Console.WriteLine("Unsupported combat policies reject before graph mutation; explicit allies preserve ownership.");
+        Check(plain.GetAllies().Count == 0);
+        Console.WriteLine("Unsupported selection rejects before graph mutation; automatic and explicit allies preserve ownership.");
     }
 }

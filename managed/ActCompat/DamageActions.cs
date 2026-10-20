@@ -13,8 +13,7 @@ public partial class AttackType
         Items.Add(action);
     }
 
-    // shortcut: this slice has only count-cursor caches; add nonincremental invalidation with derived metrics.
-    public void InvalidateCachedValues() { }
+    public void InvalidateCachedValues() => InvalidateDurationCache();
 
     public void InvalidateCachedValues(bool full)
     {
@@ -70,8 +69,7 @@ public partial class DamageTypeData
         attack.AddCombatAction(action);
     }
 
-    // No category-level derived cache exists until segmented duration is implemented.
-    public void InvalidateCachedValues() { }
+    public void InvalidateCachedValues() => InvalidateDurationCache();
 
     public void InvalidateCachedValues(bool recursive)
     {
