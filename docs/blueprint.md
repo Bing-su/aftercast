@@ -161,3 +161,8 @@ The [file-import API](m2-file-import.md) now drives the original FFXIV parser th
 repeated synthetic imports and failure recovery, with 400-damage action/aggregate
 assertions. Representative gameplay, complete deferred effects and table exports,
 native capture and Windows execution remain open.
+
+The [original recording investigation](m4-recording-research.md) and isolated
+writer harness establish actual bytes, flush visibility, private I/O diagnostics
+and a known cancellation failure. They do not establish safe loaded-writer
+shutdown, durable storage or FF Logs acceptance.

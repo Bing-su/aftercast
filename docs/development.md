@@ -36,6 +36,7 @@ so workspace publication is disabled rather than inventing a license.
 | `mise run test:original-reference` | Execute genuine ACT constructors, value cases and configured action fixtures in an isolated process; requires the pinned local ACT artifact |
 | `mise run test:original-contracts` | Execute the same compiled value/state probes against both replacement and genuine ACT in separate processes |
 | `mise run test:original-import -- /trusted/plugin-copy/FFXIV_ACT_Plugin.dll /private/new-state` | Repeated original-plugin synthetic imports, emitted action assertions, invalid-input recovery and private parser diagnostics; use a disposable plugin copy |
+| `mise run test:original-writer -- /absolute/pinned-sdk-deployment` | Isolated genuine-writer bytes/flush/error checks and watchdog-protected reproduction of its known cancellation failure; excludes game and network workers |
 | `mise run test:linux-plugin-compat` | Check the pinned FFXIV memory IL adjustment, unknown-build rejection and original-file preservation; requires supplied FFXIV artifacts |
 | `dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- original /trusted/plugin-copy/FFXIV_ACT_Plugin.dll /private/state` | Observe original startup/workers for 1.5 seconds with an explicit owner-thread pump and bounded diagnostics; use a disposable plugin copy |
 | `DOTNET_ROOT=/usr/lib/dotnet mise run test:plugins` | Build fixtures; check plugin request bounds and construct instances through the Rust API, including dependency and constructor failures |

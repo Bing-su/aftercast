@@ -14,7 +14,7 @@ run = "dotnet run --project crates/bxivact-winforms/managed/tests/ContractTests.
 
 [tasks."managed:restore"]
 description = "Restore and lock maintainer-only managed dependencies"
-run = ["dotnet restore managed/Bridge/Bridge.csproj", "dotnet restore crates/bxivact-winforms/managed/Charting/Charting.csproj", "dotnet restore crates/bxivact-winforms/managed/tests/ContractTests.csproj", "dotnet restore managed/tests/PluginFixture/PluginFixture.csproj", "dotnet restore managed/tests/LegacyReference/LegacyReference.csproj", "dotnet restore managed/tests/OriginalReference/OriginalReference.csproj", "dotnet restore managed/tests/ManagedTests/ManagedTests.csproj"]
+run = ["dotnet restore managed/Bridge/Bridge.csproj", "dotnet restore crates/bxivact-winforms/managed/Charting/Charting.csproj", "dotnet restore crates/bxivact-winforms/managed/tests/ContractTests.csproj", "dotnet restore managed/tests/PluginFixture/PluginFixture.csproj", "dotnet restore managed/tests/LegacyReference/LegacyReference.csproj", "dotnet restore managed/tests/OriginalReference/OriginalReference.csproj", "dotnet restore managed/tests/OriginalWriter/OriginalWriter.csproj", "dotnet restore managed/tests/ManagedTests/ManagedTests.csproj"]
 
 [tasks.check]
 description = "Check formatting, Rust lints, and bridge tests"
@@ -70,6 +70,10 @@ run = [
 description = "Import the fixed synthetic fixture through a trusted original plugin copy; pass plugin-copy and state-directory arguments"
 depends = ["managed:test-runner"]
 run = "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- original-import"
+
+[tasks."test:original-writer"]
+description = "Characterize the pinned original writer in watchdog-protected child processes; pass its SDK deployment directory"
+run = "dotnet run --project managed/tests/OriginalWriter/OriginalWriter.csproj -c Release -p:RestoreLockedMode=true --"
 
 [tasks."test:original-contracts"]
 description = "Run the same compiled value/state probes against replacement and genuine ACT in separate processes"
