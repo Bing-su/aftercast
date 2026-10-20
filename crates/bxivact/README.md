@@ -36,6 +36,10 @@ for explicit cleanup; stop also cleans up initialized plugins. Linux supports
 headless status controls, with no rendering or native handles. Windows requires
 the .NET 10 Desktop Runtime and a caller-owned STA/UI loop; execution is unverified.
 
+On Linux, the pinned FFXIV 3.0.3.3 build receives an in-memory compatibility
+adjustment: its embedded memory component reports Windows administrator status
+as false. Original files remain unchanged; other builds are not rewritten.
+
 The project license is undecided; publication is disabled. The bundled FSharp.Core
 10.0.113 dependency is MIT-licensed; its notice is in `managed/FSharp.Core.LICENSE`.
 System.Security.Permissions and System.Windows.Extensions 10.0.13 provide legacy

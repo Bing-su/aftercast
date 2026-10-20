@@ -46,6 +46,10 @@ run = ["mkdir -p target/managed/test-bridge", "cp crates/bxivact/managed/*.dll c
 description = "Verify original ACT reference identity and bind a compiled probe to the replacement"
 run = ["dotnet fsi --exec managed/tests/PrepareActReference.fsx", "dotnet build managed/tests/LegacyReference/LegacyReference.fsproj -c Release -p:RestoreLockedMode=true", "mise run managed:build", "dotnet fsi --exec managed/tests/ActBindingTests.fsx"]
 
+[tasks."test:linux-plugin-compat"]
+description = "Verify the pinned in-memory Linux adjustment; requires the supplied original FFXIV artifacts"
+run = "dotnet fsi --exec managed/tests/LinuxPluginCompatibilityTests.fsx"
+
 [tasks."test:plugins"]
 description = "Check trusted plugin construction, initialization and cleanup; requires DOTNET_ROOT"
 depends = ["managed:test-payload"]

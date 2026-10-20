@@ -1,10 +1,10 @@
 # M1: startup contracts and plugin lifecycle
 
 Checked on Linux x86-64 / .NET 10.0.13 on 2026-10-20. Fixture initialization and
-cleanup work. Original FFXIV initialization passes the missing UserControl and
-legacy permission-assembly barriers, then fails with "Windows Principal
-functionality is not supported on this platform." This is not completion of M1
-or parser readiness.
+cleanup work. The pinned FFXIV build passes UserControl, legacy permission binding
+and the Windows administrator query with a Linux compatibility adjustment. It now
+fails on missing System.Windows.Forms.DataVisualization. This is not completion
+of M1 or parser readiness.
 
 ## Implemented slice
 
@@ -147,9 +147,9 @@ The permission package was selected from the official
 Context7's [.NET dependency migration guidance](https://github.com/dotnet/docs/blob/main/docs/core/porting/third-party-deps.md)
 was checked; package compatibility still requires runtime validation. The packages
 are process-owned and do not restore .NET Framework CAS enforcement or Windows
-identity support on Linux. No principal check is bypassed or made to return a
-fabricated administrator identity. The exact original Windows principal call site
-and the remaining settings/control-tree dependencies still need investigation.
+identity support on Linux. The subsequent compatibility adjustment below replaces
+one Windows administrator query; no administrator identity is fabricated. The
+remaining settings/control-tree dependencies still need investigation.
 
 The independent control test checks UserControl inheritance, text, disposal and
 native-handle rejection. The lifecycle fixture compiles its UserControl constructor
@@ -163,6 +163,51 @@ reproduced the original plugin's Windows Principal failure in a separate process
 Rust formatting, workspace tests, strict Linux and Windows-target Clippy, managed
 ABI/control tests and real CLR lifecycle/construction tests passed. Windows runtime
 execution and successful original parser startup remain unverified.
+
+## Linux administrator-query adjustment
+
+| Question | Evidence / implemented behavior |
+| --- | --- |
+| Runtime failure origin | First-chance exception observation with JIT optimization disabled identifies WindowsIdentity.GetCurrent inside FFXIV_ACT_Plugin.Memory.ProcessManager.SetIsAdministratorFlag |
+| Static method | REA ev_535c6c7a741b0bc49f3d562918e0e5221b1446cac91693439e1bfb06277e2821; method 0x06000096 calls get_Current, WindowsIdentity.GetCurrent, WindowsPrincipal constructor, IsInRole(544), set_IsAdministrator |
+| Memory source | SHA-256 0363753efe0d7ae52c0de73653a5436cf83cf655ca47515ce7aa33908f82d897; 70144 bytes; MVID 89b13c66-df57-43bf-8217-c84f5c77f5f6 |
+| Method source | Tiny header at file offset 9736; 32 IL bytes; SHA-256 7879a598366bd64b02ddf60262f86130d8e4b73fd8990a8293417b9e467129e1 |
+| Scope | Linux only, main plugin hash af1031cdba8eeba8f53dd9d618e58d62d4919bfa77db9b31c568bd04cb359093 only; other main builds use normal loading |
+| Resolution | Intercept the memory dependency in PluginContext.Load before Costura fallback; decompress its embedded resource to exactly 70144 bytes and verify the full assembly and method hashes |
+| Replacement | Preserve get_Current and set_IsAdministrator; replace IL offsets 6..25 with ldc.i4.0 and nineteen nops; Windows administrator status becomes false |
+| Failure policy | Reject different memory bytes, oversized resources and unexpected IL; never guess offsets for a new build |
+| Observed next boundary | The Rust initializer now reports missing System.Windows.Forms.DataVisualization, Version=4.0.0.0, token 31bf3856ad364e35 |
+
+Linux does not supply a Windows administrator token. Reporting false is a
+conservative host compatibility policy, not a Linux root/capability test or a
+working Linux process-memory reader. Existing Windows behavior is unchanged.
+The adjusted image is loaded from a stream into the plugin's context. Original
+files and the embedded resource on disk are untouched, and no original binary is
+distributed with the crate. The in-memory image has changed IL: retained version,
+MVID and public-key metadata do not make its original strong-name signature valid.
+Modern .NET loading in this experiment does not establish Framework compatibility.
+
+This changes one dependency's behavior, so this probe is the original main plugin
+with an adjusted memory dependency, rather than a byte-identical original runtime.
+Assemblies still remain process-owned, and partial initialization can leave plugin
+side effects. No original initialization completion, capture or parser success is
+claimed. The next slice is the observed DataVisualization/settings UI dependency.
+
+`mise run test:linux-plugin-compat` checks the supplied memory artifact without
+executing it: exact metadata and IL, preservation of bytes outside the twenty-byte
+range, original-input/file preservation, and rejection of altered/already-adjusted
+images. It requires the local supplied artifacts and is separate from ordinary
+consumer tests. Runtime evidence is retained locally in
+`binaries/analysis/principal-runtime.txt` and
+`binaries/analysis/linux-principal-evidence.json`.
+
+The extracted Cargo package reproduced the DataVisualization boundary with the
+dotnet CLI blocked, while ReadyPlugin still initialized and shut down successfully.
+The pinned-byte test, managed ABI/control tests, real CLR hosting/plugin lifecycle
+tests, Rust formatting/tests and strict Linux/Windows-target Clippy passed.
+
+Context7's [plugin loading documentation](https://github.com/dotnet/docs/blob/main/docs/core/tutorials/creating-app-with-plugin-support.md)
+was checked for dependency-context ownership; it does not specify this patch policy.
 
 ## Reproduce and checks
 

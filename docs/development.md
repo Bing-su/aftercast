@@ -29,6 +29,7 @@ so workspace publication is disabled rather than inventing a license.
 | `mise run test:winforms` | Check WinForms signature identity and explicit UI failures without ACT or the bridge |
 | `mise run managed:test` | Build, stage both crates' DLLs, then verify ABI validation, session ownership and the independent WinForms contract |
 | `mise run test:act-binding` | Check the pinned local ACT hash, compile the legacy-reference probe, and run it against the replacement; requires the original local ACT artifact |
+| `mise run test:linux-plugin-compat` | Check the pinned FFXIV memory IL adjustment, unknown-build rejection and original-file preservation; requires supplied FFXIV artifacts |
 | `DOTNET_ROOT=/usr/lib/dotnet mise run test:plugins` | Build fixtures; check plugin request bounds and construct instances through the Rust API, including dependency and constructor failures |
 | `mise run check` | Rust formatting, Clippy with warnings denied, ordinary tests |
 | `DOTNET_ROOT=/usr/lib/dotnet mise run test:hosting` | Run the explicitly ignored real CLR integration test on this Linux installation |

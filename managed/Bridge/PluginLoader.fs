@@ -9,7 +9,7 @@ open System.Security.Cryptography
 open Advanced_Combat_Tracker
 
 /// Share the bridge's contract even when netcorehost loads the bridge outside the default context.
-type private PluginContext(path: string) =
+type private PluginContext(path: string, hash: byte[]) =
     inherit AssemblyLoadContext("bxivact:" + path)
     let resolver = AssemblyDependencyResolver(path)
     override this.Load(name) =
@@ -24,6 +24,9 @@ type private PluginContext(path: string) =
             assembly
         | None ->
             match name.Name with
+            | "FFXIV_ACT_Plugin.Memory" when LinuxPluginCompatibility.isKnownPlugin hash ->
+                let plugin = this.Assemblies |> Seq.find (fun assembly -> assembly.Location = path)
+                LinuxPluginCompatibility.loadMemory this plugin
             // Share the preloaded packages with both file-loaded and Costura byte-loaded dependencies.
             | "System.Security.Permissions" | "System.Windows.Extensions" ->
                 AssemblyLoadContext.Default.LoadFromAssemblyName(name)
@@ -49,7 +52,7 @@ module internal PluginLoader =
             if previous <> hash then invalidOp "Plugin file changed after loading; restart the process before replacing plugins"
             assembly
         | _ ->
-            let context = PluginContext(path)
+            let context = PluginContext(path, hash)
             let assembly = context.LoadFromAssemblyPath(path)
             assemblies.Add(path, (hash, assembly))
             assembly

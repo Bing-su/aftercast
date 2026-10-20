@@ -14,6 +14,7 @@
     <!-- Older plugin JSON serializers reference these legacy permission types during reflection. -->
     <PackageReference Include="System.Security.Permissions" Version="10.0.13" GeneratePathProperty="true" />
     <Compile Include="Platform.fs" />
+    <Compile Include="LinuxPluginCompatibility.fs" />
     <Compile Include="PluginLoader.fs" />
     <Compile Include="PluginSession.fs" />
     <Compile Include="EntryPoint.fs" />
