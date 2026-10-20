@@ -117,16 +117,19 @@ namespace Advanced_Combat_Tracker
                     lines++;
                     if (line.Length == 0) continue;
                     var detectedTime = GetDateTimeFromLog(line);
+                    int timeSorter;
                     lock (CombatGate)
                     {
                         // Original raw import retains host time on MinValue, but passes the local MinValue to hooks.
                         if (detectedTime != DateTime.MinValue) lastKnownTime = detectedTime;
                         GlobalTimeSorter++;
+                        timeSorter = GlobalTimeSorter;
                         UpdateRawZone(line);
                     }
                     CheckIdleEndCombat();
                     var info = new LogLineEventArgs(line, 0, detectedTime, CurrentZone, InCombat);
                     dispatched++;
+                    PublishOriginalLogRecord(true, path, line, detectedTime, timeSorter);
                     InvokeLogHandlers(BeforeLogLineRead, true, info);
                     InvokeLogHandlers(OnLogLineRead, true, info);
                     // Cooperative hosts must service an action subscriber's synchronous owner-thread invocation during long files.

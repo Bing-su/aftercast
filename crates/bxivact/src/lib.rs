@@ -1,12 +1,13 @@
 //! In-process ACT-compatible hosting.
 //!
-//! Provides host/plugin lifecycles and an initial ACT contract slice.
+//! Provides host/plugin lifecycles, synchronous imports and bounded original-log batches.
 //! Call [`extract_bridge`] once to deploy the bundled, prebuilt C# component, then use
 //! [`Host::start`] with a trusted .NET 10 installation. No SDK or download is used at runtime.
 
 mod bridge;
 mod diagnostics;
 mod import;
+mod logs;
 mod runtime;
 
 use camino::Utf8PathBuf;
@@ -14,12 +15,19 @@ use camino::Utf8PathBuf;
 pub use bridge::extract_bridge;
 pub use diagnostics::HostDiagnostics;
 pub use import::ImportReport;
+pub use logs::{
+    LogBatch, LogLoss, LogRecord, LogSubscription, LogSubscriptionConfig, LogTimeKind, LogTimestamp,
+};
 pub use runtime::{Host, HostConfig, PluginConfig, PluginId};
 
 /// Failures that callers can distinguish without parsing diagnostic messages.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("invalid log subscription request: {0}")]
+    InvalidLogRequest(String),
+    #[error("invalid managed log batch: {0}")]
+    InvalidLogResponse(String),
     #[error("invalid import request: {0}")]
     InvalidImportRequest(String),
     #[error("invalid managed import response: {0}")]

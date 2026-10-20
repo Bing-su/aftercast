@@ -22,6 +22,7 @@ gameplay imports, native capture and Windows execution remain unverified.
 - [M1 combat registration and log following](docs/m1-registration-and-log-following.md)
 - [M2 combat orchestration and verification](docs/m2-root-combat.md)
 - [M2 file import and its boundaries](docs/m2-file-import.md)
+- [M3 bounded original-log batches](docs/m3-log-batches.md)
 - [ACT compatibility research](docs/act-host-compatibility-analysis.md)
 - [Event delivery research](docs/act-event-delivery-analysis.md)
 

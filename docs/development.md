@@ -67,8 +67,9 @@ executes the plugin constructor only.
 | Host::start(config) | Acquires exclusive host ownership, selects the highest stable .NET 10 hostfxr in that installation, loads the standard managed delegate, starts session |
 | Host::session_id() | Makes a real managed call to validate the current component-local session identity |
 | Host::pump() | Processes bounded queued Linux control callbacks on the host's creation thread; call regularly while workers are active |
-| Host::diagnostics() | Returns an owned atomic snapshot of total host errors and up to 32 recent bounded messages; repeated reads do not consume history |
+| Host::diagnostics() | Returns an owned atomic snapshot of total host errors/warnings and up to 32 recent bounded messages; repeated reads do not consume history |
 | Host::import_log(path) | Imports a fixed UTF-8 file prefix through initialized plugins, drains submitted actions, restores live context and returns an owned transport/aggregate summary |
+| Host::subscribe_logs / drain_logs / unsubscribe_logs | One bounded original-text subscription; owned batches and exact external loss ranges, independent of core parsing |
 | Host::create_plugin(PluginConfig) | Selects and constructs a trusted IActPluginV1, returns an opaque session-scoped PluginId; never calls InitPlugin |
 | Host::initialize_plugin(PluginId) | Calls InitPlugin once, returns bounded status text; rejects exceptions reported to the host during the callback |
 | Host::deinitialize_plugin(PluginId) | Calls DeInitPlugin once for a successfully initialized instance; unregisters and disposes owned controls even on failure |
@@ -171,7 +172,8 @@ the payload to flat DLL/config/license files, even if a maintainer has old local
 folders locally. Managed bin/obj output and original proprietary artifacts are
 ignored. There is no build.rs, nethost-download, automatic runtime fetch, or
 consumer-side dotnet invocation. bytes is included as requested for the planned
-batch milestone and bounds the new plugin request buffer; there is no event-stream API yet.
+batch milestone and bounds the plugin request buffer. The first [log-batch slice](m3-log-batches.md)
+adds an opt-in original-text subscription; combat snapshots and raw SDK packet streams remain open.
 
 ## Review and validation record — 2026-10-20
 

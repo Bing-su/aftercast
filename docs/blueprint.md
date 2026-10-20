@@ -89,7 +89,8 @@ installs. Enabling a feature alone must not download anything.
 Capacity failure must not consume pending events. Determine batch sizes and time
 budgets from measured load. bytes does not make borrowed CLR memory zero-copy;
 pinning/release protocols or a shared ring require a demonstrated bottleneck.
-M0 only implements a fixed lifecycle handshake, not DrainBatch.
+The lifecycle handshake remains fixed; the [first log-batch slice](m3-log-batches.md)
+adds bounded original-text subscriptions without mutable managed object exposure.
 
 ## Recording, overload, and FF Logs
 

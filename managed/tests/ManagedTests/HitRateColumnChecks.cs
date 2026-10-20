@@ -30,14 +30,14 @@ internal static class HitRateColumnChecks
             category.AddCombatAction(new(1, false, "None", Dnum.Miss, DateTime.UnixEpoch, 2,
                 "Strike", "Source", "Physical", "Target"), "All");
             foreach (var cultureName in new[] { "en-US", "fr-FR" })
-            foreach (var showCommas in new[] { false, true })
-            {
-                CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(cultureName);
-                ActGlobals.mainTableShowCommas = showCommas;
-                // These are ACT's genuine cell examples; the displayed rate has no literal percent suffix.
-                Check(category.GetColumnByName("ToHit") == (cultureName == "en-US" ? "50.00" : "50,00"));
-                Check(column.GetSqlData(category) == "50");
-            }
+                foreach (var showCommas in new[] { false, true })
+                {
+                    CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo(cultureName);
+                    ActGlobals.mainTableShowCommas = showCommas;
+                    // These are ACT's genuine cell examples; the displayed rate has no literal percent suffix.
+                    Check(category.GetColumnByName("ToHit") == (cultureName == "en-US" ? "50.00" : "50,00"));
+                    Check(column.GetSqlData(category) == "50");
+                }
             Check(category.GetColumnByName("tohit") == "");
         }
         finally

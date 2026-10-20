@@ -74,4 +74,4 @@ run = 'dotnet run --project managed/tests/OriginalReference/OriginalReference.cs
 [tasks."test:plugins"]
 description = "Check trusted plugin construction, initialization and cleanup; requires DOTNET_ROOT"
 depends = ["managed:test-runner"]
-run = ["dotnet build managed/tests/PluginFixture/PluginFixture.csproj -c Release -p:RestoreLockedMode=true", "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- plugins", "cargo test -p bxivact --test plugins --test lifecycle --test import -- --ignored"]
+run = ["dotnet build managed/tests/PluginFixture/PluginFixture.csproj -c Release -p:RestoreLockedMode=true", "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- plugins", "cargo test -p bxivact --test plugins --test lifecycle --test import --test logs -- --ignored"]

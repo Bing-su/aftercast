@@ -43,6 +43,11 @@ drain. End live combat first. Failure restores live context and retains partial
 import history. Dispatch counts are not parsed counts, and EOF does not flush
 the plugin's private deferred events. Check host and plugin diagnostics.
 
+Use `subscribe_logs(LogSubscriptionConfig::builder().build())`, `drain_logs(id)`
+and `unsubscribe_logs(id)` for one bounded original-text subscription. Batches
+own their data; oldest-record overflow reports exact loss ranges and leaves core
+parsing running. This subscription is not a durable recording or upload log.
+
 On Linux, the pinned FFXIV 3.0.3.3 build receives an in-memory compatibility
 adjustment: its embedded memory component reports Windows administrator status
 as false. Original files remain unchanged; other builds are not rewritten.

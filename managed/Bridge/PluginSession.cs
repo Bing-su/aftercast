@@ -22,10 +22,14 @@ internal sealed class PluginSession
     private string? directory;
     private HostEnvironment? environment;
     private OwnerContext? context;
+    private readonly LogBuffer logs = new();
     internal Tuple<long, string[]> DiagnosticsSnapshot => environment?.DiagnosticsSnapshot ?? Tuple.Create(0L, Array.Empty<string>());
     internal T OnOwner<T>(Func<T> action) => context is null ? action() : context.Run(action);
     internal int Pump() => context?.Pump() ?? 0;
     internal void EnsureCanStop() => environment?.EnsureCanStop();
+    internal ulong SubscribeLogs(int maxRecords, int maxBytes) => OnOwner(() => logs.Subscribe(maxRecords, maxBytes));
+    internal void UnsubscribeLogs(ulong id) => OnOwner(() => { logs.Unsubscribe(id); return 0; });
+    internal LogDrain DrainLogs(ulong id, int capacity) => OnOwner(() => logs.Drain(id, capacity));
     internal ImportResult ImportLog(string path) => OnOwner(() =>
     {
         if (!plugins.Values.Any(plugin => plugin.State == PluginState.Initialized))
@@ -41,10 +45,12 @@ internal sealed class PluginSession
         if (environment is not null) return environment;
         if (OperatingSystem.IsWindows() && Thread.CurrentThread.GetApartmentState() != ApartmentState.STA)
             throw new InvalidOperationException("Windows plugin initialization requires a caller-owned STA thread and UI message loop");
-        return environment = new HostEnvironment(directory
+        var host = new HostEnvironment(directory
             ?? throw new InvalidOperationException("Host data directory has not been configured"),
             context is null ? OperatingSystem.IsWindows() ? WindowsPump() : null : () => context.Pump(),
             context is null ? null : () => context.IsDispatching);
+        host.OriginalLogRecordRead += logs.Capture;
+        return environment = host;
     }
     private void Cleanup(PluginRecord plugin)
     {
@@ -137,6 +143,7 @@ internal sealed class PluginSession
         var previous = environment;
         environment = null;
         try { previous?.Dispose(); } catch (Exception error) { errors.Add(error); }
+        logs.Clear();
         try { context?.Dispose(); } catch (Exception error) { errors.Add(error); }
         context = null;
         if (errors.Count != 0) throw new AggregateException("Plugin shutdown failed; the session was closed", errors);

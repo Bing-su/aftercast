@@ -100,6 +100,11 @@ namespace Bxivact.ActCompat
         }
         public void Register(ActPluginData data) => main.Register(data);
         public void Unregister(IActPluginV1 plugin) => main.Unregister(plugin);
+        public event Action<OriginalLogRecord> OriginalLogRecordRead
+        {
+            add => main.OriginalLogRecordRead += value;
+            remove => main.OriginalLogRecordRead -= value;
+        }
         public Tuple<long, string> Errors => main.OwnerErrors;
         public Tuple<long, string> Diagnostics => main.Errors;
         public string[] RecentDiagnostics => main.RecentDiagnostics;

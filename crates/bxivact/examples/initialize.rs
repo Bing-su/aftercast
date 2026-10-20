@@ -1,4 +1,4 @@
-use bxivact::{Host, HostConfig, PluginConfig, extract_bridge};
+use bxivact::{Host, HostConfig, LogSubscriptionConfig, PluginConfig, extract_bridge};
 use camino::Utf8PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -32,7 +32,20 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         std::thread::sleep(std::time::Duration::from_millis(10));
     }
     if let Some(path) = import {
+        let subscription = host.subscribe_logs(LogSubscriptionConfig::builder().build())?;
         println!("Import summary: {:?}", host.import_log(path)?);
+        let mut delivered = 0;
+        let mut omitted = 0;
+        loop {
+            let batch = host.drain_logs(subscription)?;
+            delivered += batch.records.len();
+            omitted += batch.dropped.map_or(0, |loss| loss.count);
+            if batch.records.is_empty() {
+                break;
+            }
+        }
+        println!("Original dispatched records delivered: {delivered}; omitted: {omitted}");
+        host.unsubscribe_logs(subscription)?;
     }
     println!("Worker diagnostics: {:?}", host.diagnostics()?);
     host.stop()?;

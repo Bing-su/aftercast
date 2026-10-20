@@ -22,10 +22,14 @@ use netcorehost::{
 use scopeguard::{ScopeGuard, guard};
 
 use crate::{
-    Error, HostDiagnostics, ImportReport,
+    Error, HostDiagnostics, ImportReport, LogBatch, LogSubscription, LogSubscriptionConfig,
     diagnostics::{DIAGNOSTIC_CAPACITY, decode_diagnostics},
     import::{decode_import, import_packet},
     io_error,
+    logs::{
+        LOG_HEADER, decode_logs, larger_log_capacity, log_packet, subscribe_packet,
+        subscription_result,
+    },
 };
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -96,6 +100,7 @@ pub struct Host {
     create_plugin: ManagedFunctionWithDefaultSignature,
     plugin_command: ManagedFunctionWithDefaultSignature,
     import_log: ManagedFunctionWithDefaultSignature,
+    log_command: ManagedFunctionWithDefaultSignature,
     session: u64,
     running: bool,
     // Keep the native library and delegate loader alive for every managed function call.
@@ -151,6 +156,10 @@ impl Host {
             pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
             pdcstr!("ImportLog"),
         )?;
+        let log_command = loader.get_function_with_default_signature(
+            pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
+            pdcstr!("LogCommand"),
+        )?;
         let mut host = Self {
             entry,
             read_error,
@@ -158,6 +167,7 @@ impl Host {
             create_plugin,
             plugin_command,
             import_log,
+            log_command,
             session: 0,
             running: false,
             _loader: loader,
@@ -251,6 +261,85 @@ impl Host {
             });
         }
         decode_import(&packet)
+    }
+
+    /// Starts this host's single bounded subscription to nonempty original text selected for ACT hooks.
+    ///
+    /// Slow consumers lose oldest pending records, with exact loss ranges returned by
+    /// [`Self::drain_logs`]. Core parsing continues. This is not a durable recording or a parsed
+    /// record count. Unsubscribe before configuring another subscription.
+    pub fn subscribe_logs(
+        &mut self,
+        config: LogSubscriptionConfig,
+    ) -> Result<LogSubscription, Error> {
+        let mut packet = subscribe_packet(self.session, config)?;
+        if self.run_log_command(&mut packet)? != 0 {
+            return Err(Error::InvalidLogResponse(
+                "unexpected subscription status".to_owned(),
+            ));
+        }
+        subscription_result(&packet, self.session)
+    }
+
+    /// Drains an owned batch without waiting for new records or borrowing managed memory.
+    ///
+    /// Capacity retries do not consume pending records or loss state. Read regularly, for example
+    /// after [`Self::pump`], and drain until `records` is empty. Cloned line bytes share only Rust
+    /// memory. An oversized record discards the pending prefix and itself, preserving an exact
+    /// missing range; inspect `dropped` even for an empty batch.
+    pub fn drain_logs(&mut self, subscription: LogSubscription) -> Result<LogBatch, Error> {
+        self.check_log_subscription(subscription)?;
+        let mut capacity = 64 * 1024;
+        loop {
+            let mut packet = log_packet(self.session, subscription.instance, 2, capacity);
+            match self.run_log_command(&mut packet)? {
+                0 => return decode_logs(packet.freeze()),
+                1 => capacity = larger_log_capacity(&packet)?,
+                _ => {
+                    return Err(Error::InvalidLogResponse(
+                        "unexpected drain status".to_owned(),
+                    ));
+                }
+            }
+        }
+    }
+
+    /// Ends a subscription and explicitly discards its unread records and loss state.
+    /// Host stop also discards unread subscription data.
+    pub fn unsubscribe_logs(&mut self, subscription: LogSubscription) -> Result<(), Error> {
+        self.check_log_subscription(subscription)?;
+        let mut packet = log_packet(self.session, subscription.instance, 3, LOG_HEADER);
+        if self.run_log_command(&mut packet)? != 0 {
+            return Err(Error::InvalidLogResponse(
+                "unexpected unsubscribe status".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn check_log_subscription(&self, subscription: LogSubscription) -> Result<(), Error> {
+        if subscription.session != self.session {
+            return Err(Error::InvalidLogRequest(
+                "subscription belongs to another host session".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn run_log_command(&self, packet: &mut BytesMut) -> Result<i32, Error> {
+        // Requests are constructed within the private 64 MiB ABI limit before this conversion.
+        let length = packet.len() as i32;
+        // SAFETY: LogCommand borrows this initialized allocation for this call only. It validates
+        // headers and writes at most capacity, never retaining the pointer or invoking Rust.
+        let status = unsafe { (self.log_command)(packet.as_mut_ptr().cast(), length) };
+        if status < 0 {
+            return Err(Error::Managed {
+                command: 9,
+                status,
+                message: self.error_message(),
+            });
+        }
+        Ok(status)
     }
 
     /// Constructs a trusted plugin and retains it until this host stops.

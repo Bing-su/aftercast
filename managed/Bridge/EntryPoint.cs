@@ -190,6 +190,44 @@ public static class EntryPoint
         return 0;
     });
 
+    public static int LogCommand(nint buffer, int sizeBytes) => Run(() =>
+    {
+        const int headerSize = 64;
+        const int maximumSize = headerSize + 64 * 1024 * 1024;
+        if (buffer == 0 || sizeBytes < headerSize || sizeBytes > maximumSize)
+            throw new ArgumentException("Log command capacity is outside supported bounds", nameof(buffer));
+        if (!BitConverter.IsLittleEndian || Marshal.ReadInt32(buffer, 0) != sizeBytes || Marshal.ReadInt32(buffer, 4) != 1)
+            throw new ArgumentException("Log command ABI size/version mismatch", nameof(buffer));
+        Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
+        var id = unchecked((ulong)Marshal.ReadInt64(buffer, 16));
+        var command = Marshal.ReadInt32(buffer, 24);
+        if ((command is 1 or 3) && sizeBytes != headerSize)
+            throw new ArgumentException("Subscription commands require a 64-byte header", nameof(buffer));
+        switch (command)
+        {
+            case 1:
+                var subscription = plugins.Value.SubscribeLogs(Marshal.ReadInt32(buffer, 28), Marshal.ReadInt32(buffer, 56));
+                Marshal.WriteInt64(buffer, 16, unchecked((long)subscription));
+                return 0;
+            case 3:
+                plugins.Value.UnsubscribeLogs(id);
+                return 0;
+            case 2:
+                var result = plugins.Value.DrainLogs(id, sizeBytes - headerSize);
+                // Insufficient capacity does not consume either pending records or their separate loss state.
+                var required = result.RequiredPayloadCapacity == 0 ? 0 : headerSize + result.RequiredPayloadCapacity;
+                Marshal.WriteInt32(buffer, 28, result.Records);
+                Marshal.WriteInt64(buffer, 32, unchecked((long)result.FirstDropped));
+                Marshal.WriteInt64(buffer, 40, unchecked((long)result.LastDropped));
+                Marshal.WriteInt64(buffer, 48, unchecked((long)result.Dropped));
+                Marshal.WriteInt32(buffer, 56, result.Payload.Length);
+                Marshal.WriteInt32(buffer, 60, required);
+                Marshal.Copy(result.Payload, 0, buffer + headerSize, result.Payload.Length);
+                return required == 0 ? 0 : 1;
+            default: throw new ArgumentException("Unknown log subscription command", nameof(command));
+        }
+    });
+
     public static int ReadDiagnostics(nint buffer, int sizeBytes) => Run(() =>
     {
         const int headerSize = 32;

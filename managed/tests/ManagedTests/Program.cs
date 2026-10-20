@@ -76,6 +76,7 @@ internal static class Program
                 var actions = new List<ImportedAction>();
                 var live = (root.ActiveZone, root.CurrentZone, root.LogFilePath, root.LastKnownTime, ActGlobals.charName);
                 Check(live.charName == "YOU");
+                var subscription = session.SubscribeLogs(2, 8 * 1024 * 1024);
                 root.AfterCombatAction += (import, info) =>
                 {
                     lock (actions) actions.Add(new(import, info.attacker, info.victim,
@@ -93,6 +94,9 @@ internal static class Program
                     }
                     lock (actions) actions.Clear();
                     var report = session.ImportLog(Path.GetFullPath(importPath));
+                    var logs = session.DrainLogs(subscription, 8192);
+                    Check(logs.Records == 2 && logs.Dropped == 5 && logs.RequiredPayloadCapacity == 0);
+                    Check(logs.FirstDropped == (ulong)(iteration * 7 + 1) && logs.LastDropped == (ulong)(iteration * 7 + 5));
                     Console.WriteLine("Original import summary: " + System.Text.Json.JsonSerializer.Serialize(report));
                     Check(report == new ImportResult(7, 7, 1, 2, 400, 0));
                     Check(!root.InCombat && ReferenceEquals(root.ActiveZone, live.ActiveZone));
@@ -116,6 +120,7 @@ internal static class Program
                         Check(actions[1].Sorter == actions[0].Sorter + 1);
                     }
                 }
+                session.UnsubscribeLogs(subscription);
             }
             var errors = (Tuple<long, string>)root.GetType().GetProperty("Errors", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(root)!;
             Console.WriteLine($"Original worker diagnostics: {errors.Item1}; {errors.Item2}");
@@ -170,6 +175,7 @@ internal static class Program
             Check(session > 0 && Marshal.ReadInt32(buffer, 12) == 10);
             DiagnosticAbiChecks.Run(session);
             ImportAbiChecks.Run(session);
+            LogAbiChecks.Run(session);
             ReentrantSessionChecks.Run(session);
             Marshal.WriteInt32(buffer, 8, 4);
             Check(EntryPoint.Invoke(buffer, 24) == 0 && Marshal.ReadInt32(buffer, 12) == 0);
@@ -373,6 +379,8 @@ internal static class Program
         HitRateColumnChecks.Run();
         ImportLogReaderChecks.Run();
         ImportChecks.Run();
+        OriginalLogCaptureChecks.Run();
+        LogBufferChecks.Run();
         OwnerContextChecks.Run();
         HostLifetimeChecks.Run();
         DiagnosticChecks.Run();

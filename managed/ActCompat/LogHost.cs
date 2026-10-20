@@ -53,7 +53,7 @@ public partial class FormActMain
             lock (logGate)
             {
                 if (logHostStopped || generation != logGeneration) return;
-                next = new LogFollower(path, line => ReceiveLogLine(generation, line),
+                next = new LogFollower(path, line => ReceiveLogLine(generation, path, line),
                     error => WriteExceptionLog(error, "Log follower"), () => ReadThreadLock || IsLogDeliveryPaused(generation));
                 follower = next;
             }
@@ -159,23 +159,27 @@ public partial class FormActMain
         }
     }
 
-    private void ReceiveLogLine(long generation, string line)
+    private void ReceiveLogLine(long generation, string sourcePath, string line)
     {
         if (!IsCurrentLog(generation)) return;
         var timestamp = GetDateTimeFromLog(line);
         DateTime detectedTime;
         string zone;
+        int timeSorter;
         lock (logGate)
         {
             if (logHostStopped || generation != logGeneration) return;
             if (timestamp != DateTime.MinValue) lastKnownTime = timestamp;
             GlobalTimeSorter++;
+            timeSorter = GlobalTimeSorter;
             UpdateRawZone(line);
             detectedTime = lastKnownTime;
             zone = currentZone;
         }
         CheckIdleEndCombat();
         var info = new LogLineEventArgs(line, 0, detectedTime, zone, InCombat);
+        if (!IsCurrentLog(generation)) return;
+        PublishOriginalLogRecord(false, sourcePath, line, detectedTime, timeSorter);
         InvokeLogHandlers(BeforeLogLineRead, false, info, generation);
         InvokeLogHandlers(OnLogLineRead, false, info, generation);
     }
