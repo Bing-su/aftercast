@@ -63,6 +63,29 @@ hosting validation. The standard tests do not run original ACT or the original
 plugin; the separate [FFXIV constructor experiment](m1-plugin-construction.md)
 executes the plugin constructor only.
 
+## Integration validation — 2026-10-21
+
+| Boundary | Executed evidence |
+| --- | --- |
+| Rust workspace | Formatting, strict Clippy and ordinary tests passed; seven explicitly enabled real-CLR checks passed, including import, logs, snapshots, lifecycle and startup failure recovery. |
+| Managed host | ACT and native-ABI contract runners passed, including callback reentrancy, shutdown, partial-import status, snapshot ownership and exact observer loss. |
+| Recorded gameplay | Three imports of the pinned 104,744-record Zeromus source matched exact submitted-action-derived actor/report/snapshot totals. Each retained two observer records and reported exactly 104,742 omitted records. |
+| Genuine ACT replay | The same compiled probe replayed all three captured streams through both implementations: exact actor damage/healing/taken/received values, automatic allies and allied totals in all nine encounters. Deliberate one-point expected-damage corruption failed in both implementations. |
+| Linux resources | All 53 text resources with both radix flags: 44 exact dictionaries, 62 preserved invalid-input failures, 23 embedded overrides and 645 replacements matched the independent Windows-separator reference. Actual original-plugin binding used the patched in-memory method. |
+| Original writer | The isolated production-linked correction passed exact output/flush, private open-error and post-flush cancellation cases. Cancellation still leaves two already-queued records in the tested case. |
+| Live file boundaries | Equal-size/equal-mtime replacement, temporary path absence, old-tail/new-first-line ordering, initial snapshot identity, historical partial UTF-8 and BOM-only startup passed. The native live fixture published the replacement's first 75-damage encounter. |
+| Cargo delivery | Both offline packages verified. The extracted host package initialized the original FFXIV plugin and imported the seven-record synthetic fixture with the SDK CLI blocked and a separate runtime-only root containing just .NET 10.0.13 hostfxr and Core runtime files. Result: damage 400, clean territory name, seven original records, no observer loss and zero host diagnostics. |
+| Review | Repeated scoped reviews checked lifecycle waits, initial-handle ownership/lock ordering, resource patch stack/EH/loader behavior and exact numeric oracle boundaries; confirmed defects received localized repairs and regressions. |
+
+These are bounded compatibility checks, not full ACT equivalence or a lossless
+recording guarantee. Only one unique complete gameplay corpus was available in
+the neighboring cactbot fixture trees. Windows Rust cross-checks compile only;
+actual Windows execution, native game capture, sustained parser/network load,
+complete writer durability/rotation and official FF Logs uploader acceptance
+remain open. The optional runtime installer is still deferred; the runtime-only
+consumer check copies already-installed runtime components and performs no
+download or installation.
+
 ## Consumer interface and trust
 
 | API | Behavior |
