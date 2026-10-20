@@ -25,10 +25,6 @@ const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../managed/Dotnet.Compatibility.NOTICES.LICENSE"),
     ),
     (
-        "FSharp.Core.LICENSE",
-        include_bytes!("../managed/FSharp.Core.LICENSE"),
-    ),
-    (
         "Bxivact.Bridge.dll",
         include_bytes!("../managed/Bxivact.Bridge.dll"),
     ),
@@ -48,10 +44,6 @@ const FILES: &[(&str, &[u8])] = &[
     (
         "Advanced Combat Tracker.dll",
         include_bytes!("../managed/Advanced Combat Tracker.dll"),
-    ),
-    (
-        "FSharp.Core.dll",
-        include_bytes!("../managed/FSharp.Core.dll"),
     ),
 ];
 

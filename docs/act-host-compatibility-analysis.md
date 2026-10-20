@@ -2,7 +2,7 @@
 
 Research date: 2026-10-20. Static observations from original binaries, not an ACT
 replacement implementation or successful plugin initialization. The approved
-[blueprint](blueprint.md) assigns ACT contracts/aggregation to F# and exposes a Rust
+[blueprint](blueprint.md) assigns ACT contracts/aggregation to C# and exposes a Rust
 library; the current M0 session scaffold does not satisfy these contracts.
 
 ## Fixed targets
@@ -75,7 +75,7 @@ PublicKeyToken=a946b61e93d97868. Full original-plugin binding remains unverified
 the later [M1 experiment](m1-contract-binding.md) verifies a selected Dnum reference
 against our replacement on .NET 10. Observed VerifyAssemblyVersions messages name Machina 2.3.1.3,
 Machina.FFXIV 2.4.8.1, Common 3.0.0.0 and embedded libraries; do not infer that this
-method directly checks ACT's public key. F# does not solve assembly identity,
+method directly checks ACT's public key. Language selection does not solve assembly identity,
 Framework API availability, WinForms, or Windows native dependencies by itself.
 
 ## Event and aggregation semantics

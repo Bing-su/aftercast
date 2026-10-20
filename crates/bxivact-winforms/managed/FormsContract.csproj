@@ -2,6 +2,8 @@
   <PropertyGroup>
     <!-- Keep this managed implementation buildable without the ACT projects or their props. -->
     <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
     <Version>0.1.0</Version>
     <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Deterministic>true</Deterministic>
@@ -13,7 +15,5 @@
     <AssemblyName>System.Windows.Forms</AssemblyName>
     <AssemblyVersion>4.0.0.0</AssemblyVersion>
   </PropertyGroup>
-  <ItemGroup>
-    <Compile Include="Contract.fs" />
-  </ItemGroup>
+  <ItemGroup><Compile Remove="tests/**/*.cs" /></ItemGroup>
 </Project>

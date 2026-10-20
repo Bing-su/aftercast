@@ -25,7 +25,7 @@ fn failure(host: &mut Host, path: &Utf8Path, name: Option<&str>, expected: &str)
 }
 
 #[test]
-#[ignore = "requires .NET 10 and built F# fixtures; run mise run test:plugins"]
+#[ignore = "requires .NET 10 and built C# fixtures; run mise run test:plugins"]
 fn constructs_trusted_plugins_without_initialization_and_recovers_from_errors() {
     let root = std::env::var("DOTNET_ROOT").expect("set a UTF-8 DOTNET_ROOT");
     let temporary = tempfile::tempdir().expect("create isolated plugin test");

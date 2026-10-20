@@ -7,9 +7,9 @@ prerequisite, not completion of plugin initialization or ACT aggregation.
 
 | Question | Evidence |
 | --- | --- |
-| Can an original ACT reference bind to our F# assembly? | A probe compiled against the original EXE runs against the replacement DLL and calls selected Dnum members |
+| Can an original ACT reference bind to our C# assembly? | A probe compiled against the original EXE runs against the replacement DLL and calls selected Dnum members |
 | Does reference identity match? | Name Advanced Combat Tracker, version 3.8.5.288, neutral culture, public key token a946b61e93d97868 |
-| Is the original ACT executed? | The original file is read as PE metadata/compiler reference only; the runtime probe checks that Dnum comes from crates/bxivact/managed/Advanced Combat Tracker.dll |
+| Is the original ACT executed? | The original file is read as metadata/compiler reference only; the probe checks the replacement identity and matches its bytes to the published DLL |
 | Does this initialize FFXIV? | No. Later construction/lifecycle slices add plugin loading, selected host globals and fixture initialization; original FFXIV initialization remains blocked |
 | Can Rust receive a useful managed failure? | Command/status plus bounded UTF-8 diagnostic text; an unknown-command regression also checks the session still works afterward |
 
@@ -17,14 +17,13 @@ prerequisite, not completion of plugin initialization or ACT aggregation.
 
 ActCompat now outputs Advanced Combat Tracker.dll instead of Bxivact.ActCompat.dll.
 The 160-byte public key is extracted from the hash-pinned reference and checked in
-as ACT.publickey. F# uses public signing, not the unavailable original private key.
+as ACT.publickey. C# uses public signing, not the unavailable original private key.
 This preserves reference identity for the tested modern runtime, not an authentic
 original signature or proof of trust. It does not establish .NET Framework support.
 
 Context7's .NET documentation describes [public signing](https://github.com/dotnet/docs/blob/main/docs/csharp/language-reference/compiler-options/security.md)
 and [modern runtime strong-name validation](https://github.com/dotnet/docs/blob/main/docs/standard/assembly/create-public-private-key-pair.md).
-The F# compiler's own --help exposes --publicsign; the actual binding result is
-verified rather than inferred from the C# documentation.
+The original-reference C# probe verifies the actual binding on modern .NET.
 
 ## Supported Dnum slice
 
@@ -58,9 +57,9 @@ use this as a complete Dnum implementation or a working combat engine.
 | --- | --- |
 | Prepare reference | Supply binaries/act/Advanced Combat Tracker.exe matching SHA-256 934fc00d0a3c8325b0f7445358860b4c013c5dab3d8fff012512acf6502dd657 |
 | Run | mise run test:act-binding |
-| Identity check | PrepareActReference.fsx reads metadata, validates hash/name/version, checks/extracts public key |
-| Original-reference compile | LegacyReference.fsproj references original metadata with Private=false; no replacement project reference |
-| Replacement execution | ActBindingTests.fsx explicitly loads our DLL, checks reference/full identity/location and read-only Number, then runs the compiled probe |
+| Identity check | ManagedTests prepare-act mode validates the original hash/name/version and committed public key |
+| Original-reference compile | LegacyReference.csproj references original metadata with Private=false; no replacement project reference |
+| Replacement execution | ManagedTests act mode checks identity, published bytes and read-only Number, then runs the compiled probe |
 
 Checks throw on failure in Release; they do not depend on DEBUG assertions.
 The original proprietary binary and REA exports remain ignored and are not in the
@@ -72,9 +71,9 @@ file. They use the checked-in, prebuilt compatibility component.
 | Review finding | Change / validation |
 | --- | --- |
 | Numeric status alone hid managed failures | Added ReadError and Error::Managed.message; Rust keeps status/command and validates returned length/UTF-8 |
-| A small diagnostic buffer could encourage partial writes | ReadError reports required bytes and writes nothing when short; F# tests verify the caller's header remains unchanged |
+| A small diagnostic buffer could encourage partial writes | ReadError reports required bytes and writes nothing when short; C# tests verify the caller's header remains unchanged |
 | Old diagnostic text could leak into a successful call | Invoke clears prior error; test verifies zero error length after successful start |
-| Release probe checks must remain active | Explicit failing checks replace assertion-only validation in the compiled probe and managed script |
+| Release probe checks must remain active | Explicit failing checks replace assertion-only validation in the compiled probe and managed runner |
 | Exception handlers must cover native entry boundaries | Both delegates catch ordinary managed exceptions including lock acquisition failures; diagnostic formatting has its own fallback |
 
 Diagnostics are read immediately on the creation thread; the bridge is not a

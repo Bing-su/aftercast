@@ -8,20 +8,11 @@
     ".NETCoreApp,Version=v10.0": {
       "Bxivact.Bridge/0.1.0": {
         "dependencies": {
-          "FSharp.Core": "10.0.113",
           "System.Security.Permissions": "10.0.13",
           "Advanced Combat Tracker.Reference": "3.8.5.288"
         },
         "runtime": {
           "Bxivact.Bridge.dll": {}
-        }
-      },
-      "FSharp.Core/10.0.113": {
-        "runtime": {
-          "lib/netstandard2.1/FSharp.Core.dll": {
-            "assemblyVersion": "10.0.0.0",
-            "fileVersion": "10.1.1326.50504"
-          }
         }
       },
       "System.Security.Permissions/10.0.13": {
@@ -52,9 +43,6 @@
         }
       },
       "Advanced Combat Tracker/3.8.5.288": {
-        "dependencies": {
-          "FSharp.Core": "10.0.113"
-        },
         "runtime": {
           "Advanced Combat Tracker.dll": {
             "fileVersion": "0.0.0.0"
@@ -76,13 +64,6 @@
       "type": "project",
       "serviceable": false,
       "sha512": ""
-    },
-    "FSharp.Core/10.0.113": {
-      "type": "package",
-      "serviceable": true,
-      "sha512": "sha512-QfU6LsrPw9uSq/10z0MMaZ2xMWAKCo1oeTg8FFtCyyAuPv+lFEIoaHEi191QSxvadJ9jRaKNR+GndDocqOZMog==",
-      "path": "fsharp.core/10.0.113",
-      "hashPath": "fsharp.core.10.0.113.nupkg.sha512"
     },
     "System.Security.Permissions/10.0.13": {
       "type": "package",

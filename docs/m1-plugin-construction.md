@@ -12,7 +12,7 @@ Checked on Linux x86-64 / .NET 10.0.13 on 2026-10-20. This extends the
 | Automatic selection | Omit type_name only when exactly one public, concrete, nongeneric IActPluginV1 has a public parameterless constructor |
 | Explicit selection | Resolve only the requested type; avoids inspecting unrelated UI types with unavailable dependencies |
 | Dependencies | Dedicated AssemblyLoadContext per main assembly path, AssemblyDependencyResolver and sibling DLL fallback; native dependency resolver supported but not exercised |
-| Shared contracts | ACT, WinForms and FSharp.Core come from the bridge's actual context, which may be outside the default context |
+| Shared contracts | ACT and WinForms come from the bridge's actual context, which may be outside the default context |
 | ACT identity | Require the tested ACT 3.8.5.288 full reference identity; ignore a private ACT copy in the plugin directory |
 | Failure | Preserve load/select/construct stage, plugin path and underlying exception message; retain command/status and keep the session usable |
 | Lifetime | Host retains constructed instances until stop; no InitPlugin, DeInitPlugin or IDisposable call on these uninitialized instances |
@@ -42,7 +42,7 @@ This table describes the original constructor experiment. The subsequent
 with headless status/disposal support and adds explicit initialization/cleanup.
 
 The Linux adapter is owned by the independent
-[bxivact-winforms crate](../crates/bxivact-winforms/README.md), including its F#
+[bxivact-winforms crate](../crates/bxivact-winforms/README.md), including its C#
 source, prebuilt DLL and contract tests. bxivact consumes its bytes on Linux;
 runtime hosting and AssemblyLoadContext selection remain the host's responsibility.
 `mise run test:winforms` checks this managed contract without ACT or a plugin.
@@ -83,7 +83,7 @@ crosses the boundary. PluginId pairs the session with the returned instance ID.
 
 | Check | Result |
 | --- | --- |
-| Good F# fixture | Multiple instances and fresh instance after host restart |
+| Good C# fixture | Multiple instances and fresh instance after host restart |
 | Invalid selection | Ambiguous automatic selection, missing type, open generic, missing default constructor rejected |
 | Constructor exceptions | Underlying fixture exception reported; later construction succeeds |
 | Dependency failure | Missing sibling DLL reported; copying the DLL restores construction without stopping the host |
@@ -94,8 +94,8 @@ crosses the boundary. PluginId pairs the session with the returned instance ID.
 | Original FFXIV plugin | Explicit root type selected and constructed on Linux using the bundled replacement ACT and WinForms adapter |
 
 Run `DOTNET_ROOT=/usr/lib/dotnet mise run test:plugins` for the fixture and boundary
-checks. The dependency fixture disables exported F# optimization data so its
-constructor genuinely requires the separate dependency assembly in Release.
+checks. The C# dependency fixture prevents JIT inlining of its value getter so
+construction genuinely requires the separate dependency assembly in Release.
 
 The original constructor experiment uses these supplied, ignored artifacts:
 

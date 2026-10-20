@@ -1,20 +1,20 @@
 [tasks."managed:build"]
-description = "Build the portable F# bridge and prepare the Cargo payload"
+description = "Build the portable C# bridge and prepare the Cargo payload"
 depends = ["winforms:build"]
-run = ["dotnet publish managed/Bridge/Bridge.fsproj -c Release --no-self-contained -o crates/bxivact/managed -p:RestoreLockedMode=true", "dotnet fsi --exec managed/ActCompat/PublishFields.fsx 'crates/bxivact/managed/Advanced Combat Tracker.dll'"]
+run = "dotnet publish managed/Bridge/Bridge.csproj -c Release --no-self-contained -o crates/bxivact/managed -p:RestoreLockedMode=true"
 
 [tasks."winforms:build"]
 description = "Build the independent WinForms compatibility assembly and update its crate payload"
-run = ["dotnet build crates/bxivact-winforms/managed/FormsContract.fsproj -c Release -o target/managed/forms -p:RestoreLockedMode=true", "cp target/managed/forms/System.Windows.Forms.dll crates/bxivact-winforms/managed/System.Windows.Forms.dll"]
+run = ["dotnet build crates/bxivact-winforms/managed/FormsContract.csproj -c Release -o target/managed/forms -p:RestoreLockedMode=true", "cp target/managed/forms/System.Windows.Forms.dll crates/bxivact-winforms/managed/System.Windows.Forms.dll"]
 
 [tasks."test:winforms"]
 description = "Check managed WinForms signatures and explicit UI failures without ACT"
 depends = ["winforms:build"]
-run = "dotnet fsi --exec crates/bxivact-winforms/managed/tests/ContractTests.fsx"
+run = "dotnet run --project crates/bxivact-winforms/managed/tests/ContractTests.csproj -c Release -p:RestoreLockedMode=true"
 
 [tasks."managed:restore"]
-description = "Restore and lock maintainer-only F# dependencies"
-run = ["dotnet restore managed/Bridge/Bridge.fsproj", "dotnet restore crates/bxivact-winforms/managed/FormsContract.fsproj", "dotnet restore managed/tests/PluginFixture/PluginFixture.fsproj", "dotnet restore managed/tests/LegacyReference/LegacyReference.fsproj"]
+description = "Restore and lock maintainer-only managed dependencies"
+run = ["dotnet restore managed/Bridge/Bridge.csproj", "dotnet restore crates/bxivact-winforms/managed/FormsContract.csproj", "dotnet restore crates/bxivact-winforms/managed/tests/ContractTests.csproj", "dotnet restore managed/tests/PluginFixture/PluginFixture.csproj", "dotnet restore managed/tests/LegacyReference/LegacyReference.csproj", "dotnet restore managed/tests/ManagedTests/ManagedTests.csproj"]
 
 [tasks.check]
 description = "Check formatting, Rust lints, and bridge tests"
@@ -25,7 +25,7 @@ description = "Verify both offline Cargo packages using the packaged, unpublishe
 run = ["cargo package -p bxivact-winforms --offline", "cargo package -p bxivact --offline --exclude-lockfile --config 'patch.crates-io.bxivact-winforms.path=\"target/package/bxivact-winforms-0.1.0\"'"]
 
 [tasks.smoke]
-description = "Start, call, and stop the embedded F# bridge using an installed .NET 10"
+description = "Start, call, and stop the embedded C# bridge using an installed .NET 10"
 run = "cargo run -p bxivact --example smoke --"
 
 [tasks."test:hosting"]
@@ -34,23 +34,25 @@ run = "cargo test -p bxivact --lib --test hosting -- --ignored"
 
 [tasks."managed:test"]
 description = "Validate the managed ABI header and session ownership"
-depends = ["managed:test-payload", "test:winforms"]
-run = "dotnet fsi --exec managed/tests/BridgeTests.fsx"
+depends = ["managed:test-runner", "test:winforms"]
+run = "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- bridge"
 
-[tasks."managed:test-payload"]
-description = "Stage the two crates' managed payloads together for direct F# bridge tests"
+[tasks."managed:test-runner"]
+description = "Build the dependency-free C# contract runner against the two managed implementations"
 depends = ["managed:build"]
-run = ["mkdir -p target/managed/test-bridge", "cp crates/bxivact/managed/*.dll crates/bxivact/managed/*.json target/managed/test-bridge/", "cp crates/bxivact-winforms/managed/System.Windows.Forms.dll target/managed/test-bridge/"]
+run = "dotnet build managed/tests/ManagedTests/ManagedTests.csproj -c Release -p:RestoreLockedMode=true"
 
 [tasks."test:act-binding"]
 description = "Verify original ACT reference identity and bind a compiled probe to the replacement"
-run = ["dotnet fsi --exec managed/tests/PrepareActReference.fsx", "dotnet build managed/tests/LegacyReference/LegacyReference.fsproj -c Release -p:RestoreLockedMode=true", "mise run managed:build", "dotnet fsi --exec managed/tests/ActBindingTests.fsx"]
+depends = ["managed:test-runner"]
+run = ["dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- prepare-act", "dotnet build managed/tests/LegacyReference/LegacyReference.csproj -c Release -p:RestoreLockedMode=true", "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- act"]
 
 [tasks."test:linux-plugin-compat"]
 description = "Verify the pinned in-memory Linux adjustment; requires the supplied original FFXIV artifacts"
-run = "dotnet fsi --exec managed/tests/LinuxPluginCompatibilityTests.fsx"
+depends = ["managed:test-runner"]
+run = "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- linux"
 
 [tasks."test:plugins"]
 description = "Check trusted plugin construction, initialization and cleanup; requires DOTNET_ROOT"
-depends = ["managed:test-payload"]
-run = ["dotnet build managed/tests/PluginFixture/PluginFixture.fsproj -c Release -p:RestoreLockedMode=true", "dotnet fsi --exec managed/tests/PluginRequests.fsx", "cargo test -p bxivact --test plugins --test lifecycle -- --ignored"]
+depends = ["managed:test-runner"]
+run = ["dotnet build managed/tests/PluginFixture/PluginFixture.csproj -c Release -p:RestoreLockedMode=true", "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- plugins", "cargo test -p bxivact --test plugins --test lifecycle -- --ignored"]

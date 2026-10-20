@@ -10,7 +10,7 @@ observations and implementation results remain separate.
 | --- | --- |
 | Product | A reusable Rust crate first; an application binary and UI come later |
 | Existing software | Reuse the FFXIV ACT plugin and its parser; reconstruct the ACT host contract and aggregation |
-| Languages | Rust API and hosting; F# compatibility core and bridge; no new C# source |
+| Languages | Rust API and hosting; C# compatibility core, WinForms model and bridge |
 | Runtime | netcorehost, in-process .NET 10; no automatic .NET Framework fallback |
 | Platforms | Windows and native Linux; replacing Windows dependencies on Linux is a research milestone, not a verified capability |
 | Maintainer tasks | Cargo workspace and mise.toml; no cargo xtask |
@@ -20,7 +20,7 @@ observations and implementation results remain separate.
 | Runtime delivery | Explicit installed runtime path initially; optional runtime-download feature later; application runtime bundling later |
 | License | Undecided; publishing disabled until resolved |
 
-F# owns the mutable ACT object graph, hooks, action queue, aggregation, and plugin
+C# owns the mutable ACT object graph, hooks, action queue, aggregation, and plugin
 lifecycle. Rust owns the public API, hosting, batches, owned output data, and
 external subscriber status. Do not implement aggregation twice or expose mutable
 .NET objects as Rust public API values. Missing ACT methods must fail visibly,
@@ -32,9 +32,9 @@ not return fabricated success or empty data.
 Cargo.toml                 # Keep the host and Linux WinForms compatibility in one workspace.
 mise.toml                  # Run maintainer builds, validation, and packaging explicitly.
 crates/bxivact/             # Provide the reusable API; no separate sys crate initially.
-  managed/                 # Ship prebuilt portable F# assemblies for SDK-free consumers.
+  managed/                 # Ship prebuilt portable C# assemblies for SDK-free consumers.
 crates/bxivact-winforms/    # Supply the Linux WinForms DLL without ACT or hosting dependencies.
-  managed/                 # Own the F# implementation, prebuilt DLL, and contract tests.
+  managed/                 # Own the C# implementation, prebuilt DLL, and contract tests.
 managed/ActCompat/          # Implement ACT contracts and state in their owning language.
 managed/Bridge/             # Translate native commands and batches into managed operations.
 managed/tests/              # Check the managed ABI independently of the original plugins.
@@ -77,7 +77,7 @@ installs. Enabling a feature alone must not download anything.
 | Lifetime | One active host; managed sessions can stop/restart, while CLR and hostfxr remain process-owned |
 | Runtime selection | Explicit trusted .NET root; report incompatible runtime state instead of silently switching |
 | Threading | Keep the host on its creation thread until plugin/UI threading is designed and verified |
-| Entry point | Standard ComponentEntryPoint delegate; do not depend on F# UnmanagedCallersOnly support |
+| Entry point | Standard ComponentEntryPoint delegate; retain the existing native ABI |
 | Commands | Small ordered command surface; no callback per managed getter |
 | Batches | DrainBatch into Rust-owned BytesMut storage; offset/length UTF-8 areas and fixed-width integers |
 | Validation | ABI version, structure size, offset/length bounds, arithmetic overflow, and buffer capacity |
@@ -148,4 +148,4 @@ aggregation, and licensing remain open work.
 The [lifecycle slice](m1-plugin-lifecycle.md) adds host globals/registration,
 headless startup controls and tested fixture InitPlugin/DeInitPlugin handling.
 The original FFXIV InitPlugin is attempted on Linux and reports a missing
-System.Windows.Forms.UserControl; original initialization is not yet complete.
+System.Windows.Forms.DataVisualization after the pinned Linux administrator-query adjustment; original initialization remains incomplete.

@@ -28,27 +28,15 @@ caller-owned STA thread and UI loop; this implementation never starts a hidden U
 thread. Windows execution is untested. Context7's [thread-affinity documentation](https://github.com/dotnet/docs/blob/main/docs/standard/parallel-programming/potential-pitfalls-in-data-and-task-parallelism.md)
 was checked while choosing this ownership rule.
 
-## Public static fields without C#
+## Public static fields in C#
 
-F# rejects public static val declarations (FS0881) and emits the private source
-declarations as internal CLI fields named oFormActMain@ and charName@. Properties
-would not satisfy original ldsfld/stsfld instructions. The maintainer-only
-PublishFields.fsx reads our published PE metadata and changes just these two access
-flags and trailing name suffixes. It checks the owning implementation, the exact
-two-field layout, original flags and patched names/flags without executing code.
-The step is idempotent and runs after publish in `mise run managed:build`.
-
-This modifies our compatibility DLL, never the original ACT or plugin. It needs
-no IL assembler, C# source, extra NuGet dependency or consumer-side compiler.
-F#'s source/reference metadata remains private; the published binary contract is
-for existing plugin references, not an F# authoring interface to those fields.
-Public signing still establishes only tested modern-runtime reference identity,
-not an authentic original strong-name signature.
-
-The F# compiler also needs the matching .NET Framework System.Drawing reference
-when deriving FormActMain from the original WinForms Form. A compile-only target
-replaces the Core drawing facade for that project. No Windows reference assembly
-is copied to the payload and no System.Drawing.Common runtime package is added.
+C# declares ActGlobals.oFormActMain and charName as public static fields directly.
+Both build and publish emit the required ldsfld/stsfld contracts. The earlier F#
+post-publish field patch and drawing-reference workaround have been removed.
+No field metadata rewrite or FSharp.Core runtime dependency remains. Public
+signing still establishes only tested modern-runtime reference identity, not an
+authentic original strong-name signature. Windows references remain compile-only;
+no System.Drawing.Common runtime package is added.
 
 The original-reference HostProbe compiles against the supplied ACT metadata and
 emits actual field reads/writes and method calls. Running it against the published

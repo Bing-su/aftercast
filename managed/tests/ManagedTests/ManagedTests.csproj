@@ -1,15 +1,18 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <AssemblyName>Bxivact.PluginFixture</AssemblyName>
+    <OutputType>Exe</OutputType>
+    <AssemblyName>Bxivact.ManagedTests</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
-    <ProjectReference Include="../PluginDependency/PluginDependency.fsproj" />
-    <ProjectReference Include="../../ActCompat/ActCompat.fsproj" />
+    <ProjectReference Include="../../Bridge/Bridge.csproj" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" GeneratePathProperty="true" PrivateAssets="all" ExcludeAssets="all" />
     <Reference Include="System.Windows.Forms">
       <HintPath>$(PkgMicrosoft_NETFramework_ReferenceAssemblies_net48)/build/.NETFramework/v4.8/System.Windows.Forms.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <Compile Include="Plugins.fs" />
   </ItemGroup>
+  <Target Name="StageHeadlessControls" AfterTargets="Build">
+    <!-- Tests execute genuine reference signatures against the independently published Linux model. -->
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../../../crates/bxivact-winforms/managed/System.Windows.Forms.dll" DestinationFolder="$(OutDir)" />
+  </Target>
 </Project>

@@ -2,12 +2,6 @@
   "version": 1,
   "dependencies": {
     "net10.0": {
-      "FSharp.Core": {
-        "type": "Direct",
-        "requested": "[10.0.113, )",
-        "resolved": "10.0.113",
-        "contentHash": "QfU6LsrPw9uSq/10z0MMaZ2xMWAKCo1oeTg8FFtCyyAuPv+lFEIoaHEi191QSxvadJ9jRaKNR+GndDocqOZMog=="
-      },
       "Microsoft.NETFramework.ReferenceAssemblies.net48": {
         "type": "Direct",
         "requested": "[1.0.3, )",

@@ -1,6 +1,6 @@
 # Development and validation
 
-The prebuilt F# lifecycle bridge runs inside a Rust process. M1 adds the first
+The prebuilt C# lifecycle bridge runs inside a Rust process. M1 adds the first
 [ACT contract-binding slice](m1-contract-binding.md), but does not yet initialize
 the original FFXIV plugin successfully, parse logs, aggregate combat, stream batches, or install
 .NET. See the [blueprint](blueprint.md) for later
@@ -93,7 +93,7 @@ a fallback runtime. That external-host case has not been exercised locally.
 | 12 | u32 / int32 bit pattern | Managed output: runtime major |
 | 16 | u64 / int64 bit pattern | Component-local session identity |
 
-Rust checks size/offset at compile time. F# uses Marshal reads/writes only after
+Rust checks size/offset at compile time. C# uses Marshal reads/writes only after
 pointer/length/version checks; it does not retain the pointer. Returned int status
 is 0 for success, 1 invalid buffer, 2 ABI mismatch, 3 already active, 4 inactive,
 5 wrong session, 6 unknown command, -1 caught managed exception. Rust converts
@@ -117,19 +117,18 @@ code units; this is diagnostic text, not a serialized exception object.
 | Bxivact.Bridge.runtimeconfig.windows.json | Cargo extraction uses this Desktop Runtime configuration on Windows |
 | Bxivact.Bridge.deps.json | Dependency resolver input |
 | Advanced Combat Tracker.dll | Public-signed ACT 3.8.5.288 identity; session scaffold and initial Dnum contract slice |
-| FSharp.Core.dll | Locked NuGet 10.0.113 runtime dependency |
-| FSharp.Core.LICENSE | Upstream MIT notice, also extracted with the payload |
 | System.Security.Permissions.dll | Official 10.0.13 legacy permission type support for older serializers |
 | System.Windows.Extensions.dll / System.Windows.Extensions.windows.dll | Transitive 10.0.13 dependency; extraction chooses the platform asset and writes System.Windows.Extensions.dll |
 | Dotnet.Compatibility*.LICENSE | Upstream .NET runtime MIT notice and identical third-party notices for both compatibility packages |
 | System.Windows.Forms.dll | Linux-only headless control hierarchy, status text and disposal; native handles/rendering unsupported; never extracted on Windows |
 
-The WinForms DLL, F# source and independent contract tests belong to
+The WinForms DLL, C# source and independent contract tests belong to
 `crates/bxivact-winforms`. Its only Rust export is `ASSEMBLY: &[u8]`; it has no Rust
 dependencies. bxivact depends on it only on Linux, combines its bytes with the
 host payload during extraction, and retains managed context selection in the bridge.
-Direct F# bridge tests use `target/managed/test-bridge`, staged from both crates
-by `managed:test-payload`; the host crate no longer owns a second WinForms DLL.
+The C# contract runner references the managed projects and copies the independent
+WinForms DLL into its output. `managed:test-runner` builds it after publishing
+the payload; the host crate does not own a second WinForms DLL.
 
 The bridge preloads its two legacy compatibility assemblies into the default
 assembly context: Costura's byte-loaded dependencies do not bind through the
@@ -138,10 +137,10 @@ enforcement nor Linux implementations of Windows identity APIs. The publish targ
 copies the Windows asset to a flat alternative filename and retains upstream
 notices; consumers need neither NuGet restore nor the SDK.
 
-The WinForms F# project declares its own build settings and can be rebuilt from
+The WinForms C# project declares its own build settings and can be rebuilt from
 its extracted Cargo package without ACT projects or the root managed props.
 Consumers still use the prebuilt DLL and do not run a compiler. The host supplies
-the .NET runtime and FSharp.Core; the WinForms crate does not start a runtime.
+the .NET runtime; the WinForms crate does not start a runtime.
 
 Because publication is disabled, package verification first packages bxivact-winforms,
 then supplies its extracted package with a temporary command-line crates.io patch
@@ -154,8 +153,8 @@ must publish the WinForms dependency before the host. The path-plus-version
 dependency follows the [Cargo documentation](https://doc.rust-lang.org/cargo/reference/specifying-dependencies.html#multiple-locations),
 checked through Context7.
 
-Locale satellite assemblies are excluded. F# library diagnostics fall back to
-English; FFXIV regional resources are unrelated. Cargo include patterns restrict
+Locale satellite assemblies are excluded; FFXIV regional resources are unrelated.
+Cargo include patterns restrict
 the payload to flat DLL/config/license files, even if a maintainer has old locale
 folders locally. Managed bin/obj output and original proprietary artifacts are
 ignored. There is no build.rs, nethost-download, automatic runtime fetch, or
@@ -171,15 +170,38 @@ batch milestone and bounds the new plugin request buffer; there is no event-stre
 | Packaging | Initial publish emitted translated FSharp.Core satellites | Restrict satellite language and Cargo payload; remove obsolete generated folders |
 | Cross-platform | DirBuilder mutation was unused in Windows code | Apply Unix-private permissions in a cfg-gated shadow binding; Windows Clippy rechecked |
 | Reproducible payload | SDK assembly metadata appended the current Git revision, making checked-in assemblies change after a commit | Set managed version to 0.1.0 and disable revision suffixes in informational versions |
-| WinForms ownership | Moving the DLL left direct F# bridge tests without their colocated adapter | Stage both crates' payloads in target/managed/test-bridge; independent managed tests and Rust plugin construction pass |
-| Independent packaging | An unpublished workspace dependency cannot resolve from crates.io during host packaging | Verify the WinForms package first and patch its extracted copy into host verification; the packaged F# project rebuilds without ACT props, and the packaged host constructs the original FFXIV plugin with the SDK CLI blocked |
+| WinForms ownership | Managed tests need a colocated adapter | The C# runner copies the independent WinForms DLL after build; independent managed tests and Rust construction pass |
+| Independent packaging | An unpublished workspace dependency cannot resolve from crates.io during host packaging | Verify the WinForms package first and patch its extracted copy into host verification; the packaged C# project rebuilds without ACT props, and the packaged host constructs the original FFXIV plugin with the SDK CLI blocked |
 | UTF-8 paths | PathBuf configuration deferred UTF-8 validation until plugin construction | Use camino across host paths and errors; check Unicode runtime discovery, Unicode bridge/plugin deployment, non-UTF-8 symlink rejection, unrelated OS entry skipping and native NUL rejection |
 | Plugin lifecycle | Callback return alone can hide a caught initialization exception; a failing shutdown can strand other plugins | Capture bounded WriteExceptionLog diagnostics during InitPlugin; stop attempts all initialized callbacks and closes the session before reporting aggregate failure |
 
 The [lifecycle slice](m1-plugin-lifecycle.md) records host state, startup contracts,
-the maintainer-only public-field publishing step, and the remaining original-plugin
-blocker. Use a new bridge extraction after updating the payload. Raw `dotnet build`
-does not publish the two original static fields; `mise run managed:build` does.
+the directly declared public static fields, and the remaining original-plugin
+blocker. Use a new bridge extraction after updating the payload. Both ordinary
+C# builds and published DLLs expose the fields without metadata rewriting.
+
+## C# migration
+
+| Scope | Result |
+| --- | --- |
+| Implementation | ACT contracts, bridge and independent WinForms model use C# on .NET 10 |
+| Tests | C# fixtures, original-reference probes and a dependency-free console contract runner replace F# scripts |
+| Deployment | FSharp.Core, its notice and dependency entries are removed; Rust APIs and native ABI are unchanged |
+| Build | C# declares ACT public static fields directly; the post-publish field patch and drawing-reference workaround are removed |
+| Initialization | Control-bearing session allocation is deferred until after platform binding; malformed requests before startup cannot poison initialization |
+
+Context7 was consulted while preserving the standard delegate convention. The
+migration retains ComponentEntryPoint instead of changing ABI and language
+simultaneously. Existing extraction directories are not rewritten; deploy this
+payload to a new directory.
+
+| Migration validation | Observed result |
+| --- | --- |
+| Managed contracts | Standalone controls, native ABI validation, original-reference ACT binding, and the pinned Linux IL adjustment pass in C# |
+| Rust integration | Real CLR hosting, construction, failed-initialization cleanup, shutdown and restart pass; workspace tests and strict Linux/Windows-target Clippy pass |
+| Independent package | The extracted WinForms Cargo package rebuilds and runs its C# contract tests without the ACT projects |
+| SDK-free consumer | Extracted host Cargo package initializes and stops ReadyPlugin with a failing dotnet CLI shim first on PATH |
+| Original FFXIV | Same DataVisualization dependency failure as before the migration; successful initialization and parsing are not claimed |
 
 Context7 was used for netcorehost's standard delegate flow and scopeguard's
 Always/into_inner semantics, and compared with the resolved crate source.

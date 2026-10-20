@@ -1,7 +1,7 @@
 # Rust and managed-code crate research
 
 Research date: 2026-10-20. This records earlier alternatives for creating an ACT
-compatibility assembly without C#/F# source. The approved design now uses F# and
+compatibility assembly without C#/F# source. The approved design now uses C# and
 netcorehost; the alternatives below are not implicit dependencies.
 
 ## Assembly generation and interop alternatives
@@ -53,7 +53,7 @@ mechanism. RustClrEnv being !Send/!Sync is relevant to hosting boundaries.
 | Default features include nethost-download, net10_0, utils | Disable defaults to avoid the nethost NuGet build download |
 | Hostfxr::load_from_path and explicit dotnet root | Use an installed trusted runtime without a nethost build dependency |
 | net10_0 selects hosting API surface | Does not install .NET or establish Framework/WinForms compatibility |
-| Standard ComponentEntryPoint(IntPtr, int) -> int supported | F# can use this without assuming UnmanagedCallersOnly support |
+| Standard ComponentEntryPoint(IntPtr, int) -> int supported | Retained by the C# implementation to preserve the existing ABI |
 | Framework-dependent native hosting | Not equivalent to a self-contained publish |
 
 Primary sources: [pinned manifest](https://github.com/OpenByteDev/netcorehost/blob/85358e26871765b029ef56a15d2fd0d249794b1d/Cargo.toml),

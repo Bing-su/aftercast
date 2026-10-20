@@ -1,6 +1,6 @@
 # bxivact
 
-An ACT-compatible Rust library that hosts a prebuilt F# component on .NET 10.
+An ACT-compatible Rust library that hosts a prebuilt C# component on .NET 10.
 Reuses the existing FFXIV ACT plugin rather than replacing its parser.
 
 **Status:** Host contracts and fixture plugin initialization/shutdown work on Linux.

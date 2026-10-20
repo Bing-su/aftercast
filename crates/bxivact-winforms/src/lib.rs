@@ -1,7 +1,7 @@
 //! Prebuilt managed WinForms signature compatibility for Linux hosts.
 //!
-//! The F# implementation and its contract tests live alongside this crate. No ACT or
-//! runtime-hosting dependency is required. Consumers need .NET 10 and FSharp.Core 10.0.113
+//! The C# implementation and its contract tests live alongside this crate. No ACT or
+//! runtime-hosting dependency is required. Consumers need .NET 10
 //! supplied by their host; Cargo never invokes the .NET SDK.
 //!
 //! A small control hierarchy supports headless status text and disposal. Native handles and

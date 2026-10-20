@@ -56,7 +56,7 @@ fn failed_initializations(host: &mut Host, assembly: &Utf8Path, state: &Utf8Path
 }
 
 #[test]
-#[ignore = "requires .NET 10 and F# fixtures; run mise run test:plugins"]
+#[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
 fn initialization_cleanup_and_shutdown_are_session_owned_and_not_retried() {
     let root = std::env::var("DOTNET_ROOT").expect("set DOTNET_ROOT");
     let temporary = tempfile::tempdir().expect("create lifecycle fixture");

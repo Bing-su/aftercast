@@ -1,0 +1,5 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Bxivact.PluginDependency</AssemblyName>
+  </PropertyGroup>
+</Project>

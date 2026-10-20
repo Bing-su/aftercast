@@ -18,6 +18,14 @@ fn extraction_preserves_existing_directories() {
         .expect("UTF-8 test directory")
         .join("bridge");
     extract_bridge(&directory).expect("extract bundled bridge");
+    // C# payloads must stay independent of the removed F# runtime and its deployment assets.
+    assert!(!directory.join("FSharp.Core.dll").exists());
+    assert!(!directory.join("FSharp.Core.LICENSE").exists());
+    assert!(
+        !std::fs::read_to_string(directory.join("Bxivact.Bridge.deps.json"))
+            .expect("read managed dependencies")
+            .contains("FSharp.Core")
+    );
     #[cfg(target_os = "linux")]
     assert_eq!(
         std::fs::read(directory.join("System.Windows.Forms.dll"))

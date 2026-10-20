@@ -1,6 +1,6 @@
 # bxivact
 
-An in-process ACT-compatible host for Rust. Implements the .NET 10/F# bridge
+An in-process ACT-compatible host for Rust. Implements the .NET 10/C# bridge
 lifecycle, initial ACT contracts, and trusted plugin construction/initialization.
 Fixture lifecycles work on Linux; original FFXIV initialization and parsing remain incomplete.
 
@@ -40,8 +40,7 @@ On Linux, the pinned FFXIV 3.0.3.3 build receives an in-memory compatibility
 adjustment: its embedded memory component reports Windows administrator status
 as false. Original files remain unchanged; other builds are not rewritten.
 
-The project license is undecided; publication is disabled. The bundled FSharp.Core
-10.0.113 dependency is MIT-licensed; its notice is in `managed/FSharp.Core.LICENSE`.
+The project license is undecided; publication is disabled.
 System.Security.Permissions and System.Windows.Extensions 10.0.13 provide legacy
 binding support; their MIT notice and upstream notices are bundled as
 `managed/Dotnet.Compatibility*.LICENSE`. These packages do not provide a sandbox.
