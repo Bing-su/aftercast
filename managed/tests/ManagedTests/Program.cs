@@ -425,6 +425,7 @@ internal static class Program
         }
         finally { directory.Delete(true); }
         LogFollowerChecks.Run();
+        InitialSnapshotChecks.Run();
         LogHostChecks.Run();
         RegistrationLifetimeChecks.Run();
         DebugLogChecks.Run();

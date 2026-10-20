@@ -17,7 +17,7 @@ The later [M2 root slice](m2-root-combat.md) adds actual action routing and comb
 | `OpenLog` | Open the selected file at its end and deliver subsequent complete UTF-8 records |
 | Raw hooks | Run synchronous mutable `BeforeLogLineRead` handlers before `OnLogLineRead`; report individual subscriber failures and continue |
 | Timestamp state | Use the installed plugin parser; retain the last known timestamp when it returns `DateTime.MinValue` |
-| Raw zone snapshot | Search complete UTF-8 records backwards from the reader's starting offset; later appends remain in reader order |
+| Raw zone snapshot | Search complete UTF-8 records backwards through the same owned file handle and captured starting offset; activate the reader only after the initial snapshot completes |
 | Log ordering | Increment the writable `GlobalTimeSorter` before raw callbacks |
 | Linux `Control.Invoke` | Use a caller-supplied synchronization context, verify owner-thread execution and preserve callback exceptions; a missing or invalid pump fails visibly |
 | Rust `Host::pump` | Cooperatively execute queued Linux UI callbacks on the host's creation thread; begin at most 64 callbacks within a 5 ms scheduling budget |
@@ -69,6 +69,15 @@ callback or implicit combat end. Further writes to the retired file after the
 switch and files replaced multiple times between checks are outside this
 single-file follower's guarantee. Rotation is not a lossless recording service.
 
+Initial zone scanning uses bounded positional reads on the follower's own handle,
+without reopening the pathname or changing the live read cursor. A replacement
+during `OpenLog(true, false)` cannot pair the new file's zone with the old file's
+tail. Shutdown/new selection can cancel between scan blocks, and disposal waits
+for an in-flight positional read before releasing its handle. This pins the file
+identity and initial byte range, not immutable bytes: overwriting/truncating the
+same file during scanning can still produce a visible short-read error, and
+synchronous filesystem I/O is not preemptible.
+
 ## Evidence and boundaries
 
 | Evidence | Scope |
@@ -80,6 +89,7 @@ single-file follower's guarantee. Rotation is not a lossless recording service.
 | Original-reference probes | Compile signatures against supplied ACT 3.8.5.288 metadata, execute against the replacement |
 | Managed reader checks | End-tail framing, split UTF-8, pause/resume, truncation, malformed/oversized recovery, callback isolation and disposal; equal-size/equal-mtime replacement with paused old-tail draining, incomplete-record isolation, BOM handling and temporary path absence |
 | Native snapshot fixture | Continue live parsing and publish the exact 75-damage result from a BOM-prefixed replacement without calling `OpenLog` again |
+| Initial snapshot identity check | Replace the pathname with a shorter file before scanning; require the old handle's zone, unchanged live cursor, old-tail/new-first-line delivery, invalid-range rejection and cancellation before activation |
 
 Original-artifact runtime checks use a disposable copy of the FFXIV plugin
 directory because its startup can modify companion files. A started status alone

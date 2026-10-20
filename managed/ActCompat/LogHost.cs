@@ -54,14 +54,15 @@ public partial class FormActMain
             {
                 if (logHostStopped || generation != logGeneration) return;
                 next = new LogFollower(path, line => ReceiveLogLine(generation, path, line),
-                    error => WriteExceptionLog(error, "Log follower"), () => ReadThreadLock || IsLogDeliveryPaused(generation));
+                    error => WriteExceptionLog(error, "Log follower"), () => ReadThreadLock || IsLogDeliveryPaused(generation), initialSnapshot: true);
                 follower = next;
             }
-            var snapshot = getCurrentZone ? ReadZoneSnapshot(path, next.InitialPosition, generation) : null;
+            var snapshot = getCurrentZone ? ReadZoneSnapshot(next, generation) : null;
             lock (logGate)
             {
                 if (logHostStopped || generation != logGeneration) return;
                 if (getCurrentZone) currentZone = snapshot ?? "";
+                next.CompleteInitialSnapshot();
                 readyGeneration = generation;
             }
         }
@@ -194,12 +195,12 @@ public partial class FormActMain
         }
     }
 
-    private string? ReadZoneSnapshot(string path, long position, long generation)
+    private string? ReadZoneSnapshot(LogFollower reader, long generation)
     {
         var regex = ZoneChangeRegex;
         if (regex is null) return null;
         // Search complete records backwards so large files do not require a full forward replay.
-        using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        var position = reader.InitialPosition;
         var bytes = new byte[4096];
         var reverseLine = new List<byte>();
         var skipTail = true;
@@ -227,8 +228,7 @@ public partial class FormActMain
             lock (logGate) { if (logHostStopped || generation != logGeneration) return null; }
             var count = (int)Math.Min(position, bytes.Length);
             position -= count;
-            stream.Seek(position, SeekOrigin.Begin);
-            stream.ReadExactly(bytes.AsSpan(0, count));
+            if (!reader.ReadInitialBytes(bytes, count, position)) return null;
             for (var index = count - 1; index >= 0; index--)
             {
                 if (bytes[index] == (byte)'\n')

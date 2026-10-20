@@ -19,12 +19,16 @@ internal sealed class LogFollower : IDisposable
     private bool callbackActive;
     private int suspensionDepth;
     private bool disposed;
+    private bool initialSnapshotPending;
     private Exception? reportingFailure;
     internal long InitialPosition { get; }
     internal bool IsAlive => worker.IsAlive;
     internal bool CallbackActive { get { lock (gate) return callbackActive; } }
 
     internal LogFollower(string path, Action<string> onLine, Action<Exception> onError, Func<bool> paused)
+        : this(path, onLine, onError, paused, false) { }
+
+    internal LogFollower(string path, Action<string> onLine, Action<Exception> onError, Func<bool> paused, bool initialSnapshot)
     {
         ArgumentNullException.ThrowIfNull(onLine);
         ArgumentNullException.ThrowIfNull(onError);
@@ -32,6 +36,7 @@ internal sealed class LogFollower : IDisposable
         this.onLine = onLine;
         this.onError = onError;
         this.paused = paused;
+        initialSnapshotPending = initialSnapshot;
         this.path = Path.GetFullPath(path);
         stopped = new(false);
         FileStream? opened = null;
@@ -64,7 +69,7 @@ internal sealed class LogFollower : IDisposable
             while (!stopped.WaitOne(0))
             {
                 bool isPaused;
-                lock (gate) { if (disposed) return; isPaused = suspensionDepth > 0; }
+                lock (gate) { if (disposed) return; isPaused = suspensionDepth > 0 || initialSnapshotPending; }
                 isPaused |= paused();
                 if (isPaused) { stopped.WaitOne(10); continue; }
                 if (stream.Length < stream.Position)
@@ -129,6 +134,8 @@ internal sealed class LogFollower : IDisposable
         catch (Exception error) { Report(error); }
         finally
         {
+            // Exclude new initial reads before closing the owned handle; no callback runs under this gate.
+            lock (gate) initialSnapshotPending = false;
             try { stream.Dispose(); }
             catch (Exception error) { Report(error); }
             lock (gate)
@@ -140,6 +147,32 @@ internal sealed class LogFollower : IDisposable
     }
 
     private FileStream Open() => new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+    internal bool ReadInitialBytes(byte[] destination, int count, long offset)
+    {
+        ArgumentNullException.ThrowIfNull(destination);
+        if (count < 0 || count > destination.Length || offset < 0 || offset > InitialPosition - count)
+            throw new ArgumentOutOfRangeException(nameof(offset));
+        lock (gate)
+        {
+            if (disposed) return false;
+            if (!initialSnapshotPending) throw new InvalidOperationException("Initial log snapshot is no longer available");
+            // Positional reads use the same identity/offset captured at open and never move the worker's stream position.
+            var read = 0;
+            while (read < count)
+            {
+                var received = RandomAccess.Read(stream.SafeFileHandle, destination.AsSpan(read, count - read), offset + read);
+                if (received == 0) throw new EndOfStreamException("Log was truncated during its initial zone snapshot");
+                read += received;
+            }
+            return true;
+        }
+    }
+
+    internal void CompleteInitialSnapshot()
+    {
+        lock (gate) initialSnapshotPending = false;
+    }
 
     private bool ReopenReplacement()
     {
