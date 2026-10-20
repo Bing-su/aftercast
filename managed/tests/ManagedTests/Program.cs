@@ -44,6 +44,7 @@ internal static class Program
         switch (mode)
         {
             case "bridge": Bridge(); break;
+            case "log-load": LogLoadChecks.Run(); break;
             case "plugins": PluginRequests(); break;
             case "prepare-act": PrepareAct(); break;
             case "act": ActBinding(); break;

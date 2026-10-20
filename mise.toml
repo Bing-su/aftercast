@@ -42,6 +42,11 @@ description = "Build the dependency-free C# contract runner against the two mana
 depends = ["managed:build"]
 run = "dotnet build managed/tests/ManagedTests/ManagedTests.csproj -c Release -p:RestoreLockedMode=true"
 
+[tasks."test:log-load"]
+description = "Measure synthetic managed log-buffer load and verify exact subscriber-loss accounting"
+depends = ["managed:test-runner"]
+run = "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- log-load"
+
 [tasks."test:act-binding"]
 description = "Verify original ACT reference identity and bind a compiled probe to the replacement"
 depends = ["managed:test-runner"]

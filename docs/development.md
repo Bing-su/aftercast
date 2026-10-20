@@ -31,6 +31,7 @@ so workspace publication is disabled rather than inventing a license.
 | `mise run winforms:build` | Independently rebuild the prebuilt DLL owned by bxivact-winforms |
 | `mise run test:winforms` | Check WinForms signature identity and explicit UI failures without ACT or the bridge |
 | `mise run managed:test` | Build, stage both crates' DLLs, then verify ABI validation, session ownership and the independent WinForms contract |
+| `mise run test:log-load` | Opt-in synthetic managed-buffer load: exact loss accounting, queue bounds, latency/allocation observations and shutdown; excludes original parser/network throughput |
 | `mise run test:act-binding` | Check the pinned local ACT hash, compile the legacy-reference probe, and run it against the replacement; requires the original local ACT artifact |
 | `mise run test:original-reference` | Execute genuine ACT constructors, value cases and configured action fixtures in an isolated process; requires the pinned local ACT artifact |
 | `mise run test:original-contracts` | Execute the same compiled value/state probes against both replacement and genuine ACT in separate processes |

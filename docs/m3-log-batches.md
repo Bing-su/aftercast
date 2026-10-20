@@ -41,7 +41,7 @@ Allowed limits are 1–65,536 records and 56 bytes–64 MiB of encoded record st
 The byte bound includes each record header and UTF-8 path/text; managed strings
 and queue objects add bounded overhead. Retained ACT history is a separate memory
 consumer. Capture/drain use a monitor, and encoding a drain batch briefly holds
-that monitor; this is not a lock-free or measured-throughput claim. A slow or
+that monitor; this is not a lock-free or gameplay-throughput claim. A slow or
 absent consumer never causes a wait for consumer progress.
 
 Source sequences are independent of the public, plugin-writable ACT sorter.
@@ -78,6 +78,35 @@ does not make the CLR transfer zero-copy.
 | Rust decoder | Truncated/corrupt batches, UTF-8, offsets/counts/timestamps, empty loss reports, capacity bounds and shared owned line slices |
 | Real CLR integration | Core totals remain 400/450 despite subscriber loss; large-record retry consumes once; stale identities fail and owned bytes survive shutdown/restart |
 | Original FFXIV fixture | Repeated seven-record imports with a two-record queue preserve 400 damage and the original `IncToHit` callback while reporting the exact five-record omission |
+| Opt-in synthetic load | `mise run test:log-load` checks exact sequence/loss coverage, delivered bytes, actual queue bounds and joined shutdown with a deliberately slow consumer |
+
+## Synthetic load observation — 2026-10-21
+
+The opt-in harness uses one producer, 500,000 freshly allocated records and ASCII
+path/line strings, 512-byte lines with every eighth line 4 KiB, a 4,096-record /
+32 MiB queue, 64 KiB drains and a 2 ms consumer delay. Production targets three
+seconds; capture-call latency excludes allocation and intentional pacing. Samples
+use stride 67 to include both record sizes. Results vary with scheduling and GC;
+no machine-specific speed threshold is asserted.
+
+| Observation | Local result |
+| --- | --- |
+| Environment | Ubuntu 26.04 x86-64, AMD Ryzen 7 7840HS, .NET 10.0.13 Release |
+| Source / delivered / explicitly dropped | 500,000 / 80,673 / 419,327 |
+| Source coverage | Every source sequence covered exactly once by delivery or an explicit contiguous loss interval |
+| Observed pending maximum | 4,096 records / 4,296,704 encoded bytes |
+| Wall / producer duration | 3.152 / 3.000 seconds |
+| Capture-call p50 / p99 | 70 ns / 1,012 ns; sampled synchronous calls, including monitor waits |
+| Producer / process allocated bytes | 1,040,262,368 / 1,125,671,312; cumulative allocation, not retained memory |
+| Gen 0 / 1 / 2 collections | 135 / 134 / 133 |
+| Shutdown | Producer joined; no timeout or accounting error |
+
+These numbers exercise only the managed original-log buffer. They exclude disk
+input, original parser/action aggregation, native capture, native ABI copying and
+Rust decoding. The deliberately paced source rate is not maximum capacity; the
+sum of capture-call durations is not end-to-end throughput. Queue observations
+are sampled under the actual monitor and do not measure process peak memory.
+The harness emits the full parameters and measurements as one JSON record.
 
 Sustained gameplay throughput, native capture, disk recording durability, combat
 snapshot subscriptions and multiple independent subscribers remain outside this
