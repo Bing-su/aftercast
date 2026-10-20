@@ -184,10 +184,9 @@ log-line records, nullable constructor values and virtual category identity. The
 ignored record `m2-original-contracts.jsonl` captures those genuine implementation
 results. Constructor success does not establish original FFXIV import behavior.
 
-The replacement now owns the same constructor-created zone, encounter,
-combatant, category and attack collections, with the shared probes checking
-identity, mutability and defaults. Action insertion and aggregate queries are
-not part of this constructor milestone.
+The replacement owns the same constructor-created zone, encounter, combatant,
+category and attack collections, with shared probes checking identity, mutability
+and defaults. The action slice below extends these real objects.
 
 ## Configured original action baseline, 2026-10-21
 
@@ -230,3 +229,32 @@ action run exits successfully. This establishes a usable genuine aggregate
 baseline without Windows or a game for this configured case. Host SetEncounter,
 corrections, hook/action-queue ordering, automatic ally resolution, combat end and
 original FFXIV imports remain outside this execution.
+
+## Reconstructed configured actions, 2026-10-21
+
+The shared `ChildActionProbe` and `CombatActionProbe` compile against the original
+ACT metadata and pass in separate processes against both genuine ACT and the
+replacement. These are configured direct-action comparisons, not imported game
+logs or evidence that host `SetEncounter` is implemented.
+
+| Implemented boundary | Compared behavior |
+| --- | --- |
+| Zone/encounter routing | Merged and individual encounters receive the same action, participant names resolve case-insensitively through current-culture uppercase keys, duplicate detection checks time sorters |
+| Category routing | Registered swing links, last-registered all-actions categories, detailed attack suppression through `restrictToAll`, incoming and outgoing contribution |
+| Counts and totals | Damage, healing, hits, critical hits, swings, misses, blocked actions; reserved `Dnum` labels participate in equality |
+| Cache behavior | Independent append cursors, explicit full invalidation, global forced recomputation, same-count replacement remains cached, integer overflow retains original Dnum conversion behavior |
+| Timing | Action min/max times, manual ally selection, encounter open/closed segments, `EndCombat(false)` and the 400 damage / 20 healed / 2-second reference case |
+| Lifetime | Session acquisition and disposal release plugin registries/category names and restore built-in calculation flags |
+
+| Not implemented in this slice | Visible behavior |
+| --- | --- |
+| Selective action parsing | Reject before changing the encounter or action ownership |
+| Automatic ally graph resolution | Reject when no explicit nonempty ally list was installed; ignore-enemies aggregate queries can use all actual combatants |
+| `EndCombat(true)` finalization | Reject before changing segment state; title selection and trimming remain to implement |
+| Attack/category/combatant duration and DPS | Members remain absent until their segmented rules are reconstructed |
+| Custom localization terms | Verified built-in English terms are used; external ACT localization overrides remain unsupported |
+| Host action orchestration | Root encounter selection, corrections, action hooks/queue, combat-end draining and semantic imports remain open |
+
+The replacement-only policy checks verify that rejected selection/finalization
+does not leave a partially mutated graph. Supported constructor and action cases
+continue to run against genuine ACT rather than an invented aggregate baseline.

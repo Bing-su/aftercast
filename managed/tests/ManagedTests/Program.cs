@@ -258,6 +258,8 @@ internal static class Program
         Check((string)Call("RegistrationProbe", "Run")! == "changed callback");
         Check((string)Call("CombatStateProbe", "Run")! == "Combat state");
         Check((string)Call("DamageStateProbe", "Run")! == "Fixture attack");
+        Check((string)Call("ChildActionProbe", "Run")! == "Child actions");
+        Check((string)Call("CombatActionProbe", "Run")! == "Combat actions");
         Check(typeof(Dnum).GetProperty("Number")!.GetSetMethod() is null && new Dnum(-11).Number == -11);
         Check(new Dnum(1).ToString() == "1");
         var directory = Directory.CreateTempSubdirectory("bxivact-contract-");
@@ -305,6 +307,7 @@ internal static class Program
         LogFollowerChecks.Run();
         LogHostChecks.Run();
         RegistrationLifetimeChecks.Run();
+        CombatPolicyChecks.Run();
         OwnerContextChecks.Run();
         HostLifetimeChecks.Run();
         DiagnosticChecks.Run();

@@ -5,7 +5,8 @@ Reuses the existing FFXIV ACT plugin rather than replacing its parser.
 
 **Status:** Host contracts and fixture plugin initialization/shutdown work on Linux.
 Original FFXIV initialization returns `Started` on Linux; worker observation uses
-an explicit owner-thread pump. Aggregation, native capture and Windows execution remain open.
+an explicit owner-thread pump. Configured combat-action comparisons pass against
+original ACT; complete imports, native capture and Windows execution remain open.
 
 - [Implementation plan](docs/blueprint.md)
 - [Development and validation](docs/development.md)

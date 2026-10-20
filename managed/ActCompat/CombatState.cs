@@ -1,7 +1,7 @@
 namespace Advanced_Combat_Tracker;
 
 // Keep mutable graph state owned by its ACT object; these collections do not imply aggregation.
-public class ZoneData : IComparable<ZoneData>
+public partial class ZoneData : IComparable<ZoneData>
 {
     public ZoneData(DateTime startTime, string zoneName, bool populateAll, bool selectiveParsing, bool ignoreEnemies)
     {

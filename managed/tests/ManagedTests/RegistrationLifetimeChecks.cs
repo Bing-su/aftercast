@@ -1,5 +1,4 @@
 using System.Drawing;
-using System.Runtime.CompilerServices;
 using Advanced_Combat_Tracker;
 using Bxivact.ActCompat;
 
@@ -25,6 +24,19 @@ internal static class RegistrationLifetimeChecks
                 CombatantData.SwingTypeToDamageTypeDataLinksOutgoing[1] = ["old"];
                 CombatantData.DamageSwingTypes.Add(1);
                 CombatantData.HealingSwingTypes.Add(2);
+                CombatantData.DamageTypeDataOutgoingDamage = "old outgoing damage";
+                CombatantData.DamageTypeDataIncomingDamage = "old incoming damage";
+                CombatantData.DamageTypeDataOutgoingHealing = "old outgoing healing";
+                CombatantData.DamageTypeDataIncomingHealing = "old incoming healing";
+                CombatantData.DamageTypeDataNonSkillDamage = "old non-skill damage";
+                CombatantData.DamageTypeDataOutgoingPowerReplenish = "old power replenish";
+                CombatantData.DamageTypeDataOutgoingPowerDamage = "old power damage";
+                CombatantData.DamageTypeDataOutgoingCures = "old cures";
+                ActGlobals.mainTableShowCommas = false;
+                ActGlobals.blockIsHit = false;
+                ActGlobals.disableIncrementalCaching = true;
+                ActGlobals.restrictToAll = true;
+                ActGlobals.longDuration = true;
                 CombatantData.ExportVariables["old"] = new("old", "Old", "Old session", (_, _) => "old");
                 EncounterData.ExportVariables["old"] = new("old", "Old", "Old session", (_, _, _) => "old");
                 CombatantData.ColumnDefs["old"] = new("Old", true, "TEXT", "old", _ => { calls++; return "old"; }, _ => "old", (_, _) => 0);
@@ -50,7 +62,8 @@ internal static class RegistrationLifetimeChecks
                 CheckEmpty();
                 Check(!ReferenceEquals(retained, CombatantData.ColumnDefs) && retained.ContainsKey("old"));
                 // A new session must not invoke a callback that belonged to a disposed plugin session.
-                var combatant = (CombatantData)RuntimeHelpers.GetUninitializedObject(typeof(CombatantData));
+                var zone = new ZoneData(DateTime.UnixEpoch, "Fixture", false, false, false);
+                var combatant = new CombatantData("Fixture", new EncounterData("Fixture", "Fixture", zone));
                 Check(combatant.GetColumnByName("old") == "" && calls == 0);
             }
         }
@@ -64,6 +77,12 @@ internal static class RegistrationLifetimeChecks
         Check(CombatantData.SwingTypeToDamageTypeDataLinksIncoming.Count == 0);
         Check(CombatantData.SwingTypeToDamageTypeDataLinksOutgoing.Count == 0);
         Check(CombatantData.DamageSwingTypes.Count == 0 && CombatantData.HealingSwingTypes.Count == 0);
+        Check(CombatantData.DamageTypeDataOutgoingDamage == "" && CombatantData.DamageTypeDataIncomingDamage == "");
+        Check(CombatantData.DamageTypeDataOutgoingHealing == "" && CombatantData.DamageTypeDataIncomingHealing == "");
+        Check(CombatantData.DamageTypeDataNonSkillDamage == "" && CombatantData.DamageTypeDataOutgoingCures == "");
+        Check(CombatantData.DamageTypeDataOutgoingPowerReplenish == "" && CombatantData.DamageTypeDataOutgoingPowerDamage == "");
+        Check(ActGlobals.mainTableShowCommas && ActGlobals.blockIsHit && !ActGlobals.disableIncrementalCaching);
+        Check(!ActGlobals.restrictToAll && !ActGlobals.longDuration);
         Check(CombatantData.ExportVariables.Count == 0 && EncounterData.ExportVariables.Count == 0);
         Check(CombatantData.ColumnDefs.Count == 0 && EncounterData.ColumnDefs.Count == 0);
         Check(MasterSwing.ColumnDefs.Count == 0 && AttackType.ColumnDefs.Count == 0 && DamageTypeData.ColumnDefs.Count == 0);

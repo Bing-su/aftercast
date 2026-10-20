@@ -23,7 +23,7 @@ three genuine MasterSwing actions through a genuine ZoneData/EncounterData graph
 The fixture is separate from FFXIV defaults and does not exercise host hooks or
 SetEncounter. Aggregate queries report their own failures.
 
-`contracts /absolute/path/Bxivact.LegacyReference.dll` executes the Dnum and combat
-state reference probes against the original ACT implementation after the same
+`contracts /absolute/path/Bxivact.LegacyReference.dll` executes the Dnum, combat
+state and configured action reference probes against the original ACT implementation after the same
 bootstrap. Build the LegacyReference project first; this process still loads no
 ActCompat assembly.

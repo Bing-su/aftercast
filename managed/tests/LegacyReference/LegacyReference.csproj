@@ -13,7 +13,7 @@
       <HintPath>$(PkgMicrosoft_NETFramework_ReferenceAssemblies_net48)/build/.NETFramework/v4.8/System.Windows.Forms.DataVisualization.dll</HintPath>
       <Private>false</Private>
     </Reference>
-    <!-- Compile against the original metadata, but never copy or execute the original assembly. -->
+    <!-- Bind probes to original metadata; the separate OriginalReference runner also executes them against genuine ACT. -->
     <Reference Include="Advanced Combat Tracker">
       <HintPath>$(ActReferencePath)</HintPath>
       <Private>false</Private>

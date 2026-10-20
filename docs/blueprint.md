@@ -1,6 +1,6 @@
 # Implementation blueprint
 
-Updated: 2026-10-20. Approved for implementation. This replaces the earlier
+Updated: 2026-10-21. Approved for implementation. This replaces the earlier
 separate-process/JSON Lines proposal with in-process native hosting. Research
 observations and implementation results remain separate.
 
@@ -142,8 +142,8 @@ M0 is implemented; see [development evidence](development.md). M1 has an initial
 [binary-contract binding slice](m1-contract-binding.md): a public-signed ACT identity
 and selected Dnum members used by an original-reference probe. The next slice adds
 [plugin discovery and construction](m1-plugin-construction.md), including an original
-FFXIV plugin constructor on Linux. Initialization, WinForms UI, native Linux capture,
-aggregation, and licensing remain open work.
+FFXIV plugin constructor on Linux. Native rendering, native Linux capture,
+complete aggregation and licensing remain open work.
 
 The [lifecycle slice](m1-plugin-lifecycle.md) adds host globals/registration,
 headless startup controls and tested fixture InitPlugin/DeInitPlugin handling.
@@ -151,5 +151,8 @@ The original FFXIV InitPlugin returns `Started` on Linux after the
 [controls, events and settings slice](m1-controls-and-settings.md) and
 [registration/file-following slice](m1-registration-and-log-following.md).
 The Rust host provides cooperative owner-thread dispatch through `Host::pump`;
-applications must call it regularly. Original parsing,
-aggregation, native capture and Windows execution remain open.
+applications must call it regularly. Shared constructor, Dnum and configured
+combat-action probes now pass against both the replacement and genuine ACT in
+separate Linux processes; see [M2 evidence and remaining policies](m2-import-research.md).
+Original semantic imports, complete aggregation, native capture and Windows
+execution remain open.
