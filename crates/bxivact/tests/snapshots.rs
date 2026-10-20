@@ -111,13 +111,24 @@ fn check_live_completion(host: &mut Host, directory: &Utf8Path, plugin_path: &Ut
         .expect("initialize live parser");
     let path = directory.join("state/live.log");
     let marker = directory.join("state/live.accepted");
-    for (lines, last, damage) in [("0|100\n2|300\n", "2|300", 400), ("4|50\n", "4|50", 50)] {
-        std::fs::OpenOptions::new()
-            .append(true)
-            .open(&path)
-            .expect("open followed file")
-            .write_all(lines.as_bytes())
-            .expect("append live records");
+    for (lines, last, damage, replace) in [
+        ("0|100\n2|300\n", "2|300", 400, false),
+        ("4|50\n", "4|50", 50, false),
+        ("\u{feff}6|75\n", "6|75", 75, true),
+    ] {
+        if replace {
+            // A rotated file already contains its first record; reopening at the tail would lose this encounter.
+            std::fs::rename(&path, path.with_extension("previous.log"))
+                .expect("rotate the followed file");
+            std::fs::write(&path, lines).expect("create replacement with its first live record");
+        } else {
+            std::fs::OpenOptions::new()
+                .append(true)
+                .open(&path)
+                .expect("open followed file")
+                .write_all(lines.as_bytes())
+                .expect("append live records");
+        }
         // Wait for fixture action admission; observing a raw log batch alone precedes the mutable parsing hooks.
         let started = std::time::Instant::now();
         while !std::fs::read_to_string(&marker).is_ok_and(|text| text == last) {

@@ -3,12 +3,13 @@ using System.Text;
 namespace Advanced_Combat_Tracker;
 
 // Follow only appended complete lines; decoding state belongs to this single reader thread.
-// shortcut: file replacement keeps the original open file; add identity checks and reopening for log rotation.
 internal sealed class LogFollower : IDisposable
 {
     private const int MaximumLineLength = 8 * 1024 * 1024;
     private readonly object gate = new();
-    private readonly FileStream stream;
+    private FileStream stream;
+    private readonly string path;
+    private LogFileIdentity identity;
     private readonly ManualResetEvent stopped;
     private readonly Thread worker;
     private readonly Action<string> onLine;
@@ -31,11 +32,13 @@ internal sealed class LogFollower : IDisposable
         this.onLine = onLine;
         this.onError = onError;
         this.paused = paused;
+        this.path = Path.GetFullPath(path);
         stopped = new(false);
         FileStream? opened = null;
         try
         {
-            opened = new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            opened = Open();
+            identity = LogFileIdentity.Read(opened.SafeFileHandle);
             InitialPosition = opened.Seek(0, SeekOrigin.End);
             stream = opened;
             worker = new Thread(Read) { IsBackground = true, Name = "Bxivact log follower" };
@@ -55,6 +58,7 @@ internal sealed class LogFollower : IDisposable
         var encoding = new UTF8Encoding(false, true);
         using var pending = new MemoryStream();
         var discarding = false;
+        var firstRecord = InitialPosition == 0;
         try
         {
             while (!stopped.WaitOne(0))
@@ -69,9 +73,23 @@ internal sealed class LogFollower : IDisposable
                     stream.Seek(0, SeekOrigin.Begin);
                     pending.SetLength(0);
                     discarding = false;
+                    firstRecord = true;
                 }
                 var count = stream.Read(bytes, 0, bytes.Length);
-                if (count == 0) { stopped.WaitOne(10); continue; }
+                if (count == 0)
+                {
+                    // Drain the old complete tail before switching; absence during rename/create is temporary.
+                    if (ReopenReplacement())
+                    {
+                        if (pending.Length > 0) Report(new InvalidDataException("Log replacement discarded an incomplete UTF-8 record"));
+                        pending.SetLength(0);
+                        discarding = false;
+                        firstRecord = true;
+                        continue;
+                    }
+                    stopped.WaitOne(10);
+                    continue;
+                }
                 var remaining = bytes.AsSpan(0, count);
                 while (!remaining.IsEmpty)
                 {
@@ -95,12 +113,15 @@ internal sealed class LogFollower : IDisposable
                         {
                             var content = pending.GetBuffer().AsSpan(0, (int)pending.Length);
                             if (!content.IsEmpty && content[^1] == '\r') content = content[..^1];
-                            if (!Deliver(encoding.GetString(content))) return;
+                            var line = encoding.GetString(content);
+                            if (firstRecord && line.StartsWith('\uFEFF')) line = line[1..];
+                            if (!Deliver(line)) return;
                         }
                         catch (Exception error) { Report(error); }
                     }
                     pending.SetLength(0);
                     discarding = false;
+                    firstRecord = false;
                     remaining = remaining[(newline + 1)..];
                 }
             }
@@ -116,6 +137,28 @@ internal sealed class LogFollower : IDisposable
                 stopped.Dispose();
             }
         }
+    }
+
+    private FileStream Open() => new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+
+    private bool ReopenReplacement()
+    {
+        FileStream? candidate;
+        try { candidate = Open(); }
+        catch (FileNotFoundException) { return false; }
+        catch (DirectoryNotFoundException) { return false; }
+        try
+        {
+            var nextIdentity = LogFileIdentity.Read(candidate.SafeFileHandle);
+            if (nextIdentity == identity) return false;
+            var previous = stream;
+            stream = candidate;
+            candidate = null;
+            identity = nextIdentity;
+            previous.Dispose();
+            return true;
+        }
+        finally { candidate?.Dispose(); }
     }
 
     private bool Deliver(string line)

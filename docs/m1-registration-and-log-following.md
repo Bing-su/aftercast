@@ -39,7 +39,11 @@ actual encounter relationships. The localized default-special constructor remain
 | Malformed UTF-8 record | Report a decoding error, skip that record, continue with later records |
 | Pending record exceeds 8 MiB | Report once, discard through its newline, resume subsequent records with bounded buffering |
 | File truncated below reader offset | Clear pending bytes and restart from the beginning |
-| File replaced or renamed | Continue the original open file until the plugin calls `OpenLog` again |
+| Same-path replacement | Drain the current file to EOF, compare open-file identities and read the replacement from byte zero |
+| Path temporarily missing during rotation | Keep reading the old open file and retry the path; absence alone is not a diagnostic |
+| Partial record when switching files | Report an incomplete-record diagnostic and clear pending bytes; never join fragments from different files |
+| UTF-8 BOM at byte zero | Remove it from the first record of an initially empty, truncated or replacement file |
+| File identity unavailable | Fail visibly instead of guessing identity from size or timestamps |
 | File replacement overlaps shutdown | Keep retiring readers tracked and drain their callbacks before releasing host globals; reject further opens if 31 readers are still retiring |
 | Reader I/O failure | Report the failure and stop that reader; no success or lossless-recording claim |
 
@@ -47,6 +51,23 @@ The malformed/oversized-record policy concerns raw input integrity. It does not
 change the planned bounded Rust subscriber queue policy. Original plugin recording
 remains independent; skipped input cannot produce complete downstream analysis.
 Truncate-and-regrow past the old offset between polls is not detected.
+
+The reader compares Linux device/inode pairs using descriptor-bound
+[`statx(AT_EMPTY_PATH)`](https://man7.org/linux/man-pages/man2/statx.2.html), or
+Windows volume/128-bit file IDs using
+[`GetFileInformationByHandleEx(FileIdInfo)`](https://learn.microsoft.com/en-us/windows/win32/api/winbase/nf-winbase-getfileinformationbyhandleex).
+The fixed native layouts are private to the managed reader; the Rust ABI is
+unchanged. Linux requires libc/kernel `statx` support and an inode-providing
+filesystem. Windows uses the documented full identifier rather than the shorter
+legacy file index. Windows execution remains unverified.
+
+An EOF check opens the current path, validates that actual handle's identity and
+closes it when unchanged. It runs on the existing polling reader, without an
+unbounded watcher/event queue. On replacement, the path, raw subscription
+sequence and combat graph continue; there is no synthetic `LogFileChanged`
+callback or implicit combat end. Further writes to the retired file after the
+switch and files replaced multiple times between checks are outside this
+single-file follower's guarantee. Rotation is not a lossless recording service.
 
 ## Evidence and boundaries
 
@@ -57,7 +78,8 @@ Truncate-and-regrow past the old offset between polls is not detected.
 | `ev_162b9a2d7e7c0cb0ef9ee2b7fe53b32a389a0e9729ad6802bc10413b88a5a6fb` | Original FFXIV writer configures the log filter/path and calls `OpenLog(true, false)` |
 | `ev_e10bfceb62a78ed060b028138f7963d250457608d5f6551af9718f399d5894c9` | Original explicit-special `MasterSwing` constructor and log sorter property |
 | Original-reference probes | Compile signatures against supplied ACT 3.8.5.288 metadata, execute against the replacement |
-| Managed reader checks | End-tail framing, split UTF-8, pause/resume, truncation, malformed/oversized recovery, callback isolation and disposal |
+| Managed reader checks | End-tail framing, split UTF-8, pause/resume, truncation, malformed/oversized recovery, callback isolation and disposal; equal-size/equal-mtime replacement with paused old-tail draining, incomplete-record isolation, BOM handling and temporary path absence |
+| Native snapshot fixture | Continue live parsing and publish the exact 75-damage result from a BOM-prefixed replacement without calling `OpenLog` again |
 
 Original-artifact runtime checks use a disposable copy of the FFXIV plugin
 directory because its startup can modify companion files. A started status alone

@@ -49,9 +49,10 @@ internal static class LogFollowerChecks
             MalformedUtf8(Path.Combine(directory.FullName, "malformed.log"));
             SelfDispose(Path.Combine(directory.FullName, "self.log"));
             OversizedLine(Path.Combine(directory.FullName, "oversized.log"));
+            Replacement(Path.Combine(directory.FullName, "replacement.log"));
         }
         finally { directory.Delete(recursive: true); }
-        Console.WriteLine("Log follower end-tail, split UTF-8, line framing, pause, truncation, callback isolation and disposal checks passed.");
+        Console.WriteLine("Log follower end-tail, split UTF-8, framing, pause, truncation, replacement, callback isolation and disposal checks passed.");
     }
 
     private static void AppendDecodePauseAndTruncate(string path)
@@ -183,5 +184,49 @@ internal static class LogFollowerChecks
         Check(lines.TryPeek(out var line) && line == "valid after oversized" && errors.Count == 1 &&
             errors.TryPeek(out var error) && error is InvalidDataException,
             "oversized record was emitted, was dropped silently or caused repeated warnings");
+    }
+
+    private static void Replacement(string path)
+    {
+        File.WriteAllText(path, "history\n", new UTF8Encoding(false));
+        var lines = new ConcurrentQueue<string>();
+        var errors = new ConcurrentQueue<Exception>();
+        var pause = 1;
+        var polls = 0;
+        using var paused = new ManualResetEventSlim();
+        using var follower = Create(path, lines.Enqueue, errors.Enqueue, () =>
+        {
+            Interlocked.Increment(ref polls);
+            if (Volatile.Read(ref pause) == 0) return false;
+            paused.Set();
+            return true;
+        });
+        Check(paused.Wait(TimeSpan.FromSeconds(10)), "replacement reader did not pause");
+        Append(path, "old\nfragment");
+        Append(path, [0xed]);
+        var length = new FileInfo(path).Length;
+        var modified = File.GetLastWriteTimeUtc(path);
+        File.Move(path, path + ".1");
+        File.WriteAllText(path, "new-one\nnew-two-x\n", new UTF8Encoding(true));
+        File.SetLastWriteTimeUtc(path, modified);
+        Check(new FileInfo(path).Length == length && File.GetLastWriteTimeUtc(path) == modified,
+            "replacement fixture must defeat size/timestamp heuristics");
+        Volatile.Write(ref pause, 0);
+        Wait(() => lines.Count == 3, "same-path replacement was not read from its beginning");
+        Check(lines.ToArray().SequenceEqual(["old", "new-one", "new-two-x"]),
+            "replacement lost the old complete tail, retained partial UTF-8, or emitted a BOM");
+        Check(errors.Count == 1 && errors.TryPeek(out var error) && error is InvalidDataException &&
+            error.Message.Contains("replacement", StringComparison.Ordinal), "discarded old fragment was not reported");
+
+        File.Move(path, path + ".2");
+        var nextPoll = Volatile.Read(ref polls) + 4;
+        Wait(() => Volatile.Read(ref polls) >= nextPoll, "missing replacement path stopped polling");
+        Append(path + ".2", "old-during-gap\n");
+        Wait(() => lines.Count == 4, "missing path stopped the still-open old file");
+        Check(lines.ToArray()[3] == "old-during-gap" && errors.Count == 1, "temporary path absence became a read failure");
+        File.WriteAllText(path, "third\n", new UTF8Encoding(true));
+        Wait(() => lines.Count == 5, "reader did not recover after replacement path reappeared");
+        follower.Dispose();
+        Check(lines.ToArray()[4] == "third" && errors.Count == 1, "replacement recovery changed records or diagnostics");
     }
 }
