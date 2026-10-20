@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Bxivact.Bridge</AssemblyName>
+    <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
+    <RollForward>LatestPatch</RollForward>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../ActCompat/ActCompat.fsproj" />
+    <Compile Include="EntryPoint.fs" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,8 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <AssemblyName>Bxivact.ActCompat</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="HostSession.fs" />
+  </ItemGroup>
+</Project>

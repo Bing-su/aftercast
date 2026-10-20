@@ -24,3 +24,10 @@ rustc-ice-*.txt
 #.idea/
 
 binaries/
+
+# Maintainer-only .NET build intermediates
+managed/**/bin/
+managed/**/obj/
+# Cargo payload contains only the required runtime assets
+crates/bxivact/managed/*.xml
+crates/bxivact/managed/*/

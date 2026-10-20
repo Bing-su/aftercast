@@ -1,0 +1,21 @@
+[package]
+name = "bxivact"
+description = "An in-process ACT-compatible host for Rust applications"
+version.workspace = true
+edition.workspace = true
+publish.workspace = true
+include = ["src/**", "examples/**", "tests/**", "managed/*.dll", "managed/*.json", "managed/*.LICENSE", "README.md"]
+
+[dependencies]
+bon.workspace = true
+bytes.workspace = true
+netcorehost.workspace = true
+thiserror.workspace = true
+tracing.workspace = true
+scopeguard.workspace = true
+
+[lints]
+workspace = true
+
+[dev-dependencies]
+tempfile = "3.27.0"

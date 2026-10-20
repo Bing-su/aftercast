@@ -1,0 +1,24 @@
+[tasks."managed:build"]
+description = "Build the portable F# bridge and prepare the Cargo payload"
+run = "dotnet publish managed/Bridge/Bridge.fsproj -c Release --no-self-contained -o crates/bxivact/managed -p:RestoreLockedMode=true"
+
+[tasks."managed:restore"]
+description = "Restore and lock maintainer-only F# dependencies"
+run = "dotnet restore managed/Bridge/Bridge.fsproj"
+
+[tasks.check]
+description = "Check formatting, Rust lints, and bridge tests"
+run = ["cargo fmt --all --check", "cargo clippy --workspace --all-targets -- -D warnings", "cargo test --workspace"]
+
+[tasks.smoke]
+description = "Start, call, and stop the embedded F# bridge using an installed .NET 10"
+run = "cargo run -p bxivact --example smoke --"
+
+[tasks."test:hosting"]
+description = "Exercise real CLR lifecycle tests; requires DOTNET_ROOT"
+run = "cargo test -p bxivact --test hosting -- --ignored"
+
+[tasks."managed:test"]
+description = "Validate the managed ABI header and session ownership"
+depends = ["managed:build"]
+run = "dotnet fsi --exec managed/tests/BridgeTests.fsx"
