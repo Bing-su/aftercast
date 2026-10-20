@@ -78,6 +78,7 @@ namespace Advanced_Combat_Tracker
 
         private ImportResult ReadImport(ImportLogReader reader, string path)
         {
+            var snapshotBefore = GetCombatSnapshotRevision();
             ZoneData liveZone, importZone;
             string livePath, liveCurrentZone;
             string? liveCharacter;
@@ -173,6 +174,8 @@ namespace Advanced_Combat_Tracker
             lock (CombatGate)
                 if (importFailure is { } callbackError)
                     failures.Add(new InvalidDataException("Log import encountered a subscriber or aggregation failure; partial history was retained", callbackError));
+            // Finalize status after restoration notifications, which can themselves fail or publish a newer live result.
+            CompleteImportSnapshotState(snapshotBefore, failures.Count == 0);
             if (failures.Count == 1) ExceptionDispatchInfo.Capture(failures[0]).Throw();
             if (failures.Count > 1) throw new AggregateException("Log import failed; partial history was retained", failures);
             return result!;

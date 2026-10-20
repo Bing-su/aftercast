@@ -99,6 +99,16 @@ internal static class Program
                     Check(logs.FirstDropped == (ulong)(iteration * 7 + 1) && logs.LastDropped == (ulong)(iteration * 7 + 5));
                     Console.WriteLine("Original import summary: " + System.Text.Json.JsonSerializer.Serialize(report));
                     Check(report == new ImportResult(7, 7, 1, 2, 400, 0));
+                    var snapshot = session.ReadCombatSnapshot(0)!;
+                    Check(snapshot.IsImport && snapshot.Status == CombatSnapshotStatus.Ended);
+                    Check(snapshot.Damage == 400 && snapshot.Healed == 0 && snapshot.Combatants.Length == 2);
+                    Check(snapshot.DurationTicks == TimeSpan.FromSeconds(2).Ticks);
+                    var player = snapshot.Combatants.Single(actor => actor.Name == "YOU");
+                    var enemy = snapshot.Combatants.Single(actor => actor.Name == "Fixture Enemy");
+                    Check(player.IsAlly && !enemy.IsAlly && player.Damage == 400 && enemy.DamageTaken == 400);
+                    Check(player.Hits == 2 && player.Swings == 2 && player.ToHit == 100 && player.EncDPS == 200);
+                    Check(session.ReadCombatSnapshot(snapshot.Revision) is null);
+                    Console.WriteLine("Original combat snapshot: " + snapshot.Title + "; damage=" + snapshot.Damage + "; revision=" + snapshot.Revision);
                     Check(!root.InCombat && ReferenceEquals(root.ActiveZone, live.ActiveZone));
                     Check(root.CurrentZone == live.CurrentZone && root.LogFilePath == live.LogFilePath);
                     Check(root.LastKnownTime == live.LastKnownTime && ActGlobals.charName == live.charName);
@@ -176,6 +186,7 @@ internal static class Program
             DiagnosticAbiChecks.Run(session);
             ImportAbiChecks.Run(session);
             LogAbiChecks.Run(session);
+            CombatSnapshotAbiChecks.Run(session);
             ReentrantSessionChecks.Run(session);
             Marshal.WriteInt32(buffer, 8, 4);
             Check(EntryPoint.Invoke(buffer, 24) == 0 && Marshal.ReadInt32(buffer, 12) == 0);
@@ -381,6 +392,8 @@ internal static class Program
         ImportChecks.Run();
         OriginalLogCaptureChecks.Run();
         LogBufferChecks.Run();
+        CombatSnapshotChecks.Run();
+        CombatSnapshotEncodingChecks.Run();
         OwnerContextChecks.Run();
         HostLifetimeChecks.Run();
         DiagnosticChecks.Run();

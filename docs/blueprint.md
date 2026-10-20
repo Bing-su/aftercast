@@ -91,6 +91,8 @@ budgets from measured load. bytes does not make borrowed CLR memory zero-copy;
 pinning/release protocols or a shared ring require a demonstrated bottleneck.
 The lifecycle handshake remains fixed; the [first log-batch slice](m3-log-batches.md)
 adds bounded original-text subscriptions without mutable managed object exposure.
+The [combat snapshot slice](m3-combat-snapshots.md) copies the latest ended result
+with session-scoped revision polling and explicit partial-import status.
 
 ## Recording, overload, and FF Logs
 

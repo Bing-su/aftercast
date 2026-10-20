@@ -22,7 +22,8 @@ use netcorehost::{
 use scopeguard::{ScopeGuard, guard};
 
 use crate::{
-    Error, HostDiagnostics, ImportReport, LogBatch, LogSubscription, LogSubscriptionConfig,
+    CombatRevision, CombatSnapshot, Error, HostDiagnostics, ImportReport, LogBatch,
+    LogSubscription, LogSubscriptionConfig,
     diagnostics::{DIAGNOSTIC_CAPACITY, decode_diagnostics},
     import::{decode_import, import_packet},
     io_error,
@@ -30,6 +31,7 @@ use crate::{
         LOG_HEADER, decode_logs, larger_log_capacity, log_packet, subscribe_packet,
         subscription_result,
     },
+    snapshots::{decode_snapshot, larger_snapshot_capacity, snapshot_packet},
 };
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
@@ -101,6 +103,7 @@ pub struct Host {
     plugin_command: ManagedFunctionWithDefaultSignature,
     import_log: ManagedFunctionWithDefaultSignature,
     log_command: ManagedFunctionWithDefaultSignature,
+    read_combat_snapshot: ManagedFunctionWithDefaultSignature,
     session: u64,
     running: bool,
     // Keep the native library and delegate loader alive for every managed function call.
@@ -128,38 +131,21 @@ impl Host {
         )?;
         let loader = context
             .get_delegate_loader_for_assembly(path_string(&bridge.join("Bxivact.Bridge.dll"))?)?;
-        let entry = loader.get_function_with_default_signature(
-            pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
-            pdcstr!("Invoke"),
-        )?;
-        let read_error = loader.get_function_with_default_signature(
-            pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
-            pdcstr!("ReadError"),
-        )?;
-        let create_plugin = loader.get_function_with_default_signature(
-            pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
-            pdcstr!("CreatePlugin"),
-        )?;
-        let read_diagnostics = loader.get_function_with_default_signature(
-            pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
-            pdcstr!("ReadDiagnostics"),
-        )?;
-        let configure_host = loader.get_function_with_default_signature(
-            pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
-            pdcstr!("ConfigureHost"),
-        )?;
-        let plugin_command = loader.get_function_with_default_signature(
-            pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
-            pdcstr!("PluginCommand"),
-        )?;
-        let import_log = loader.get_function_with_default_signature(
-            pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
-            pdcstr!("ImportLog"),
-        )?;
-        let log_command = loader.get_function_with_default_signature(
-            pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
-            pdcstr!("LogCommand"),
-        )?;
+        let function = |name| {
+            loader.get_function_with_default_signature(
+                pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
+                name,
+            )
+        };
+        let entry = function(pdcstr!("Invoke"))?;
+        let read_error = function(pdcstr!("ReadError"))?;
+        let create_plugin = function(pdcstr!("CreatePlugin"))?;
+        let read_diagnostics = function(pdcstr!("ReadDiagnostics"))?;
+        let configure_host = function(pdcstr!("ConfigureHost"))?;
+        let plugin_command = function(pdcstr!("PluginCommand"))?;
+        let import_log = function(pdcstr!("ImportLog"))?;
+        let log_command = function(pdcstr!("LogCommand"))?;
+        let read_combat_snapshot = function(pdcstr!("ReadCombatSnapshot"))?;
         let mut host = Self {
             entry,
             read_error,
@@ -168,6 +154,7 @@ impl Host {
             plugin_command,
             import_log,
             log_command,
+            read_combat_snapshot,
             session: 0,
             running: false,
             _loader: loader,
@@ -261,6 +248,42 @@ impl Host {
             });
         }
         decode_import(&packet)
+    }
+
+    /// Copies the latest ended encounter, or returns None when no result is newer than `after`.
+    ///
+    /// Pass None for the latest result, then its revision to poll for changes. Intermediate state
+    /// versions coalesce; this is not an encounter archive. Results own their strings and counters
+    /// after host stop. Imports can retain partial results after failure; inspect `status`.
+    pub fn combat_snapshot(
+        &mut self,
+        after: Option<CombatRevision>,
+    ) -> Result<Option<CombatSnapshot>, Error> {
+        if after.is_some_and(|revision| revision.session != self.session) {
+            return Err(Error::InvalidSnapshotRequest(
+                "revision belongs to another host session".to_owned(),
+            ));
+        }
+        let after = after.map_or(0, |revision| revision.sequence);
+        let mut capacity = 64 * 1024;
+        loop {
+            let mut packet = snapshot_packet(self.session, after, capacity);
+            // SAFETY: ReadCombatSnapshot borrows this initialized, bounded allocation only during
+            // this call. The bridge validates its header and never retains managed or Rust pointers.
+            let status =
+                unsafe { (self.read_combat_snapshot)(packet.as_mut_ptr().cast(), capacity as i32) };
+            match status {
+                0 => return decode_snapshot(&packet, self.session, after),
+                1 => capacity = larger_snapshot_capacity(&packet)?,
+                status => {
+                    return Err(Error::Managed {
+                        command: 10,
+                        status,
+                        message: self.error_message(),
+                    });
+                }
+            }
+        }
     }
 
     /// Starts this host's single bounded subscription to nonempty original text selected for ACT hooks.

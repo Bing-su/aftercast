@@ -110,6 +110,7 @@ namespace Bxivact.ActCompat
         public string[] RecentDiagnostics => main.RecentDiagnostics;
         public Tuple<long, string[]> DiagnosticsSnapshot => main.DiagnosticsSnapshot;
         public ImportResult ImportLog(string path) => main.ImportLog(path);
+        public CombatSnapshotData? ReadCombatSnapshot(ulong afterRevision) => main.ReadCombatSnapshot(afterRevision);
         public void EnsureCanStop() => main.EnsureCanWaitForLogReader();
         public void StopLogReading() => main.StopLogFollower();
         public void StopProcessing()

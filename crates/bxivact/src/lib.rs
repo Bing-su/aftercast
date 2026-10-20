@@ -1,6 +1,6 @@
 //! In-process ACT-compatible hosting.
 //!
-//! Provides host/plugin lifecycles, synchronous imports and bounded original-log batches.
+//! Provides host/plugin lifecycles, synchronous imports, log batches and owned combat results.
 //! Call [`extract_bridge`] once to deploy the bundled, prebuilt C# component, then use
 //! [`Host::start`] with a trusted .NET 10 installation. No SDK or download is used at runtime.
 
@@ -9,6 +9,7 @@ mod diagnostics;
 mod import;
 mod logs;
 mod runtime;
+mod snapshots;
 
 use camino::Utf8PathBuf;
 
@@ -19,11 +20,16 @@ pub use logs::{
     LogBatch, LogLoss, LogRecord, LogSubscription, LogSubscriptionConfig, LogTimeKind, LogTimestamp,
 };
 pub use runtime::{Host, HostConfig, PluginConfig, PluginId};
+pub use snapshots::{CombatRevision, CombatSnapshot, CombatSnapshotStatus, CombatantSnapshot};
 
 /// Failures that callers can distinguish without parsing diagnostic messages.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("invalid combat snapshot request: {0}")]
+    InvalidSnapshotRequest(String),
+    #[error("invalid managed combat snapshot: {0}")]
+    InvalidSnapshotResponse(String),
     #[error("invalid log subscription request: {0}")]
     InvalidLogRequest(String),
     #[error("invalid managed log batch: {0}")]

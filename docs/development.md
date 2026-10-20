@@ -5,8 +5,8 @@ The prebuilt C# lifecycle bridge runs inside a Rust process. M1 adds the first
 returns a started status in Linux observation with a caller-owned message pump.
 Raw file following, configured combat aggregation and synchronous file import
 are implemented. See [import boundaries](m2-file-import.md) for semantic validation
-and limitations. Live capture, streamed Rust batches and runtime installation
-remain open. See the [blueprint](blueprint.md) for later
+and limitations. Bounded original-log batches and owned ended-combat snapshots
+are implemented. Live capture and runtime installation remain open. See the [blueprint](blueprint.md) for later
 milestones and the original-artifact research reports for compatibility work.
 
 ## Requirements
@@ -70,6 +70,7 @@ executes the plugin constructor only.
 | Host::diagnostics() | Returns an owned atomic snapshot of total host errors/warnings and up to 32 recent bounded messages; repeated reads do not consume history |
 | Host::import_log(path) | Imports a fixed UTF-8 file prefix through initialized plugins, drains submitted actions, restores live context and returns an owned transport/aggregate summary |
 | Host::subscribe_logs / drain_logs / unsubscribe_logs | One bounded original-text subscription; owned batches and exact external loss ranges, independent of core parsing |
+| Host::combat_snapshot(after) | Latest ended encounter as owned values, session-scoped revision polling and explicit partial-import status |
 | Host::create_plugin(PluginConfig) | Selects and constructs a trusted IActPluginV1, returns an opaque session-scoped PluginId; never calls InitPlugin |
 | Host::initialize_plugin(PluginId) | Calls InitPlugin once, returns bounded status text; rejects exceptions reported to the host during the callback |
 | Host::deinitialize_plugin(PluginId) | Calls DeInitPlugin once for a successfully initialized instance; unregisters and disposes owned controls even on failure |
@@ -173,7 +174,8 @@ folders locally. Managed bin/obj output and original proprietary artifacts are
 ignored. There is no build.rs, nethost-download, automatic runtime fetch, or
 consumer-side dotnet invocation. bytes is included as requested for the planned
 batch milestone and bounds the plugin request buffer. The first [log-batch slice](m3-log-batches.md)
-adds an opt-in original-text subscription; combat snapshots and raw SDK packet streams remain open.
+adds an opt-in original-text subscription; [combat snapshots](m3-combat-snapshots.md)
+copy the latest ended result. Raw SDK packet streams remain open.
 
 ## Review and validation record — 2026-10-20
 

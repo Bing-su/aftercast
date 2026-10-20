@@ -34,6 +34,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     if let Some(path) = import {
         let subscription = host.subscribe_logs(LogSubscriptionConfig::builder().build())?;
         println!("Import summary: {:?}", host.import_log(path)?);
+        if let Some(snapshot) = host.combat_snapshot(None)? {
+            println!("Latest combat result: {snapshot:?}");
+        }
         let mut delivered = 0;
         let mut omitted = 0;
         loop {

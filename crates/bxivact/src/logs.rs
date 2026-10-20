@@ -39,7 +39,7 @@ pub enum LogTimeKind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct LogTimestamp {
     pub ticks: u64,
-    /// Known UTC ticks for UTC/local values; unspecified values have no inferred offset.
+    /// Known UTC ticks when available; unspecified values never acquire an inferred offset.
     pub utc_ticks: Option<u64>,
     pub kind: LogTimeKind,
 }

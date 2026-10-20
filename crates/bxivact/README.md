@@ -48,6 +48,10 @@ and `unsubscribe_logs(id)` for one bounded original-text subscription. Batches
 own their data; oldest-record overflow reports exact loss ranges and leaves core
 parsing running. This subscription is not a durable recording or upload log.
 
+Use `combat_snapshot(None)` for the latest ended encounter, then pass its revision
+to poll for changes. Results own their counters and combatant data after host stop.
+Check the status for partial imports; this API retains only the latest result.
+
 On Linux, the pinned FFXIV 3.0.3.3 build receives an in-memory compatibility
 adjustment: its embedded memory component reports Windows administrator status
 as false. Original files remain unchanged; other builds are not rewritten.

@@ -199,6 +199,7 @@ public partial class FormActMain
             CombatToggleEventArgs info;
             lock (CombatGate) info = CompleteEncounterState();
             NotifyCombatToggle(OnCombatEnd, import, info);
+            PublishCombatSnapshotState(import, info.encounter!);
         }
         finally
         {

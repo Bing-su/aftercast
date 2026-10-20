@@ -30,6 +30,12 @@ internal sealed class PluginSession
     internal ulong SubscribeLogs(int maxRecords, int maxBytes) => OnOwner(() => logs.Subscribe(maxRecords, maxBytes));
     internal void UnsubscribeLogs(ulong id) => OnOwner(() => { logs.Unsubscribe(id); return 0; });
     internal LogDrain DrainLogs(ulong id, int capacity) => OnOwner(() => logs.Drain(id, capacity));
+    internal CombatSnapshotData? ReadCombatSnapshot(ulong afterRevision) => OnOwner(() =>
+    {
+        if (environment is not null) return environment.ReadCombatSnapshot(afterRevision);
+        if (afterRevision != 0) throw new ArgumentOutOfRangeException(nameof(afterRevision));
+        return null;
+    });
     internal ImportResult ImportLog(string path) => OnOwner(() =>
     {
         if (!plugins.Values.Any(plugin => plugin.State == PluginState.Initialized))

@@ -228,6 +228,37 @@ public static class EntryPoint
         }
     });
 
+    public static int ReadCombatSnapshot(nint buffer, int sizeBytes) => Run(() =>
+    {
+        const int headerSize = 64;
+        const int maximumSize = headerSize + 64 * 1024 * 1024;
+        // Validate all input before querying the graph; a capacity retry never consumes a version.
+        if (buffer == 0 || sizeBytes < headerSize || sizeBytes > maximumSize)
+            throw new ArgumentException("Snapshot capacity is outside supported bounds", nameof(buffer));
+        if (!BitConverter.IsLittleEndian || Marshal.ReadInt32(buffer, 0) != sizeBytes || Marshal.ReadInt32(buffer, 4) != 1)
+            throw new ArgumentException("Snapshot ABI size/version mismatch", nameof(buffer));
+        Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
+        for (var offset = 24; offset < headerSize; offset += 8)
+            if (Marshal.ReadInt64(buffer, offset) != 0)
+                throw new ArgumentException("Snapshot output fields must initially be zero", nameof(buffer));
+        var after = unchecked((ulong)Marshal.ReadInt64(buffer, 16));
+        var snapshot = plugins.Value.ReadCombatSnapshot(after);
+        if (snapshot is null) return 0;
+        var result = CombatSnapshotEncoding.Encode(snapshot, sizeBytes - headerSize);
+        if (result.RequiredPayloadCapacity != 0)
+        {
+            Marshal.WriteInt32(buffer, 44, headerSize + result.RequiredPayloadCapacity);
+            return 1;
+        }
+        Marshal.Copy(result.Bytes, 0, buffer + headerSize, result.Bytes.Length);
+        Marshal.WriteInt64(buffer, 24, unchecked((long)snapshot.Revision));
+        Marshal.WriteInt32(buffer, 32, snapshot.Combatants.Length);
+        Marshal.WriteInt32(buffer, 36, 1 | (snapshot.IsImport ? 2 : 0) | ((int)snapshot.Status << 2));
+        Marshal.WriteInt32(buffer, 40, result.Bytes.Length);
+        Marshal.WriteInt64(buffer, 48, unchecked((long)(after == 0 ? 0 : snapshot.Revision - after - 1)));
+        return 0;
+    });
+
     public static int ReadDiagnostics(nint buffer, int sizeBytes) => Run(() =>
     {
         const int headerSize = 32;
