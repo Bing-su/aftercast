@@ -2,7 +2,7 @@
 
 The prebuilt F# lifecycle bridge runs inside a Rust process. M1 adds the first
 [ACT contract-binding slice](m1-contract-binding.md), but does not yet initialize
-the original FFXIV plugin, parse logs, aggregate combat, stream batches, or install
+the original FFXIV plugin successfully, parse logs, aggregate combat, stream batches, or install
 .NET. See the [blueprint](blueprint.md) for later
 milestones and the original-artifact research reports for compatibility work.
 
@@ -55,10 +55,12 @@ executes the plugin constructor only.
 | API | Behavior |
 | --- | --- |
 | extract_bridge(directory) | Creates a new private Unix directory, writes embedded assemblies/config/license, rolls back on failure, refuses to overwrite an existing directory |
-| HostConfig::builder() | Requires explicit dotnet_root and bridge_directory paths |
+| HostConfig::builder() | Requires explicit dotnet_root, bridge_directory and private writable data_directory paths |
 | Host::start(config) | Acquires exclusive host ownership, selects the highest stable .NET 10 hostfxr in that installation, loads the standard managed delegate, starts session |
 | Host::session_id() | Makes a real managed call to validate the current component-local session identity |
 | Host::create_plugin(PluginConfig) | Selects and constructs a trusted IActPluginV1, returns an opaque session-scoped PluginId; never calls InitPlugin |
+| Host::initialize_plugin(PluginId) | Calls InitPlugin once, returns bounded status text; rejects exceptions reported to the host during the callback |
+| Host::deinitialize_plugin(PluginId) | Calls DeInitPlugin once for a successfully initialized instance; unregisters and disposes owned controls even on failure |
 | Host::stop() / Drop | Ends session; hostfxr and CLR remain process-owned |
 
 Public paths use camino 1.2.6: configuration fields and path-bearing errors contain
@@ -116,7 +118,7 @@ code units; this is diagnostic text, not a serialized exception object.
 | Advanced Combat Tracker.dll | Public-signed ACT 3.8.5.288 identity; session scaffold and initial Dnum contract slice |
 | FSharp.Core.dll | Locked NuGet 10.0.113 runtime dependency |
 | FSharp.Core.LICENSE | Upstream MIT notice, also extracted with the payload |
-| System.Windows.Forms.dll | Linux-only unsigned signature adapter; only TabPage/Label, with throwing constructors; never extracted on Windows |
+| System.Windows.Forms.dll | Linux-only headless control hierarchy, status text and disposal; native handles/rendering unsupported; never extracted on Windows |
 
 The WinForms DLL, F# source and independent contract tests belong to
 `crates/bxivact-winforms`. Its only Rust export is `ASSEMBLY: &[u8]`; it has no Rust
@@ -161,6 +163,12 @@ batch milestone and bounds the new plugin request buffer; there is no event-stre
 | WinForms ownership | Moving the DLL left direct F# bridge tests without their colocated adapter | Stage both crates' payloads in target/managed/test-bridge; independent managed tests and Rust plugin construction pass |
 | Independent packaging | An unpublished workspace dependency cannot resolve from crates.io during host packaging | Verify the WinForms package first and patch its extracted copy into host verification; the packaged F# project rebuilds without ACT props, and the packaged host constructs the original FFXIV plugin with the SDK CLI blocked |
 | UTF-8 paths | PathBuf configuration deferred UTF-8 validation until plugin construction | Use camino across host paths and errors; check Unicode runtime discovery, Unicode bridge/plugin deployment, non-UTF-8 symlink rejection, unrelated OS entry skipping and native NUL rejection |
+| Plugin lifecycle | Callback return alone can hide a caught initialization exception; a failing shutdown can strand other plugins | Capture bounded WriteExceptionLog diagnostics during InitPlugin; stop attempts all initialized callbacks and closes the session before reporting aggregate failure |
+
+The [lifecycle slice](m1-plugin-lifecycle.md) records host state, startup contracts,
+the maintainer-only public-field publishing step, and the remaining original-plugin
+blocker. Use a new bridge extraction after updating the payload. Raw `dotnet build`
+does not publish the two original static fields; `mise run managed:build` does.
 
 Context7 was used for netcorehost's standard delegate flow and scopeguard's
 Always/into_inner semantics, and compared with the resolved crate source.

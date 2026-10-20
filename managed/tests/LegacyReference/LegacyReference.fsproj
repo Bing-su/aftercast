@@ -4,11 +4,17 @@
     <ActReferencePath Condition="'$(ActReferencePath)' == ''">$(MSBuildThisFileDirectory)../../../binaries/act/Advanced Combat Tracker.exe</ActReferencePath>
   </PropertyGroup>
   <ItemGroup>
+    <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" GeneratePathProperty="true" PrivateAssets="all" ExcludeAssets="all" />
+    <Reference Include="System.Windows.Forms">
+      <HintPath>$(PkgMicrosoft_NETFramework_ReferenceAssemblies_net48)/build/.NETFramework/v4.8/System.Windows.Forms.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
     <!-- Compile against the original metadata, but never copy or execute the original assembly. -->
     <Reference Include="Advanced Combat Tracker">
       <HintPath>$(ActReferencePath)</HintPath>
       <Private>false</Private>
     </Reference>
     <Compile Include="ContractProbe.fs" />
+    <Compile Include="HostProbe.fs" />
   </ItemGroup>
 </Project>

@@ -1,6 +1,6 @@
 //! In-process ACT-compatible hosting.
 //!
-//! Provides bridge lifecycle, plugin construction, and an initial ACT contract slice.
+//! Provides host/plugin lifecycles and an initial ACT contract slice.
 //! Call [`extract_bridge`] once to deploy the bundled, prebuilt F# component, then use
 //! [`Host::start`] with a trusted .NET 10 installation. No SDK or download is used at runtime.
 

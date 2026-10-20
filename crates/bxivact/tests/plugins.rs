@@ -35,6 +35,7 @@ fn constructs_trusted_plugins_without_initialization_and_recovers_from_errors() 
     let config = || {
         HostConfig::builder()
             .dotnet_root(&root)
+            .data_directory(bridge.join("state"))
             .bridge_directory(&bridge)
             .build()
     };
@@ -72,7 +73,7 @@ fn constructs_trusted_plugins_without_initialization_and_recovers_from_errors() 
         &mut host,
         &path,
         Some("Bxivact.PluginFixture.UiPlugin"),
-        "Linux WinForms UI is not implemented",
+        "Linux WinForms native handles are not implemented",
     );
 
     let isolated = temporary_path.join("isolated 플러그인");

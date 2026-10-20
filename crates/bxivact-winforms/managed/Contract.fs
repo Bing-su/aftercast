@@ -1,13 +1,39 @@
 namespace System.Windows.Forms
 
 open System
+open System.ComponentModel
 
-/// Linux type binding only: constructing controls requires a real UI implementation.
+/// Store status text and disposal state without fabricating a native window or message loop.
 [<AllowNullLiteral>]
-type TabPage() =
-    do raise (PlatformNotSupportedException("Linux WinForms UI is not implemented; TabPage cannot be constructed"))
+type Control() =
+    inherit Component()
+    let mutable disposed = false
+    let mutable text = ""
+    member val Name = "" with get, set
+    abstract Text: string with get, set
+    default _.Text with get () = text and set value = text <- if isNull value then "" else value
+    member _.IsDisposed = disposed
+    member _.Handle: nativeint = raise (PlatformNotSupportedException("Linux WinForms native handles are not implemented"))
+    member _.CreateControl() : unit = raise (PlatformNotSupportedException("Linux WinForms rendering is not implemented"))
+    override this.Dispose(disposing) =
+        if not disposed then
+            disposed <- true
+            base.Dispose(disposing)
 
-/// Supply the Label signature for tested modern-runtime binding; UI creation must fail.
 [<AllowNullLiteral>]
-type Label() =
-    do raise (PlatformNotSupportedException("Linux WinForms UI is not implemented; Label cannot be constructed"))
+type ScrollableControl() = inherit Control()
+
+[<AllowNullLiteral>]
+type Panel() = inherit ScrollableControl()
+
+[<AllowNullLiteral>]
+type TabPage() = inherit Panel()
+
+[<AllowNullLiteral>]
+type Label() = inherit Control()
+
+[<AllowNullLiteral>]
+type ContainerControl() = inherit ScrollableControl()
+
+[<AllowNullLiteral>]
+type Form() = inherit ContainerControl()

@@ -13,6 +13,7 @@
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" GeneratePathProperty="true" PrivateAssets="all" ExcludeAssets="all" />
     <Compile Include="Platform.fs" />
     <Compile Include="PluginLoader.fs" />
+    <Compile Include="PluginSession.fs" />
     <Compile Include="EntryPoint.fs" />
   </ItemGroup>
 </Project>

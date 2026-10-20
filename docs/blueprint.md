@@ -144,3 +144,8 @@ and selected Dnum members used by an original-reference probe. The next slice ad
 [plugin discovery and construction](m1-plugin-construction.md), including an original
 FFXIV plugin constructor on Linux. Initialization, WinForms UI, native Linux capture,
 aggregation, and licensing remain open work.
+
+The [lifecycle slice](m1-plugin-lifecycle.md) adds host globals/registration,
+headless startup controls and tested fixture InitPlugin/DeInitPlugin handling.
+The original FFXIV InitPlugin is attempted on Linux and reports a missing
+System.Windows.Forms.UserControl; original initialization is not yet complete.

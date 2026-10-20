@@ -1,7 +1,7 @@
 [tasks."managed:build"]
 description = "Build the portable F# bridge and prepare the Cargo payload"
 depends = ["winforms:build"]
-run = "dotnet publish managed/Bridge/Bridge.fsproj -c Release --no-self-contained -o crates/bxivact/managed -p:RestoreLockedMode=true"
+run = ["dotnet publish managed/Bridge/Bridge.fsproj -c Release --no-self-contained -o crates/bxivact/managed -p:RestoreLockedMode=true", "dotnet fsi --exec managed/ActCompat/PublishFields.fsx 'crates/bxivact/managed/Advanced Combat Tracker.dll'"]
 
 [tasks."winforms:build"]
 description = "Build the independent WinForms compatibility assembly and update its crate payload"
@@ -14,7 +14,7 @@ run = "dotnet fsi --exec crates/bxivact-winforms/managed/tests/ContractTests.fsx
 
 [tasks."managed:restore"]
 description = "Restore and lock maintainer-only F# dependencies"
-run = ["dotnet restore managed/Bridge/Bridge.fsproj", "dotnet restore crates/bxivact-winforms/managed/FormsContract.fsproj", "dotnet restore managed/tests/PluginFixture/PluginFixture.fsproj"]
+run = ["dotnet restore managed/Bridge/Bridge.fsproj", "dotnet restore crates/bxivact-winforms/managed/FormsContract.fsproj", "dotnet restore managed/tests/PluginFixture/PluginFixture.fsproj", "dotnet restore managed/tests/LegacyReference/LegacyReference.fsproj"]
 
 [tasks.check]
 description = "Check formatting, Rust lints, and bridge tests"
@@ -47,6 +47,6 @@ description = "Verify original ACT reference identity and bind a compiled probe 
 run = ["dotnet fsi --exec managed/tests/PrepareActReference.fsx", "dotnet build managed/tests/LegacyReference/LegacyReference.fsproj -c Release -p:RestoreLockedMode=true", "mise run managed:build", "dotnet fsi --exec managed/tests/ActBindingTests.fsx"]
 
 [tasks."test:plugins"]
-description = "Construct trusted F# fixtures through the bundled bridge; requires DOTNET_ROOT"
+description = "Check trusted plugin construction, initialization and cleanup; requires DOTNET_ROOT"
 depends = ["managed:test-payload"]
-run = ["dotnet build managed/tests/PluginFixture/PluginFixture.fsproj -c Release -p:RestoreLockedMode=true", "dotnet fsi --exec managed/tests/PluginRequests.fsx", "cargo test -p bxivact --test plugins -- --ignored"]
+run = ["dotnet build managed/tests/PluginFixture/PluginFixture.fsproj -c Release -p:RestoreLockedMode=true", "dotnet fsi --exec managed/tests/PluginRequests.fsx", "cargo test -p bxivact --test plugins --test lifecycle -- --ignored"]

@@ -10,7 +10,7 @@ prerequisite, not completion of plugin initialization or ACT aggregation.
 | Can an original ACT reference bind to our F# assembly? | A probe compiled against the original EXE runs against the replacement DLL and calls selected Dnum members |
 | Does reference identity match? | Name Advanced Combat Tracker, version 3.8.5.288, neutral culture, public key token a946b61e93d97868 |
 | Is the original ACT executed? | The original file is read as PE metadata/compiler reference only; the runtime probe checks that Dnum comes from crates/bxivact/managed/Advanced Combat Tracker.dll |
-| Does this initialize FFXIV? | No. The subsequent [construction slice](m1-plugin-construction.md) adds IActPluginV1 and dependency resolution; UI, host globals and InitPlugin remain pending |
+| Does this initialize FFXIV? | No. Later construction/lifecycle slices add plugin loading, selected host globals and fixture initialization; original FFXIV initialization remains blocked |
 | Can Rust receive a useful managed failure? | Command/status plus bounded UTF-8 diagnostic text; an unknown-command regression also checks the session still works afterward |
 
 ## Identity and public signing

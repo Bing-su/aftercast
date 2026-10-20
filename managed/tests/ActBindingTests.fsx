@@ -1,3 +1,4 @@
+#r "../../crates/bxivact-winforms/managed/System.Windows.Forms.dll"
 #r "../../crates/bxivact/managed/Advanced Combat Tracker.dll"
 #r "LegacyReference/bin/Release/net10.0/Bxivact.LegacyReference.dll"
 
@@ -27,3 +28,25 @@ try
     failwith "Unimplemented formatting unexpectedly succeeded"
 with :? NotSupportedException -> ()
 printfn "Original ACT reference bound to the replacement: %s" actual.FullName
+
+let directory = Directory.CreateTempSubdirectory("bxivact-contract-")
+try
+    let globals = actual.GetType("Advanced_Combat_Tracker.ActGlobals", true)
+    check (isNull (globals.GetField("oFormActMain").GetValue(null)))
+    do
+        use environment = new Bxivact.ActCompat.HostEnvironment(directory.FullName)
+        check (not (isNull (HostProbe.Root())))
+        check (HostProbe.Character("Example Character") = "Example Character")
+        check (HostProbe.AppDataPath() = directory.FullName)
+        check (HostProbe.MissingRegistration())
+        HostProbe.BackgroundDiagnostic()
+        let count, diagnostic = environment.Diagnostics
+        check (count = 1L && diagnostic.Contains("background diagnostic"))
+        check (fst environment.Errors = 0L)
+        try
+            HostProbe.Restart()
+            failwith "Embedded RestartACT unexpectedly succeeded"
+        with :? PlatformNotSupportedException -> ()
+    check (isNull (HostProbe.Root()))
+    printfn "Original ACT static field references bound and globals were cleared on disposal."
+finally Directory.Delete(directory.FullName, true)

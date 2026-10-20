@@ -4,8 +4,8 @@
 //! runtime-hosting dependency is required. Consumers need .NET 10 and FSharp.Core 10.0.113
 //! supplied by their host; Cargo never invokes the .NET SDK.
 //!
-//! Only `TabPage` and `Label` signature types exist. Their constructors throw
-//! `PlatformNotSupportedException`; this is not a working WinForms UI implementation.
+//! A small control hierarchy supports headless status text and disposal. Native handles and
+//! rendering throw `PlatformNotSupportedException`; layout and message dispatch are absent.
 
 /// Prebuilt `System.Windows.Forms.dll` for deployment by a Linux .NET host.
 ///

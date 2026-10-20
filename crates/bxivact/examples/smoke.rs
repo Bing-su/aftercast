@@ -14,6 +14,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     extract_bridge(&directory)?;
     let config = HostConfig::builder()
         .dotnet_root(root)
+        .data_directory(directory.join("state"))
         .bridge_directory(&directory)
         .build();
     let host = Host::start(config)?;

@@ -36,6 +36,9 @@ pub struct HostConfig {
     /// Trusted directory previously prepared with [`crate::extract_bridge`].
     #[builder(into)]
     bridge_directory: Utf8PathBuf,
+    /// Private writable ACT state directory, separate from the deployed managed binaries.
+    #[builder(into)]
+    data_directory: Utf8PathBuf,
 }
 
 /// Constructor-only loading of a trusted ACT plugin; no initialization or parsing occurs.
@@ -84,6 +87,7 @@ pub struct Host {
     entry: ManagedFunctionWithDefaultSignature,
     read_error: ManagedFunctionWithDefaultSignature,
     create_plugin: ManagedFunctionWithDefaultSignature,
+    plugin_command: ManagedFunctionWithDefaultSignature,
     session: u64,
     running: bool,
     // Keep the native library and delegate loader alive for every managed function call.
@@ -96,7 +100,8 @@ pub struct Host {
 impl Host {
     /// Loads the installed runtime and starts the bundled managed session.
     ///
-    /// Both paths must contain trusted application/runtime files. An incompatible CLR already
+    /// Runtime and bridge paths must contain trusted files. The application-controlled data
+    /// directory is created without overwriting existing contents. An incompatible CLR already
     /// loaded by another host is reported as a hosting error; no fallback runtime is started.
     pub fn start(config: HostConfig) -> Result<Self, Error> {
         let lease = acquire_lease()?;
@@ -122,10 +127,19 @@ impl Host {
             pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
             pdcstr!("CreatePlugin"),
         )?;
+        let configure_host = loader.get_function_with_default_signature(
+            pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
+            pdcstr!("ConfigureHost"),
+        )?;
+        let plugin_command = loader.get_function_with_default_signature(
+            pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
+            pdcstr!("PluginCommand"),
+        )?;
         let mut host = Self {
             entry,
             read_error,
             create_plugin,
+            plugin_command,
             session: 0,
             running: false,
             _loader: loader,
@@ -138,6 +152,21 @@ impl Host {
         host.running = true;
         if packet.runtime_major != 10 {
             return Err(Error::RuntimeMismatch(packet.runtime_major));
+        }
+        fs::create_dir_all(&config.data_directory)
+            .map_err(|error| io_error(&config.data_directory, error))?;
+        let data_directory = canonicalize(&config.data_directory)?;
+        let mut request = plugin_packet(host.session, data_directory.as_str(), None)?;
+        let length = i32::try_from(request.len())
+            .map_err(|error| Error::InvalidPluginRequest(error.to_string()))?;
+        // SAFETY: ConfigureHost borrows this bounded, initialized request for the call only.
+        let status = unsafe { (configure_host)(request.as_mut_ptr().cast(), length) };
+        if status != 0 {
+            return Err(Error::Managed {
+                command: 5,
+                status,
+                message: host.error_message(),
+            });
         }
         tracing::debug!(session = host.session, "managed host started");
         Ok(host)
@@ -152,8 +181,8 @@ impl Host {
     ///
     /// Constructors execute arbitrary code in this process and may register global handlers.
     /// No sandbox or assembly unloading is provided. `InitPlugin` and `DeInitPlugin` are not
-    /// called. On Linux only signature binding for `TabPage`/`Label` is available; creating UI
-    /// controls fails explicitly. For example, select a type with
+    /// called by this method. Linux provides only headless status controls, without rendering
+    /// or native handles. For example, select a type with
     /// `PluginConfig::builder().path("plugin.dll").type_name("Example.Plugin").build()`.
     pub fn create_plugin(&mut self, config: PluginConfig) -> Result<PluginId, Error> {
         let path = canonicalize(&config.path)?;
@@ -184,6 +213,63 @@ impl Host {
         })
     }
 
+    /// Calls `InitPlugin` once and returns its bounded status text, not proof of parser readiness.
+    ///
+    /// Same-thread exceptions reported through ACT's `WriteExceptionLog` during the callback fail this
+    /// attempt. Failed instances cannot be retried; construct another instance instead. Arbitrary
+    /// plugin side effects cannot be rolled back. Windows requires a caller-owned STA/UI loop.
+    pub fn initialize_plugin(&mut self, plugin: PluginId) -> Result<String, Error> {
+        self.plugin_call(plugin, 1)
+    }
+
+    /// Calls `DeInitPlugin` at most once, removes its registration and disposes host-owned controls.
+    /// The host does not retry a failing callback during shutdown.
+    pub fn deinitialize_plugin(&mut self, plugin: PluginId) -> Result<(), Error> {
+        self.plugin_call(plugin, 2).map(|_status| ())
+    }
+
+    fn plugin_call(&mut self, plugin: PluginId, command: u32) -> Result<String, Error> {
+        if plugin.session != self.session {
+            return Err(Error::InvalidPluginRequest(
+                "plugin belongs to another host session".to_owned(),
+            ));
+        }
+        let mut request = BytesMut::with_capacity(8224);
+        request.put_u32_le(8224);
+        request.put_u32_le(1);
+        request.put_u64_le(self.session);
+        request.put_u64_le(plugin.instance);
+        request.put_u32_le(command);
+        request.put_u32_le(0);
+        request.resize(8224, 0);
+        // SAFETY: PluginCommand requires exactly this initialized allocation, retains no pointer,
+        // and validates the header before writing bounded UTF-8 status output after byte 32.
+        let status = unsafe { (self.plugin_command)(request.as_mut_ptr().cast(), 8224) };
+        if status != 0 {
+            return Err(Error::Managed {
+                command: 6,
+                status,
+                message: self.error_message(),
+            });
+        }
+        let length: [u8; 4] = request
+            .get(28..32)
+            .and_then(|bytes| bytes.try_into().ok())
+            .ok_or_else(|| {
+                Error::InvalidPluginRequest("missing plugin status length".to_owned())
+            })?;
+        let length = u32::from_le_bytes(length) as usize;
+        let bytes = request
+            .get(32..)
+            .and_then(|bytes| bytes.get(..length))
+            .ok_or_else(|| {
+                Error::InvalidPluginRequest("plugin status exceeds capacity".to_owned())
+            })?;
+        std::str::from_utf8(bytes)
+            .map(str::to_owned)
+            .map_err(|error| Error::InvalidPluginRequest(error.to_string()))
+    }
+
     /// Stops the managed session. The CLR and loaded assemblies may remain in the process.
     pub fn stop(mut self) -> Result<(), Error> {
         self.stop_inner()
@@ -191,8 +277,9 @@ impl Host {
 
     fn stop_inner(&mut self) -> Result<(), Error> {
         if self.running {
-            self.call(3)?;
+            // Managed stop closes the session even when a plugin cleanup callback throws.
             self.running = false;
+            self.call(3)?;
             tracing::debug!(session = self.session, "managed host stopped");
         }
         Ok(())
@@ -466,6 +553,7 @@ mod tests {
         let host = Host::start(
             HostConfig::builder()
                 .dotnet_root(root)
+                .data_directory(directory.join("state"))
                 .bridge_directory(directory)
                 .build(),
         )

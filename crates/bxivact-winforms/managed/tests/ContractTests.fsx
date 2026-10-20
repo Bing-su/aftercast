@@ -13,11 +13,23 @@ check (identity.GetPublicKeyToken().Length = 0)
 check (typeof<Label>.Assembly = assembly)
 check (assembly.GetReferencedAssemblies() |> Array.forall (fun reference -> reference.Name <> "Advanced Combat Tracker"))
 
-for create in [ (fun () -> new TabPage() :> obj); (fun () -> new Label() :> obj) ] do
+for create in [ (fun () -> new TabPage() :> Control); (fun () -> new Label() :> Control) ] do
+    use control = create ()
+    let mutable disposedEvents = 0
+    control.Disposed.Add(fun _ -> disposedEvents <- disposedEvents + 1)
+    check (not control.IsDisposed)
+    control.Text <- "Ready"
+    check (control.Text = "Ready")
+    control.Text <- null
+    check (control.Text = "")
     try
-        create () |> ignore
-        failwith "Unsupported UI construction unexpectedly succeeded"
+        control.Handle |> ignore
+        failwith "Unsupported native handle unexpectedly succeeded"
     with :? PlatformNotSupportedException as error ->
-        check (error.Message.Contains("Linux WinForms UI is not implemented"))
+        check (error.Message.Contains("native handles"))
+    control.Dispose()
+    control.Dispose()
+    check control.IsDisposed
+    check (disposedEvents = 1)
 
-printfn "Independent WinForms signature identity and explicit UI-failure checks passed."
+printfn "Independent WinForms identity, status text, disposal and native-handle rejection checks passed."

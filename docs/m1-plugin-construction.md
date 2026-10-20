@@ -37,6 +37,10 @@ not undo constructor side effects or guarantee assembly unloading. See .NET's
 | Linux | .NET 10 Core runtime plus our unsigned System.Windows.Forms adapter, version 4.0.0.0; only TabPage and Label exist, and both constructors throw PlatformNotSupportedException |
 | Windows | .NET 10 Desktop Runtime requested by the extracted runtime configuration; use real WinForms, never extract the Linux adapter |
 
+This table describes the original constructor experiment. The subsequent
+[lifecycle slice](m1-plugin-lifecycle.md) replaces throwing control constructors
+with headless status/disposal support and adds explicit initialization/cleanup.
+
 The Linux adapter is owned by the independent
 [bxivact-winforms crate](../crates/bxivact-winforms/README.md), including its F#
 source, prebuilt DLL and contract tests. bxivact consumes its bytes on Linux;
@@ -127,8 +131,8 @@ This verifies the new consumer path without a managed SDK invocation.
 
 | Area | Still required |
 | --- | --- |
-| Host environment | Original ActGlobals/FormActMain fields, configuration paths, callbacks and threading contracts needed by InitPlugin |
+| Host environment | The lifecycle slice adds selected globals, registration and data paths; most ACT callbacks remain absent |
 | Linux UI replacement | Research actual accessed members and semantics; signature binding is insufficient |
-| Lifecycle | InitPlugin and successful-init-only DeInitPlugin, partial initialization cleanup and callback lifetime |
+| Lifecycle | Fixture InitPlugin/DeInitPlugin work in the lifecycle slice; original FFXIV initialization and plugin-owned partial cleanup remain incomplete |
 | Runtime checks | Windows execution and original ACT differential behavior |
 | Later milestones | Import, capture, aggregation, high-volume streams, persistence and FF Logs acceptance |

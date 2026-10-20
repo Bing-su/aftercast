@@ -6,8 +6,9 @@ The crate has no Rust dependencies and never starts .NET or invokes its SDK.
 
 | Current support | Limit |
 | --- | --- |
-| TabPage / Label signature binding | Both constructors throw PlatformNotSupportedException |
-| Unsigned assembly, version 4.0.0.0 | No UI behavior or original WinForms strong-name identity |
+| Control hierarchy, TabPage / Label / Form construction | Headless objects only; no rendering or native handles |
+| Text / Name / IsDisposed and disposal notification | No message loop, layout, control tree or cross-thread dispatch |
+| Unsigned assembly, version 4.0.0.0 | No original WinForms strong-name identity |
 
 The host supplies .NET 10, FSharp.Core 10.0.113, deployment and assembly-context
 binding. Windows hosts must use real WinForms. ACT and FFXIV are not dependencies.

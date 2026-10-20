@@ -6,6 +6,7 @@ use bxivact::{Error, Host, HostConfig, extract_bridge};
 fn config(root: &Utf8Path, bridge: &Utf8Path) -> HostConfig {
     HostConfig::builder()
         .dotnet_root(root)
+        .data_directory(bridge.join("state"))
         .bridge_directory(bridge)
         .build()
 }
@@ -67,7 +68,22 @@ fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
         _ => panic!("invalid runtime configuration must report a hosting failure"),
     }
 
-    let host = Host::start(config(root, &bridge)).expect("failure releases the host lease");
+    let blocked_state = temporary_path.join("blocked-state");
+    std::fs::write(&blocked_state, b"preserve existing state path")
+        .expect("create blocked state fixture");
+    let blocked = HostConfig::builder()
+        .dotnet_root(root)
+        .bridge_directory(&bridge)
+        .data_directory(&blocked_state)
+        .build();
+    assert!(matches!(Host::start(blocked), Err(Error::Io { .. })));
+    assert_eq!(
+        std::fs::read(&blocked_state).expect("existing state path remains"),
+        b"preserve existing state path"
+    );
+
+    let host = Host::start(config(root, &bridge))
+        .expect("state setup failure closes the session and releases the host lease");
     let first = host.session_id().expect("managed call succeeds");
     assert_ne!(first, 0);
     match Host::start(config(root, &bridge)) {

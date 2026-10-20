@@ -16,7 +16,15 @@
       <Private>false</Private>
     </Reference>
     <Compile Include="IActPluginV1.fs" />
+    <Compile Include="HostEnvironment.fs" />
     <Compile Include="Dnum.fs" />
     <Compile Include="HostSession.fs" />
   </ItemGroup>
+  <Target Name="UseFrameworkDrawingReference" BeforeTargets="CoreCompile">
+    <!-- Match inherited WinForms 4 signatures; the Core facade forwards Icon to an incompatible reference. -->
+    <ItemGroup>
+      <ReferencePathWithRefAssemblies Remove="@(ReferencePathWithRefAssemblies)" Condition="'%(ReferencePathWithRefAssemblies.Filename)' == 'System.Drawing'" />
+      <ReferencePathWithRefAssemblies Include="$(PkgMicrosoft_NETFramework_ReferenceAssemblies_net48)/build/.NETFramework/v4.8/System.Drawing.dll" />
+    </ItemGroup>
+  </Target>
 </Project>
