@@ -39,7 +39,7 @@ the .NET 10 Desktop Runtime and a caller-owned STA/UI loop; execution is unverif
 
 After initialization, `host.import_log(path)` reads a fixed UTF-8 file prefix and
 returns transport counts and actual allied combat totals after submitted actions
-drain. End live combat first. Failure restores live context and retains partial
+drain. End live combat with `host.end_combat()` first. Failure restores live context and retains partial
 import history. Dispatch counts are not parsed counts, and EOF does not flush
 the plugin's private deferred events. Check host and plugin diagnostics.
 
@@ -51,6 +51,7 @@ parsing running. This subscription is not a durable recording or upload log.
 Use `combat_snapshot(None)` for the latest ended encounter, then pass its revision
 to poll for changes. Results own their counters and combatant data after host stop.
 Check the status for partial imports; this API retains only the latest result.
+`end_combat()` also publishes the final live result without another log record.
 
 On Linux, the pinned FFXIV 3.0.3.3 build receives an in-memory compatibility
 adjustment: its embedded memory component reports Windows administrator status

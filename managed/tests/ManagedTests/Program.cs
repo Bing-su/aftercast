@@ -188,6 +188,7 @@ internal static class Program
             ImportAbiChecks.Run(session);
             LogAbiChecks.Run(session);
             CombatSnapshotAbiChecks.Run(session);
+            EndCombatAbiChecks.Run(session);
             ReentrantSessionChecks.Run(session);
             Marshal.WriteInt32(buffer, 8, 4);
             Check(EntryPoint.Invoke(buffer, 24) == 0 && Marshal.ReadInt32(buffer, 12) == 0);

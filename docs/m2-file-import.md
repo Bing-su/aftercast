@@ -11,7 +11,7 @@ actions. This is a synchronous owner-thread operation through initialized plugin
 | Source | Explicit UTF-8 path; open once and read only its initial byte length; later appends are excluded |
 | Framing | Strict UTF-8, optional byte-zero BOM, CR/LF/CRLF, final unterminated record; empty records are counted but not dispatched |
 | Bounds | At most 8 MiB per record; invalid encoding, oversized records and premature truncation throw |
-| Live combat | End it before importing; this initial API explicitly rejects importing during active live combat |
+| Live combat | Call `host.end_combat()` before importing; this initial API explicitly rejects importing during active live combat |
 | Coordination | Pause and quiesce live file delivery before import notification; prevent foreign action producers and nested lifecycle operations from taking import ownership |
 | Callbacks | `LogFileChanged(true,path)`, mutable Before/On raw hooks with import flag, then `LogFileChanged(false,livePath)` after restoration |
 | Time | Use the installed timestamp parser; MinValue remains the hook's local timestamp without replacing LastKnownTime; GlobalTimeSorter remains monotonic across imports |

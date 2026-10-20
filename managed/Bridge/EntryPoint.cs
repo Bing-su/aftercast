@@ -47,13 +47,19 @@ public static class EntryPoint
             Marshal.WriteInt64(buffer, 16, unchecked((long)active.Id));
             return 0;
         }
-        if (command is not (2 or 3 or 4)) return 6;
+        if (command is not (2 or 3 or 4 or 5)) return 6;
         if (active is null) return 4;
         if (active.Id != session) return 5;
         if (command == 2) return 0;
         if (command == 4)
         {
             Marshal.WriteInt32(buffer, 12, plugins.Value.Pump());
+            return 0;
+        }
+        if (command == 5)
+        {
+            // End the owned encounter without stopping the session or creating an unconfigured host.
+            plugins.Value.EndCombat();
             return 0;
         }
         // A rejected reentrant wait leaves the session active so its owner can stop it after dispatch returns.

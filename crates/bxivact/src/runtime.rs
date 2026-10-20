@@ -201,6 +201,15 @@ impl Host {
         self.call(4).map(|packet| packet.runtime_major)
     }
 
+    /// Ends active combat, drains admitted actions and publishes its latest result.
+    ///
+    /// Live file callbacks are quiesced and resumed around completion. Call before importing while
+    /// live combat is active, or to read a final result without waiting for another log timestamp.
+    /// This is a no-op when idle; it does not flush a plugin's private deferred events or writer.
+    pub fn end_combat(&mut self) -> Result<(), Error> {
+        self.call(5).map(|_packet| ())
+    }
+
     /// Reads bounded host-error and backlog-warning history without consuming it or requiring a pump.
     ///
     /// Compare `total` between calls, and inspect `omitted()` to detect older errors outside the

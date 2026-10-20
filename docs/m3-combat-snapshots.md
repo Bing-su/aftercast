@@ -11,6 +11,7 @@ actions.
 | --- | --- |
 | `host.combat_snapshot(None)` | Latest ended encounter, or `None` before any completion |
 | `host.combat_snapshot(Some(result.revision))` | Latest newer result, or `None` when unchanged |
+| `host.end_combat()` | Explicitly ends live combat after quiescing file callbacks and draining admitted actions; idle calls preserve the current result |
 | `CombatRevision` | Opaque, session-scoped monotonic state version; rejected after host restart |
 | `superseded_versions` | Intermediate result/status versions since the supplied revision; not encounters or lost input |
 | `Ended` | Core ended combat and any enclosing import completed without a known host failure |
@@ -36,6 +37,9 @@ archives, callbacks and durable storage are not implemented. A later empty impor
 does not replace an earlier result. A failed import can replace it with partial
 history. Completion status does not establish that the plugin accepted every raw
 record or flushed its private deferred effects.
+Explicit completion also does not flush the original writer or plugin-private
+deferred effects. File delivery resumes after the boundary, including after
+failure; use this command before importing while live combat is active.
 
 ## Values and ownership
 

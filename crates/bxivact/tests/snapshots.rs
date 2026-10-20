@@ -20,6 +20,8 @@ fn completed_snapshots_are_owned_versioned_and_recover_from_partial_imports() {
             .build()
     };
     let mut host = Host::start(config()).expect("start combat snapshot host");
+    host.end_combat()
+        .expect("idle completion before initialization");
     assert!(
         host.combat_snapshot(None)
             .expect("no initial result")
@@ -30,7 +32,7 @@ fn completed_snapshots_are_owned_versioned_and_recover_from_partial_imports() {
     let plugin = host
         .create_plugin(
             PluginConfig::builder()
-                .path(plugin_path)
+                .path(&plugin_path)
                 .type_name("Bxivact.PluginFixture.ImportPlugin")
                 .build(),
         )
@@ -90,8 +92,65 @@ fn completed_snapshots_are_owned_versioned_and_recover_from_partial_imports() {
             .expect("restart has no old result")
             .is_none()
     );
+    check_live_completion(&mut restarted, directory, &plugin_path);
     restarted.stop().expect("stop restarted snapshot host");
     check_completed(&retained);
+}
+
+fn check_live_completion(host: &mut Host, directory: &Utf8Path, plugin_path: &Utf8Path) {
+    use std::io::Write;
+    let plugin = host
+        .create_plugin(
+            PluginConfig::builder()
+                .path(plugin_path)
+                .type_name("Bxivact.PluginFixture.LiveCombatPlugin")
+                .build(),
+        )
+        .expect("construct live file parser fixture");
+    host.initialize_plugin(plugin)
+        .expect("initialize live parser");
+    let path = directory.join("state/live.log");
+    let marker = directory.join("state/live.accepted");
+    for (lines, last, damage) in [("0|100\n2|300\n", "2|300", 400), ("4|50\n", "4|50", 50)] {
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(&path)
+            .expect("open followed file")
+            .write_all(lines.as_bytes())
+            .expect("append live records");
+        // Wait for fixture action admission; observing a raw log batch alone precedes the mutable parsing hooks.
+        let started = std::time::Instant::now();
+        while !std::fs::read_to_string(&marker).is_ok_and(|text| text == last) {
+            host.pump().expect("service live parser callbacks");
+            assert!(
+                started.elapsed() < std::time::Duration::from_secs(5),
+                "live records were not admitted"
+            );
+            std::thread::sleep(std::time::Duration::from_millis(1));
+        }
+        assert!(matches!(
+            host.import_log(&path),
+            Err(Error::Managed { command: 8, .. })
+        ));
+        host.end_combat()
+            .expect("finish live combat without another log record");
+        let result = host
+            .combat_snapshot(None)
+            .expect("read live result")
+            .expect("ended live result");
+        assert!(!result.is_import);
+        assert_eq!(result.status, CombatSnapshotStatus::Ended);
+        assert_eq!(result.damage, damage);
+        host.end_combat().expect("idle completion is harmless");
+        assert!(
+            host.combat_snapshot(Some(result.revision))
+                .expect("unchanged live poll")
+                .is_none()
+        );
+    }
+    assert_eq!(host.diagnostics().expect("live diagnostics").total, 0);
+    host.deinitialize_plugin(plugin)
+        .expect("deinitialize live parser");
 }
 
 fn check_completed(snapshot: &CombatSnapshot) {

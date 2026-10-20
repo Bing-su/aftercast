@@ -112,6 +112,8 @@ namespace Bxivact.ActCompat
         public ImportResult ImportLog(string path) => main.ImportLog(path);
         public CombatSnapshotData? ReadCombatSnapshot(ulong afterRevision) => main.ReadCombatSnapshot(afterRevision);
         public void EnsureCanStop() => main.EnsureCanWaitForLogReader();
+        // Quiesce file callbacks before the boundary so an admitted line cannot race encounter finalization.
+        public void EndCombat() => main.RunWithLogReadingSuspended(() => main.EndCombat(true));
         public void StopLogReading() => main.StopLogFollower();
         public void StopProcessing()
         {

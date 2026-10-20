@@ -68,6 +68,7 @@ executes the plugin constructor only.
 | Host::start(config) | Acquires exclusive host ownership, selects the highest stable .NET 10 hostfxr in that installation, loads the standard managed delegate, starts session |
 | Host::session_id() | Makes a real managed call to validate the current component-local session identity |
 | Host::pump() | Processes bounded queued Linux control callbacks on the host's creation thread; call regularly while workers are active |
+| Host::end_combat() | Quiesces live file callbacks, drains admitted actions, ends active combat and publishes its result, then resumes reading; idle calls are harmless |
 | Host::diagnostics() | Returns an owned atomic snapshot of total host errors/warnings and up to 32 recent bounded messages; repeated reads do not consume history |
 | Host::import_log(path) | Imports a fixed UTF-8 file prefix through initialized plugins, drains submitted actions, restores live context and returns an owned transport/aggregate summary |
 | Host::subscribe_logs / drain_logs / unsubscribe_logs | One bounded original-text subscription; owned batches and exact external loss ranges, independent of core parsing |
@@ -102,7 +103,7 @@ a fallback runtime. That external-host case has not been exercised locally.
 | --- | --- | --- |
 | 0 | u32 / int32 bit pattern | Header size, exactly 24 |
 | 4 | u32 / int32 bit pattern | ABI version, 1 |
-| 8 | u32 / int32 bit pattern | Command: start=1, probe=2, stop=3, pump=4 |
+| 8 | u32 / int32 bit pattern | Command: start=1, probe=2, stop=3, pump=4, end combat=5 |
 | 12 | u32 / int32 bit pattern | Managed output: runtime major; pump returns callback count instead |
 | 16 | u64 / int64 bit pattern | Component-local session identity |
 
