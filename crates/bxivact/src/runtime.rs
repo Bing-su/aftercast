@@ -21,7 +21,11 @@ use netcorehost::{
 };
 use scopeguard::{ScopeGuard, guard};
 
-use crate::{Error, io_error};
+use crate::{
+    Error, HostDiagnostics,
+    diagnostics::{DIAGNOSTIC_CAPACITY, decode_diagnostics},
+    io_error,
+};
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 // CoreCLR keeps hostpolicy state after a session closes; unloading hostfxr breaks reinitialization.
@@ -87,6 +91,7 @@ fn acquire_lease() -> Result<ActiveLease, Error> {
 pub struct Host {
     entry: ManagedFunctionWithDefaultSignature,
     read_error: ManagedFunctionWithDefaultSignature,
+    read_diagnostics: ManagedFunctionWithDefaultSignature,
     create_plugin: ManagedFunctionWithDefaultSignature,
     plugin_command: ManagedFunctionWithDefaultSignature,
     session: u64,
@@ -128,6 +133,10 @@ impl Host {
             pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
             pdcstr!("CreatePlugin"),
         )?;
+        let read_diagnostics = loader.get_function_with_default_signature(
+            pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
+            pdcstr!("ReadDiagnostics"),
+        )?;
         let configure_host = loader.get_function_with_default_signature(
             pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
             pdcstr!("ConfigureHost"),
@@ -139,6 +148,7 @@ impl Host {
         let mut host = Self {
             entry,
             read_error,
+            read_diagnostics,
             create_plugin,
             plugin_command,
             session: 0,
@@ -185,6 +195,31 @@ impl Host {
     /// longer. Windows UI dispatch remains the caller's native message-loop responsibility.
     pub fn pump(&mut self) -> Result<u32, Error> {
         self.call(4).map(|packet| packet.runtime_major)
+    }
+
+    /// Reads bounded worker-error history without consuming it or depending on a successful pump.
+    ///
+    /// Compare `total` between calls, and inspect `omitted()` to detect older errors outside the
+    /// retained history. This reports host diagnostics, not errors caught privately by a plugin.
+    pub fn diagnostics(&self) -> Result<HostDiagnostics, Error> {
+        let mut packet = BytesMut::with_capacity(DIAGNOSTIC_CAPACITY);
+        packet.put_u32_le(DIAGNOSTIC_CAPACITY as u32);
+        packet.put_u32_le(1);
+        packet.put_u64_le(self.session);
+        packet.resize(DIAGNOSTIC_CAPACITY, 0);
+        // SAFETY: ReadDiagnostics borrows this initialized allocation for the call, validates the
+        // header, and writes at most its fixed capacity. No managed memory escapes the call.
+        let status = unsafe {
+            (self.read_diagnostics)(packet.as_mut_ptr().cast(), DIAGNOSTIC_CAPACITY as i32)
+        };
+        if status != 0 {
+            return Err(Error::Managed {
+                command: 7,
+                status,
+                message: self.error_message(),
+            });
+        }
+        decode_diagnostics(&packet)
     }
 
     /// Constructs a trusted plugin and retains it until this host stops.

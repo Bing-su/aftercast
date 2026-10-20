@@ -22,8 +22,10 @@ internal sealed class PluginSession
     private string? directory;
     private HostEnvironment? environment;
     private OwnerContext? context;
+    internal Tuple<long, string[]> DiagnosticsSnapshot => environment?.DiagnosticsSnapshot ?? Tuple.Create(0L, Array.Empty<string>());
     internal T OnOwner<T>(Func<T> action) => context is null ? action() : context.Run(action);
     internal int Pump() => context?.Pump() ?? 0;
+    internal void EnsureCanStop() => environment?.EnsureCanStop();
     // Keep the native Application type outside Linux JIT paths; Windows uses the actual Desktop Runtime.
     private static Action WindowsPump() => Application.DoEvents;
     private PluginRecord Find(long id) => plugins.TryGetValue(id, out var plugin)
@@ -115,6 +117,8 @@ internal sealed class PluginSession
     }
     internal void Stop()
     {
+        // Reject a reader's own dispatched callback before forgetting any session-owned resources.
+        EnsureCanStop();
         var errors = new List<Exception>();
         // Drain file callbacks while plugin state is still valid, before invoking any DeInitPlugin.
         try { environment?.StopLogReading(); } catch (Exception error) { errors.Add(error); }

@@ -28,6 +28,18 @@ fn lines(directory: &Utf8Path, name: &str) -> usize {
         .count()
 }
 
+fn stop_with_expected_failures(host: Host, state: &Utf8Path) {
+    let error = host
+        .stop()
+        .expect_err("report the failing shutdown callback");
+    assert!(error.to_string().contains("fixture shutdown failure"));
+    assert!(error.to_string().contains("fixture disposal failure"));
+    for mode in ["long", "deinit"] {
+        assert_eq!(lines(state, &format!("{mode}.deinit")), 1);
+        assert_eq!(lines(state, &format!("{mode}.disposed")), 2);
+    }
+}
+
 fn failed_initializations(host: &mut Host, assembly: &Utf8Path, state: &Utf8Path) {
     for (name, mode, expected) in [
         (
@@ -53,6 +65,45 @@ fn failed_initializations(host: &mut Host, assembly: &Utf8Path, state: &Utf8Path
     );
     host.deinitialize_plugin(background)
         .expect("deinitialize background fixture");
+    let before = host.diagnostics().expect("read worker diagnostics");
+    let burst = construct(host, assembly, "DiagnosticBurstPlugin");
+    assert_eq!(
+        host.initialize_plugin(burst)
+            .expect("initialize burst fixture"),
+        "Ready"
+    );
+    let diagnostics = host
+        .diagnostics()
+        .expect("read bounded diagnostic snapshot");
+    assert_eq!(diagnostics.total, before.total + 40);
+    assert_eq!(diagnostics.recent.len(), 32);
+    assert_eq!(diagnostics.omitted(), diagnostics.total - 32);
+    assert!(
+        diagnostics
+            .recent
+            .first()
+            .expect("oldest retained message")
+            .starts_with("burst-8:")
+    );
+    assert!(
+        diagnostics
+            .recent
+            .last()
+            .expect("newest retained message")
+            .starts_with("burst-39:")
+    );
+    assert!(
+        diagnostics
+            .recent
+            .iter()
+            .all(|text| text.contains("한글\0") && text.len() <= 3 * 8192)
+    );
+    assert_eq!(
+        host.diagnostics().expect("reread without consuming"),
+        diagnostics
+    );
+    host.deinitialize_plugin(burst)
+        .expect("deinitialize diagnostic fixture");
 }
 
 #[cfg(target_os = "linux")]
@@ -126,6 +177,7 @@ fn initialization_cleanup_and_shutdown_are_session_owned_and_not_retried() {
         .canonicalize_utf8()
         .expect("build fixtures first");
     let mut host = Host::start(config()).expect("start lifecycle host");
+    assert_eq!(host.diagnostics().expect("host without plugins").total, 0);
     let ready = construct(&mut host, &assembly, "ReadyPlugin");
     assert!(host.deinitialize_plugin(ready).is_err());
     assert_eq!(
@@ -153,16 +205,15 @@ fn initialization_cleanup_and_shutdown_are_session_owned_and_not_retried() {
             .expect("initialize shutdown fixture"),
         "Ready"
     );
-    let error = host
-        .stop()
-        .expect_err("report the failing shutdown callback");
-    assert!(error.to_string().contains("fixture shutdown failure"));
-    assert!(error.to_string().contains("fixture disposal failure"));
-    for mode in ["long", "deinit"] {
-        assert_eq!(lines(&state, &format!("{mode}.deinit")), 1);
-        assert_eq!(lines(&state, &format!("{mode}.disposed")), 2);
-    }
+    stop_with_expected_failures(host, &state);
     let mut restarted = Host::start(config()).expect("failed cleanup releases the host session");
+    assert_eq!(
+        restarted
+            .diagnostics()
+            .expect("fresh diagnostic history")
+            .total,
+        0
+    );
     assert!(matches!(
         restarted.initialize_plugin(ready),
         Err(Error::InvalidPluginRequest(_))

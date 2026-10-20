@@ -54,9 +54,13 @@ namespace Advanced_Combat_Tracker
         internal Tuple<long, string> Errors { get { lock (errorGate) return Tuple.Create(errorCount, lastError); } }
         internal Tuple<long, string> OwnerErrors { get { lock (errorGate) return Tuple.Create(ownerErrorCount, lastOwnerError); } }
         internal string[] RecentDiagnostics { get { lock (errorGate) return recentDiagnostics.ToArray(); } }
+        internal Tuple<long, string[]> DiagnosticsSnapshot
+        {
+            get { lock (errorGate) return Tuple.Create(errorCount, recentDiagnostics.ToArray()); }
+        }
     }
 
-    public static class ActGlobals
+    public static partial class ActGlobals
     {
         public static FormActMain? oFormActMain;
         public static string? charName;
@@ -91,6 +95,8 @@ namespace Bxivact.ActCompat
         public Tuple<long, string> Errors => main.OwnerErrors;
         public Tuple<long, string> Diagnostics => main.Errors;
         public string[] RecentDiagnostics => main.RecentDiagnostics;
+        public Tuple<long, string[]> DiagnosticsSnapshot => main.DiagnosticsSnapshot;
+        public void EnsureCanStop() => main.EnsureCanWaitForLogReader();
         public void StopLogReading() => main.StopLogFollower();
         public void RunWithLogReadingSuspended(Action action) => main.RunWithLogReadingSuspended(action);
         public void Dispose()

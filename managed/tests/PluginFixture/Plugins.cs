@@ -113,6 +113,17 @@ public class LifecyclePlugin(string mode) : IActPluginV1
             thread.Start();
             thread.Join();
         }
+        if (mode == "diagnostic-burst")
+        {
+            // Stress the bounded UTF-8 diagnostic snapshot from a worker, independently of InitPlugin's owner errors.
+            var thread = new Thread(() =>
+            {
+                for (var index = 0; index < 40; index++)
+                    root.WriteExceptionLog(new Exception("한글\0" + new string('한', 9000)), $"burst-{index}");
+            });
+            thread.Start();
+            thread.Join();
+        }
         if (mode == "long") status.Text = new string('x', 5000);
         if (mode == "throw")
         {
@@ -139,3 +150,4 @@ public class LoggedFailurePlugin() : LifecyclePlugin("logged");
 public class ShutdownFailurePlugin() : LifecyclePlugin("deinit");
 public class LongStatusPlugin() : LifecyclePlugin("long");
 public class BackgroundLogPlugin() : LifecyclePlugin("background");
+public class DiagnosticBurstPlugin() : LifecyclePlugin("diagnostic-burst");

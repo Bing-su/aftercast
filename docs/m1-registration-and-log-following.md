@@ -39,6 +39,7 @@ constructor and aggregate encounter relationships are not implemented yet.
 | Pending record exceeds 8 MiB | Report once, discard through its newline, resume subsequent records with bounded buffering |
 | File truncated below reader offset | Clear pending bytes and restart from the beginning |
 | File replaced or renamed | Continue the original open file until the plugin calls `OpenLog` again |
+| File replacement overlaps shutdown | Keep retiring readers tracked and drain their callbacks before releasing host globals; reject further opens if 31 readers are still retiring |
 | Reader I/O failure | Report the failure and stop that reader; no success or lossless-recording claim |
 
 The malformed/oversized-record policy concerns raw input integrity. It does not
@@ -83,5 +84,27 @@ drains the active callback, performs teardown and resumes reading. Lifecycle
 operations that would wait for their own dispatched callback fail before changing
 host state. A custom managed dispatcher must supply its pump and accurate callback
 predicate to `HostEnvironment`; the Rust bridge wires both automatically.
-`RecentDiagnostics` retains 32 bounded stack traces independently of the last
-synchronous command. Its Rust query surface remains open.
+`Host::diagnostics()` returns the atomic total error count and up to 32 bounded
+stack traces independently of the last synchronous command. `omitted()` reports
+older messages outside the retained history. Repeated queries do not consume
+messages. Errors caught privately inside the plugin are not host diagnostics.
+
+## Diagnostic snapshot ABI
+
+This private protocol is separate from the planned live log batches. A fixed
+1 MiB payload bounds a cold diagnostic query without borrowing managed memory.
+
+| Offset | Representation | Meaning |
+| --- | --- | --- |
+| 0 | `u32` | Allocation size, exactly 1,048,608 bytes |
+| 4 | `u32` | Version 1 |
+| 8 | `u64` | Active session identity |
+| 16 | `u64` | Total recorded errors |
+| 24 | `u32` | Retained message count, at most 32 |
+| 28 | `u32` | Used payload bytes |
+| 32 | Repeated `u32 length` + UTF-8 bytes | Messages in recording order |
+
+Each message is capped at 8,192 UTF-16 code units before encoding. Rust validates
+counts, lengths, capacity, complete consumption and UTF-8 before producing owned
+strings. Empty sessions return zero errors; a restarted host has new history.
+Malformed requests cannot consume history or write response fields.

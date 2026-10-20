@@ -5,17 +5,21 @@
 //! [`Host::start`] with a trusted .NET 10 installation. No SDK or download is used at runtime.
 
 mod bridge;
+mod diagnostics;
 mod runtime;
 
 use camino::Utf8PathBuf;
 
 pub use bridge::extract_bridge;
+pub use diagnostics::HostDiagnostics;
 pub use runtime::{Host, HostConfig, PluginConfig, PluginId};
 
 /// Failures that callers can distinguish without parsing diagnostic messages.
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("invalid managed diagnostic response: {0}")]
+    InvalidDiagnosticResponse(String),
     #[error("invalid plugin request: {0}")]
     InvalidPluginRequest(String),
     #[error("I/O operation failed for {path}: {source}")]

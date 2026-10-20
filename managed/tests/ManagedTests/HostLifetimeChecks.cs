@@ -15,7 +15,53 @@ internal static class HostLifetimeChecks
         RunBounded(() => CheckLifetime(stop: true));
         RunBounded(() => CheckLifetime(stop: false));
         RunBounded(RejectDispatchedLifecycleWaits);
+        RunBounded(StopDuringReplacement);
         Console.WriteLine("Pumped reader shutdown and quiescent plugin teardown checks passed.");
+    }
+
+    private static void StopDuringReplacement()
+    {
+        var directory = Directory.CreateTempSubdirectory("bxivact-log-replacement-");
+        try
+        {
+            using var context = new OwnerContext(_ => throw new Exception("Unexpected posted failure"));
+            using var control = context.Run(() => new Control());
+            using var environment = new HostEnvironment(directory.FullName, () => context.Pump(), () => context.IsDispatching);
+            var root = ActGlobals.oFormActMain!;
+            var first = Path.Combine(directory.FullName, "first.log");
+            var second = Path.Combine(directory.FullName, "second.log");
+            File.WriteAllText(first, "");
+            File.WriteAllText(second, "");
+            using var entered = new ManualResetEventSlim();
+            using var completed = new ManualResetEventSlim();
+            root.GetDateTimeFromLog = _ => DateTime.UnixEpoch;
+            root.BeforeLogLineRead += (_, _) =>
+            {
+                entered.Set();
+                control.Invoke((Action)(() => control.Text = "drained"));
+                completed.Set();
+            };
+            root.LogFilePath = first;
+            root.OpenLog(false, false);
+            File.AppendAllText(first, "pending\n");
+            Check(entered.Wait(TimeSpan.FromSeconds(5)), "replacement reader did not enter callback");
+            Exception? replacementFailure = null;
+            var replacement = new Thread(() =>
+            {
+                try { root.LogFilePath = second; root.OpenLog(false, false); }
+                catch (Exception error) { replacementFailure = error; }
+            })
+            { IsBackground = true };
+            replacement.Start();
+            var field = root.GetType().GetField("follower", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            Check(SpinWait.SpinUntil(() => field.GetValue(root) is null, TimeSpan.FromSeconds(5)), "replacement did not retire old reader");
+            // The current pointer is empty, but shutdown must still find and drain the retired reader.
+            environment.StopLogReading();
+            Check(replacement.Join(TimeSpan.FromSeconds(5)) && replacementFailure is null && completed.IsSet,
+                "shutdown stranded a retired reader or its replacement");
+            Check(control.Text == "drained" && environment.Diagnostics.Item1 == 0, "retired callback failed during shutdown");
+        }
+        finally { directory.Delete(true); }
     }
 
     private static void RunBounded(Action action)

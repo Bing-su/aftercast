@@ -5,6 +5,8 @@ namespace Advanced_Combat_Tracker;
 public partial class FormActMain
 {
     private readonly object logGate = new();
+    private const int MaximumRetiredFollowers = 32;
+    private readonly HashSet<LogFollower> retiredFollowers = new();
     private LogFollower? follower;
     private long logGeneration;
     private long readyGeneration;
@@ -32,13 +34,18 @@ public partial class FormActMain
         lock (logGate)
         {
             ObjectDisposedException.ThrowIf(logHostStopped, this);
+            PruneRetiredFollowers();
+            // Reserve a cleanup slot for a candidate whose snapshot fails during repeated reentrant replacement.
+            if (retiredFollowers.Count >= MaximumRetiredFollowers - 1)
+                throw new InvalidOperationException("Too many log readers are still retiring");
             path = logFilePath;
             generation = ++logGeneration;
             previous = follower;
+            if (previous is not null) retiredFollowers.Add(previous);
             follower = null;
         }
         // Never join under the root gate: an in-flight subscriber may open another log or read host state.
-        previous?.Dispose(PumpOwnerCallbacks);
+        if (previous is not null) DisposeRetiredFollower(previous);
         LogFollower? next = null;
         try
         {
@@ -63,11 +70,12 @@ public partial class FormActMain
             {
                 if (ReferenceEquals(follower, next))
                 {
+                    if (next is not null) retiredFollowers.Add(next);
                     follower = null;
                     ++logGeneration;
                 }
             }
-            next?.Dispose(PumpOwnerCallbacks);
+            if (next is not null) DisposeRetiredFollower(next);
             throw;
         }
         foreach (var callback in LogFileChanged?.GetInvocationList() ?? [])
@@ -93,37 +101,56 @@ public partial class FormActMain
         if (Environment.CurrentManagedThreadId == ownerThread) PumpCallbacks?.Invoke();
     }
 
+    private void PruneRetiredFollowers() => retiredFollowers.RemoveWhere(reader => !reader.IsAlive);
+
+    private LogFollower[] ReadersUnderGate() => follower is null
+        ? retiredFollowers.ToArray()
+        : retiredFollowers.Append(follower).ToArray();
+
+    private void DisposeRetiredFollower(LogFollower reader)
+    {
+        try { reader.Dispose(PumpOwnerCallbacks); }
+        finally
+        {
+            // Self-disposal only signals cancellation; keep ownership until that callback has actually returned.
+            lock (logGate) { if (!reader.IsAlive) retiredFollowers.Remove(reader); }
+        }
+    }
+
     internal void EnsureCanWaitForLogReader()
     {
         if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() != true) return;
-        lock (logGate)
-        {
-            // A dispatched UI callback must return before its waiting reader can finish delivery.
-            if (follower?.CallbackActive == true)
-                throw new InvalidOperationException("Cannot wait for a log callback from its own dispatched UI callback");
-        }
+        LogFollower[] readers;
+        lock (logGate) readers = ReadersUnderGate();
+        // A dispatched UI callback must return before its waiting reader can finish delivery.
+        if (readers.Any(reader => reader.CallbackActive))
+            throw new InvalidOperationException("Cannot wait for a log callback from its own dispatched UI callback");
     }
 
     internal void RunWithLogReadingSuspended(Action action)
     {
         ArgumentNullException.ThrowIfNull(action);
         EnsureCanWaitForLogReader();
-        LogFollower? current;
+        LogFollower[] readers;
         lock (logGate)
         {
             logPauseDepth++;
-            current = follower;
+            PruneRetiredFollowers();
+            readers = ReadersUnderGate();
         }
-        var suspended = false;
+        var suspended = new List<LogFollower>();
         try
         {
-            current?.Suspend(PumpOwnerCallbacks);
-            suspended = true;
+            foreach (var reader in readers)
+            {
+                reader.Suspend(PumpOwnerCallbacks);
+                suspended.Add(reader);
+            }
             action();
         }
         finally
         {
-            if (suspended) current?.Resume();
+            foreach (var reader in suspended) reader.Resume();
             lock (logGate) logPauseDepth--;
         }
     }
@@ -228,15 +255,19 @@ public partial class FormActMain
     internal void StopLogFollower()
     {
         EnsureCanWaitForLogReader();
-        LogFollower? previous;
+        LogFollower[] readers;
         lock (logGate)
         {
             logHostStopped = true;
             ++logGeneration;
-            previous = follower;
+            if (follower is not null) retiredFollowers.Add(follower);
             follower = null;
+            readers = retiredFollowers.ToArray();
         }
-        previous?.Dispose(PumpOwnerCallbacks);
+        var errors = new List<Exception>();
+        foreach (var reader in readers)
+            try { DisposeRetiredFollower(reader); } catch (Exception error) { errors.Add(error); }
+        if (errors.Count != 0) throw new AggregateException("Log reader shutdown failed", errors);
     }
 
     protected override void Dispose(bool disposing)

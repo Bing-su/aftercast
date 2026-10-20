@@ -20,6 +20,7 @@ internal sealed class LogFollower : IDisposable
     private bool disposed;
     private Exception? reportingFailure;
     internal long InitialPosition { get; }
+    internal bool IsAlive => worker.IsAlive;
     internal bool CallbackActive { get { lock (gate) return callbackActive; } }
 
     internal LogFollower(string path, Action<string> onLine, Action<Exception> onError, Func<bool> paused)

@@ -70,15 +70,19 @@ internal static class Program
             Console.WriteLine($"Original worker diagnostics: {errors.Item1}; {errors.Item2}");
             foreach (var diagnostic in (string[])root.GetType().GetProperty("RecentDiagnostics", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(root)!)
                 Console.WriteLine(diagnostic);
-            void ShowParserMessages(System.Windows.Forms.Control control)
+            // Inspect the pinned plugin's actual private sink; it contains both ordinary notices and parser failures.
+            object Field(object owner, string name) => owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
+            var list = Field(Field(Field(instance, "_actUIMods"), "_settingsPropertyPage"), "lstMessages");
+            var parserMessages = ((System.Collections.IEnumerable)list.GetType().GetProperty("Items")!.GetValue(list)!)
+                .Cast<object>().Select(item => item.ToString()!).ToArray();
+            var expectedPrefixes = new[] { "FFXIV_ACT_Plugin Version:", "Selected Language ID:", "Selected Process ID:" };
+            foreach (var message in parserMessages) Console.WriteLine("Original parser message: " + message);
+            Check(parserMessages.Length == expectedPrefixes.Length);
+            for (var index = 0; index < parserMessages.Length; index++)
             {
-                if (control is System.Windows.Forms.ListBox list)
-                    foreach (var item in (System.Collections.IEnumerable)list.GetType().GetProperty("Items")!.GetValue(list)!)
-                        Console.WriteLine($"Original list message ({list.Name}): {item}");
-                foreach (System.Windows.Forms.Control child in (System.Collections.IEnumerable)control.GetType().GetProperty("Controls")!.GetValue(control)!)
-                    ShowParserMessages(child);
+                var delimiter = parserMessages[index].IndexOf("] ", StringComparison.Ordinal);
+                Check(delimiter >= 0 && parserMessages[index][(delimiter + 2)..].StartsWith(expectedPrefixes[index], StringComparison.Ordinal));
             }
-            ShowParserMessages(root.PluginGetSelfData((IActPluginV1)instance)!.tpPluginSpace);
             Check(errors.Item1 == 0);
         }
         finally { session.Stop(); }
@@ -113,6 +117,8 @@ internal static class Program
             Check(EntryPoint.ReadError(buffer, 0) == 0);
             var session = Marshal.ReadInt64(buffer, 16);
             Check(session > 0 && Marshal.ReadInt32(buffer, 12) == 10);
+            DiagnosticAbiChecks.Run(session);
+            ReentrantSessionChecks.Run(session);
             Marshal.WriteInt32(buffer, 8, 4);
             Check(EntryPoint.Invoke(buffer, 24) == 0 && Marshal.ReadInt32(buffer, 12) == 0);
             Marshal.WriteInt32(buffer, 8, 1);

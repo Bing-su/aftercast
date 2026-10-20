@@ -62,6 +62,7 @@ executes the plugin constructor only.
 | Host::start(config) | Acquires exclusive host ownership, selects the highest stable .NET 10 hostfxr in that installation, loads the standard managed delegate, starts session |
 | Host::session_id() | Makes a real managed call to validate the current component-local session identity |
 | Host::pump() | Processes bounded queued Linux control callbacks on the host's creation thread; call regularly while workers are active |
+| Host::diagnostics() | Returns an owned atomic snapshot of total host errors and up to 32 recent bounded messages; repeated reads do not consume history |
 | Host::create_plugin(PluginConfig) | Selects and constructs a trusted IActPluginV1, returns an opaque session-scoped PluginId; never calls InitPlugin |
 | Host::initialize_plugin(PluginId) | Calls InitPlugin once, returns bounded status text; rejects exceptions reported to the host during the callback |
 | Host::deinitialize_plugin(PluginId) | Calls DeInitPlugin once for a successfully initialized instance; unregisters and disposes owned controls even on failure |

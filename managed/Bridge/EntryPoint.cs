@@ -56,6 +56,8 @@ public static class EntryPoint
             Marshal.WriteInt32(buffer, 12, plugins.Value.Pump());
             return 0;
         }
+        // A rejected reentrant wait leaves the session active so its owner can stop it after dispatch returns.
+        plugins.Value.EnsureCanStop();
         try { plugins.Value.Stop(); } finally { active = null; }
         return 0;
     }
@@ -159,4 +161,39 @@ public static class EntryPoint
         }
         catch { return -1; }
     }
+
+    public static int ReadDiagnostics(nint buffer, int sizeBytes) => Run(() =>
+    {
+        const int headerSize = 32;
+        const int bufferSize = headerSize + 1024 * 1024;
+        if (buffer == 0 || sizeBytes != bufferSize)
+            throw new ArgumentException($"Diagnostics request requires {bufferSize} bytes", nameof(buffer));
+        if (!BitConverter.IsLittleEndian || Marshal.ReadInt32(buffer, 0) != bufferSize || Marshal.ReadInt32(buffer, 4) != 1)
+            throw new ArgumentException("Diagnostics ABI size/version mismatch", nameof(buffer));
+        Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
+        // Capture count and retained messages together so workers cannot produce a mismatched snapshot.
+        var (total, messages) = plugins.Value.DiagnosticsSnapshot;
+        var encoded = new byte[messages.Length][];
+        var used = 0;
+        for (var index = 0; index < messages.Length; index++)
+        {
+            encoded[index] = Encoding.UTF8.GetBytes(messages[index]);
+            used = checked(used + sizeof(int) + encoded[index].Length);
+        }
+        // Validate capacity before writes; diagnostics are snapshots and never consume retained entries.
+        if (messages.Length > 32 || used > bufferSize - headerSize)
+            throw new InvalidOperationException("Retained diagnostics exceed ABI capacity");
+        var offset = headerSize;
+        foreach (var bytes in encoded)
+        {
+            Marshal.WriteInt32(buffer, offset, bytes.Length);
+            offset += sizeof(int);
+            Marshal.Copy(bytes, 0, buffer + offset, bytes.Length);
+            offset += bytes.Length;
+        }
+        Marshal.WriteInt64(buffer, 16, total);
+        Marshal.WriteInt32(buffer, 24, messages.Length);
+        Marshal.WriteInt32(buffer, 28, used);
+        return 0;
+    });
 }

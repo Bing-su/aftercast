@@ -24,6 +24,13 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "InitPlugin returned status: {}",
         host.initialize_plugin(plugin)?
     );
+    // Keep servicing owner-thread callbacks during worker startup; applications do this in their main loop.
+    let until = std::time::Instant::now() + std::time::Duration::from_millis(1500);
+    while std::time::Instant::now() < until {
+        host.pump()?;
+        std::thread::sleep(std::time::Duration::from_millis(10));
+    }
+    println!("Worker diagnostics: {:?}", host.diagnostics()?);
     host.stop()?;
     Ok(())
 }
