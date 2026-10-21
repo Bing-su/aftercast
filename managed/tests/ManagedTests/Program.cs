@@ -60,6 +60,8 @@ internal static class Program
             case "text-exports": ReferenceContract("TextExportProbe", "Text exports"); break;
             case "timer-models": ReferenceContract("TimerModelProbe", "Timer models"); break;
             case "eq2-timestamps": ReferenceContract("Eq2TimestampProbe", "EQ2 timestamps"); break;
+            case "benchmark-ui": ReferenceContract("BenchmarkUiProbe", "Benchmark UI"); break;
+            case "external-benchmark": ExternalPluginChecks.Run(args[1], "ACT_Plugin.EventHandlerBenchmark", args[2], ExternalBenchmarkChecks.Run); break;
             case "external-export": ExternalPluginChecks.Run(args[1], "ACT_Plugin1.Export_All", args[2], (_, _) => ExternalExportChecks.Run()); break;
             case "external-timer": ExternalPluginChecks.Run(args[1], "ACT_Plugin.TimerRepeat", args[2], ExternalTimerChecks.Run); break;
             case "external-eq2": ExternalPluginChecks.Run(args[1], "ACT_Plugin.ACT_English_Parser", args[2], ExternalEq2Checks.Run); break;

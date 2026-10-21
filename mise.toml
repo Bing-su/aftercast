@@ -164,6 +164,25 @@ arg "<state>" help="Private writable test state directory"
 run = '{{vars.managed_tests}} external-eq2 "$usage_plugin" "$usage_state"'
 run_windows = '{{vars.managed_tests}} external-eq2 "%usage_plugin%" "%usage_state%"'
 
+[tasks."test:benchmark-ui"]
+description = "Compare native benchmark column sizing and timestamped UI logs against original ACT (Windows)"
+depends = ["managed:references"]
+run = 'echo "Benchmark UI reference checks require Windows"'
+run_windows = [
+  '{{vars.managed_tests}} benchmark-ui',
+  'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} benchmark-ui {{vars.reference_probe}}',
+]
+
+[tasks."test:external-benchmark"]
+description = "Exercise unmodified Benchmark event wrapping, timing and restoration through native controls (Windows)"
+depends = ["managed:test-runner"]
+usage = '''
+arg "<plugin>" help="Trusted EventHandlerBenchmark assembly"
+arg "<state>" help="Private writable test state directory"
+'''
+run = '{{vars.managed_tests}} external-benchmark "$usage_plugin" "$usage_state"'
+run_windows = '{{vars.managed_tests}} external-benchmark "%usage_plugin%" "%usage_state%"'
+
 [tasks."test:original-import"]
 description = "Import the synthetic fixture through an original plugin copy"
 depends = ["managed:test-runner"]

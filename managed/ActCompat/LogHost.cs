@@ -195,6 +195,7 @@ public partial class FormActMain
         if (!IsCurrentLog(generation)) return;
         PublishOriginalLogRecord(false, sourcePath, line, detectedTime, timeSorter);
         InvokeLogHandlers(BeforeLogLineRead, false, info, generation);
+        LastLogLine = info.logLine;
         InvokeLogHandlers(OnLogLineRead, false, info, generation);
     }
 

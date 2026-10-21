@@ -6,6 +6,20 @@ They exercise settings, another game's parser, event instrumentation, spell
 timers and export workflows. All results below are Windows x64/.NET 10 results
 against aftercast's ACT 3.8.5.288 identity.
 
+## Current verified workflows
+
+| Download | Verified result | Scope limit |
+| --- | --- | --- |
+| Sample | Constructor, initialization, settings round trip and cleanup | The sample deliberately has no combat callback implementation |
+| EQ2 English parser | Four raw records produce 400 damage / 50 healing; captured actions agree with original ACT | Controlled fixture; gameplay and complete parser coverage unverified |
+| Event Handler Benchmark | Four event handlers are counted, a slow handler is logged, disabling restores handlers | Windows native controls; no exact theme/rendering or exception isolation equivalence claim |
+| Timer Repeater | Expiry, combat-only repetition and native-button cancellation | Silent timer definitions; audio, timer editor and visible rendering unsupported |
+| Export_All | Two live combat ends copy 100 then 400 cumulative damage from All | Fixture formatters and local clipboard; broader export modes remain unsupported |
+
+All five pass initialization and cleanup with zero host diagnostics in their
+tested workflows. Later sections retain the initial failures and evidence for
+each correction; these are not current blockers.
+
 ## Input provenance
 
 Downloads and extracted sources remain local under
@@ -194,6 +208,39 @@ This checks a controlled parser path, not actual EQ2 gameplay or every regex,
 audio, options UI and selective parsing mode. Evidence: `check-eq2.txt`,
 `eq2-timestamp-reference.txt`, `eq2-workflow-final.txt` and `eq2-replay.txt`.
 
+## Benchmark workflow follow-up
+
+The distributed DLL now initializes and runs without modification. Native
+checkbox changes run its actual event wrapping/restoration handlers; the test
+dismisses only that test thread's known ENABLED/DISABLED confirmation dialogs.
+The plugin's own native Timer refreshes its table. A deliberately slow combat
+handler exercises worker-to-owner RichTextBox invocation and WriteInfoLog.
+
+| Contract | Validation / limit |
+| --- | --- |
+| ListViewNoFlicker | Native double buffering, extended styles and nested update flushing; native drawing substitutes ACT's themed owner drawing |
+| ResizeLVCols | Original character-weighted proportions; shared original/replacement probe covers empty and populated two-column tables |
+| ThreadInvokes.RichTextBoxAppendDateTimeLine | Original Form/RichTextBox signature, timestamp/newline and owner-thread dispatch; no other ThreadInvokes APIs are claimed |
+| LastLogLine | Updated after BeforeLogLineRead edits and before OnLogLineRead in live delivery and imports |
+| Event field reflection | The original DLL locates the four private event backing fields, calls each handler once and restores them when disabled |
+| Cleanup | Disable instrumentation before unloading, matching the plugin's own restore path; its DeInitPlugin removes wrappers without restoring captured handlers |
+
+```powershell
+mise run test:benchmark-ui
+mise run test:external-benchmark -- 'binaries/additional-plugins-20261021/EventHandlerBenchmark/EventHandlerBenchmark.dll' 'target/additional-plugins-20261021/benchmark-workflow-final'
+```
+
+Both tasks pass on Windows. The benchmark fixture supplies combat category
+registrations because Benchmark is an instrumenter, not a parser. Evidence:
+`benchmark-ui-reference.txt` and `benchmark-workflow-final.txt`.
+Native UI support does not establish headless Linux Benchmark compatibility.
+
+The final `mise run check` passes with `DOTNET_ROOT` configured, including the
+live LastLogLine ordering regression. Original FFXIV 3.0.3.4 synthetic import
+still passes three iterations (seven records and 400 damage each), with zero
+worker diagnostics and completed shutdown. Final logs: `check-benchmark.txt`
+and `ffxiv-final.txt`.
+
 ## Reproduction
 
 Use a trusted plugin and a private writable test directory. The runner executes
@@ -235,10 +282,12 @@ original binaries remain outside the shipped payload.
 
 | Priority | Work | Acceptance condition |
 | --- | --- | --- |
-| 1 | Establish legacy assembly-version and nonpublic-type binding behavior against original ACT | Independent original-loader evidence before changing current guards; enumerate later missing contracts separately |
-| 2 | Implement EQ2 options/log-color registration and remaining parser contracts | Unmodified parser initializes, then a controlled EQ2 log agrees with original ACT; UI-only placeholders do not count |
-| 3 | Implement spell-timer state and expiry contracts | Unmodified Repeater starts, repeats and cancels timers with original timing/event behavior |
-| 4 | Implement text export and clipboard workflows | Unmodified Export_All produces the original formatted All encounter output after a live combat end |
+| 1 | Complete the pinned public-member inventory | Separate missing signatures from implemented-but-uncompared behavior across ACT API families |
+| 2 | Expand parser and combat-policy coverage | Add representative EQ2 and other game logs, selective parsing and correction behavior with original-reference comparisons |
+| 3 | Complete triggers, audio and timer UI | Compare matching/capture/order, sound delivery and visible timer lifecycle against original ACT |
+| 4 | Complete application/history/export UI workflows | Save/restart/search/reimport encounters and validate settings, graphs and additional export formats |
 
-Linux execution, visible UI, actual EQ2 gameplay, timer operation and clipboard
-output were not verified. Existing FFXIV gameplay/recording limits still apply.
+Linux execution of these downloads, visible rendering and actual EQ2 gameplay
+remain unverified. Native Windows timer and clipboard workflows above are
+verified within their stated limits. Existing FFXIV gameplay/recording limits
+still apply.

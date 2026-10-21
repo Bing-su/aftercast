@@ -28,7 +28,7 @@ internal static class LogHostChecks
             LogLineEventDelegate failure = (_, _) => throw new InvalidOperationException("subscriber failure");
             root.BeforeLogLineRead += failure;
             root.BeforeLogLineRead += (_, info) => info.logLine += " amended";
-            root.OnLogLineRead += (_, info) => lines.Enqueue(info);
+            root.OnLogLineRead += (_, info) => { Check(root.LastLogLine == info.logLine); lines.Enqueue(info); };
             root.OpenLog(false, false);
             Check(changes == 1 && root.LogFileFilter == "Network_*.log");
             File.AppendAllText(path, "first\nno-time\n", new UTF8Encoding(false));

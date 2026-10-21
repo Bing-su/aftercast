@@ -82,6 +82,8 @@ of the replacement implementation.
 | `mise run test:external-timer -- <assembly> <state>` | Exercise unmodified Timer Repeater expiry, combat-only repetition and its native cancel button |
 | `mise run test:eq2-timestamps` | Compare default EQ2 timestamp parsing against original ACT on Windows |
 | `mise run test:external-eq2 -- <assembly> <state>` | Import controlled raw EQ2 records through the unmodified parser; capture actions for original replay |
+| `mise run test:benchmark-ui` | Compare native column sizing and timestamped UI logs with original ACT on Windows |
+| `mise run test:external-benchmark -- <assembly> <state>` | Exercise original event instrumentation, native table refresh, slow-handler logs and handler restoration |
 | `mise run test:linux-plugin-compat`                                   | Verify pinned memory/writer/resource corrections against local FFXIV SDK files                                  |
 | `mise run test:original-import -- <plugin-copy> <new-state>`          | Original synthetic import, failure recovery and private diagnostics; use a disposable trusted plugin copy       |
 | `mise run test:original-corpus -- <plugin-copy> <new-state> <corpus>` | Three pinned Zeromus imports with submitted-action totals and exact subscriber loss                             |

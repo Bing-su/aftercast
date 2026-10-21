@@ -138,6 +138,7 @@ namespace Advanced_Combat_Tracker
                         dispatched++;
                         root.PublishOriginalLogRecord(true, path, line, detectedTime, timeSorter);
                         root.InvokeLogHandlers(root.BeforeLogLineRead, true, info);
+                        root.LastLogLine = info.logLine;
                         root.InvokeLogHandlers(root.OnLogLineRead, true, info);
                         // Cooperative hosts must service an action subscriber's synchronous owner-thread invocation during long files.
                         if (dispatched % 64 == 0) root.PumpOwnerCallbacks();
