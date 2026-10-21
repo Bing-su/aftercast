@@ -111,7 +111,9 @@ fn failed_initializations(host: &mut Host, assembly: &Utf8Path, state: &Utf8Path
 
 #[cfg(target_os = "linux")]
 fn owner_dispatch(host: &mut Host, assembly: &Utf8Path, state: &Utf8Path) {
-    use std::{fs::OpenOptions, io::Write, time::Duration};
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    use std::time::Duration;
 
     let plugin = construct(host, assembly, "PumpPlugin");
     assert_eq!(

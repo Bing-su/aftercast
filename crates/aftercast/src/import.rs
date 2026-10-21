@@ -1,11 +1,8 @@
-use crate::{
-    Host,
-    runtime::{Request, canonicalize},
-};
 use bytes::{Buf, BufMut, BytesMut};
 use camino::Utf8Path;
 
-use crate::Error;
+use crate::runtime::{Request, canonicalize};
+use crate::{Error, Host};
 
 /// An owned summary of one completed file import, after accepted actions have drained.
 ///

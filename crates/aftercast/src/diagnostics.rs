@@ -1,8 +1,7 @@
-use crate::{Host, runtime::Request};
-use bytes::Buf;
-use bytes::{BufMut, BytesMut};
+use bytes::{Buf, BufMut, BytesMut};
 
-use crate::Error;
+use crate::runtime::Request;
+use crate::{Error, Host};
 
 pub(crate) const DIAGNOSTIC_CAPACITY: usize = 32 + 1024 * 1024;
 

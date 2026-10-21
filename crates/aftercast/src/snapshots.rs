@@ -1,7 +1,7 @@
-use crate::{Host, runtime::Request};
 use bytes::{Buf, BufMut, BytesMut};
 
-use crate::{Error, LogTimeKind, LogTimestamp};
+use crate::runtime::Request;
+use crate::{Error, Host, LogTimeKind, LogTimestamp};
 
 pub(crate) const SNAPSHOT_HEADER: usize = 64;
 const MAX_BYTES: usize = 64 * 1024 * 1024;

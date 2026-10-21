@@ -13,9 +13,8 @@ mod plugins;
 mod runtime;
 mod snapshots;
 
-use camino::Utf8PathBuf;
-
 pub use bridge::extract_bridge;
+use camino::Utf8PathBuf;
 pub use diagnostics::HostDiagnostics;
 pub use host::Host;
 pub use import::ImportReport;

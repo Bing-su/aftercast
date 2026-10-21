@@ -1,4 +1,5 @@
-use crate::{Error, HostConfig, runtime::ManagedSession};
+use crate::runtime::ManagedSession;
+use crate::{Error, HostConfig};
 
 /// A single active bridge lifetime on the calling thread.
 ///

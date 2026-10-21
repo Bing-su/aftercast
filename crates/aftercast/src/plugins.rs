@@ -2,10 +2,8 @@ use bon::Builder;
 use bytes::{BufMut, BytesMut};
 use camino::Utf8PathBuf;
 
-use crate::{
-    Error, Host,
-    runtime::{Request, canonicalize},
-};
+use crate::runtime::{Request, canonicalize};
+use crate::{Error, Host};
 
 /// Constructor-only loading of a trusted ACT plugin; no initialization or parsing occurs.
 #[derive(Debug, Builder)]

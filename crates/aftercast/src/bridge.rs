@@ -1,6 +1,7 @@
+use std::fs;
+
 use camino::Utf8Path;
 use scopeguard::{ScopeGuard, guard};
-use std::fs;
 
 use crate::{Error, io_error};
 

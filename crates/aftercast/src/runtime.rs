@@ -1,27 +1,22 @@
-use std::{
-    fs,
-    marker::PhantomData,
-    rc::Rc,
-    sync::{
-        OnceLock,
-        atomic::{AtomicBool, Ordering},
-    },
-};
+use std::fs;
+use std::marker::PhantomData;
+use std::rc::Rc;
+use std::sync::OnceLock;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use bon::Builder;
 use bytes::BytesMut;
 use camino::{Utf8Path, Utf8PathBuf};
-use netcorehost::{
-    hostfxr::{
-        AssemblyDelegateLoader, Hostfxr, HostfxrContext, InitializedForRuntimeConfig,
-        ManagedFunctionWithDefaultSignature,
-    },
-    pdcstr,
-    pdcstring::PdCString,
+use netcorehost::hostfxr::{
+    AssemblyDelegateLoader, Hostfxr, HostfxrContext, InitializedForRuntimeConfig,
+    ManagedFunctionWithDefaultSignature,
 };
+use netcorehost::pdcstr;
+use netcorehost::pdcstring::PdCString;
 use scopeguard::{ScopeGuard, guard};
 
-use crate::{Error, io_error, plugins::plugin_packet};
+use crate::plugins::plugin_packet;
+use crate::{Error, io_error};
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 // CoreCLR keeps hostpolicy state after a session closes; unloading hostfxr breaks reinitialization.
@@ -408,7 +403,8 @@ mod tests {
     #[rstest::rstest]
     #[cfg(unix)]
     fn canonicalization_rejects_non_utf8_symlink_targets_without_losing_the_request() {
-        use std::os::unix::{ffi::OsStringExt, fs::symlink};
+        use std::os::unix::ffi::OsStringExt;
+        use std::os::unix::fs::symlink;
         let temporary = tempfile::tempdir().expect("create symlink fixture");
         let target = temporary
             .path()

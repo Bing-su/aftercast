@@ -1,8 +1,8 @@
-use crate::{Host, runtime::Request};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use camino::Utf8PathBuf;
 
-use crate::Error;
+use crate::runtime::Request;
+use crate::{Error, Host};
 
 pub(crate) const LOG_HEADER: usize = 64;
 pub(crate) const MAX_LOG_BYTES: usize = 64 * 1024 * 1024;

@@ -1,8 +1,7 @@
 mod common;
 
-use camino::Utf8Path;
-
 use aftercast::{Error, Host, PluginConfig};
+use camino::Utf8Path;
 use common::{Deployment, deployment};
 
 fn create(host: &mut Host, path: &Utf8Path, name: &str) -> aftercast::PluginId {

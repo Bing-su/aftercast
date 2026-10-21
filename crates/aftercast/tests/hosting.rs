@@ -1,7 +1,7 @@
-use camino::Utf8Path;
 use std::env;
 
 use aftercast::{Error, Host, HostConfig, extract_bridge};
+use camino::Utf8Path;
 
 fn config(root: &Utf8Path, bridge: &Utf8Path) -> HostConfig {
     HostConfig::builder()
