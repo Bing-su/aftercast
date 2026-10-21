@@ -3,6 +3,8 @@
 The [audio follow-up](audio-validation.md) also verifies original CEF and WS
 `playSound` requests alongside `cactbotSay`. Native ACT timer speech/effects are
 checked independently through complete Windows and Linux host/device paths.
+The [browser audio follow-up](browser-audio-validation.md) also passes real CEF
+HTMLAudio and remote Edge/Linux Chromium HTMLAudio/local Web Speech playback.
 
 The controlled Windows x64/.NET 10 stack passes original FFXIV initialization,
 maintained OverlayPlugin phase 2, cactbot addon startup, real CEF rendering and
@@ -144,5 +146,5 @@ mise run check
 
 Earlier phase-1/missing-member observations are historical and superseded by
 these integration assertions. Live game memory/network capture, actual raids,
-other cactbot overlays, browser alert audio, desktop composition and sustained operation
+other cactbot overlays, acoustic quality, desktop composition and sustained operation
 remain outside this controlled verification.

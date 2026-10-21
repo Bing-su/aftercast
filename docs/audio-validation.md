@@ -53,11 +53,11 @@ it does not start ACT's application or use its WMP audio engine. Static REA iden
 evidence: `ev_cedd981ddf9f10f6869ce9d72e036ca6c4f8a318dc2bdb7f5f3773830cc65446`.
 See [Overlay/cactbot validation](overlay-cactbot-validation.md) for pinned artifacts.
 
-The browser harness records original handler transport separately from native
-playback. It keeps raidboss `audio=0`; browser-owned HTMLAudio/Web Speech and real
-raid audio are not established by this test. Native CEF is tested on Windows;
-Linux coverage uses the ACT headless host and its native audio backends. Backend
-completion is measured through APIs, not microphone capture or acoustic quality.
+The browser handler harness records original transport separately from native
+playback. The subsequent [browser audio validation](browser-audio-validation.md)
+enables CEF HTMLAudio and verifies remote browser HTMLAudio/Web Speech on Windows
+and Linux. Native CEF coverage remains Windows only; real raid audio and acoustic
+quality are unverified. Completion is measured through native APIs/events.
 
 ## Reproduce
 

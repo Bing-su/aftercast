@@ -84,6 +84,11 @@ Pump regularly to dispatch queued requests and observe playback errors. Replacin
 or clearing an output cancels its active and queued work; settings last for one
 session. See [sound/timer contracts and platform validation](audio-validation.md).
 
+Remote cactbot browsers use their own HTMLAudio and Web Speech engines. They need
+an installed local voice matching cactbot's display language and an audio-unlock
+click; Linux Chromium also needs Speech Dispatcher enabled. See the verified
+[browser setup and playback checks](browser-audio-validation.md).
+
 | Operation                | Meaning and limits                                                                                             | Detail                           |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------- | -------------------------------- |
 | `end_combat()`           | Quiesce live delivery, drain admitted actions and publish the latest ended result; idle calls are harmless     | [Combat snapshots](snapshots.md) |

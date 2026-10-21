@@ -81,6 +81,7 @@ of the replacement implementation.
 | `mise run test:external-export -- <assembly> <state>` | Exercise Export_All through two combat ends and native clipboard output; restores prior clipboard |
 | `mise run test:timer-models` | Compare timer data/frame contracts with genuine ACT on Windows; replacement probe only elsewhere |
 | `mise run test:audio` | Compare original sound delegates, volumes and start/warning/expiry timer speech on Windows |
+| `mise run test:browser-audio -- <cactbot-root> <state>` | Run unmuted shipped cactbot HTMLAudio/local Web Speech in Edge on Windows or Chromium/private Speech Dispatcher on Linux; requires Node, Playwright and local voices |
 | `cargo test -p aftercast --features audio --test speech -- --ignored` | Run ACT → native speech/effect completion checks; requires local voices and a default audio device |
 | `mise run test:external-timer -- <assembly> <state>` | Exercise unmodified Timer Repeater expiry, combat-only repetition and its native cancel button |
 | `mise run test:eq2-timestamps` | Compare default EQ2 timestamp parsing against original ACT on Windows |
