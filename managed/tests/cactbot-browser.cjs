@@ -1,8 +1,8 @@
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const http = require('node:http');
 const assert = require('node:assert/strict');
 const { chromium } = require('playwright');
+const { serveCactbot, installFixtureApi } = require('./cactbot-fixture.cjs');
 
 // Exercise unmodified release pages with explicit fixture responses, independently of ACT/CEF startup.
 async function main() {
@@ -10,17 +10,7 @@ async function main() {
   const output = path.resolve(process.argv[3]);
   const integration = process.argv[4] ? path.resolve(process.argv[4]) : null;
   await fs.mkdir(output, { recursive: true });
-  const server = http.createServer(async (req, res) => {
-    const file = path.resolve(root, '.' + decodeURIComponent(new URL(req.url, 'http://localhost').pathname));
-    if (!file.startsWith(root + path.sep)) { res.writeHead(403).end(); return; }
-    try {
-      const data = await fs.readFile(file);
-      const types = { '.js': 'text/javascript', '.html': 'text/html', '.css': 'text/css', '.png': 'image/png', '.mp3': 'audio/mpeg' };
-      res.setHeader('Content-Type', types[path.extname(file)] || 'application/octet-stream');
-      res.end(data);
-    } catch { res.writeHead(404).end(); }
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const server = await serveCactbot(root);
   let browser;
   const errors = [];
   try {
@@ -32,21 +22,7 @@ async function main() {
       socket.on('framereceived', frame => { try { wireMessages.push(JSON.parse(frame.payload)); } catch {} });
     });
     page.on('pageerror', error => errors.push(error.message));
-    if (!integration) await page.addInitScript(() => {
-      window.fixtureRequests = [];
-      window.OverlayPluginApi = { ready: true, callHandler: (json, callback) => {
-        const request = JSON.parse(json);
-        window.fixtureRequests.push(request);
-        let response = {};
-        if (request.call === 'cactbotLoadUser') response = { detail: {
-          userLocation: 'fixture', localUserFiles: {}, parserLanguage: 'en', systemLocale: 'en-US', displayLanguage: 'en',
-          cactbotVersion: '0.37.5', overlayPluginVersion: '0.19.111', ffxivPluginVersion: '3.0.3.4', actVersion: '3.8.5.288', gameRegion: 'Global',
-        } };
-        else if (request.call === 'cactbotLoadData') response = { data: {} };
-        else if (request.call === 'getCombatants') response = { combatants: [] };
-        callback?.(JSON.stringify(response));
-      } };
-    });
+    if (!integration) await installFixtureApi(page);
     let commandId = 0;
     async function input(kind, fixture) {
       if (!integration) { await page.evaluate(fixture); return; }

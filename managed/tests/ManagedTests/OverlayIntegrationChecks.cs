@@ -53,7 +53,7 @@ internal static class OverlayIntegrationChecks
         var cactbotPath = root.ActPlugins.Single(data => data.pluginObj.GetType().FullName == "Cactbot.PluginLoader").pluginFile.DirectoryName!;
         var core = server.GetType().Assembly;
         var nativeConfig = Activator.CreateInstance(core.GetType("RainbowMage.OverlayPlugin.Overlays.MiniParseOverlayConfig")!, "aftercast integration")!;
-        nativeConfig.GetType().GetProperty("Url")!.SetValue(nativeConfig, new Uri(Path.Combine(cactbotPath, "ui", "raidboss", "raidboss.html")).AbsoluteUri + "?timeline=1&alerts=1&audio=0");
+        nativeConfig.GetType().GetProperty("Url")!.SetValue(nativeConfig, new Uri(Path.Combine(cactbotPath, "ui", "raidboss", "raidboss.html")).AbsoluteUri + "?timeline=1&alerts=1&audio=1");
         nativeConfig.GetType().GetProperty("IsVisible")!.SetValue(nativeConfig, false);
         nativeConfig.GetType().GetProperty("IsLocked")!.SetValue(nativeConfig, true);
         nativeConfig.GetType().GetProperty("Size")!.SetValue(nativeConfig, new System.Drawing.Size(800, 500));
@@ -65,6 +65,9 @@ internal static class OverlayIntegrationChecks
         overlayData.Remove("aftercast-cef-inspection");
         var snapshots = new List<JsonElement>();
         CheckCef(0, snapshot => snapshot.GetProperty("loaded").GetBoolean());
+        // Observe native HTMLAudio events without replacing the original cactbot bundle or CEF player.
+        native.GetType().GetMethod("ExecuteScript")!.Invoke(native, new object[] {
+            File.ReadAllText("managed/tests/cactbot-audio-observer.cjs") + "\nobserveAudio();" });
         // Exercise the original CEF/cactbot handler; the Rust backend is verified independently by the host fixture test.
         native.GetType().GetMethod("ExecuteScript")!.Invoke(native, new object[] { "callOverlayHandler({call:'cactbotSay',text:'Aftercast CEF speech fixture'})" });
         var soundFile = Path.Combine(state, "aftercast-effect.wav");
@@ -144,6 +147,12 @@ internal static class OverlayIntegrationChecks
             var errors = stderr.GetAwaiter().GetResult();
             File.WriteAllText(Path.Combine(state, "browser-stderr.txt"), errors);
             if (child.ExitCode != 0) throw new Exception("Full-stack browser verification failed: " + errors);
+            CheckCef(5, snapshot => snapshot.GetProperty("audio").EnumerateArray().Any(audio =>
+                audio.GetProperty("type").GetString() == "media" && audio.GetProperty("src").GetString()!.EndsWith("/BigWigs/Alarm.webm") &&
+                audio.GetProperty("playing").GetBoolean() && audio.GetProperty("ended").GetBoolean()));
+            var cefAudio = snapshots[^1].GetProperty("audio");
+            if (cefAudio.EnumerateArray().Any(audio => audio.TryGetProperty("error", out _))) throw new Exception("CEF audio reported a playback error");
+            File.WriteAllText(Path.Combine(state, "cef-audio-report.json"), cefAudio.GetRawText());
             if (lastCommand != 4 || session.DiagnosticsSnapshot.Item1 != 0) throw new Exception("Incomplete live-log fixture or host errors");
             var speech = new List<string>();
             byte[] spoken;
@@ -189,7 +198,7 @@ internal static class OverlayIntegrationChecks
                 // Inspect DOM through the real CEF binding and original cactbotSaveData handler, not a replacement API.
                 native.GetType().GetMethod("ExecuteScript")!.Invoke(native, new object[] {
                     "(async()=>{if(typeof callOverlayHandler!=='function')return;await callOverlayHandler({call:'cactbotSaveData',overlay:'aftercast-cef-inspection',data:{probe:" + probe +
-                    ",loaded:!!document.querySelector('#instructions-0')?.textContent,popups:[...document.querySelectorAll('#popup-text-container .holder')].map(e=>e.textContent),bars:[...document.querySelectorAll('#timeline timer-bar')].map(e=>e.getAttribute('lefttext'))}})})()" });
+                    ",loaded:!!document.querySelector('#instructions-0')?.textContent,popups:[...document.querySelectorAll('#popup-text-container .holder')].map(e=>e.textContent),bars:[...document.querySelectorAll('#timeline timer-bar')].map(e=>e.getAttribute('lefttext')),audio:window.audioEvents||[]}})})()" });
                 var tick = Stopwatch.StartNew();
                 while (tick.Elapsed < TimeSpan.FromMilliseconds(100)) { session.Pump(); Thread.Sleep(10); }
                 if (overlayData["aftercast-cef-inspection"] is { } value)
