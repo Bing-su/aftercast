@@ -26,21 +26,18 @@ internal static class InitialSnapshotChecks
                 .Invoke([path, (Action<string>)lines.Enqueue, (Action<Exception>)errors.Enqueue, (Func<bool>)(() => false), true]);
             File.Move(path, path + ".old");
             File.WriteAllText(path, "zone:B\n", new UTF8Encoding(true));
-            var readInitial = type.GetMethod("ReadInitialBytes", BindingFlags.Instance | BindingFlags.NonPublic)!;
-            foreach (var invalid in new[] { (-1, 0L), (2, 0L), (1, -1L), (1, long.MaxValue) })
-            {
-                // Reject out-of-range requests before touching the owned native handle or destination.
-                try { Invoke(readInitial, reader, new byte[1], invalid.Item1, invalid.Item2); throw new Exception("Invalid initial range succeeded."); }
-                catch (ArgumentOutOfRangeException) { }
-            }
+            var readInitial = type.GetMethod("ReadInitialZone", BindingFlags.Instance | BindingFlags.NonPublic)!;
+            // A superseded selection must stop scanning while leaving the pending handle usable for cleanup.
+            Check(Invoke(readInitial, reader, root.ZoneChangeRegex, (Func<bool>)(() => true)) is null,
+                "A cancelled initial zone search continued scanning.");
             // The replacement is shorter than the captured offset, making pathname reopening fail deterministically.
-            var zone = (string?)Invoke(typeof(FormActMain).GetMethod("ReadZoneSnapshot", BindingFlags.Instance | BindingFlags.NonPublic)!, root, reader, 0L);
+            var zone = (string?)Invoke(readInitial, reader, root.ZoneChangeRegex, (Func<bool>)(() => false));
             Check(zone == "original-long-zone", "Snapshot used replacement pathname rather than the owned old handle.");
             File.AppendAllText(path + ".old", "old-tail\n", new UTF8Encoding(false));
             Invoke(type.GetMethod("CompleteInitialSnapshot", BindingFlags.Instance | BindingFlags.NonPublic)!, reader);
             try
             {
-                Invoke(readInitial, reader, new byte[1], 1, 0L);
+                Invoke(readInitial, reader, root.ZoneChangeRegex, (Func<bool>)(() => false));
                 throw new Exception("Initial read remained available after activation.");
             }
             catch (InvalidOperationException) { }
@@ -54,7 +51,8 @@ internal static class InitialSnapshotChecks
                 [typeof(string), typeof(Action<string>), typeof(Action<Exception>), typeof(Func<bool>), typeof(bool)], null)!
                 .Invoke([path, (Action<string>)lines.Enqueue, (Action<Exception>)errors.Enqueue, (Func<bool>)(() => false), true]);
             cancelled.Dispose();
-            Check(Equals(Invoke(readInitial, cancelled, new byte[1], 1, 0L), false), "Cancelled initial reader touched its disposed handle.");
+            Check(Invoke(readInitial, cancelled, root.ZoneChangeRegex, (Func<bool>)(() => false)) is null,
+                "Cancelled initial reader touched its disposed handle.");
         }
         finally { directory.Delete(true); }
     }

@@ -236,7 +236,7 @@ public partial class FormActMain
         EnsureCanWaitForCombatActions();
         lock (CombatGate)
         {
-            if (importRunning) throw new InvalidOperationException("Log import is already in progress");
+            if (activeImport is not null) throw new InvalidOperationException("Log import is already in progress");
             if (actionAdmissionPaused) throw new InvalidOperationException("Plugin teardown is already in progress");
             if ((startingCombat || endingCombat) && (combatTransitionOwner == Environment.CurrentManagedThreadId ||
                 Environment.CurrentManagedThreadId == ownerThread && IsDispatchingCallback?.Invoke() == true))

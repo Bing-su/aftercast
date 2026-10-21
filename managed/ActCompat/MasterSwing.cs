@@ -1,7 +1,28 @@
+using System.Drawing;
+
 namespace Advanced_Combat_Tracker;
 
-public partial class MasterSwing
+public class MasterSwing
 {
+    private MasterSwing() { }
+    public static Dictionary<string, ColumnDef> ColumnDefs = new();
+    public string GetColumnByName(string name) => ColumnDefs.TryGetValue(name, out var column) ? column.GetCellData(this) : string.Empty;
+    public delegate string StringDataCallback(MasterSwing data);
+    public delegate Color ColorDataCallback(MasterSwing data);
+    public class ColumnDef(string label, bool defaultVisible, string sqlDataType, string sqlDataName,
+        StringDataCallback cell, StringDataCallback sql, Comparison<MasterSwing> sort)
+    {
+        public string Label { get; } = label;
+        public bool DefaultVisible { get; } = defaultVisible;
+        public string SqlDataType { get; } = sqlDataType;
+        public string SqlDataName { get; } = sqlDataName;
+        public StringDataCallback GetCellData = cell;
+        public StringDataCallback GetSqlData = sql;
+        public Comparison<MasterSwing> SortComparer = sort;
+        public ColorDataCallback GetCellForeColor = static _ => Color.Transparent;
+        public ColorDataCallback GetCellBackColor = static _ => Color.Transparent;
+    }
+
     public MasterSwing(int swingType, bool critical, string special, Dnum damage, DateTime time,
         int timeSorter, string attackType, string attacker, string damageType, string victim)
     {

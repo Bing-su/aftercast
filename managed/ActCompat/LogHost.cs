@@ -1,5 +1,3 @@
-using System.Text;
-
 namespace Advanced_Combat_Tracker;
 
 public partial class FormActMain
@@ -57,7 +55,10 @@ public partial class FormActMain
                     error => WriteExceptionLog(error, "Log follower"), () => ReadThreadLock || IsLogDeliveryPaused(generation), initialSnapshot: true);
                 follower = next;
             }
-            var snapshot = getCurrentZone ? ReadZoneSnapshot(next, generation) : null;
+            var snapshot = getCurrentZone ? next.ReadInitialZone(ZoneChangeRegex, () =>
+            {
+                lock (logGate) return logHostStopped || generation != logGeneration;
+            }) : null;
             lock (logGate)
             {
                 if (logHostStopped || generation != logGeneration) return;
@@ -193,64 +194,6 @@ public partial class FormActMain
             try { ((LogLineEventDelegate)callback)(isImport, info); }
             catch (Exception error) { RecordImportFailure(error); WriteExceptionLog(error, "Log line subscriber"); }
         }
-    }
-
-    private string? ReadZoneSnapshot(LogFollower reader, long generation)
-    {
-        var regex = ZoneChangeRegex;
-        if (regex is null) return null;
-        // Search complete records backwards so large files do not require a full forward replay.
-        var position = reader.InitialPosition;
-        var bytes = new byte[4096];
-        var reverseLine = new List<byte>();
-        var skipTail = true;
-        var oversized = false;
-        string? MatchLine(bool atStart = false)
-        {
-            if (oversized) return null;
-            reverseLine.Reverse();
-            try
-            {
-                var text = new UTF8Encoding(false, true).GetString(reverseLine.ToArray()).TrimEnd('\r');
-                if (atStart && text.StartsWith('\uFEFF')) text = text[1..];
-                var match = regex.Match(text);
-                return match.Success && match.Groups["zone"].Success ? match.Groups["zone"].Value : null;
-            }
-            catch (DecoderFallbackException error)
-            {
-                WriteExceptionLog(error, "Skipping invalid UTF-8 zone snapshot record");
-                return null;
-            }
-        }
-        while (position > 0)
-        {
-            // A large history search must not delay shutdown or a newer file selection.
-            lock (logGate) { if (logHostStopped || generation != logGeneration) return null; }
-            var count = (int)Math.Min(position, bytes.Length);
-            position -= count;
-            if (!reader.ReadInitialBytes(bytes, count, position)) return null;
-            for (var index = count - 1; index >= 0; index--)
-            {
-                if (bytes[index] == (byte)'\n')
-                {
-                    if (!skipTail && MatchLine() is { } zone) return zone;
-                    skipTail = false;
-                    reverseLine.Clear();
-                    oversized = false;
-                }
-                else if (!skipTail && !oversized)
-                {
-                    if (reverseLine.Count == 8 * 1024 * 1024)
-                    {
-                        oversized = true;
-                        reverseLine.Clear();
-                        WriteExceptionLog(new InvalidDataException("Zone snapshot record exceeds 8 MiB"), "Skipping oversized zone snapshot record");
-                    }
-                    else reverseLine.Add(bytes[index]);
-                }
-            }
-        }
-        return !skipTail ? MatchLine(atStart: true) : null;
     }
 
     private void UpdateRawZone(string line)
