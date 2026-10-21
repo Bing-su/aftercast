@@ -13,10 +13,10 @@ Consumers need an installed .NET 10 runtime; no SDK or automatic download is use
 | [Documentation index](docs/index.md)                                    | Import, log, snapshot and compatibility reference                                  |
 | [Independent Linux WinForms model](crates/aftercast-winforms/README.md) | Headless control and chart compatibility                                           |
 
-Linux fixture-plugin lifecycle, synthetic imports and owned output are tested.
+Linux and Windows fixture-plugin lifecycle, synthetic imports and owned output are tested.
 Prior original-plugin checks cover synthetic input and a recorded Zeromus corpus,
 with configured action comparisons against genuine ACT. Broader gameplay,
-native capture, recording durability and Windows execution remain unverified.
+native capture, recording durability and original-plugin execution on Windows remain unverified.
 
 The project is unpublished and its license remains undecided. Proprietary
 reference artifacts are local maintainer inputs and are excluded from Git/packages.

@@ -37,7 +37,7 @@ internal static class EndCombatAbiChecks
             _ = shared.OnOwner(() => typeof(PluginSession).GetMethod("Host", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(shared, null));
             var root = ActGlobals.oFormActMain!;
             CombatFixture.ConfigureCategories();
-            using var control = shared.OnOwner(() => new Control());
+            using var control = shared.OnOwner(() => UiChecks.CreateControl());
             var ownerThread = Environment.CurrentManagedThreadId;
             var callbackCount = 0;
             root.AfterCombatAction += (_, _) => control.Invoke((Action)(() =>

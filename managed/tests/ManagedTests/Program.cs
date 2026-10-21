@@ -30,6 +30,7 @@ internal static class Program
         }
         finally { Marshal.FreeHGlobal(output); }
     }
+    [STAThread]
     public static void Main(string[] args)
     {
         var mode = args[0];

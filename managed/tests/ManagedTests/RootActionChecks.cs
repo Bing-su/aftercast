@@ -193,7 +193,7 @@ internal static class RootActionChecks
     private static void PumpedShutdown()
     {
         using var context = new OwnerContext(_ => throw new Exception("Unexpected posted failure"));
-        using var control = context.Run(() => new Control());
+        using var control = context.Run(() => UiChecks.CreateControl());
         using var fixture = new Fixture(context);
         var root = fixture.Root;
         root.SetEncounter(Epoch, "Source", "Target");
@@ -295,7 +295,7 @@ internal static class RootActionChecks
     private static void ShutdownDuringTransition(bool starting)
     {
         using var context = new OwnerContext(_ => throw new Exception("Unexpected posted failure"));
-        using var control = context.Run(() => new Control());
+        using var control = context.Run(() => UiChecks.CreateControl());
         using var fixture = new Fixture(context);
         var root = fixture.Root;
         if (!starting)

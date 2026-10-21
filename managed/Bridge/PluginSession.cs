@@ -43,8 +43,6 @@ internal sealed class PluginSession
             throw new InvalidOperationException("File import requires an initialized plugin");
         return Host().ImportLog(path);
     });
-    // Keep the native Application type outside Linux JIT paths; Windows uses the actual Desktop Runtime.
-    private static Action WindowsPump() => Application.DoEvents;
     private PluginRecord Find(long id) => plugins.TryGetValue(id, out var plugin)
         ? plugin : throw new ArgumentException("Unknown plugin instance", nameof(id));
     private HostEnvironment Host()
@@ -54,7 +52,7 @@ internal sealed class PluginSession
             throw new InvalidOperationException("Windows plugin initialization requires a caller-owned STA thread and UI message loop");
         var host = new HostEnvironment(directory
             ?? throw new InvalidOperationException("Host data directory has not been configured"),
-            context is null ? OperatingSystem.IsWindows() ? WindowsPump() : null : () => context.Pump(),
+            context is null ? null : () => context.Pump(),
             context is null ? null : () => context.IsDispatching);
         host.OriginalLogRecordRead += logs.Capture;
         return environment = host;
@@ -75,9 +73,8 @@ internal sealed class PluginSession
         if (!Path.IsPathFullyQualified(path) || !Directory.Exists(path))
             throw new ArgumentException("Host data directory must be an existing absolute directory", nameof(path));
         directory = path;
-        // Linux controls capture this cooperative context; native Windows keeps the caller's UI loop.
-        if (OperatingSystem.IsLinux())
-            context = new(error => ActGlobals.oFormActMain?.WriteExceptionLog(error, "Posted owner callback"));
+        // Both platforms dispatch on the caller's thread; Windows also pumps its native messages.
+        context = new(error => ActGlobals.oFormActMain?.WriteExceptionLog(error, "Posted owner callback"));
     }
     internal long Add(string path, object instance)
     {
@@ -100,6 +97,13 @@ internal sealed class PluginSession
             var tab = data.tpPluginSpace;
             var label = data.lblPluginStatus;
             plugin.Controls = (tab, label);
+            // ACT supplies usable UI handles before InitPlugin; worker Invoke calls must not create them.
+            if (OperatingSystem.IsWindows())
+            {
+                _ = ActGlobals.oFormActMain!.Handle;
+                _ = tab.Handle;
+                _ = label.Handle;
+            }
             host.Register(data);
             var before = host.Errors.Item1;
             plugin.Plugin.InitPlugin(tab, label);

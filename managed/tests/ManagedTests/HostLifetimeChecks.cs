@@ -25,7 +25,7 @@ internal static class HostLifetimeChecks
         try
         {
             using var context = new OwnerContext(_ => throw new Exception("Unexpected posted failure"));
-            using var control = context.Run(() => new Control());
+            using var control = context.Run(() => UiChecks.CreateControl());
             using var environment = new HostEnvironment(directory.FullName, () => context.Pump(), () => context.IsDispatching);
             var root = ActGlobals.oFormActMain!;
             var first = Path.Combine(directory.FullName, "first.log");
@@ -75,6 +75,7 @@ internal static class HostLifetimeChecks
             finally { done.Set(); }
         })
         { IsBackground = true };
+        if (OperatingSystem.IsWindows()) owner.SetApartmentState(ApartmentState.STA);
         owner.Start();
         // Keep a broken shutdown join from hanging the entire test process.
         Check(done.Wait(TimeSpan.FromSeconds(15)), "owner-thread shutdown or suspension deadlocked");
@@ -88,7 +89,7 @@ internal static class HostLifetimeChecks
         try
         {
             using var context = new OwnerContext(_ => throw new Exception("Unexpected posted callback failure"));
-            using var control = context.Run(() => new Control());
+            using var control = context.Run(() => UiChecks.CreateControl());
             using var environment = new HostEnvironment(directory.FullName, () => context.Pump(), () => context.IsDispatching);
             var root = ActGlobals.oFormActMain!;
             var path = Path.Combine(directory.FullName, "Network.log");
@@ -148,7 +149,7 @@ internal static class HostLifetimeChecks
         try
         {
             using var context = new OwnerContext(_ => throw new Exception("Unexpected posted callback failure"));
-            using var control = context.Run(() => new Control());
+            using var control = context.Run(() => UiChecks.CreateControl());
             using var environment = new HostEnvironment(directory.FullName, () => context.Pump(), () => context.IsDispatching);
             var root = ActGlobals.oFormActMain!;
             var path = Path.Combine(directory.FullName, "Network.log");

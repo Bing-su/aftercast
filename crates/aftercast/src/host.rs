@@ -34,11 +34,12 @@ impl Host {
         self.session.call(2).map(|packet| packet.session)
     }
 
-    /// Runs queued Linux control callbacks on this host's creation thread.
+    /// Runs queued control callbacks and Windows UI messages on this host's creation thread.
     ///
     /// Call regularly from your application loop, for example before draining output. Each call
     /// starts at most 64 callbacks within a 5 ms scheduling budget; a callback itself can take
-    /// longer. Windows UI dispatch remains the caller's native message-loop responsibility.
+    /// longer. On Windows, also dispatches native messages; their callbacks are not counted in
+    /// the return value or limited by the queue's scheduling budget. The caller must own an STA thread.
     pub fn pump(&mut self) -> Result<u32, Error> {
         self.session.call(4).map(|packet| packet.runtime_major)
     }

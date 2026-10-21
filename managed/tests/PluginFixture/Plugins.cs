@@ -76,13 +76,8 @@ public class LifecyclePlugin(string mode) : IActPluginV1
         list.Items["capture"].SubItems[1].Text = "42";
         if (list.Items["capture"].SubItems[1].Text != "42" || list.SelectedItems.Count != 0)
             throw new Exception("ListView contract failed");
-        // Resolve the separate chart assembly through the plugin context and share its Control base type.
-        using var chart = new Chart();
-        chart.Series.Add(new Series { Name = "Capture", XValueType = ChartValueType.DateTime });
-        Control graph = chart;
-        graph.Text = "Capture status";
-        if (chart.Series["Capture"].XValueType != ChartValueType.DateTime || graph.Text != "Capture status")
-            throw new Exception("Chart contract failed");
+        // The independent chart model is Linux-only; Desktop Runtime does not ship DataVisualization.
+        if (OperatingSystem.IsLinux()) CheckChart();
         if (settings.IsDisposed || settings.Text != "Settings") throw new Exception("UserControl contract failed");
         PluginDependency.Value.CheckPermissions();
         var dependency = Path.Combine(Path.GetDirectoryName(GetType().Assembly.Location)!, "Aftercast.PluginDependency.dll");
@@ -135,6 +130,15 @@ public class LifecyclePlugin(string mode) : IActPluginV1
             failedInstance = this;
             root.WriteExceptionLog(new InvalidOperationException("fixture caught failure"), "fixture");
         }
+    }
+    private static void CheckChart()
+    {
+        using var chart = new Chart();
+        chart.Series.Add(new Series { Name = "Capture", XValueType = ChartValueType.DateTime });
+        Control graph = chart;
+        graph.Text = "Capture status";
+        if (chart.Series["Capture"].XValueType != ChartValueType.DateTime || graph.Text != "Capture status")
+            throw new Exception("Chart contract failed");
     }
     public void DeInitPlugin()
     {

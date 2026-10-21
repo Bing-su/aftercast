@@ -9,7 +9,7 @@ Consumer behavior is described in [usage](usage.md), with source ownership in
 | Role                 | Requirements                                                                                      |
 | -------------------- | ------------------------------------------------------------------------------------------------- |
 | Consumer             | Rust toolchain and installed .NET 10 runtime; no SDK                                              |
-| Maintainer           | Rust, mise and .NET SDK 10.0.113 or its permitted latest patch from global.json                   |
+| Maintainer           | Rust, mise and .NET 10 SDK; global.json permits the latest installed stable 10.0 feature band     |
 | Real CLR tests       | DOTNET_ROOT points to the trusted .NET 10 installation                                            |
 | Original comparisons | Explicit local proprietary ACT/FFXIV artifacts matching the pinned hashes; excluded from packages |
 
@@ -22,6 +22,17 @@ warnings as errors. The license is undecided and workspace publication is disabl
 # Use the actual installed runtime root so the fixture integration tests exercise it.
 DOTNET_ROOT=/usr/lib/dotnet mise run check
 ```
+
+On Windows, use PowerShell with the installed x64 Desktop Runtime:
+
+```powershell
+$env:DOTNET_ROOT = 'C:\Program Files\dotnet'
+mise run check
+```
+
+The repository's `NuGet.Config` selects nuget.org independently of machine-wide
+offline feeds. Windows tests initialize their owner threads as STA and run against
+the native Desktop Runtime; independent WinForms model contracts remain separate.
 
 | Included check              | Scope                                                                                                                              |
 | --------------------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
@@ -94,7 +105,9 @@ build.rs, automatic runtime download, native UI substitute or consumer NuGet res
 
 ## Verification limits
 
-Windows target compilation checks Rust only. Actual Windows CLR/plugin/UI
-execution, broader encounter families, native Linux capture, sustained live
+The unified check passes on Windows x64, including CLR lifecycle, fixture-plugin
+initialization, native callback dispatch, import, logs and snapshots.
+See the [Windows validation results](windows-validation.md) for commands and limits.
+Original Windows plugin execution and visible UI rendering, broader encounter families, native Linux capture, sustained live
 throughput, full recording durability/rotation and FF Logs acceptance remain
 unverified. Tests of subscriber loss do not establish lossless recording.

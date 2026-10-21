@@ -21,11 +21,13 @@ public class PumpPlugin : IActPluginV1
         handler = (_, info) =>
         {
             File.WriteAllText(Path.Combine(folder, info.originalLogLine + ".queued"), "queued");
-            tab.Invoke((Action)(() =>
-            {
-                if (Environment.CurrentManagedThreadId != owner) throw new Exception("Callback escaped its owner thread");
-                File.WriteAllText(Path.Combine(folder, info.originalLogLine + ".pumped"), "pumped");
-            }));
+            // All host-owned controls must marshal worker callbacks without fixture-created handles.
+            foreach (var control in new Control[] { root, tab, status })
+                control.Invoke((Action)(() =>
+                {
+                    if (Environment.CurrentManagedThreadId != owner) throw new Exception("Callback escaped its owner thread");
+                    File.WriteAllText(Path.Combine(folder, info.originalLogLine + ".pumped"), "pumped");
+                }));
             File.WriteAllText(Path.Combine(folder, info.originalLogLine + ".returned"), "returned");
         };
         root.BeforeLogLineRead += handler;

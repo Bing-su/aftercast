@@ -51,7 +51,6 @@ internal static class ReentrantSessionChecks
 
     internal static void Run(long activeSession)
     {
-        if (!OperatingSystem.IsLinux()) return;
         CheckSession(new PluginSession(), null);
         // Exercise the actual ABI session without adding a production seam or closing its outer lifecycle.
         var shared = (Lazy<PluginSession>)typeof(EntryPoint).GetField("plugins", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!;

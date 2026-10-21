@@ -94,8 +94,18 @@ internal sealed class OwnerContext : SynchronizationContext, IDisposable
             }
             processed++;
         }
+        if (OperatingSystem.IsWindows() && !closed)
+        {
+            // Native Invoke callbacks must carry the same reentrant-wait guard as queued Send callbacks.
+            dispatchDepth++;
+            try { Run(() => { PumpWindows(); return 0; }); }
+            finally { dispatchDepth--; }
+        }
         return processed;
     }
+
+    // Keep native WinForms types out of the Linux JIT path.
+    private static void PumpWindows() => System.Windows.Forms.Application.DoEvents();
 
     public void Dispose()
     {

@@ -109,7 +109,6 @@ fn failed_initializations(host: &mut Host, assembly: &Utf8Path, state: &Utf8Path
         .expect("deinitialize diagnostic fixture");
 }
 
-#[cfg(target_os = "linux")]
 fn owner_dispatch(host: &mut Host, assembly: &Utf8Path, state: &Utf8Path) {
     use std::fs::OpenOptions;
     use std::io::Write;
@@ -187,7 +186,6 @@ fn initialization_cleanup_and_shutdown_are_session_owned_and_not_retried(
     assert_eq!(lines(&state, "ready.init"), 1);
     assert_eq!(lines(&state, "ready.deinit"), 1);
     assert_eq!(lines(&state, "ready.disposed"), 2);
-    #[cfg(target_os = "linux")]
     owner_dispatch(&mut host, &assembly, &state);
     failed_initializations(&mut host, &assembly, &state);
     let long = construct(&mut host, &assembly, "LongStatusPlugin");

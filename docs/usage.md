@@ -39,7 +39,7 @@ fn main() -> Result<(), aftercast::Error> {
 | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
 | `create_plugin(PluginConfig)` | Construct a trusted IActPluginV1; select type_name when more than one eligible type exists           |
 | `initialize_plugin(id)`       | Attempt InitPlugin once; return bounded status text; callback return does not prove parser readiness |
-| `pump()`                      | Run Linux owner-thread callbacks; call regularly from the application's loop                         |
+| `pump()`                      | Run owner-thread callbacks and Windows native messages; call regularly from the application's loop   |
 | `diagnostics()`               | Read bounded host diagnostic history without consuming it; inspect total and omitted()               |
 | `deinitialize_plugin(id)`     | DeInitPlugin at most once after successful initialization; unregister and dispose owned controls     |
 | `stop()`                      | Attempt cleanup of all initialized plugins before releasing the session                              |
@@ -77,10 +77,10 @@ Neither output is a durable recording or complete encounter archive.
 
 | Area                                                         | Linux                                                                                     | Windows                                                       |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- | ------------------------------------------------------------- |
-| CLR hosting and fixture plugins                              | Executed in integration tests                                                             | Rust target compilation only                                  |
-| Controls and charts                                          | Headless metadata, ownership and explicit event delivery                                  | Requires .NET 10 Desktop Runtime and caller-owned STA/UI loop |
-| Rendering/native handles                                     | Explicitly unsupported                                                                    | Actual execution unverified                                   |
-| Live log following                                           | Append, split UTF-8, truncation, same-path replacement and initial partial records tested | File identity implementation present; execution unverified    |
+| CLR hosting and fixture plugins                              | Executed in integration tests                                                             | Executed in integration tests                                 |
+| Controls and charts                                          | Headless metadata, ownership and explicit event delivery                                  | Native controls require .NET 10 Desktop Runtime and caller-owned STA; charts are unverified |
+| Rendering/native handles                                     | Explicitly unsupported                                                                    | Native handles and Invoke tested; visible rendering unverified |
+| Live log following                                           | Append, split UTF-8, truncation, same-path replacement and initial partial records tested | Same file-following contracts and fixture live snapshots tested |
 | Original FFXIV plugin                                        | Prior synthetic and recorded Zeromus observations                                         | Execution unverified                                          |
 | Native game capture / durable recording / FF Logs acceptance | Unverified                                                                                | Unverified                                                    |
 

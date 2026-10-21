@@ -13,9 +13,13 @@
       <Private>false</Private>
     </Reference>
   </ItemGroup>
-  <Target Name="StageHeadlessControls" AfterTargets="Build">
+  <Target Name="StageHeadlessControls" AfterTargets="Build" Condition="!$([MSBuild]::IsOSPlatform('Windows'))">
     <!-- Tests execute genuine reference signatures against the independently published Linux model. -->
     <Copy SourceFiles="$(MSBuildThisFileDirectory)../../../crates/aftercast-winforms/managed/System.Windows.Forms.dll" DestinationFolder="$(OutDir)" />
     <Copy SourceFiles="$(MSBuildThisFileDirectory)../../../crates/aftercast-winforms/managed/System.Windows.Forms.DataVisualization.dll" DestinationFolder="$(OutDir)" />
+  </Target>
+  <Target Name="StageWindowsRuntime" AfterTargets="Build" Condition="$([MSBuild]::IsOSPlatform('Windows'))">
+    <!-- Native tests use the same Desktop Runtime contract as a deployed Rust host. -->
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../../../crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json" DestinationFiles="$(OutDir)$(AssemblyName).runtimeconfig.json" />
   </Target>
 </Project>
