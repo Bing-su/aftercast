@@ -46,6 +46,11 @@ run = [
   "cargo package -p aftercast-tts --offline",
   "cargo package -p aftercast --offline --exclude-lockfile --config 'patch.crates-io.aftercast-winforms.path=\"target/package/aftercast-winforms-0.1.0\"' --config 'patch.crates-io.aftercast-tts.path=\"target/package/aftercast-tts-0.1.0\"'",
 ]
+run_windows = [
+  "cargo package -p aftercast-winforms --offline",
+  "cargo package -p aftercast-tts --offline",
+  "cargo package -p aftercast --offline --exclude-lockfile --config \"patch.crates-io.aftercast-winforms.path='target/package/aftercast-winforms-0.1.0'\" --config \"patch.crates-io.aftercast-tts.path='target/package/aftercast-tts-0.1.0'\"",
+]
 
 [tasks.smoke]
 description = "Extract the bundled payload, start, probe and stop"
