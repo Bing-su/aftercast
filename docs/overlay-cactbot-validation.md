@@ -103,6 +103,12 @@ plugin and ACT log events. The player fixture uses public Cactbot entity/event
 types and DispatchToJS; no private callback or fake game process is invoked.
 Both rendered screenshots were inspected. Audio is explicitly disabled.
 
+A [TTS follow-up](tts-validation.md) enables the bounded ACT speech route and
+calls the unmodified `cactbotSay` handler from both real CEF and WS. The expected
+two texts reach the managed TTS queue (`stack-cef/tts-route.json`). Rust delivery
+and real backend playback are validated separately; this browser harness still
+disables its built-in alert audio.
+
 ## Reproduction and evidence
 
 Prepare trusted extracted plugins, the FFXIV copy's chart dependency and CEF:
@@ -134,5 +140,5 @@ mise run check
 
 Earlier phase-1/missing-member observations are historical and superseded by
 these integration assertions. Live game memory/network capture, actual raids,
-other cactbot overlays, audio/TTS, desktop composition and sustained operation
+other cactbot overlays, browser alert audio, desktop composition and sustained operation
 remain outside this controlled verification.

@@ -6,6 +6,12 @@ creation thread. Domain terms are in the [glossary](../GLOSSARY.md).
 
 ## Module map
 
+Speech lives in the independent [aftercast-tts crate](../crates/aftercast-tts/README.md).
+[The host adapter](../crates/aftercast/src/speech.rs) drains bounded ACT TTS requests
+from managed code during Pump. Direct playback backends and inference-only
+Synthesizer implementations share worker ownership and cancellation; Playback
+adapts CPU PCM/MP3 output without exposing model/tensor types to ACT.
+
 | Location                                                                                                                                                                                       | Responsibility                                                                                                                                            |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Host](../crates/aftercast/src/host.rs)                                                                                                                                                        | Public lifecycle operations                                                                                                                               |

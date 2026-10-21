@@ -60,6 +60,12 @@ pumping, import and owned output through the public interface.
 
 ## Input and owned output
 
+ACT TTS is opt-in: add the standalone `aftercast-tts` crate and call
+`host.set_tts(aftercast_tts::Speaker::system()?)?` before loading plugins. Regular
+`host.pump()` delivers requests and reports eventual playback failures;
+`host.clear_tts()` cancels speech and disables the route. No online fallback is
+automatic. See [TTS setup and limits](tts-validation.md).
+
 | Operation                | Meaning and limits                                                                                             | Detail                           |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------- | -------------------------------- |
 | `end_combat()`           | Quiesce live delivery, drain admitted actions and publish the latest ended result; idle calls are harmless     | [Combat snapshots](snapshots.md) |

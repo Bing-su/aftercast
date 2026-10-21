@@ -12,6 +12,7 @@ Consumer behavior is described in [usage](usage.md), with source ownership in
 | Maintainer           | Rust, mise and .NET 10 SDK; global.json permits the latest installed stable 10.0 feature band     |
 | Real CLR tests       | DOTNET_ROOT points to the trusted .NET 10 installation                                            |
 | Original comparisons | Explicit local proprietary ACT/FFXIV artifacts matching the pinned hashes; excluded from packages |
+| TTS backends | Windows installed SAPI voices; Linux libspeechd-dev/libclang-dev and local synthesis module; Edge playback on Linux also needs libasound2-dev. Native/network checks are opt-in |
 
 Cargo.toml and clippy.toml define the Rust lint policy; verification treats
 warnings as errors. The license is undecided and workspace publication is disabled.
@@ -62,7 +63,7 @@ each scenario owns its Host. Exhaustive truncated-prefix checks test every prefi
 | `mise run test:hosting`                                 | Real CLR lifecycle and diagnostic tests; requires DOTNET_ROOT                          |
 | `mise run test:plugins`                                 | Managed plugin requests and Rust fixture integration; requires DOTNET_ROOT             |
 | `mise run test:log-load`                                | Synthetic buffer bounds, exact subscriber loss and latency/allocation observations     |
-| `mise run package:check`                                | Build both offline Cargo packages, using the extracted unpublished WinForms package    |
+| `mise run package:check`                                | Build all three offline Cargo packages, using extracted unpublished WinForms/TTS dependencies |
 | `mise run smoke -- /usr/lib/dotnet /private/new-bridge` | Extract, start, probe and stop; the destination's parent exists and destination is new |
 
 The managed runner's `bridge` and `contracts` modes require no original ACT
@@ -105,13 +106,14 @@ comparison limits.
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
 | aftercast           | Prebuilt bridge, ACT compatibility, runtime configs and official legacy permission/extension dependencies with bundled notices |
 | aftercast-winforms  | Forms/chart source, independent tests and prebuilt assemblies; Linux-only Rust dependency                                      |
+| aftercast-tts | Independent speech traits/worker and optional system/online/playback backends; compiled into the Rust application, outside the managed payload |
 | Cargo extraction    | Select the platform runtime config and Windows extension image; write only into a new private destination                      |
 | Managed native seam | Standard ComponentEntryPoint, private versioned packets, bounded writes and immediate managed error capture                    |
 | Maintainer          | Rebuild checked-in DLLs after managed changes; consumers never invoke dotnet during Cargo build                                |
 
 WinForms source builds from its extracted Cargo package without root managed
-props. Package verification uses that extracted WinForms package as the host's
-dependency. The temporary patch path in package:check contains version 0.1.0;
+props. Package verification uses extracted WinForms and TTS packages as host
+dependencies. The temporary patch paths in package:check contain version 0.1.0;
 the host archive excludes the generated lockfile for that patch.
 
 Existing extraction directories are never rewritten. Deploy a rebuilt payload to

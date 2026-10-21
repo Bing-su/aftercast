@@ -12,6 +12,7 @@ Consumers need an installed .NET 10 runtime; no SDK or automatic download is use
 | [Domain glossary](GLOSSARY.md)                                          | Encounter, combatant, import, subscription and revision terminology                |
 | [Documentation index](docs/index.md)                                    | Import, log, snapshot and compatibility reference                                  |
 | [Independent Linux WinForms model](crates/aftercast-winforms/README.md) | Headless control and chart compatibility                                           |
+| [Standalone TTS](crates/aftercast-tts/README.md) | Offline SAPI/Speech Dispatcher, optional online Edge and custom backends |
 
 Linux and Windows fixture-plugin lifecycle, synthetic imports and owned output are tested.
 Prior original-plugin checks cover synthetic input and a recorded Zeromus corpus,
