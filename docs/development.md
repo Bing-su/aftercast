@@ -78,6 +78,7 @@ of the replacement implementation.
 | `mise run test:linux-plugin-compat`                                   | Verify pinned memory/writer/resource corrections against local FFXIV SDK files                                  |
 | `mise run test:original-import -- <plugin-copy> <new-state>`          | Original synthetic import, failure recovery and private diagnostics; use a disposable trusted plugin copy       |
 | `mise run test:original-corpus -- <plugin-copy> <new-state> <corpus>` | Three pinned Zeromus imports with submitted-action totals and exact subscriber loss                             |
+| `mise run test:original-log -- <plugin-copy> <new-state> <log>` | Three local-log imports; verify actual line counts, action-derived totals, snapshots and subscriber loss; save private replay transcripts |
 | `mise run test:recorded-actions -- <transcript>`                      | Compare captured actions, actor totals, allies and encounter totals in both ACT implementations                 |
 | `mise run test:original-writer -- <sdk-deployment>`                   | Watchdog-protected original writer child processes; characterize flush/cancellation behavior                    |
 

@@ -41,7 +41,7 @@ internal static class Program
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.DataVisualization.dll"));
         }
         // Modes keep artifact-dependent checks separate from ordinary ABI tests without a test framework dependency.
-        if (mode is "contracts" or "original" or "original-import" or "original-corpus") Platform.Prepare();
+        if (mode is "contracts" or "original" or "original-import" or "original-corpus" or "original-log") Platform.Prepare();
         switch (mode)
         {
             case "bridge": Bridge(); break;
@@ -54,6 +54,7 @@ internal static class Program
             case "original": ObserveOriginal(args[1], args[2], args.Length > 3 ? args[3] : null); break;
             case "original-import": ObserveOriginal(args[1], args[2], "managed/tests/fixtures/ffxiv-synthetic.log"); break;
             case "original-corpus": ObserveOriginal(args[1], args[2], args[3], fixedFixture: false); break;
+            case "original-log": ObserveOriginal(args[1], args[2], args[3], fixedFixture: false, localLog: true); break;
             case "recorded-actions": RecordedActions(args[1]); break;
             default: throw new ArgumentException("Unknown managed test mode");
         }
@@ -70,7 +71,8 @@ internal static class Program
         { ExceptionDispatchInfo.Capture(error.InnerException).Throw(); throw; }
     }
 
-    private static void ObserveOriginal(string pluginPath, string statePath, string? importPath, bool fixedFixture = true)
+    private static void ObserveOriginal(string pluginPath, string statePath, string? importPath,
+        bool fixedFixture = true, bool localLog = false)
     {
         // Run only an explicitly supplied trusted copy; wait long enough to observe caught worker failures.
         var session = new PluginSession();
@@ -101,20 +103,33 @@ internal static class Program
             var elapsed = System.Diagnostics.Stopwatch.StartNew();
             while (elapsed.Elapsed < TimeSpan.FromMilliseconds(1500)) { session.Pump(); Thread.Sleep(10); }
             var root = ActGlobals.oFormActMain!;
+            object Field(object owner, string name) => owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
+            var settingsPage = Field(Field(instance, "_actUIMods"), "_settingsPropertyPage");
+            var list = Field(settingsPage, "lstMessages");
+            var initialMessages = ((System.Collections.IEnumerable)list.GetType().GetProperty("Items")!.GetValue(list)!)
+                .Cast<object>().Select(item => item.ToString()!).ToArray();
+            using var parserCapture = new OriginalParserMessageCapture(Field(settingsPage, "_settingsManager"), initialMessages);
             if (importPath is not null && !fixedFixture)
             {
                 // Pin source images before attaching provenance to a replay, including the actual Costura Parse resource.
                 var plugin = instance.GetType().Assembly;
                 var mainHash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(path)));
-                Check(mainHash == "af1031cdba8eeba8f53dd9d618e58d62d4919bfa77db9b31c568bd04cb359093");
+                var expectedParseHash = mainHash switch
+                {
+                    "af1031cdba8eeba8f53dd9d618e58d62d4919bfa77db9b31c568bd04cb359093" =>
+                        "aabdeedb35f0e9fb2a833cc55e11cf9f7684ca06cddbaffa2a791754676afea9",
+                    "f7f0c8894ba1a152b6a453427773496f5948cf412171da773578d8671f643a81" when OperatingSystem.IsWindows() =>
+                        "efd2db36df247eb23e0a79dd3d19fb2a970f1b52a48901b722fd07728a2aac4a",
+                    _ => throw new InvalidOperationException("Unsupported original plugin image for corpus verification")
+                };
                 using var resource = plugin.GetManifestResourceStream("costura.ffxiv_act_plugin.parse.dll.compressed")!;
                 using var parse = new System.IO.Compression.DeflateStream(resource, System.IO.Compression.CompressionMode.Decompress);
                 var parseHash = Convert.ToHexStringLower(SHA256.HashData(parse));
-                Check(parseHash == "aabdeedb35f0e9fb2a833cc55e11cf9f7684ca06cddbaffa2a791754676afea9");
+                Check(parseHash == expectedParseHash);
                 using var input = File.OpenRead(importPath);
                 OriginalCorpusChecks.Run(session, importPath, new(
                     Convert.ToHexStringLower(SHA256.HashData(input)), mainHash, parseHash,
-                    "934fc00d0a3c8325b0f7445358860b4c013c5dab3d8fff012512acf6502dd657"));
+                    "934fc00d0a3c8325b0f7445358860b4c013c5dab3d8fff012512acf6502dd657"), localLog);
             }
             if (importPath is not null && fixedFixture)
             {
@@ -184,26 +199,21 @@ internal static class Program
             Console.WriteLine($"Original worker diagnostics: {errors.Item1}; {errors.Item2}");
             foreach (var diagnostic in (string[])root.GetType().GetProperty("RecentDiagnostics", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(root)!)
                 Console.WriteLine(diagnostic);
-            // Inspect the pinned plugin's actual private sink; it contains both ordinary notices and parser failures.
-            object Field(object owner, string name) => owner.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(owner)!;
-            var list = Field(Field(Field(instance, "_actUIMods"), "_settingsPropertyPage"), "lstMessages");
-            var parserMessages = ((System.Collections.IEnumerable)list.GetType().GetProperty("Items")!.GetValue(list)!)
-                .Cast<object>().Select(item => item.ToString()!).ToArray();
-            var expectedPrefixes = new[] { "FFXIV_ACT_Plugin Version:", "Selected Language ID:", "Selected Process ID:" };
-            if (!fixedFixture) OriginalCorpusChecks.CheckMessages(parserMessages, path);
-            else
-            {
-                foreach (var message in parserMessages) Console.WriteLine("Original parser message: " + message);
-                Check(parserMessages.Length == expectedPrefixes.Length);
-                for (var index = 0; index < parserMessages.Length; index++)
-                {
-                    var delimiter = parserMessages[index].IndexOf("] ", StringComparison.Ordinal);
-                    Check(delimiter >= 0 && parserMessages[index][(delimiter + 2)..].StartsWith(expectedPrefixes[index], StringComparison.Ordinal));
-                }
-            }
+            var parserMessages = parserCapture.Snapshot();
+            foreach (var message in parserMessages) Console.WriteLine("Original parser message: " + message);
+            OriginalCorpusChecks.CheckMessages(parserMessages, path,
+                instance.GetType().Assembly.GetName().Version == new Version(3, 0, 3, 4) ? "1.5.1" : "1.5.0",
+                allowSimulatedDamageWarnings: !fixedFixture && !localLog,
+                recordedMessages: localLog ? OriginalCorpusChecks.RecordedMessages(importPath!, line => root.GetDateTimeFromLog(line)) : null,
+                requireStartupMessages: OperatingSystem.IsLinux());
             Check(errors.Item1 == 0);
         }
-        finally { session.Stop(); }
+        finally
+        {
+            Console.WriteLine("Original shutdown: stopping");
+            session.Stop();
+            Console.WriteLine("Original shutdown: stopped");
+        }
     }
     private static void Bridge()
     {
@@ -371,13 +381,17 @@ internal static class Program
         Check((string)Call("DefaultGlobalsProbe", "Run")! == "Default globals");
         Check((long)Call("ContractProbe", "Run")! == 123);
         Check((string)Call("DnumValueProbe", "Run")! == "Dnum values");
-        Check((string)Call("ChartProbe", "Run")! == "Network");
-        Check((string)Call("ListViewProbe", "Run")! == "42");
-        Check((int)Call("TimerProbe", "Run")! == 1);
-        Check((int)Call("ButtonProbe", "Run")! == 2);
-        Check((int)Call("ControlModelProbe", "Run")! == 200);
-        Check((int)Call("FormStateProbe", "Run")! == 2);
-        Check((int)Call("SettingsControlProbe", "Run")! == 2);
+        // These probes assert Linux model behavior; native Windows controls have separate fixture checks.
+        if (OperatingSystem.IsLinux())
+        {
+            Check((string)Call("ChartProbe", "Run")! == "Network");
+            Check((string)Call("ListViewProbe", "Run")! == "42");
+            Check((int)Call("TimerProbe", "Run")! == 1);
+            Check((int)Call("ButtonProbe", "Run")! == 2);
+            Check((int)Call("ControlModelProbe", "Run")! == 200);
+            Check((int)Call("FormStateProbe", "Run")! == 2);
+            Check((int)Call("SettingsControlProbe", "Run")! == 2);
+        }
         Check((string)Call("RegistrationProbe", "Run")! == "changed callback");
         Check((string)Call("CombatStateProbe", "Run")! == "Combat state");
         Check((string)Call("DamageStateProbe", "Run")! == "Fixture attack");

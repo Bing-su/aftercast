@@ -103,6 +103,8 @@ arg "<plugin>" help="Trusted plugin assembly copy"
 arg "<state>" help="Private state directory"
 '''
 run = '{{vars.managed_tests}} original-import "$usage_plugin" "$usage_state"'
+# mise defaults to cmd on Windows; quoted environment values preserve paths such as "ACT logs".
+run_windows = '{{vars.managed_tests}} original-import "%usage_plugin%" "%usage_state%"'
 
 [tasks."test:original-corpus"]
 description = "Import the pinned Zeromus corpus three times"
@@ -113,6 +115,18 @@ arg "<state>" help="Private state directory"
 arg "<corpus>" help="Pinned recorded log file"
 '''
 run = '{{vars.managed_tests}} original-corpus "$usage_plugin" "$usage_state" "$usage_corpus"'
+run_windows = '{{vars.managed_tests}} original-corpus "%usage_plugin%" "%usage_state%" "%usage_corpus%"'
+
+[tasks."test:original-log"]
+description = "Check a private local log using action-derived totals and replay transcripts"
+depends = ["managed:test-runner"]
+usage = '''
+arg "<plugin>" help="Trusted plugin assembly copy"
+arg "<state>" help="Private state directory"
+arg "<log>" help="Stable local log file"
+'''
+run = '{{vars.managed_tests}} original-log "$usage_plugin" "$usage_state" "$usage_log"'
+run_windows = '{{vars.managed_tests}} original-log "%usage_plugin%" "%usage_state%" "%usage_log%"'
 
 [tasks."test:original-writer"]
 description = "Check the original writer in watchdog-protected processes"
@@ -121,10 +135,14 @@ run = "dotnet run --project managed/tests/OriginalWriter/OriginalWriter.csproj -
 [tasks."test:recorded-actions"]
 description = "Replay a transcript through replacement and genuine ACT"
 depends = ["managed:references"]
-usage = 'arg "<transcript>" help="Private JSON emitted by test:original-corpus"'
+usage = 'arg "<transcript>" help="Private JSON emitted by test:original-corpus or test:original-log"'
 run = [
   '{{vars.managed_tests}} recorded-actions "$usage_transcript"',
   '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} recorded-actions {{vars.reference_probe}} "$usage_transcript"',
+]
+run_windows = [
+  '{{vars.managed_tests}} recorded-actions "%usage_transcript%"',
+  '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} recorded-actions {{vars.reference_probe}} "%usage_transcript%"',
 ]
 
 [tasks."managed:test-runner"]

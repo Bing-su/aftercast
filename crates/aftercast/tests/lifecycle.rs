@@ -172,6 +172,10 @@ fn initialization_cleanup_and_shutdown_are_session_owned_and_not_retried(
         .canonicalize_utf8()
         .expect("build fixtures first");
     let mut host = Host::start(config()).expect("start lifecycle host");
+    assert!(
+        state.join("Config").is_dir(),
+        "prepare the ACT settings directory"
+    );
     assert_eq!(host.diagnostics().expect("host without plugins").total, 0);
     let ready = construct(&mut host, &assembly, "ReadyPlugin");
     assert!(host.deinitialize_plugin(ready).is_err());

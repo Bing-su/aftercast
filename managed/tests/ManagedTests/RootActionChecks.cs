@@ -120,7 +120,7 @@ internal static class RootActionChecks
         Check(ReferenceEquals(action.Tags, originalTags) && action.Tags.ContainsKey("shared") && !action.Tags.ContainsKey("replaced"));
         Check(fixture.Environment.Diagnostics.Item1 == 2);
         Check(!root.InCombat);
-        Throws<NotSupportedException>(() => root.ActCommands("unsupported command"));
+        root.ActCommands("ordinary echo text");
     }
 
     private static void EndCommand()
@@ -132,10 +132,17 @@ internal static class RootActionChecks
         root.SetEncounter(Epoch, "Source", "Target");
         root.AddCombatAction(Swing(100, 0, 1));
         root.AddCombatAction(Swing(300, 2, 2));
-        foreach (var unsupported in new[] { "END", " end", "end ", "clear", "", null })
+        foreach (var unsupported in new[] { "reset players", "add Player", "remove Player", "macro all", "macro last",
+            "macro: test", "clip all", "clip last", "clip last-1", "clear html", "clear", "timer test", null })
         {
             Throws<NotSupportedException>(() => root.ActCommands(unsupported!));
             Check(root.InCombat);
+        }
+        foreach (var text in new[] { "END", " end", "end ", "", "ordinary echo text", "Hojoring>[EX] Beacon X=21.50",
+            "Clear", "timer", "add", "macro:fixture" })
+        {
+            root.ActCommands(text);
+            Check(root.InCombat && fixture.Environment.ReadCombatSnapshot(0) is null);
         }
         root.ActCommands("end");
         var result = fixture.Environment.ReadCombatSnapshot(0)!;

@@ -25,14 +25,28 @@ internal static class OriginalCorpusChecks
         if (!condition) throw new Exception("Original corpus integration check failed: " + expression);
     }
 
-    internal static void Run(PluginSession session, string path, TranscriptProvenance provenance)
+    internal static (long Records, long Dispatched) CountRecords(string path)
+    {
+        long records = 0, dispatched = 0;
+        foreach (var line in File.ReadLines(path))
+        {
+            records++;
+            if (line.Length != 0) dispatched++;
+        }
+        return (records, dispatched);
+    }
+
+    internal static void Run(PluginSession session, string path, TranscriptProvenance provenance, bool localLog = false)
     {
         path = Path.GetFullPath(path);
         using (var input = File.OpenRead(path))
         {
-            Check(input.Length == 14971097);
-            Check(Convert.ToHexStringLower(SHA256.HashData(input)) == Hash);
+            if (!localLog) Check(input.Length == 14971097);
+            Check(Convert.ToHexStringLower(SHA256.HashData(input)) == (localLog ? provenance.InputSha256 : Hash));
         }
+        // Local input has no predetermined encounter count or duration; retain the action-derived oracle below.
+        var counts = localLog ? CountRecords(path) : (Records: Records, Dispatched: Records);
+        Check(counts.Dispatched >= 2);
         var root = ActGlobals.oFormActMain!;
         var live = (root.ActiveZone, root.CurrentZone, root.LogFilePath, root.LastKnownTime,
             root.ReadThreadLock, ActGlobals.charName);
@@ -71,7 +85,8 @@ internal static class OriginalCorpusChecks
                 var elapsed = Stopwatch.StartNew();
                 var report = session.ImportLog(path);
                 elapsed.Stop();
-                Check(report.LinesRead == Records && report.RecordsDispatched == Records && report.Encounters == 3);
+                Check(report.LinesRead == counts.Records && report.RecordsDispatched == counts.Dispatched);
+                Check(localLog ? report.Encounters > 0 : report.Encounters == 3);
                 Check(values.Count > 0);
                 var imported = root.ZoneList[0].Items.Skip(firstEncounter).ToArray();
                 var expected = DeriveTotals(values, imported);
@@ -84,11 +99,11 @@ internal static class OriginalCorpusChecks
                 Check(report.Combatants == expected.Sum(encounter => encounter.Actors.Count));
                 Check(report.Damage == expected.Sum(encounter => encounter.Damage));
                 Check(report.Healed == expected.Sum(encounter => encounter.Healed));
-                Check(report.Damage > 0 && report.Healed > 0);
+                if (!localLog) Check(report.Damage > 0 && report.Healed > 0);
                 var snapshot = session.ReadCombatSnapshot(revision) ?? throw new Exception("Original corpus produced no ended snapshot");
                 Check(snapshot.Revision > revision && snapshot.IsImport);
                 Check(snapshot.Status == CombatSnapshotStatus.Ended);
-                Check(snapshot.DurationTicks == 5808330000);
+                if (!localLog) Check(snapshot.DurationTicks == 5808330000);
                 CheckSnapshot(snapshot, expected[^1]);
                 revision = snapshot.Revision;
                 Check(session.ReadCombatSnapshot(revision) is null);
@@ -96,13 +111,13 @@ internal static class OriginalCorpusChecks
                 Check(root.CurrentZone == live.CurrentZone && root.LogFilePath == live.LogFilePath);
                 Check(root.LastKnownTime == live.LastKnownTime && root.ReadThreadLock == live.ReadThreadLock);
                 Check(ActGlobals.charName == live.charName && session.DiagnosticsSnapshot.Item1 == 0);
-                CheckDroppedPrefix(session, subscription, iteration);
+                CheckDroppedPrefix(capacity => session.DrainLogs(subscription, capacity), iteration, counts.Dispatched);
                 baseline ??= report;
                 baselineActions ??= values.Count;
                 // The original parser performs stochastic DoT rounding and can retain import state; validate each run exactly.
                 Console.WriteLine(System.Text.Json.JsonSerializer.Serialize(new
                 {
-                    scenario = "recorded_original_parser_corpus",
+                    scenario = localLog ? "local_original_parser_log" : "recorded_original_parser_corpus",
                     pass = iteration + 1,
                     report,
                     observedActions = values.Count,
@@ -123,7 +138,7 @@ internal static class OriginalCorpusChecks
                         damage = report.Damage != baseline.Damage,
                         healed = report.Healed != baseline.Healed
                     },
-                    dropped = Records - 2,
+                    dropped = counts.Dispatched - 2,
                     elapsedMs = elapsed.ElapsedMilliseconds
                 }));
             }
@@ -219,7 +234,28 @@ internal static class OriginalCorpusChecks
         }
     }
 
-    internal static void CheckMessages(string[] messages, string pluginPath)
+    internal static Dictionary<string, int> RecordedMessages(string path, Func<string, DateTime> parseTimestamp)
+    {
+        var messages = new Dictionary<string, int>(StringComparer.Ordinal);
+        foreach (var line in File.ReadLines(path))
+        {
+            if (!line.StartsWith("251|", StringComparison.Ordinal)) continue;
+            var fields = line.Split('|');
+            Check(fields.Length >= 4);
+            // Use the plugin's host-local clock and preserve payload pipes, e.g. "Recorded|warning".
+            var timestamp = parseTimestamp(line);
+            Check(timestamp != DateTime.MinValue);
+            var message = "[" + timestamp.ToString("HH:mm:ss.fff", CultureInfo.InvariantCulture) + "] " +
+                string.Join('|', fields, 2, fields.Length - 3);
+            // Three imports replay historical diagnostics, e.g. a recorded process-discovery notice, three times.
+            messages[message] = messages.GetValueOrDefault(message) + 3;
+        }
+        return messages;
+    }
+
+    internal static void CheckMessages(string[] messages, string pluginPath,
+        string deucalionVersion = "1.5.0", bool allowSimulatedDamageWarnings = true,
+        Dictionary<string, int>? recordedMessages = null, bool requireStartupMessages = true)
     {
         var informationPrefixes = new[]
         {
@@ -228,10 +264,11 @@ internal static class OriginalCorpusChecks
         const string warningPrefix = "SimulatedDamage Timeout with no ticks/GroundAoE: Removing status ";
         var directory = Path.GetDirectoryName(Path.GetFullPath(pluginPath))!;
         // The pinned plugin installs its bundled native DLL on first start, e.g. in a fresh disposable deployment.
-        var deploymentNotice = $"Renamed [{Path.Combine(directory, "deucalion-1.5.0.distrib.dll")}] to [{Path.Combine(directory, "deucalion-1.5.0.dll")}]].";
-        Check(messages.Length >= 3);
+        var deploymentNotice = $"Renamed [{Path.Combine(directory, $"deucalion-{deucalionVersion}.distrib.dll")}] to [{Path.Combine(directory, $"deucalion-{deucalionVersion}.dll")}]].";
+        if (requireStartupMessages) Check(messages.Length >= 3);
         var notices = 0;
         var warnings = 0;
+        var recorded = 0;
         for (var index = 0; index < messages.Length; index++)
         {
             var message = messages[index];
@@ -240,7 +277,13 @@ internal static class OriginalCorpusChecks
             Check(TimeOnly.TryParseExact(message.AsSpan(1, delimiter - 1), "HH:mm:ss.fff", CultureInfo.InvariantCulture,
                 DateTimeStyles.None, out _));
             var body = message[(delimiter + 2)..];
-            if (index < 3) Check(body.StartsWith(informationPrefixes[index], StringComparison.Ordinal));
+            if (recordedMessages is not null && recordedMessages.GetValueOrDefault(message) > 0)
+            {
+                recordedMessages[message]--;
+                recorded++;
+                continue;
+            }
+            if (requireStartupMessages && index < 3) Check(body.StartsWith(informationPrefixes[index], StringComparison.Ordinal));
             var information = informationPrefixes.FirstOrDefault(prefix => body.StartsWith(prefix, StringComparison.Ordinal));
             if (body == deploymentNotice) notices++;
             else if (information is not null)
@@ -251,7 +294,7 @@ internal static class OriginalCorpusChecks
             else
             {
                 // This corpus-specific warning is reported explicitly; arbitrary exceptions or unknown messages still fail.
-                Check(body.StartsWith(warningPrefix, StringComparison.Ordinal), "Unexpected original parser message: " + message);
+                Check(allowSimulatedDamageWarnings && body.StartsWith(warningPrefix, StringComparison.Ordinal), "Unexpected original parser message: " + message);
                 Check(!body.AsSpan(warningPrefix.Length).Trim().IsEmpty);
                 warnings++;
             }
@@ -261,19 +304,21 @@ internal static class OriginalCorpusChecks
             scenario = "recorded_original_parser_messages",
             notices,
             warnings,
+            recorded,
             warningCategory = "simulated_damage_timeout_without_ticks_or_ground_aoe"
         }));
     }
 
-    private static void CheckDroppedPrefix(PluginSession session, ulong subscription, int iteration)
+    internal static void CheckDroppedPrefix(Func<int, LogDrain> drain, int iteration, long records)
     {
         // A capacity query must leave both source records and the loss interval available to the next successful drain.
-        var query = session.DrainLogs(subscription, 0);
+        var query = drain(0);
         Check(query.Records == 0 && query.RequiredPayloadCapacity > 0 && query.Dropped == 0);
-        var batch = session.DrainLogs(subscription, 8 * 1024 * 1024);
-        var first = (ulong)(iteration * Records + 1);
-        Check(batch.RequiredPayloadCapacity == 0 && batch.Records == 2 && batch.Dropped == (ulong)(Records - 2));
-        Check(batch.FirstDropped == first && batch.LastDropped == first + (ulong)Records - 3);
+        var batch = drain(8 * 1024 * 1024);
+        var first = (ulong)(iteration * records + 1);
+        Check(batch.RequiredPayloadCapacity == 0 && batch.Records == 2 && batch.Dropped == (ulong)(records - 2));
+        if (records == 2) Check(batch.FirstDropped == 0 && batch.LastDropped == 0);
+        else Check(batch.FirstDropped == first && batch.LastDropped == first + (ulong)records - 3);
         var payload = batch.Payload.AsSpan();
         for (var index = 0; index < 2; index++)
         {
@@ -281,11 +326,11 @@ internal static class OriginalCorpusChecks
             var length = checked((int)BinaryPrimitives.ReadUInt32LittleEndian(payload));
             Check(length >= 56 && length <= payload.Length);
             Check((BinaryPrimitives.ReadUInt32LittleEndian(payload[4..]) & 1) == 1);
-            Check(BinaryPrimitives.ReadUInt64LittleEndian(payload[8..]) == first + (ulong)Records - 2 + (ulong)index);
+            Check(BinaryPrimitives.ReadUInt64LittleEndian(payload[8..]) == first + (ulong)records - 2 + (ulong)index);
             payload = payload[length..];
         }
         Check(payload.IsEmpty);
-        var empty = session.DrainLogs(subscription, 0);
+        var empty = drain(0);
         Check(empty.Records == 0 && empty.Dropped == 0 && empty.RequiredPayloadCapacity == 0);
     }
 }

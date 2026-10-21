@@ -319,6 +319,13 @@ public partial class FormActMain
             if (InCombat) EndCombat(true);
             return;
         }
-        throw new NotSupportedException("This ACT UI/chat command is not implemented by the embedded host");
+        if (command is null or "reset players" or "macro all" or "macro last" or "clip all" or "clip last" or "clear html" or "clear"
+            || command.StartsWith("add ", StringComparison.Ordinal)
+            || command.StartsWith("remove ", StringComparison.Ordinal)
+            || command.StartsWith("macro: ", StringComparison.Ordinal)
+            || command.StartsWith("clip last-", StringComparison.Ordinal)
+            || command.StartsWith("timer ", StringComparison.Ordinal))
+            throw new NotSupportedException("This ACT UI/chat command is not implemented by the embedded host");
+        // ACT ignores unmatched echo text, e.g. "Hojoring>[EX] Beacon ..."; it is not a failed command.
     }
 }

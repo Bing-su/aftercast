@@ -72,6 +72,8 @@ internal sealed class PluginSession
         if (directory is not null) throw new InvalidOperationException("Host environment is already configured");
         if (!Path.IsPathFullyQualified(path) || !Directory.Exists(path))
             throw new ArgumentException("Host data directory must be an existing absolute directory", nameof(path));
+        // ACT plugins save settings beneath AppDataFolder/Config, e.g. FFXIV_ACT_Plugin.config.xml.
+        Directory.CreateDirectory(Path.Combine(path, "Config"));
         directory = path;
         // Both platforms dispatch on the caller's thread; Windows also pumps its native messages.
         context = new(error => ActGlobals.oFormActMain?.WriteExceptionLog(error, "Posted owner callback"));

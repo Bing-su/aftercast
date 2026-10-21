@@ -4,12 +4,18 @@ The host implements the ACT contracts used by its fixtures and the pinned FFXIV
 plugin. Reference tests compare selected behavior with genuine ACT; they do not
 establish complete ACT or Windows parity.
 
+`ActCommands` implements the literal `end` command and ignores unmatched echo
+text, as genuine ACT does (for example, `Hojoring>[EX] Beacon ...`). Recognized
+UI/chat commands such as `clear`, `add `, `macro: ` and `timer ` remain unsupported
+and throw rather than pretending to perform those operations.
+
 ## Reference artifacts
 
 | Input           | Version / location                                                   | Validation                                                                                                                                                                  |
 | --------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Genuine ACT     | 3.8.5.288; `binaries/act/Advanced Combat Tracker.exe`                | [OriginalReference](../managed/tests/OriginalReference/Program.cs) checks the full executable hash before loading                                                           |
 | FFXIV plugin    | 3.0.3.3; local SDK deployment or disposable plugin copy              | [Plugin compatibility](../managed/Bridge/LinuxPluginCompatibility.cs) and the [integration runner](../managed/tests/ManagedTests/Program.cs) pin main and dependency hashes |
+| Windows FFXIV plugin | 3.0.3.4; `binaries/FFXIV_ACT_Plugin_SDK_3.0.3.4` | [Windows original-artifact results](windows-original-validation.md) record numeric success, extra chart dependency and diagnostic failures |
 | Synthetic input | [ffxiv-synthetic.log](../managed/tests/fixtures/ffxiv-synthetic.log) | Seven genuine-writer records with territory/player/actor/party state and two action effects totaling 400 damage                                                             |
 | Recorded input  | `TheAbyssalFractureExtreme.log` from cactbot documentation           | [OriginalCorpusChecks](../managed/tests/ManagedTests/OriginalCorpusChecks.cs) checks its hash, 104,744 records and three encounters                                         |
 
@@ -22,7 +28,8 @@ The recorded fixture is available in the neighboring cactbot checkout at
 `cactbot2/vendor/cactbot/docs/logs/TheAbyssalFractureExtreme.log`. Its SHA-256 is
 `a5992e53bef80424ba29d0db4db00d0359c727e00532de0873ce49c67732f240`.
 It is a Zeromus recording made with plugin version 2.6.9.4, not a recording of the
-currently pinned parser. The file is not copied into this repository.
+currently pinned parser. The file is not copied into this repository. On this
+Windows checkout, the same input is at `D:\repos\cactbot\docs\logs\TheAbyssalFractureExtreme.log`.
 
 ## Linux corrections
 

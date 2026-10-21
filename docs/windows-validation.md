@@ -2,7 +2,9 @@
 
 The unified check, offline Cargo packages, release build and smoke execution pass
 on Windows x64. Fixture tests exercise native WinForms handles and callback dispatch;
-original ACT/FFXIV plugin execution and visible rendering remain unverified.
+Full original ACT/FFXIV compatibility and visible rendering remain unverified.
+See the later [supplied-artifact results](windows-original-validation.md) for
+native initialization, numeric comparisons and remaining diagnostic failures.
 
 ## Environment
 
@@ -82,7 +84,7 @@ cargo package -p aftercast --offline --allow-dirty --exclude-lockfile --config '
 existing warning about undecided licensing and package metadata; publication
 remains disabled. No original ACT or FFXIV artifacts are included in the packages.
 
-Original ACT/FFXIV comparisons, gameplay/native capture and visible UI interaction
-were not exercised. The required pinned plugin SDK and recorded corpus were not
-available at their documented locations. Linux execution was not rerun in this
-Windows session.
+The later [original-artifact validation](windows-original-validation.md) uses the
+supplied 3.0.3.4 SDK and matching corpus found in the neighboring cactbot checkout.
+Gameplay/native capture, visible UI interaction and Linux regression execution
+remain unverified in this Windows session.
