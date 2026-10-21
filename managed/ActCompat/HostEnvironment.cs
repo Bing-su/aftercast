@@ -30,7 +30,7 @@ namespace Advanced_Combat_Tracker
         public void NotificationAdd(string title, string message, EventHandler? showCallback = null, object? senderObject = null) =>
             throw new NotSupportedException("ACT notification windows are not implemented");
         internal void SetInitializationComplete(bool complete) => InitActDone = complete && !IsActClosing;
-        internal void BeginClosing() { IsActClosing = true; InitActDone = false; }
+        internal void BeginClosing() { IsActClosing = true; InitActDone = false; ConfigureSpeech(false); }
         public ActPluginData? PluginGetSelfData(IActPluginV1? plugin) =>
             plugin is not null && plugins.TryGetValue(plugin, out var data) ? data : null;
         public void WriteExceptionLog(Exception? error, string context) => RecordDiagnostic(error, context, failOwner: true);
@@ -139,6 +139,8 @@ namespace Aftercast.ActCompat
         }
         public void Register(ActPluginData data) => main.Register(data);
         public void BeginClosing() => main.BeginClosing();
+        public void ConfigureSpeech(bool enabled) => main.ConfigureSpeech(enabled);
+        public byte[] DrainSpeech() => main.DrainSpeech();
         public void SetInitializationComplete(bool complete) => main.SetInitializationComplete(complete);
         public void Unregister(IActPluginV1 plugin) => main.Unregister(plugin);
         public event Action<OriginalLogRecord> OriginalLogRecordRead

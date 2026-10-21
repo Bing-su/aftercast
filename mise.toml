@@ -40,10 +40,11 @@ run = [
 ]
 
 [tasks."package:check"]
-description = "Verify both offline Cargo packages"
+description = "Verify all offline Cargo packages"
 run = [
   "cargo package -p aftercast-winforms --offline",
-  "cargo package -p aftercast --offline --exclude-lockfile --config 'patch.crates-io.aftercast-winforms.path=\"target/package/aftercast-winforms-0.1.0\"'",
+  "cargo package -p aftercast-tts --offline",
+  "cargo package -p aftercast --offline --exclude-lockfile --config 'patch.crates-io.aftercast-winforms.path=\"target/package/aftercast-winforms-0.1.0\"' --config 'patch.crates-io.aftercast-tts.path=\"target/package/aftercast-tts-0.1.0\"'",
 ]
 
 [tasks.smoke]
@@ -71,7 +72,7 @@ depends = ["managed:test-runner"]
 run = [
   "dotnet build managed/tests/PluginFixture/PluginFixture.csproj -c Release -p:RestoreLockedMode=true",
   "{{vars.managed_tests}} plugins",
-  "cargo test -p aftercast --test plugins --test lifecycle --test import --test logs --test snapshots -- --ignored",
+  "cargo test -p aftercast --test plugins --test lifecycle --test import --test logs --test snapshots --test speech -- --ignored",
 ]
 
 [tasks."test:log-load"]

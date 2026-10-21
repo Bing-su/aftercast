@@ -70,6 +70,7 @@ async function main() {
         await window.callOverlayHandler({ call: 'cactbotSaveData', overlay: 'aftercast-integration', data: { roundTrip: 42 } });
         const result = await window.callOverlayHandler({ call: 'cactbotLoadData', overlay: 'aftercast-integration' });
         if (result?.data?.roundTrip !== 42) throw Error('Original cactbot handler round trip failed');
+        await window.callOverlayHandler({ call: 'cactbotSay', text: 'Aftercast WS speech fixture' });
       });
     } else await page.waitForFunction(() => window.fixtureRequests.some(r => r.call === 'cactbotRequestState'));
     await input('state', () => {
@@ -90,7 +91,7 @@ async function main() {
     const timeline = await page.locator('#timeline timer-bar').evaluateAll(bars => bars.map(bar => bar.getAttribute('lefttext')).join('\n'));
     assert(timeline.includes('Angry Dummy'));
     const requests = integration ? wireRequests : await page.evaluate(() => window.fixtureRequests);
-    const allowed = new Set(['subscribe', 'cactbotLoadUser', 'cactbotLoadData', 'cactbotRequestState', 'cactbotSaveData']);
+    const allowed = new Set(['subscribe', 'cactbotLoadUser', 'cactbotLoadData', 'cactbotRequestState', 'cactbotSaveData', 'cactbotSay']);
     assert(requests.every(request => allowed.has(request.call)), 'Unspecified fixture handler response');
     await page.screenshot({ path: path.join(output, 'raidboss.png') });
     await input('jump', () => {

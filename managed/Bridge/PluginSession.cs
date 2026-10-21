@@ -22,6 +22,7 @@ internal sealed class PluginSession
     private string? directory;
     private HostEnvironment? environment;
     private OwnerContext? context;
+    private bool speechEnabled;
     private readonly LogBuffer logs = new();
     internal Tuple<long, string[]> DiagnosticsSnapshot => environment?.DiagnosticsSnapshot ?? Tuple.Create(0L, Array.Empty<string>());
     internal T OnOwner<T>(Func<T> action) => context is null ? action() : context.Run(action);
@@ -63,6 +64,7 @@ internal sealed class PluginSession
             context is null ? null : () => context.Pump(),
             context is null ? null : () => context.IsDispatching);
         host.OriginalLogRecordRead += logs.Capture;
+        host.ConfigureSpeech(speechEnabled);
         return environment = host;
     }
     private void Cleanup(PluginRecord plugin)
@@ -101,6 +103,13 @@ internal sealed class PluginSession
         environment!.SetInitializationComplete(false);
         return PluginLoader.Create(path, typeName);
     });
+    internal void ConfigureSpeech(bool enabled) => OnOwner(() =>
+    {
+        speechEnabled = enabled;
+        environment?.ConfigureSpeech(enabled);
+        return 0;
+    });
+    internal byte[] DrainSpeech() => OnOwner(() => environment?.DrainSpeech() ?? Array.Empty<byte>());
     internal string Initialize(long id) => OnOwner(() => InitializeCore(id));
     private string InitializeCore(long id)
     {
@@ -175,6 +184,7 @@ internal sealed class PluginSession
         plugins.Clear();
         initialized.Clear();
         directory = null;
+        speechEnabled = false;
         var previous = environment;
         environment = null;
         try { previous?.Dispose(); } catch (Exception error) { errors.Add(error); }

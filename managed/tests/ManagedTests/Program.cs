@@ -267,6 +267,7 @@ internal static class Program
             var session = Marshal.ReadInt64(buffer, 16);
             Check(session > 0 && Marshal.ReadInt32(buffer, 12) == 10);
             DiagnosticAbiChecks.Run(session);
+            SpeechChecks.Abi(session);
             ImportAbiChecks.Run(session);
             LogAbiChecks.Run(session);
             CombatSnapshotAbiChecks.Run(session);
@@ -481,6 +482,7 @@ internal static class Program
     private static void Contracts()
     {
         PluginBindingChecks.Run();
+        SpeechChecks.Run();
         TextExportChecks.Run();
         SpellTimerChecks.Run();
         Eq2HostChecks.Run();

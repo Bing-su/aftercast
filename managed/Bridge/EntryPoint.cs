@@ -234,6 +234,29 @@ public static class EntryPoint
         }
     });
 
+    public static int SpeechCommand(nint buffer, int sizeBytes) => Run(() =>
+    {
+        const int headerSize = 32;
+        // A drain always reserves the maximum text size before dequeue; retries cannot lose or duplicate an utterance.
+        if (buffer == 0 || !BitConverter.IsLittleEndian || sizeBytes is not (headerSize or headerSize + 4096) ||
+            Marshal.ReadInt32(buffer, 0) != sizeBytes || Marshal.ReadInt32(buffer, 4) != 1 ||
+            Marshal.ReadInt64(buffer, 24) != 0)
+            throw new ArgumentException("Invalid speech command header", nameof(buffer));
+        Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
+        var command = Marshal.ReadInt32(buffer, 16);
+        var argument = Marshal.ReadInt32(buffer, 20);
+        if (command == 1 && sizeBytes == headerSize && argument is 0 or 1)
+            plugins.Value.ConfigureSpeech(argument == 1);
+        else if (command == 2 && sizeBytes == headerSize + 4096 && argument == 0)
+        {
+            var text = plugins.Value.DrainSpeech();
+            Marshal.Copy(text, 0, buffer + headerSize, text.Length);
+            Marshal.WriteInt32(buffer, 20, text.Length);
+        }
+        else throw new ArgumentException("Invalid speech command or capacity", nameof(buffer));
+        return 0;
+    });
+
     public static int ReadCombatSnapshot(nint buffer, int sizeBytes) => Run(() =>
     {
         const int headerSize = 64;

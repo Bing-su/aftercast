@@ -12,6 +12,7 @@ mod logs;
 mod plugins;
 mod runtime;
 mod snapshots;
+mod speech;
 
 pub use bridge::extract_bridge;
 use camino::Utf8PathBuf;
@@ -29,6 +30,10 @@ pub use snapshots::{CombatRevision, CombatSnapshot, CombatSnapshotStatus, Combat
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("text-to-speech failed: {0}")]
+    Speech(#[from] aftercast_tts::Error),
+    #[error("invalid managed speech response: {0}")]
+    InvalidSpeechResponse(String),
     #[error("invalid combat snapshot request: {0}")]
     InvalidSnapshotRequest(String),
     #[error("invalid managed combat snapshot: {0}")]

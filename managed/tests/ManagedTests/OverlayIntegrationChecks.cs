@@ -15,6 +15,7 @@ internal static class OverlayIntegrationChecks
         var root = ActGlobals.oFormActMain!;
         var overlay = root.ActPlugins.Single(data => data.pluginObj.GetType().FullName == "RainbowMage.OverlayPlugin.PluginLoader");
         if (!root.InitActDone || overlay.lblPluginStatus.Text != "Initialised") throw new Exception("OverlayPlugin startup did not complete");
+        session.ConfigureSpeech(true);
         var container = overlay.pluginObj.GetType().GetProperty("Container")!.GetValue(overlay.pluginObj)!;
         object Resolve(string typeName)
         {
@@ -63,6 +64,8 @@ internal static class OverlayIntegrationChecks
         overlayData.Remove("aftercast-cef-inspection");
         var snapshots = new List<JsonElement>();
         CheckCef(0, snapshot => snapshot.GetProperty("loaded").GetBoolean());
+        // Exercise the original CEF/cactbot handler; the Rust backend is verified independently by the host fixture test.
+        native.GetType().GetMethod("ExecuteScript")!.Invoke(native, new object[] { "callOverlayHandler({call:'cactbotSay',text:'Aftercast CEF speech fixture'})" });
         var start = new ProcessStartInfo("node") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in new[] { Path.GetFullPath("managed/tests/cactbot-browser.cjs"), cactbotPath, Path.Combine(state, "browser"), state }) start.ArgumentList.Add(argument);
         using var child = Process.Start(start)!;
@@ -136,6 +139,12 @@ internal static class OverlayIntegrationChecks
             File.WriteAllText(Path.Combine(state, "browser-stderr.txt"), errors);
             if (child.ExitCode != 0) throw new Exception("Full-stack browser verification failed: " + errors);
             if (lastCommand != 4 || session.DiagnosticsSnapshot.Item1 != 0) throw new Exception("Incomplete live-log fixture or host errors");
+            var speech = new List<string>();
+            byte[] spoken;
+            while ((spoken = session.DrainSpeech()).Length != 0) speech.Add(System.Text.Encoding.UTF8.GetString(spoken));
+            if (speech.Count != 2 || !speech.Contains("Aftercast CEF speech fixture") || !speech.Contains("Aftercast WS speech fixture"))
+                throw new Exception("Original cactbotSay did not route CEF/WS requests to ACT TTS");
+            File.WriteAllText(Path.Combine(state, "tts-route.json"), JsonSerializer.Serialize(speech));
             var pluginLog = string.Join("\n", overlay.tpPluginSpace.Controls.Find("logBox", true).Select(control => control.Text));
             File.WriteAllText(Path.Combine(state, "overlay-integration.log"), pluginLog);
             var unexpected = pluginLog.Split('\n').Where(line =>

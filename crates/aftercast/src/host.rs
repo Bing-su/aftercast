@@ -17,6 +17,7 @@ use crate::{Error, HostConfig};
 /// ```
 pub struct Host {
     pub(crate) session: ManagedSession,
+    pub(crate) speech: Option<crate::speech::SpeechOutput>,
 }
 
 impl Host {
@@ -26,7 +27,10 @@ impl Host {
     /// directory is created without overwriting existing contents. An incompatible CLR already
     /// loaded by another host is reported as a hosting error; no fallback runtime is started.
     pub fn start(config: HostConfig) -> Result<Self, Error> {
-        ManagedSession::start(config).map(|session| Self { session })
+        ManagedSession::start(config).map(|session| Self {
+            session,
+            speech: None,
+        })
     }
 
     /// Confirms that this session still owns the managed host and returns its identity.
@@ -41,7 +45,9 @@ impl Host {
     /// longer. On Windows, also dispatches native messages; their callbacks are not counted in
     /// the return value or limited by the queue's scheduling budget. The caller must own an STA thread.
     pub fn pump(&mut self) -> Result<u32, Error> {
-        self.session.call(4).map(|packet| packet.runtime_major)
+        let callbacks = self.session.call(4)?.runtime_major;
+        self.pump_speech()?;
+        Ok(callbacks)
     }
 
     /// Ends active combat, drains admitted actions and publishes its latest result.
@@ -54,7 +60,8 @@ impl Host {
     }
 
     /// Stops the managed session. The CLR and loaded assemblies may remain in the process.
-    pub fn stop(self) -> Result<(), Error> {
+    pub fn stop(mut self) -> Result<(), Error> {
+        self.speech.take();
         self.session.stop()
     }
 }
