@@ -14,12 +14,19 @@ namespace Advanced_Combat_Tracker
     public partial class FormActMain(DirectoryInfo appDataFolder) : Form
     {
         private readonly Dictionary<object, ActPluginData> plugins = new(ReferenceEqualityComparer.Instance);
+        private Control? pluginTabs;
         private readonly object errorGate = new();
         private readonly int ownerThread = Environment.CurrentManagedThreadId;
         private long errorCount, ownerErrorCount;
         private string lastError = "", lastOwnerError = "";
         private readonly Queue<string> recentDiagnostics = new();
         public DirectoryInfo AppDataFolder => appDataFolder;
+        public List<ActPluginData> ActPlugins { get; set; } = new();
+        public bool IsActClosing { get; private set; }
+        public Version GetVersion() => typeof(FormActMain).Assembly.GetName().Version!;
+        public void NotificationAdd(string title, string message, EventHandler? showCallback = null, object? senderObject = null) =>
+            throw new NotSupportedException("ACT notification windows are not implemented");
+        internal void BeginClosing() => IsActClosing = true;
         public ActPluginData? PluginGetSelfData(IActPluginV1? plugin) =>
             plugin is not null && plugins.TryGetValue(plugin, out var data) ? data : null;
         public void WriteExceptionLog(Exception? error, string context) => RecordDiagnostic(error, context, failOwner: true);
@@ -52,8 +59,20 @@ namespace Advanced_Combat_Tracker
         }
         public void RestartACT(bool update, string reason) =>
             throw new PlatformNotSupportedException("RestartACT is not supported by an embedded host");
-        internal void Register(ActPluginData data) => plugins.Add(data.pluginObj, data);
-        internal void Unregister(IActPluginV1 plugin) => plugins.Remove(plugin);
+        internal void Register(ActPluginData data)
+        {
+            plugins.Add(data.pluginObj, data);
+            ActPlugins.Add(data);
+            if (OperatingSystem.IsWindows()) AttachNativePluginTab(data.tpPluginSpace);
+        }
+        // Native add-ons add/remove their own pages through TabPage.Parent, e.g. cactbot hides its settings page.
+        internal void InitializeNativePluginTabs() { pluginTabs = new TabControl(); Controls.Add(pluginTabs); }
+        private void AttachNativePluginTab(TabPage tab) => ((TabControl)pluginTabs!).TabPages.Add(tab);
+        internal void Unregister(IActPluginV1 plugin)
+        {
+            // Retain ownership separately because a plugin can replace or edit the public ACT list.
+            if (plugins.Remove(plugin, out var data)) ActPlugins.Remove(data);
+        }
         internal Tuple<long, string> Errors { get { lock (errorGate) return Tuple.Create(errorCount, lastError); } }
         internal Tuple<long, string> OwnerErrors { get { lock (errorGate) return Tuple.Create(ownerErrorCount, lastOwnerError); } }
         internal string[] RecentDiagnostics { get { lock (errorGate) return recentDiagnostics.ToArray(); } }
@@ -97,6 +116,7 @@ namespace Aftercast.ActCompat
             {
                 main.Controls.Add(main.OptionsTreeView);
                 main.OptionsTreeView.Nodes.Add("Data Correction");
+                if (OperatingSystem.IsWindows()) main.InitializeNativePluginTabs();
                 timers = new();
                 encounterLogs = new(false);
             }
@@ -113,6 +133,7 @@ namespace Aftercast.ActCompat
             main.InitializeCombatState(DateTime.Now);
         }
         public void Register(ActPluginData data) => main.Register(data);
+        public void BeginClosing() => main.BeginClosing();
         public void Unregister(IActPluginV1 plugin) => main.Unregister(plugin);
         public event Action<OriginalLogRecord> OriginalLogRecordRead
         {
@@ -151,6 +172,7 @@ namespace Aftercast.ActCompat
             if (disposed) return;
             EnsureCanStop();
             disposed = true;
+            main.BeginClosing();
             var errors = new List<Exception>();
             try
             {

@@ -155,6 +155,7 @@ internal sealed class PluginSession
     {
         // Reject a reader's own dispatched callback before forgetting any session-owned resources.
         EnsureCanStop();
+        OnOwner(() => { environment?.BeginClosing(); return 0; });
         var errors = new List<Exception>();
         // Drain file callbacks while plugin state is still valid, before invoking any DeInitPlugin.
         try { environment?.StopProcessing(); } catch (Exception error) { errors.Add(error); }

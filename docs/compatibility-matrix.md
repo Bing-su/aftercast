@@ -79,6 +79,14 @@ different version.
 | Other ACT plugins/games  | [Five official downloads](additional-plugin-validation.md): sample lifecycle/settings and Export_All combat-end clipboard workflow pass; Repeater expiry/combat-only/cancellation workflow also passes; EQ2 controlled raw parsing and original action replay also pass; Benchmark event counting, slow-handler logging and restoration pass                                                                                                                                                                                                         | Sample combat callback is intentionally unimplemented; EQ2 gameplay and full parser coverage remain unverified; listed workflows do not imply full plugin compatibility                                                                       |
 | Redistribution/install   | Embedded payload and package checks exist                                                                                                                                                                                                        | License is undecided; original artifacts are excluded; chart DLL redistribution was not verified                                |
 
+## OverlayPlugin and cactbot
+
+| Target | Verification | Remaining boundary |
+| --- | --- | --- |
+| Maintained OverlayPlugin 0.19.111 | [Native startup observation](overlay-cactbot-validation.md): phase 1, with original CEF files present | Missing InitActDone blocks phase 2; update query also encounters missing PluginGetRemoteVersion |
+| CactbotOverlay 0.37.5 | Entry point returns Ready with a native parent tab | OverlayPlugin phase 2/addon Init/event source remain unverified |
+| cactbot raidboss web bundles | Fixture API test in real Edge: alerts, timeline start, forced jump and reset pass | Independent browser verification; native OverlayPlugin/aftercast integration and gameplay remain unverified |
+
 ## Next acceptance milestones
 
 | Order    | Deliverable                                                        | Acceptance evidence                                                                                                                                                    |

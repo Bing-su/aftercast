@@ -57,6 +57,8 @@ internal static class Program
             case "original-log": ObserveOriginal(args[1], args[2], args[3], fixedFixture: false, localLog: true); break;
             case "recorded-actions": RecordedActions(args[1]); break;
             case "external-plugin": ExternalPluginChecks.Run(args[1], args[2], args[3]); break;
+            case "overlay-stack": OverlayStackChecks.Run(args[1], args[2], args[3], args[4]); return;
+            case "plugin-metadata": ReferenceContract("PluginMetadataProbe", "Plugin metadata"); break;
             case "text-exports": ReferenceContract("TextExportProbe", "Text exports"); break;
             case "timer-models": ReferenceContract("TimerModelProbe", "Timer models"); break;
             case "eq2-timestamps": ReferenceContract("Eq2TimestampProbe", "EQ2 timestamps"); break;
@@ -479,6 +481,7 @@ internal static class Program
         TextExportChecks.Run();
         SpellTimerChecks.Run();
         Eq2HostChecks.Run();
+        PluginMetadataChecks.Run();
         LogFollowerChecks.Run();
         InitialBoundaryChecks.Run();
         InitialSnapshotChecks.Run();

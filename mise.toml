@@ -126,6 +126,27 @@ arg "<state>" help="Private writable test state directory"
 run = '{{vars.managed_tests}} external-export "$usage_plugin" "$usage_state"'
 run_windows = '{{vars.managed_tests}} external-export "%usage_plugin%" "%usage_state%"'
 
+[tasks."observe:overlay-stack"]
+description = "Observe original FFXIV, OverlayPlugin and cactbot startup; inspect report for failures (Windows)"
+depends = ["managed:test-runner"]
+usage = '''
+arg "<ffxiv>" help="Trusted FFXIV plugin copy with its required chart dependency"
+arg "<overlay>" help="Trusted OverlayPlugin DLL with its shipped libs directory"
+arg "<cactbot>" help="Trusted CactbotOverlay DLL with its shipped event source"
+arg "<state>" help="Private writable state directory"
+'''
+run = '{{vars.managed_tests}} overlay-stack "$usage_ffxiv" "$usage_overlay" "$usage_cactbot" "$usage_state"'
+run_windows = '{{vars.managed_tests}} overlay-stack "%usage_ffxiv%" "%usage_overlay%" "%usage_cactbot%" "%usage_state%"'
+
+[tasks."test:plugin-metadata"]
+description = "Compare plugin list, version and closing-state data signatures with original ACT (Windows)"
+depends = ["managed:references"]
+run = 'echo "Plugin metadata reference checks require Windows"'
+run_windows = [
+  '{{vars.managed_tests}} plugin-metadata',
+  'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} plugin-metadata {{vars.reference_probe}}',
+]
+
 [tasks."test:timer-models"]
 description = "Compare ACT timer values and frame contracts (Windows native reference)"
 depends = ["managed:references"]

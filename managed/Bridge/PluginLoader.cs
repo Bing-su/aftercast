@@ -46,8 +46,11 @@ internal sealed class PluginContext(string path, byte[] hash) : AssemblyLoadCont
             return Default.LoadFromAssemblyName(name);
         var resolved = resolver.ResolveAssemblyToPath(name);
         var sibling = Path.Combine(Path.GetDirectoryName(path)!, name.Name + ".dll");
+        var library = Path.Combine(Path.GetDirectoryName(path)!, "libs", name.Name + ".dll");
         if (resolved is not null) return LoadFromAssemblyPath(resolved);
         if (File.Exists(sibling)) return LoadFromAssemblyPath(sibling);
+        // OverlayPlugin ships private dependencies under libs; resolve them in this plugin's context.
+        if (File.Exists(library)) return LoadFromAssemblyPath(library);
         return null; // Let framework and Costura resolution run when no file exists.
     }
     protected override nint LoadUnmanagedDll(string name)
