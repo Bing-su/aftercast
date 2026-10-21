@@ -9,7 +9,7 @@ use std::{
 };
 
 use bon::Builder;
-use bytes::{BufMut, BytesMut};
+use bytes::BytesMut;
 use camino::{Utf8Path, Utf8PathBuf};
 use netcorehost::{
     hostfxr::{
@@ -21,18 +21,7 @@ use netcorehost::{
 };
 use scopeguard::{ScopeGuard, guard};
 
-use crate::{
-    CombatRevision, CombatSnapshot, Error, HostDiagnostics, ImportReport, LogBatch,
-    LogSubscription, LogSubscriptionConfig,
-    diagnostics::{DIAGNOSTIC_CAPACITY, decode_diagnostics},
-    import::{decode_import, import_packet},
-    io_error,
-    logs::{
-        LOG_HEADER, decode_logs, larger_log_capacity, log_packet, subscribe_packet,
-        subscription_result,
-    },
-    snapshots::{decode_snapshot, larger_snapshot_capacity, snapshot_packet},
-};
+use crate::{Error, io_error, plugins::plugin_packet};
 
 static ACTIVE: AtomicBool = AtomicBool::new(false);
 // CoreCLR keeps hostpolicy state after a session closes; unloading hostfxr breaks reinitialization.
@@ -52,32 +41,14 @@ pub struct HostConfig {
     data_directory: Utf8PathBuf,
 }
 
-/// Constructor-only loading of a trusted ACT plugin; no initialization or parsing occurs.
-#[derive(Debug, Builder)]
-pub struct PluginConfig {
-    /// Plugin assembly path; dependencies are resolved from its deployment directory.
-    #[builder(into)]
-    path: Utf8PathBuf,
-    /// Fully qualified type name. Omit only when exactly one eligible plugin type exists.
-    #[builder(into)]
-    type_name: Option<String>,
-}
-
-/// Session-scoped identity of a constructed instance, not an initialized plugin.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct PluginId {
-    session: u64,
-    instance: u64,
-}
-
 #[repr(C)]
-struct Packet {
+pub(crate) struct Packet {
     size: u32,
     version: u32,
     command: u32,
     // Lifecycle commands return the runtime major; command 4 returns the number of callbacks run.
-    runtime_major: u32,
-    session: u64,
+    pub(crate) runtime_major: u32,
+    pub(crate) session: u64,
 }
 
 const _: () = assert!(size_of::<Packet>() == 24 && std::mem::offset_of!(Packet, session) == 16);
@@ -91,14 +62,12 @@ fn acquire_lease() -> Result<ActiveLease, Error> {
     Ok(guard((), |_| ACTIVE.store(false, Ordering::Release)))
 }
 
-/// A single active bridge lifetime on the calling thread.
-///
-/// This type is intentionally neither Send nor Sync: future plugin UI work must not silently
-/// migrate between threads. Stopping releases the ACT session, not the process-wide CLR.
-pub struct Host {
+// Own native delegates and thread affinity until managed shutdown has completed.
+pub(crate) struct ManagedSession {
     entry: ManagedFunctionWithDefaultSignature,
     read_error: ManagedFunctionWithDefaultSignature,
     read_diagnostics: ManagedFunctionWithDefaultSignature,
+    configure_host: ManagedFunctionWithDefaultSignature,
     create_plugin: ManagedFunctionWithDefaultSignature,
     plugin_command: ManagedFunctionWithDefaultSignature,
     import_log: ManagedFunctionWithDefaultSignature,
@@ -113,13 +82,19 @@ pub struct Host {
     _thread: PhantomData<Rc<()>>,
 }
 
-impl Host {
-    /// Loads the installed runtime and starts the bundled managed session.
-    ///
-    /// Runtime and bridge paths must contain trusted files. The application-controlled data
-    /// directory is created without overwriting existing contents. An incompatible CLR already
-    /// loaded by another host is reported as a hosting error; no fallback runtime is started.
-    pub fn start(config: HostConfig) -> Result<Self, Error> {
+#[derive(Clone, Copy)]
+pub(crate) enum Request {
+    ConfigureHost,
+    CreatePlugin,
+    PluginCommand,
+    Import,
+    Logs,
+    Snapshot,
+    Diagnostics,
+}
+
+impl ManagedSession {
+    pub(crate) fn start(config: HostConfig) -> Result<Self, Error> {
         let lease = acquire_lease()?;
         let root = canonicalize(&config.dotnet_root)?;
         let bridge = canonicalize(&config.bridge_directory)?;
@@ -150,6 +125,7 @@ impl Host {
             entry,
             read_error,
             read_diagnostics,
+            configure_host,
             create_plugin,
             plugin_command,
             import_log,
@@ -172,201 +148,38 @@ impl Host {
             .map_err(|error| io_error(&config.data_directory, error))?;
         let data_directory = canonicalize(&config.data_directory)?;
         let mut request = plugin_packet(host.session, data_directory.as_str(), None)?;
-        let length = i32::try_from(request.len())
-            .map_err(|error| Error::InvalidPluginRequest(error.to_string()))?;
-        // SAFETY: ConfigureHost borrows this bounded, initialized request for the call only.
-        let status = unsafe { (configure_host)(request.as_mut_ptr().cast(), length) };
-        if status != 0 {
-            return Err(Error::Managed {
-                command: 5,
-                status,
-                message: host.error_message(),
-            });
-        }
+        host.request(Request::ConfigureHost, &mut request)?;
         tracing::debug!(session = host.session, "managed host started");
         Ok(host)
     }
 
-    /// Confirms that this session still owns the managed host and returns its identity.
-    pub fn session_id(&self) -> Result<u64, Error> {
-        self.call(2).map(|packet| packet.session)
+    pub(crate) fn id(&self) -> u64 {
+        self.session
     }
 
-    /// Runs queued Linux control callbacks on this host's creation thread.
-    ///
-    /// Call regularly from your application loop, for example before draining output. Each call
-    /// starts at most 64 callbacks within a 5 ms scheduling budget; a callback itself can take
-    /// longer. Windows UI dispatch remains the caller's native message-loop responsibility.
-    pub fn pump(&mut self) -> Result<u32, Error> {
-        self.call(4).map(|packet| packet.runtime_major)
-    }
-
-    /// Ends active combat, drains admitted actions and publishes its latest result.
-    ///
-    /// Live file callbacks are quiesced and resumed around completion. Call before importing while
-    /// live combat is active, or to read a final result without waiting for another log timestamp.
-    /// This is a no-op when idle; it does not flush a plugin's private deferred events or writer.
-    pub fn end_combat(&mut self) -> Result<(), Error> {
-        self.call(5).map(|_packet| ())
-    }
-
-    /// Reads bounded host-error and backlog-warning history without consuming it or requiring a pump.
-    ///
-    /// Compare `total` between calls, and inspect `omitted()` to detect older errors outside the
-    /// retained history. This reports host diagnostics, not errors caught privately by a plugin.
-    pub fn diagnostics(&self) -> Result<HostDiagnostics, Error> {
-        let mut packet = BytesMut::with_capacity(DIAGNOSTIC_CAPACITY);
-        packet.put_u32_le(DIAGNOSTIC_CAPACITY as u32);
-        packet.put_u32_le(1);
-        packet.put_u64_le(self.session);
-        packet.resize(DIAGNOSTIC_CAPACITY, 0);
-        // SAFETY: ReadDiagnostics borrows this initialized allocation for the call, validates the
-        // header, and writes at most its fixed capacity. No managed memory escapes the call.
-        let status = unsafe {
-            (self.read_diagnostics)(packet.as_mut_ptr().cast(), DIAGNOSTIC_CAPACITY as i32)
+    pub(crate) fn request(&self, request: Request, packet: &mut BytesMut) -> Result<i32, Error> {
+        let (function, command) = match request {
+            Request::ConfigureHost => (&self.configure_host, 5),
+            Request::CreatePlugin => (&self.create_plugin, 4),
+            Request::PluginCommand => (&self.plugin_command, 6),
+            Request::Diagnostics => (&self.read_diagnostics, 7),
+            Request::Import => (&self.import_log, 8),
+            Request::Logs => (&self.log_command, 9),
+            Request::Snapshot => (&self.read_combat_snapshot, 10),
         };
-        if status != 0 {
+        let length = i32::try_from(packet.len())
+            .map_err(|error| Error::InvalidPluginRequest(error.to_string()))?;
+        // SAFETY: Private encoders supply initialized, bounded packets. Delegates validate every
+        // range, write within capacity and retain no pointer; this session owns all loader handles.
+        let status = unsafe { function(packet.as_mut_ptr().cast(), length) };
+        let failed = match request {
+            Request::Logs => status < 0,
+            Request::Snapshot => status != 0 && status != 1,
+            _ => status != 0,
+        };
+        if failed {
             return Err(Error::Managed {
-                command: 7,
-                status,
-                message: self.error_message(),
-            });
-        }
-        decode_diagnostics(&packet)
-    }
-
-    /// Imports the initial contents of a UTF-8 file through initialized plugins and drains actions.
-    ///
-    /// Call on the creation thread while live combat is idle. Live file delivery is paused and
-    /// restored, including after failure. Appends after opening are excluded; malformed UTF-8,
-    /// records over 8 MiB and premature truncation fail visibly. Partial imported history remains
-    /// after failure. Hook delivery alone does not establish that a plugin accepted the records.
-    pub fn import_log(&mut self, path: impl AsRef<Utf8Path>) -> Result<ImportReport, Error> {
-        let path = canonicalize(path.as_ref())?;
-        let mut packet = import_packet(self.session, path.as_str())?;
-        // The encoder bounds this request to 64 KiB before conversion.
-        let length = packet.len() as i32;
-        // SAFETY: ImportLog borrows this initialized allocation for the call, validates every
-        // range before importing, and writes only the fixed result in its 64-byte header.
-        let status = unsafe { (self.import_log)(packet.as_mut_ptr().cast(), length) };
-        if status != 0 {
-            return Err(Error::Managed {
-                command: 8,
-                status,
-                message: self.error_message(),
-            });
-        }
-        decode_import(&packet)
-    }
-
-    /// Copies the latest ended encounter, or returns None when no result is newer than `after`.
-    ///
-    /// Pass None for the latest result, then its revision to poll for changes. Intermediate state
-    /// versions coalesce; this is not an encounter archive. Results own their strings and counters
-    /// after host stop. Imports can retain partial results after failure; inspect `status`.
-    pub fn combat_snapshot(
-        &mut self,
-        after: Option<CombatRevision>,
-    ) -> Result<Option<CombatSnapshot>, Error> {
-        if after.is_some_and(|revision| revision.session != self.session) {
-            return Err(Error::InvalidSnapshotRequest(
-                "revision belongs to another host session".to_owned(),
-            ));
-        }
-        let after = after.map_or(0, |revision| revision.sequence);
-        let mut capacity = 64 * 1024;
-        loop {
-            let mut packet = snapshot_packet(self.session, after, capacity);
-            // SAFETY: ReadCombatSnapshot borrows this initialized, bounded allocation only during
-            // this call. The bridge validates its header and never retains managed or Rust pointers.
-            let status =
-                unsafe { (self.read_combat_snapshot)(packet.as_mut_ptr().cast(), capacity as i32) };
-            match status {
-                0 => return decode_snapshot(&packet, self.session, after),
-                1 => capacity = larger_snapshot_capacity(&packet)?,
-                status => {
-                    return Err(Error::Managed {
-                        command: 10,
-                        status,
-                        message: self.error_message(),
-                    });
-                }
-            }
-        }
-    }
-
-    /// Starts this host's single bounded subscription to nonempty original text selected for ACT hooks.
-    ///
-    /// Slow consumers lose oldest pending records, with exact loss ranges returned by
-    /// [`Self::drain_logs`]. Core parsing continues. This is not a durable recording or a parsed
-    /// record count. Unsubscribe before configuring another subscription.
-    pub fn subscribe_logs(
-        &mut self,
-        config: LogSubscriptionConfig,
-    ) -> Result<LogSubscription, Error> {
-        let mut packet = subscribe_packet(self.session, config)?;
-        if self.run_log_command(&mut packet)? != 0 {
-            return Err(Error::InvalidLogResponse(
-                "unexpected subscription status".to_owned(),
-            ));
-        }
-        subscription_result(&packet, self.session)
-    }
-
-    /// Drains an owned batch without waiting for new records or borrowing managed memory.
-    ///
-    /// Capacity retries do not consume pending records or loss state. Read regularly, for example
-    /// after [`Self::pump`], and drain until `records` is empty. Cloned line bytes share only Rust
-    /// memory. An oversized record discards the pending prefix and itself, preserving an exact
-    /// missing range; inspect `dropped` even for an empty batch.
-    pub fn drain_logs(&mut self, subscription: LogSubscription) -> Result<LogBatch, Error> {
-        self.check_log_subscription(subscription)?;
-        let mut capacity = 64 * 1024;
-        loop {
-            let mut packet = log_packet(self.session, subscription.instance, 2, capacity);
-            match self.run_log_command(&mut packet)? {
-                0 => return decode_logs(packet.freeze()),
-                1 => capacity = larger_log_capacity(&packet)?,
-                _ => {
-                    return Err(Error::InvalidLogResponse(
-                        "unexpected drain status".to_owned(),
-                    ));
-                }
-            }
-        }
-    }
-
-    /// Ends a subscription and explicitly discards its unread records and loss state.
-    /// Host stop also discards unread subscription data.
-    pub fn unsubscribe_logs(&mut self, subscription: LogSubscription) -> Result<(), Error> {
-        self.check_log_subscription(subscription)?;
-        let mut packet = log_packet(self.session, subscription.instance, 3, LOG_HEADER);
-        if self.run_log_command(&mut packet)? != 0 {
-            return Err(Error::InvalidLogResponse(
-                "unexpected unsubscribe status".to_owned(),
-            ));
-        }
-        Ok(())
-    }
-
-    fn check_log_subscription(&self, subscription: LogSubscription) -> Result<(), Error> {
-        if subscription.session != self.session {
-            return Err(Error::InvalidLogRequest(
-                "subscription belongs to another host session".to_owned(),
-            ));
-        }
-        Ok(())
-    }
-
-    fn run_log_command(&self, packet: &mut BytesMut) -> Result<i32, Error> {
-        // Requests are constructed within the private 64 MiB ABI limit before this conversion.
-        let length = packet.len() as i32;
-        // SAFETY: LogCommand borrows this initialized allocation for this call only. It validates
-        // headers and writes at most capacity, never retaining the pointer or invoking Rust.
-        let status = unsafe { (self.log_command)(packet.as_mut_ptr().cast(), length) };
-        if status < 0 {
-            return Err(Error::Managed {
-                command: 9,
+                command,
                 status,
                 message: self.error_message(),
             });
@@ -374,101 +187,7 @@ impl Host {
         Ok(status)
     }
 
-    /// Constructs a trusted plugin and retains it until this host stops.
-    ///
-    /// Constructors execute arbitrary code in this process and may register global handlers.
-    /// No sandbox or assembly unloading is provided. `InitPlugin` and `DeInitPlugin` are not
-    /// called by this method. Linux provides only headless status controls, without rendering
-    /// or native handles. For example, select a type with
-    /// `PluginConfig::builder().path("plugin.dll").type_name("Example.Plugin").build()`.
-    pub fn create_plugin(&mut self, config: PluginConfig) -> Result<PluginId, Error> {
-        let path = canonicalize(&config.path)?;
-        let mut packet = plugin_packet(self.session, path.as_str(), config.type_name.as_deref())?;
-        let length = i32::try_from(packet.len())
-            .map_err(|error| Error::InvalidPluginRequest(error.to_string()))?;
-        // SAFETY: CreatePlugin uses ComponentEntryPoint, borrows this initialized buffer only
-        // during the call, checks all ranges, and writes its result within the 40-byte header.
-        let status = unsafe { (self.create_plugin)(packet.as_mut_ptr().cast(), length) };
-        if status != 0 {
-            return Err(Error::Managed {
-                command: 4,
-                status,
-                message: self.error_message(),
-            });
-        }
-        let bytes: [u8; 8] = packet
-            .get(32..40)
-            .and_then(|bytes| bytes.try_into().ok())
-            .ok_or_else(|| Error::InvalidPluginRequest("missing plugin result".to_owned()))?;
-        let instance = u64::from_le_bytes(bytes);
-        if instance == 0 {
-            return Err(Error::InvalidPluginRequest("zero plugin result".to_owned()));
-        }
-        Ok(PluginId {
-            session: self.session,
-            instance,
-        })
-    }
-
-    /// Calls `InitPlugin` once and returns its bounded status text, not proof of parser readiness.
-    ///
-    /// Same-thread exceptions reported through ACT's `WriteExceptionLog` during the callback fail this
-    /// attempt. Failed instances cannot be retried; construct another instance instead. Arbitrary
-    /// plugin side effects cannot be rolled back. Windows requires a caller-owned STA/UI loop.
-    pub fn initialize_plugin(&mut self, plugin: PluginId) -> Result<String, Error> {
-        self.plugin_call(plugin, 1)
-    }
-
-    /// Calls `DeInitPlugin` at most once, removes its registration and disposes host-owned controls.
-    /// The host does not retry a failing callback during shutdown.
-    pub fn deinitialize_plugin(&mut self, plugin: PluginId) -> Result<(), Error> {
-        self.plugin_call(plugin, 2).map(|_status| ())
-    }
-
-    fn plugin_call(&mut self, plugin: PluginId, command: u32) -> Result<String, Error> {
-        if plugin.session != self.session {
-            return Err(Error::InvalidPluginRequest(
-                "plugin belongs to another host session".to_owned(),
-            ));
-        }
-        let mut request = BytesMut::with_capacity(8224);
-        request.put_u32_le(8224);
-        request.put_u32_le(1);
-        request.put_u64_le(self.session);
-        request.put_u64_le(plugin.instance);
-        request.put_u32_le(command);
-        request.put_u32_le(0);
-        request.resize(8224, 0);
-        // SAFETY: PluginCommand requires exactly this initialized allocation, retains no pointer,
-        // and validates the header before writing bounded UTF-8 status output after byte 32.
-        let status = unsafe { (self.plugin_command)(request.as_mut_ptr().cast(), 8224) };
-        if status != 0 {
-            return Err(Error::Managed {
-                command: 6,
-                status,
-                message: self.error_message(),
-            });
-        }
-        let length: [u8; 4] = request
-            .get(28..32)
-            .and_then(|bytes| bytes.try_into().ok())
-            .ok_or_else(|| {
-                Error::InvalidPluginRequest("missing plugin status length".to_owned())
-            })?;
-        let length = u32::from_le_bytes(length) as usize;
-        let bytes = request
-            .get(32..)
-            .and_then(|bytes| bytes.get(..length))
-            .ok_or_else(|| {
-                Error::InvalidPluginRequest("plugin status exceeds capacity".to_owned())
-            })?;
-        std::str::from_utf8(bytes)
-            .map(str::to_owned)
-            .map_err(|error| Error::InvalidPluginRequest(error.to_string()))
-    }
-
-    /// Stops the managed session. The CLR and loaded assemblies may remain in the process.
-    pub fn stop(mut self) -> Result<(), Error> {
+    pub(crate) fn stop(mut self) -> Result<(), Error> {
         self.stop_inner()
     }
 
@@ -482,7 +201,7 @@ impl Host {
         Ok(())
     }
 
-    fn call(&self, command: u32) -> Result<Packet, Error> {
+    pub(crate) fn call(&self, command: u32) -> Result<Packet, Error> {
         let mut packet = Packet {
             size: 24,
             version: 1,
@@ -522,35 +241,7 @@ impl Host {
     }
 }
 
-fn plugin_packet(session: u64, path: &str, type_name: Option<&str>) -> Result<BytesMut, Error> {
-    let type_name = type_name.unwrap_or_default();
-    if path.contains('\0') || type_name.contains('\0') || type_name.len() > 4096 {
-        return Err(Error::InvalidPluginRequest(
-            "NUL or oversized type name".to_owned(),
-        ));
-    }
-    let length = 40_usize
-        .checked_add(path.len())
-        .and_then(|size| size.checked_add(type_name.len()));
-    let size = length
-        .filter(|size| *size <= 65536)
-        .ok_or_else(|| Error::InvalidPluginRequest("request exceeds 65536 bytes".to_owned()))?;
-    let mut packet = BytesMut::with_capacity(size);
-    // These lengths are bounded by the 64 KiB ABI limit before conversion.
-    packet.put_u32_le(size as u32);
-    packet.put_u32_le(1);
-    packet.put_u64_le(session);
-    packet.put_u32_le(40);
-    packet.put_u32_le(path.len() as u32);
-    packet.put_u32_le(40 + path.len() as u32);
-    packet.put_u32_le(type_name.len() as u32);
-    packet.put_u64_le(0);
-    packet.extend_from_slice(path.as_bytes());
-    packet.extend_from_slice(type_name.as_bytes());
-    Ok(packet)
-}
-
-impl Drop for Host {
+impl Drop for ManagedSession {
     fn drop(&mut self) {
         if let Err(error) = self.stop_inner() {
             tracing::error!(%error, "managed host shutdown failed");
@@ -558,7 +249,7 @@ impl Drop for Host {
     }
 }
 
-fn canonicalize(path: &Utf8Path) -> Result<Utf8PathBuf, Error> {
+pub(crate) fn canonicalize(path: &Utf8Path) -> Result<Utf8PathBuf, Error> {
     // UTF-8 symlink names can resolve to non-UTF-8 targets; reject these without lossy conversion.
     path.canonicalize_utf8().map_err(|e| io_error(path, e))
 }
@@ -637,8 +328,9 @@ fn find_hostfxr(root: &Utf8Path) -> Result<Utf8PathBuf, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::Host;
 
-    #[test]
+    #[rstest::rstest]
     fn plugin_requests_bound_lengths_and_preserve_utf8() {
         let packet =
             plugin_packet(9, "/플러그인/測試.dll", Some("Example.Plugin")).expect("encode request");
@@ -669,15 +361,21 @@ mod tests {
         ));
     }
 
-    #[test]
-    fn only_stable_net10_host_versions_are_candidates() {
-        assert_eq!(stable_net10_version("10.0.13"), Some([10, 0, 13]));
-        for name in ["9.0.13", "11.0.0", "10.0.0-preview.1", "10.0", "10.0.13.1"] {
-            assert_eq!(stable_net10_version(name), None);
-        }
+    #[rstest::rstest]
+    #[case::stable("10.0.13", Some([10, 0, 13]))]
+    #[case::older("9.0.13", None)]
+    #[case::newer("11.0.0", None)]
+    #[case::preview("10.0.0-preview.1", None)]
+    #[case::missing_patch("10.0", None)]
+    #[case::extra_part("10.0.13.1", None)]
+    fn only_stable_net10_host_versions_are_candidates(
+        #[case] name: &str,
+        #[case] expected: Option<[u32; 3]>,
+    ) {
+        assert_eq!(stable_net10_version(name), expected);
     }
 
-    #[test]
+    #[rstest::rstest]
     fn runtime_discovery_preserves_utf8_paths_and_ignores_unrelated_entries() {
         let temporary = tempfile::tempdir().expect("create runtime discovery fixture");
         let root = Utf8Path::from_path(temporary.path())
@@ -707,7 +405,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[rstest::rstest]
     #[cfg(unix)]
     fn canonicalization_rejects_non_utf8_symlink_targets_without_losing_the_request() {
         use std::os::unix::{ffi::OsStringExt, fs::symlink};
@@ -729,7 +427,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[rstest::rstest]
     fn utf8_paths_still_reject_nul_at_the_native_boundary() {
         assert!(matches!(
             path_string(Utf8Path::new("invalid\0path")),
@@ -737,7 +435,7 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[rstest::rstest]
     #[ignore = "requires .NET 10; set DOTNET_ROOT and run mise run test:hosting"]
     fn managed_errors_keep_status_and_diagnostic_text() {
         let root =
@@ -755,7 +453,7 @@ mod tests {
                 .build(),
         )
         .expect("start managed component");
-        match host.call(99) {
+        match host.session.call(99) {
             Err(Error::Managed {
                 command,
                 status,

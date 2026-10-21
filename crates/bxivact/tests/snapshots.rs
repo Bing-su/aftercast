@@ -1,24 +1,18 @@
+mod common;
+
 use bxivact::{
-    CombatRevision, CombatSnapshot, CombatSnapshotStatus, Error, Host, HostConfig, LogTimeKind,
-    PluginConfig, extract_bridge,
+    CombatRevision, CombatSnapshot, CombatSnapshotStatus, Error, Host, LogTimeKind, PluginConfig,
 };
 use camino::Utf8Path;
+use common::{Deployment, deployment};
 
-#[test]
+#[rstest::rstest]
 #[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
-fn completed_snapshots_are_owned_versioned_and_recover_from_partial_imports() {
-    let root = std::env::var("DOTNET_ROOT").expect("set a UTF-8 DOTNET_ROOT");
-    let temporary = tempfile::tempdir().expect("create combat snapshot fixture");
-    let directory = Utf8Path::from_path(temporary.path()).expect("UTF-8 test directory");
-    let bridge = directory.join("bridge");
-    extract_bridge(&bridge).expect("extract managed component");
-    let config = || {
-        HostConfig::builder()
-            .dotnet_root(&root)
-            .bridge_directory(&bridge)
-            .data_directory(directory.join("state"))
-            .build()
-    };
+fn completed_snapshots_are_owned_versioned_and_recover_from_partial_imports(
+    deployment: Deployment,
+) {
+    let directory = deployment.directory();
+    let config = || deployment.config();
     let mut host = Host::start(config()).expect("start combat snapshot host");
     host.end_combat()
         .expect("idle completion before initialization");

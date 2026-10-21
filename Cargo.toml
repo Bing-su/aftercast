@@ -16,6 +16,7 @@ netcorehost = { version = "0.22.0", default-features = false, features = ["net10
 thiserror = "2.0.21"
 tracing = "0.1.44"
 scopeguard = "1.2.0"
+rstest = { version = "0.28.0", default-features = false }
 
 [workspace.lints.clippy]
 get_unwrap = "warn"
@@ -44,7 +45,7 @@ unused_result_ok = "warn"
 # Don't Do Bad Async Stuff - prevent deadlocks and concurrency bugs
 await_holding_lock = "warn"
 await_holding_refcell_ref = "warn"
-if_let_mutex = "warn"  # only relevant on editions before 2024
+if_let_mutex = "warn" # only relevant on editions before 2024
 large_futures = "warn"
 
 # Don't Do Unsafe Things with Memory

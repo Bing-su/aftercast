@@ -11,7 +11,7 @@ fn config(root: &Utf8Path, bridge: &Utf8Path) -> HostConfig {
         .build()
 }
 
-#[test]
+#[rstest::rstest]
 fn extraction_preserves_existing_directories() {
     let temporary = tempfile::tempdir().expect("create isolated extraction fixture");
     let directory = Utf8Path::from_path(temporary.path())
@@ -59,7 +59,7 @@ fn extraction_preserves_existing_directories() {
     );
 }
 
-#[test]
+#[rstest::rstest]
 #[ignore = "requires a .NET 10 installation; set DOTNET_ROOT and run mise run test:hosting"]
 fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
     let root =

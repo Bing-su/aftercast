@@ -1,3 +1,4 @@
+use crate::{Host, runtime::Request};
 use bytes::{Buf, BufMut, Bytes, BytesMut};
 use camino::Utf8PathBuf;
 
@@ -258,6 +259,71 @@ pub(crate) fn decode_logs(packet: Bytes) -> Result<LogBatch, Error> {
     })
 }
 
+impl Host {
+    /// Starts this host's single bounded subscription to nonempty original text selected for ACT hooks.
+    ///
+    /// Slow consumers lose oldest pending records, with exact loss ranges returned by
+    /// [`Self::drain_logs`]. Core parsing continues. This is not a durable recording or a parsed
+    /// record count. Unsubscribe before configuring another subscription.
+    pub fn subscribe_logs(
+        &mut self,
+        config: LogSubscriptionConfig,
+    ) -> Result<LogSubscription, Error> {
+        let mut packet = subscribe_packet(self.session.id(), config)?;
+        if self.session.request(Request::Logs, &mut packet)? != 0 {
+            return Err(Error::InvalidLogResponse(
+                "unexpected subscription status".to_owned(),
+            ));
+        }
+        subscription_result(&packet, self.session.id())
+    }
+
+    /// Drains an owned batch without waiting for new records or borrowing managed memory.
+    ///
+    /// Capacity retries do not consume pending records or loss state. Read regularly, for example
+    /// after [`Self::pump`], and drain until `records` is empty. Cloned line bytes share only Rust
+    /// memory. An oversized record discards the pending prefix and itself, preserving an exact
+    /// missing range; inspect `dropped` even for an empty batch.
+    pub fn drain_logs(&mut self, subscription: LogSubscription) -> Result<LogBatch, Error> {
+        self.check_log_subscription(subscription)?;
+        let mut capacity = 64 * 1024;
+        loop {
+            let mut packet = log_packet(self.session.id(), subscription.instance, 2, capacity);
+            match self.session.request(Request::Logs, &mut packet)? {
+                0 => return decode_logs(packet.freeze()),
+                1 => capacity = larger_log_capacity(&packet)?,
+                _ => {
+                    return Err(Error::InvalidLogResponse(
+                        "unexpected drain status".to_owned(),
+                    ));
+                }
+            }
+        }
+    }
+
+    /// Ends a subscription and explicitly discards its unread records and loss state.
+    /// Host stop also discards unread subscription data.
+    pub fn unsubscribe_logs(&mut self, subscription: LogSubscription) -> Result<(), Error> {
+        self.check_log_subscription(subscription)?;
+        let mut packet = log_packet(self.session.id(), subscription.instance, 3, LOG_HEADER);
+        if self.session.request(Request::Logs, &mut packet)? != 0 {
+            return Err(Error::InvalidLogResponse(
+                "unexpected unsubscribe status".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+
+    fn check_log_subscription(&self, subscription: LogSubscription) -> Result<(), Error> {
+        if subscription.session != self.session.id() {
+            return Err(Error::InvalidLogRequest(
+                "subscription belongs to another host session".to_owned(),
+            ));
+        }
+        Ok(())
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -298,7 +364,7 @@ mod tests {
         packet
     }
 
-    #[test]
+    #[rstest::rstest]
     fn batches_preserve_metadata_and_share_owned_line_bytes() {
         let wire = batch().freeze();
         let result = decode_logs(wire.clone()).expect("decode valid batch");
@@ -326,7 +392,7 @@ mod tests {
         assert_eq!(original.as_ref(), b"first\0");
     }
 
-    #[test]
+    #[rstest::rstest]
     fn empty_loss_batches_and_timestamp_kinds_are_explicit() {
         let mut empty = log_packet(9, 4, 2, LOG_HEADER);
         u64_field(&mut empty, 32, 3);
@@ -372,7 +438,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[rstest::rstest]
     fn malformed_batches_fail_before_unchecked_slices_or_allocations() {
         let valid = batch();
         for length in 0..valid.len() {
@@ -438,7 +504,7 @@ mod tests {
         ));
     }
 
-    #[test]
+    #[rstest::rstest]
     fn configuration_and_capacity_retries_are_bounded() {
         for (records, bytes) in [(0, 56), (65537, 56), (1, 55), (1, MAX_LOG_BYTES as u32 + 1)] {
             assert!(matches!(

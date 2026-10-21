@@ -1,4 +1,9 @@
+use crate::{
+    Host,
+    runtime::{Request, canonicalize},
+};
 use bytes::{Buf, BufMut, BytesMut};
+use camino::Utf8Path;
 
 use crate::Error;
 
@@ -68,11 +73,26 @@ pub(crate) fn decode_import(packet: &[u8]) -> Result<ImportReport, Error> {
     })
 }
 
+impl Host {
+    /// Imports the initial contents of a UTF-8 file through initialized plugins and drains actions.
+    ///
+    /// Call on the creation thread while live combat is idle. Live file delivery is paused and
+    /// restored, including after failure. Appends after opening are excluded; malformed UTF-8,
+    /// records over 8 MiB and premature truncation fail visibly. Partial imported history remains
+    /// after failure. Hook delivery alone does not establish that a plugin accepted the records.
+    pub fn import_log(&mut self, path: impl AsRef<Utf8Path>) -> Result<ImportReport, Error> {
+        let path = canonicalize(path.as_ref())?;
+        let mut packet = import_packet(self.session.id(), path.as_str())?;
+        self.session.request(Request::Import, &mut packet)?;
+        decode_import(&packet)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
+    #[rstest::rstest]
     fn requests_bound_paths_and_preserve_unicode() {
         let packet = import_packet(7, "/로그/fixture.log").expect("encode UTF-8 import path");
         assert_eq!(packet.get(8..16), Some(7_u64.to_le_bytes().as_slice()));
@@ -91,7 +111,7 @@ mod tests {
         }
     }
 
-    #[test]
+    #[rstest::rstest]
     fn results_validate_counts_without_changing_signed_totals() {
         let mut packet = BytesMut::zeroed(24);
         packet.put_i64_le(8);

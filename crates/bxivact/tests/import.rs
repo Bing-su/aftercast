@@ -1,22 +1,14 @@
-use bxivact::{Error, Host, HostConfig, ImportReport, PluginConfig, extract_bridge};
-use camino::Utf8Path;
+mod common;
 
-#[test]
+use bxivact::{Error, Host, ImportReport, PluginConfig};
+use camino::Utf8Path;
+use common::{Deployment, deployment};
+
+#[rstest::rstest]
 #[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
-fn imports_drain_actions_and_recover_after_input_and_plugin_failures() {
-    let root = std::env::var("DOTNET_ROOT").expect("set a UTF-8 DOTNET_ROOT");
-    let temporary = tempfile::tempdir().expect("create import fixture");
-    let directory = Utf8Path::from_path(temporary.path()).expect("UTF-8 test directory");
-    let bridge = directory.join("bridge");
-    extract_bridge(&bridge).expect("extract prebuilt component");
-    let mut host = Host::start(
-        HostConfig::builder()
-            .dotnet_root(root)
-            .bridge_directory(&bridge)
-            .data_directory(directory.join("state"))
-            .build(),
-    )
-    .expect("start import host");
+fn imports_drain_actions_and_recover_after_input_and_plugin_failures(deployment: Deployment) {
+    let directory = deployment.directory();
+    let mut host = Host::start(deployment.config()).expect("start import host");
     let log = directory.join("input 한글.log");
     std::fs::write(&log, "\u{feff}0|100\r\n\n2|300").expect("write import records");
     assert!(matches!(

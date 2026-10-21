@@ -1,4 +1,6 @@
+use crate::{Host, runtime::Request};
 use bytes::Buf;
+use bytes::{BufMut, BytesMut};
 
 use crate::Error;
 
@@ -58,6 +60,22 @@ pub(crate) fn decode_diagnostics(packet: &[u8]) -> Result<HostDiagnostics, Error
     Ok(HostDiagnostics { total, recent })
 }
 
+impl Host {
+    /// Reads bounded host-error and backlog-warning history without consuming it or requiring a pump.
+    ///
+    /// Compare `total` between calls, and inspect `omitted()` to detect older errors outside the
+    /// retained history. This reports host diagnostics, not errors caught privately by a plugin.
+    pub fn diagnostics(&self) -> Result<HostDiagnostics, Error> {
+        let mut packet = BytesMut::with_capacity(DIAGNOSTIC_CAPACITY);
+        packet.put_u32_le(DIAGNOSTIC_CAPACITY as u32);
+        packet.put_u32_le(1);
+        packet.put_u64_le(self.session.id());
+        packet.resize(DIAGNOSTIC_CAPACITY, 0);
+        self.session.request(Request::Diagnostics, &mut packet)?;
+        decode_diagnostics(&packet)
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use bytes::{BufMut, BytesMut};
@@ -78,7 +96,7 @@ mod tests {
         packet
     }
 
-    #[test]
+    #[rstest::rstest]
     fn snapshots_preserve_unicode_nul_and_omitted_counts() {
         let result = decode_diagnostics(&packet(40, &["한글\0first", "second\nline"]))
             .expect("decode owned diagnostics");
@@ -93,7 +111,7 @@ mod tests {
         );
     }
 
-    #[test]
+    #[rstest::rstest]
     fn malformed_snapshots_are_rejected_before_slicing() {
         let valid = packet(1, &["message"]);
         for length in 0..valid.len() {

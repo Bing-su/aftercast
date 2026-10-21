@@ -4,7 +4,15 @@ description = "An in-process ACT-compatible host for Rust applications"
 version.workspace = true
 edition.workspace = true
 publish.workspace = true
-include = ["src/**", "examples/**", "tests/**", "managed/*.dll", "managed/*.json", "managed/*.LICENSE", "README.md"]
+include = [
+  "src/**",
+  "examples/**",
+  "tests/**",
+  "managed/*.dll",
+  "managed/*.json",
+  "managed/*.LICENSE",
+  "README.md",
+]
 
 [dependencies]
 bon.workspace = true
@@ -22,4 +30,5 @@ bxivact-winforms.workspace = true
 workspace = true
 
 [dev-dependencies]
+rstest.workspace = true
 tempfile = "3.27.0"

@@ -87,7 +87,7 @@ fn decoded(packet: &[u8]) -> CombatSnapshot {
         .expect("changed snapshot")
 }
 
-#[test]
+#[rstest::rstest]
 fn owned_snapshot_preserves_unicode_nul_signed_values_and_float_bits() {
     let wire = fixture();
     let result = decoded(&wire);
@@ -150,37 +150,38 @@ fn owned_snapshot_preserves_unicode_nul_signed_values_and_float_bits() {
     assert_eq!(actor.to_hit.to_bits(), f32::INFINITY.to_bits());
 }
 
-#[test]
-fn graph_times_retain_kind_without_inventing_local_utc_offsets() {
-    for (kind, expected, utc_ticks) in [
-        (0, LogTimeKind::Unspecified, None),
-        (1, LogTimeKind::Utc, Some(123456)),
-        (2, LogTimeKind::Local, None),
-    ] {
-        let mut packet = fixture();
-        u64_field(&mut packet, SNAPSHOT_HEADER, 123456);
-        u32_field(&mut packet, SNAPSHOT_HEADER + 40, kind);
-        let result = decoded(&packet);
-        assert_eq!(
-            result.start_time,
-            LogTimestamp {
-                ticks: 123456,
-                utc_ticks,
-                kind: expected
-            }
-        );
-        assert_eq!(
-            result.end_time,
-            LogTimestamp {
-                ticks: last_tick(),
-                utc_ticks: Some(last_tick()),
-                kind: LogTimeKind::Utc
-            }
-        );
-    }
+#[rstest::rstest]
+#[case::unspecified(0, LogTimeKind::Unspecified, None)]
+#[case::utc(1, LogTimeKind::Utc, Some(123456))]
+#[case::local(2, LogTimeKind::Local, None)]
+fn graph_times_retain_kind_without_inventing_local_utc_offsets(
+    #[case] kind: u32,
+    #[case] expected: LogTimeKind,
+    #[case] utc_ticks: Option<u64>,
+) {
+    let mut packet = fixture();
+    u64_field(&mut packet, SNAPSHOT_HEADER, 123456);
+    u32_field(&mut packet, SNAPSHOT_HEADER + 40, kind);
+    let result = decoded(&packet);
+    assert_eq!(
+        result.start_time,
+        LogTimestamp {
+            ticks: 123456,
+            utc_ticks,
+            kind: expected
+        }
+    );
+    assert_eq!(
+        result.end_time,
+        LogTimestamp {
+            ticks: last_tick(),
+            utc_ticks: Some(last_tick()),
+            kind: LogTimeKind::Utc
+        }
+    );
 }
 
-#[test]
+#[rstest::rstest]
 fn status_revision_and_unchanged_results_distinguish_coalescing_from_loss() {
     for (flags, is_import, status) in [
         (1, false, CombatSnapshotStatus::Ended),
@@ -214,7 +215,7 @@ fn status_revision_and_unchanged_results_distinguish_coalescing_from_loss() {
     assert_eq!(decoded(&padded).combatants.len(), 1);
 }
 
-#[test]
+#[rstest::rstest]
 fn every_truncated_prefix_is_rejected_without_panicking() {
     let packet = fixture();
     for length in 0..packet.len() {
@@ -225,7 +226,7 @@ fn every_truncated_prefix_is_rejected_without_panicking() {
     }
 }
 
-#[test]
+#[rstest::rstest]
 fn malformed_headers_ranges_and_text_cannot_masquerade_as_snapshot_data() {
     let valid = fixture();
     let actor = actor_offset();
@@ -314,7 +315,7 @@ fn malformed_headers_ranges_and_text_cannot_masquerade_as_snapshot_data() {
     ));
 }
 
-#[test]
+#[rstest::rstest]
 fn unchanged_metadata_and_capacity_growth_are_validated_without_large_allocations() {
     let unchanged = snapshot_packet(7, 5, SNAPSHOT_HEADER);
     for offset in [24, 32, 40, 48, 56] {

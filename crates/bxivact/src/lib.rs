@@ -6,8 +6,10 @@
 
 mod bridge;
 mod diagnostics;
+mod host;
 mod import;
 mod logs;
+mod plugins;
 mod runtime;
 mod snapshots;
 
@@ -15,11 +17,13 @@ use camino::Utf8PathBuf;
 
 pub use bridge::extract_bridge;
 pub use diagnostics::HostDiagnostics;
+pub use host::Host;
 pub use import::ImportReport;
 pub use logs::{
     LogBatch, LogLoss, LogRecord, LogSubscription, LogSubscriptionConfig, LogTimeKind, LogTimestamp,
 };
-pub use runtime::{Host, HostConfig, PluginConfig, PluginId};
+pub use plugins::{PluginConfig, PluginId};
+pub use runtime::HostConfig;
 pub use snapshots::{CombatRevision, CombatSnapshot, CombatSnapshotStatus, CombatantSnapshot};
 
 /// Failures that callers can distinguish without parsing diagnostic messages.

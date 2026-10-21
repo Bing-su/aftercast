@@ -1,5 +1,8 @@
-use bxivact::{Error, Host, HostConfig, PluginConfig, PluginId, extract_bridge};
-use camino::{Utf8Path, Utf8PathBuf};
+mod common;
+
+use bxivact::{Error, Host, PluginConfig, PluginId};
+use camino::Utf8Path;
+use common::{Deployment, deployment};
 
 fn construct(host: &mut Host, assembly: &Utf8Path, name: &str) -> PluginId {
     host.create_plugin(
@@ -156,22 +159,13 @@ fn owner_dispatch(host: &mut Host, assembly: &Utf8Path, state: &Utf8Path) {
     assert!(state.join("pump.deinit").exists());
 }
 
-#[test]
+#[rstest::rstest]
 #[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
-fn initialization_cleanup_and_shutdown_are_session_owned_and_not_retried() {
-    let root = std::env::var("DOTNET_ROOT").expect("set DOTNET_ROOT");
-    let temporary = tempfile::tempdir().expect("create lifecycle fixture");
-    let directory = Utf8PathBuf::try_from(temporary.path().to_owned()).expect("UTF-8 fixture path");
-    let bridge = directory.join("bridge");
-    let state = directory.join("state 한글");
-    extract_bridge(&bridge).expect("extract bridge");
-    let config = || {
-        HostConfig::builder()
-            .dotnet_root(&root)
-            .bridge_directory(&bridge)
-            .data_directory(&state)
-            .build()
-    };
+fn initialization_cleanup_and_shutdown_are_session_owned_and_not_retried(
+    #[with("state 한글")] deployment: Deployment,
+) {
+    let state = deployment.directory().join("state 한글");
+    let config = || deployment.config();
     let assembly = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Bxivact.PluginFixture.dll")
         .canonicalize_utf8()

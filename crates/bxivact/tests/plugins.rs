@@ -1,6 +1,9 @@
+mod common;
+
 use camino::Utf8Path;
 
-use bxivact::{Error, Host, HostConfig, PluginConfig, extract_bridge};
+use bxivact::{Error, Host, PluginConfig};
+use common::{Deployment, deployment};
 
 fn create(host: &mut Host, path: &Utf8Path, name: &str) -> bxivact::PluginId {
     host.create_plugin(PluginConfig::builder().path(path).type_name(name).build())
@@ -24,21 +27,13 @@ fn failure(host: &mut Host, path: &Utf8Path, name: Option<&str>, expected: &str)
     assert_ne!(host.session_id().expect("failure preserves the session"), 0);
 }
 
-#[test]
+#[rstest::rstest]
 #[ignore = "requires .NET 10 and built C# fixtures; run mise run test:plugins"]
-fn constructs_trusted_plugins_without_initialization_and_recovers_from_errors() {
-    let root = std::env::var("DOTNET_ROOT").expect("set a UTF-8 DOTNET_ROOT");
-    let temporary = tempfile::tempdir().expect("create isolated plugin test");
-    let temporary_path = Utf8Path::from_path(temporary.path()).expect("UTF-8 test directory");
-    let bridge = temporary_path.join("bridge");
-    extract_bridge(&bridge).expect("extract bundled bridge");
-    let config = || {
-        HostConfig::builder()
-            .dotnet_root(&root)
-            .data_directory(bridge.join("state"))
-            .bridge_directory(&bridge)
-            .build()
-    };
+fn constructs_trusted_plugins_without_initialization_and_recovers_from_errors(
+    deployment: Deployment,
+) {
+    let temporary_path = deployment.directory();
+    let config = || deployment.config();
     let mut host = Host::start(config()).expect("start managed component");
     let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Bxivact.PluginFixture.dll")

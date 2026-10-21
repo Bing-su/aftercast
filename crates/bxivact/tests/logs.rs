@@ -1,24 +1,18 @@
+mod common;
+
 use bxivact::{
-    Error, Host, HostConfig, LogLoss, LogSubscription, LogSubscriptionConfig, LogTimeKind,
-    PluginConfig, extract_bridge,
+    Error, Host, LogLoss, LogSubscription, LogSubscriptionConfig, LogTimeKind, PluginConfig,
 };
 use camino::Utf8Path;
+use common::{Deployment, deployment};
 
-#[test]
+#[rstest::rstest]
 #[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
-fn bounded_subscribers_report_loss_without_interrupting_combat_or_owning_clr_memory() {
-    let root = std::env::var("DOTNET_ROOT").expect("set a UTF-8 DOTNET_ROOT");
-    let temporary = tempfile::tempdir().expect("create log subscription fixture");
-    let directory = Utf8Path::from_path(temporary.path()).expect("UTF-8 test directory");
-    let bridge = directory.join("bridge");
-    extract_bridge(&bridge).expect("extract managed component");
-    let config = || {
-        HostConfig::builder()
-            .dotnet_root(&root)
-            .bridge_directory(&bridge)
-            .data_directory(directory.join("state"))
-            .build()
-    };
+fn bounded_subscribers_report_loss_without_interrupting_combat_or_owning_clr_memory(
+    deployment: Deployment,
+) {
+    let directory = deployment.directory();
+    let config = || deployment.config();
     let mut host = Host::start(config()).expect("start subscription host");
     let subscription = host
         .subscribe_logs(LogSubscriptionConfig::builder().max_records(1).build())
