@@ -1,7 +1,7 @@
 using System.Drawing;
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 // Exercise the same registered categories and action objects against original ACT and its replacement.
 public static class CombatActionProbe

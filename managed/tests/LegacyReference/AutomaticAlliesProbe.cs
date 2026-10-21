@@ -3,7 +3,7 @@ using System.Reflection;
 using System.Security.Cryptography;
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 // Compare real action-derived ally graphs; no manually seeded aggregate or graph state is needed.
 public static class AutomaticAlliesProbe

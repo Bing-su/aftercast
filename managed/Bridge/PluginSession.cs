@@ -1,8 +1,8 @@
 using System.Windows.Forms;
 using Advanced_Combat_Tracker;
-using Bxivact.ActCompat;
+using Aftercast.ActCompat;
 
-namespace Bxivact.Bridge;
+namespace Aftercast.Bridge;
 
 internal enum PluginState { Constructed, Initializing, Initialized, Failed, Stopped }
 internal sealed class PluginRecord(string path, IActPluginV1 plugin)

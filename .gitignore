@@ -29,8 +29,8 @@ binaries/
 managed/**/bin/
 managed/**/obj/
 # Keep the independent WinForms source/tests while ignoring its build intermediates.
-crates/bxivact-winforms/managed/**/bin/
-crates/bxivact-winforms/managed/**/obj/
+crates/aftercast-winforms/managed/**/bin/
+crates/aftercast-winforms/managed/**/obj/
 # Cargo payload contains only the required runtime assets
-crates/bxivact/managed/*.xml
-crates/bxivact/managed/*/
+crates/aftercast/managed/*.xml
+crates/aftercast/managed/*/

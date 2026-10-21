@@ -10,7 +10,7 @@ internal static class InitialBoundaryChecks
 
     internal static void Run()
     {
-        var directory = Directory.CreateTempSubdirectory("bxivact-initial-boundary-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-initial-boundary-");
         try
         {
             Continuation(Path.Combine(directory.FullName, "ascii.log"), Encoding.UTF8.GetBytes("old partial"), Encoding.UTF8.GetBytes(" suffix\nnext\n"));

@@ -2,7 +2,7 @@ internal static class OriginalCorpusMessageChecks
 {
     internal static void Run()
     {
-        var directory = Path.Combine(Path.GetTempPath(), "bxivact corpus messages");
+        var directory = Path.Combine(Path.GetTempPath(), "aftercast corpus messages");
         var plugin = Path.Combine(directory, "FFXIV_ACT_Plugin.dll");
         string Message(string body) => "[12:34:56.789] " + body;
         var baseline = new[]

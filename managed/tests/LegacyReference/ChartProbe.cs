@@ -2,7 +2,7 @@ using System.ComponentModel;
 using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 // Bind real net48 chart MemberRefs, especially generic collection inheritance and base properties.
 public static class ChartProbe

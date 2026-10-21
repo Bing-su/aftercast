@@ -41,7 +41,7 @@ internal static class LogFollowerChecks
 
     public static void Run()
     {
-        var directory = Directory.CreateTempSubdirectory("bxivact-follower-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-follower-");
         try
         {
             AppendDecodePauseAndTruncate(Path.Combine(directory.FullName, "follow.log"));

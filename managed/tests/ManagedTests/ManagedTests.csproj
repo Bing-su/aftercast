@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <AssemblyName>Bxivact.ManagedTests</AssemblyName>
+    <AssemblyName>Aftercast.ManagedTests</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../RecordedActionTranscript.cs" Link="RecordedActionTranscript.cs" />
@@ -15,7 +15,7 @@
   </ItemGroup>
   <Target Name="StageHeadlessControls" AfterTargets="Build">
     <!-- Tests execute genuine reference signatures against the independently published Linux model. -->
-    <Copy SourceFiles="$(MSBuildThisFileDirectory)../../../crates/bxivact-winforms/managed/System.Windows.Forms.dll" DestinationFolder="$(OutDir)" />
-    <Copy SourceFiles="$(MSBuildThisFileDirectory)../../../crates/bxivact-winforms/managed/System.Windows.Forms.DataVisualization.dll" DestinationFolder="$(OutDir)" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../../../crates/aftercast-winforms/managed/System.Windows.Forms.dll" DestinationFolder="$(OutDir)" />
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)../../../crates/aftercast-winforms/managed/System.Windows.Forms.DataVisualization.dll" DestinationFolder="$(OutDir)" />
   </Target>
 </Project>

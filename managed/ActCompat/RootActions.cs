@@ -109,7 +109,7 @@ public partial class FormActMain
     {
         if (actionWorker is not null) return;
         var signal = new AutoResetEvent(false);
-        var worker = new Thread(ProcessActions) { IsBackground = true, Name = "Bxivact combat actions" };
+        var worker = new Thread(ProcessActions) { IsBackground = true, Name = "Aftercast combat actions" };
         actionSignal = signal;
         try { worker.Start(); actionWorker = worker; }
         catch { actionSignal = null; signal.Dispose(); throw; }

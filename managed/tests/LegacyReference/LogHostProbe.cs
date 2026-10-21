@@ -1,6 +1,6 @@
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 // Compile public file-follow metadata against original ACT without replacing the active host.
 public static class LogHostProbe

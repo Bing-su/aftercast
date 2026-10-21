@@ -1,5 +1,5 @@
 [package]
-name = "bxivact"
+name = "aftercast"
 description = "An in-process ACT-compatible host for Rust applications"
 version.workspace = true
 edition.workspace = true
@@ -24,7 +24,7 @@ tracing.workspace = true
 scopeguard.workspace = true
 
 [target.'cfg(target_os = "linux")'.dependencies]
-bxivact-winforms.workspace = true
+aftercast-winforms.workspace = true
 
 [lints]
 workspace = true

@@ -24,7 +24,7 @@
       "Advanced Combat Tracker": {
         "type": "Project"
       },
-      "Bxivact.Bridge": {
+      "Aftercast.Bridge": {
         "type": "Project",
         "dependencies": {
           "Advanced Combat Tracker": "[3.8.5.288, )",

@@ -1,5 +1,5 @@
 using Advanced_Combat_Tracker;
-using Bxivact.ActCompat;
+using Aftercast.ActCompat;
 
 internal static class DiagnosticChecks
 {
@@ -11,7 +11,7 @@ internal static class DiagnosticChecks
 
     internal static void Run()
     {
-        var directory = Directory.CreateTempSubdirectory("bxivact-diagnostics-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-diagnostics-");
         try
         {
             using var environment = new HostEnvironment(directory.FullName);

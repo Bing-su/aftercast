@@ -103,7 +103,7 @@ internal static class DnumValues
         }
 
         // Derive through the genuine base constructor to test type behavior without uninitialized objects.
-        var builder = AssemblyBuilder.DefineDynamicAssembly(new("Bxivact.OriginalReference.Derived"), AssemblyBuilderAccess.Run)
+        var builder = AssemblyBuilder.DefineDynamicAssembly(new("Aftercast.OriginalReference.Derived"), AssemblyBuilderAccess.Run)
             .DefineDynamicModule("Derived").DefineType("DerivedDnum", TypeAttributes.Public, type);
         var constructor = builder.DefineConstructor(MethodAttributes.Public, CallingConventions.Standard, [typeof(long)]);
         var il = constructor.GetILGenerator();

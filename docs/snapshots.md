@@ -20,7 +20,7 @@ actions.
 | Query failure                                 | Malformed ACT state or a result exceeding bounds fails visibly; core parsing continues                                           |
 
 ```rust,no_run
-fn read(host: &mut bxivact::Host) -> Result<(), bxivact::Error> {
+fn read(host: &mut aftercast::Host) -> Result<(), aftercast::Error> {
     if let Some(result) = host.combat_snapshot(None)? {
         println!("{}: {} damage", result.title, result.damage);
         let revision = result.revision;

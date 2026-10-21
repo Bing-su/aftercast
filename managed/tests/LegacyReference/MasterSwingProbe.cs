@@ -1,7 +1,7 @@
 using System.Runtime.CompilerServices;
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 // Exercise original metadata signatures without inventing aggregate encounter state.
 public static class MasterSwingProbe

@@ -1,7 +1,7 @@
 using System.Drawing;
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.Testing;
+namespace Aftercast.Testing;
 
 internal static class CombatFixture
 {

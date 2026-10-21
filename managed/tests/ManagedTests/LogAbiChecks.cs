@@ -1,5 +1,5 @@
 using System.Runtime.InteropServices;
-using Bxivact.Bridge;
+using Aftercast.Bridge;
 
 internal static class LogAbiChecks
 {

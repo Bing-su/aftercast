@@ -1,6 +1,6 @@
 mod common;
 
-use bxivact::{
+use aftercast::{
     CombatRevision, CombatSnapshot, CombatSnapshotStatus, Error, Host, LogTimeKind, PluginConfig,
 };
 use camino::Utf8Path;
@@ -22,12 +22,12 @@ fn completed_snapshots_are_owned_versioned_and_recover_from_partial_imports(
             .is_none()
     );
     let plugin_path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Bxivact.PluginFixture.dll");
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
     let plugin = host
         .create_plugin(
             PluginConfig::builder()
                 .path(&plugin_path)
-                .type_name("Bxivact.PluginFixture.ImportPlugin")
+                .type_name("Aftercast.PluginFixture.ImportPlugin")
                 .build(),
         )
         .expect("construct import parser fixture");
@@ -97,7 +97,7 @@ fn check_live_completion(host: &mut Host, directory: &Utf8Path, plugin_path: &Ut
         .create_plugin(
             PluginConfig::builder()
                 .path(plugin_path)
-                .type_name("Bxivact.PluginFixture.LiveCombatPlugin")
+                .type_name("Aftercast.PluginFixture.LiveCombatPlugin")
                 .build(),
         )
         .expect("construct live file parser fixture");

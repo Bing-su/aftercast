@@ -1,8 +1,8 @@
 using System.Buffers.Binary;
 using System.Text;
-using Bxivact.ActCompat;
+using Aftercast.ActCompat;
 
-namespace Bxivact.Bridge;
+namespace Aftercast.Bridge;
 
 internal sealed record CombatSnapshotPayload(byte[] Bytes, int RequiredPayloadCapacity);
 

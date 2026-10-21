@@ -9,7 +9,7 @@
 
 /// Prebuilt `System.Windows.Forms.dll` for deployment by a Linux .NET host.
 ///
-/// The host owns file deployment and assembly-context selection. For example, bxivact writes
+/// The host owns file deployment and assembly-context selection. For example, aftercast writes
 /// these bytes into its private bridge directory and shares the loaded assembly with plugins.
 /// Windows hosts must use real WinForms instead of this unsigned compatibility assembly.
 pub const ASSEMBLY: &[u8] = include_bytes!("../managed/System.Windows.Forms.dll");

@@ -2,10 +2,10 @@ mod common;
 
 use camino::Utf8Path;
 
-use bxivact::{Error, Host, PluginConfig};
+use aftercast::{Error, Host, PluginConfig};
 use common::{Deployment, deployment};
 
-fn create(host: &mut Host, path: &Utf8Path, name: &str) -> bxivact::PluginId {
+fn create(host: &mut Host, path: &Utf8Path, name: &str) -> aftercast::PluginId {
     host.create_plugin(PluginConfig::builder().path(path).type_name(name).build())
         .expect("construct the selected fixture")
 }
@@ -36,10 +36,10 @@ fn constructs_trusted_plugins_without_initialization_and_recovers_from_errors(
     let config = || deployment.config();
     let mut host = Host::start(config()).expect("start managed component");
     let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Bxivact.PluginFixture.dll")
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll")
         .canonicalize_utf8()
         .expect("build the plugin fixture first");
-    let good = "Bxivact.PluginFixture.GoodPlugin";
+    let good = "Aftercast.PluginFixture.GoodPlugin";
     let first = create(&mut host, &path, good);
     let second = create(&mut host, &path, good);
     assert_ne!(first, second);
@@ -47,19 +47,19 @@ fn constructs_trusted_plugins_without_initialization_and_recovers_from_errors(
     failure(
         &mut host,
         &path,
-        Some("Bxivact.PluginFixture.ThrowingPlugin"),
+        Some("Aftercast.PluginFixture.ThrowingPlugin"),
         "fixture constructor failure",
     );
     failure(
         &mut host,
         &path,
-        Some("Bxivact.PluginFixture.NeedsArgument"),
+        Some("Aftercast.PluginFixture.NeedsArgument"),
         "parameterless constructor",
     );
     failure(
         &mut host,
         &path,
-        Some("Bxivact.PluginFixture.GenericPlugin`1"),
+        Some("Aftercast.PluginFixture.GenericPlugin`1"),
         "parameterless constructor",
     );
     failure(&mut host, &path, Some("Missing.Plugin"), "select type");
@@ -67,13 +67,13 @@ fn constructs_trusted_plugins_without_initialization_and_recovers_from_errors(
     failure(
         &mut host,
         &path,
-        Some("Bxivact.PluginFixture.UiPlugin"),
+        Some("Aftercast.PluginFixture.UiPlugin"),
         "Linux WinForms native handles are not implemented",
     );
 
     let isolated = temporary_path.join("isolated 플러그인");
     std::fs::create_dir(&isolated).expect("create missing dependency fixture");
-    let missing = isolated.join("Bxivact.PluginFixture.dll");
+    let missing = isolated.join("Aftercast.PluginFixture.dll");
     std::fs::copy(&path, &missing).expect("copy without its dependency");
     // An invalid private ACT copy must never replace the bridge's shared contract assembly.
     std::fs::write(
@@ -81,10 +81,15 @@ fn constructs_trusted_plugins_without_initialization_and_recovers_from_errors(
         b"invalid private ACT",
     )
     .expect("create conflicting contract fixture");
-    failure(&mut host, &missing, Some(good), "Bxivact.PluginDependency");
+    failure(
+        &mut host,
+        &missing,
+        Some(good),
+        "Aftercast.PluginDependency",
+    );
     std::fs::copy(
-        path.with_file_name("Bxivact.PluginDependency.dll"),
-        isolated.join("Bxivact.PluginDependency.dll"),
+        path.with_file_name("Aftercast.PluginDependency.dll"),
+        isolated.join("Aftercast.PluginDependency.dll"),
     )
     .expect("restore the dependency");
     create(&mut host, &missing, good);

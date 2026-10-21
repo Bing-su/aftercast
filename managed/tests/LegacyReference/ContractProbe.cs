@@ -1,6 +1,6 @@
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 // Compile real member references against the original ACT metadata, not the replacement.
 public static class ContractProbe

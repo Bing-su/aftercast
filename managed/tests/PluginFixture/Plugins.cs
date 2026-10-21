@@ -3,7 +3,7 @@ using System.Windows.Forms;
 using System.Windows.Forms.DataVisualization.Charting;
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.PluginFixture;
+namespace Aftercast.PluginFixture;
 
 // Construction must resolve deployment dependencies without calling InitPlugin.
 public class GoodPlugin : IActPluginV1
@@ -85,9 +85,9 @@ public class LifecyclePlugin(string mode) : IActPluginV1
             throw new Exception("Chart contract failed");
         if (settings.IsDisposed || settings.Text != "Settings") throw new Exception("UserControl contract failed");
         PluginDependency.Value.CheckPermissions();
-        var dependency = Path.Combine(Path.GetDirectoryName(GetType().Assembly.Location)!, "Bxivact.PluginDependency.dll");
+        var dependency = Path.Combine(Path.GetDirectoryName(GetType().Assembly.Location)!, "Aftercast.PluginDependency.dll");
         var embedded = Assembly.Load(File.ReadAllBytes(dependency));
-        embedded.GetType("Bxivact.PluginDependency.Value")!.GetMethod("CheckPermissions")!.Invoke(null, []);
+        embedded.GetType("Aftercast.PluginDependency.Value")!.GetMethod("CheckPermissions")!.Invoke(null, []);
         var root = ActGlobals.oFormActMain!;
         if (failedInstance is not null && root.PluginGetSelfData(failedInstance) is not null)
             throw new Exception("Failed plugin registration leaked");

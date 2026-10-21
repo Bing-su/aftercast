@@ -1,4 +1,4 @@
-namespace Bxivact.ActCompat
+namespace Aftercast.ActCompat
 {
     public enum CombatSnapshotStatus { Ended = 0, Importing = 1, PartialImport = 2 }
 
@@ -16,11 +16,11 @@ namespace Advanced_Combat_Tracker
 {
     public partial class FormActMain
     {
-        private Bxivact.ActCompat.CombatSnapshotData? latestCombatSnapshot;
+        private Aftercast.ActCompat.CombatSnapshotData? latestCombatSnapshot;
         private System.Runtime.ExceptionServices.ExceptionDispatchInfo? combatSnapshotFailure;
         private ulong combatSnapshotRevision;
         private bool combatSnapshotImport;
-        private Bxivact.ActCompat.CombatSnapshotStatus combatSnapshotStatus;
+        private Aftercast.ActCompat.CombatSnapshotStatus combatSnapshotStatus;
 
         private void PublishCombatSnapshotState(bool import, EncounterData encounter)
         {
@@ -28,8 +28,8 @@ namespace Advanced_Combat_Tracker
             {
                 var next = checked(combatSnapshotRevision + 1);
                 combatSnapshotImport = import;
-                combatSnapshotStatus = import ? Bxivact.ActCompat.CombatSnapshotStatus.Importing
-                    : Bxivact.ActCompat.CombatSnapshotStatus.Ended;
+                combatSnapshotStatus = import ? Aftercast.ActCompat.CombatSnapshotStatus.Importing
+                    : Aftercast.ActCompat.CombatSnapshotStatus.Ended;
                 combatSnapshotRevision = next;
                 latestCombatSnapshot = null;
                 combatSnapshotFailure = null;
@@ -53,10 +53,10 @@ namespace Advanced_Combat_Tracker
             {
                 // A later live completion, or an import with no new encounter, must keep its existing result.
                 if (combatSnapshotRevision <= before || !combatSnapshotImport ||
-                    combatSnapshotStatus != Bxivact.ActCompat.CombatSnapshotStatus.Importing) return;
+                    combatSnapshotStatus != Aftercast.ActCompat.CombatSnapshotStatus.Importing) return;
                 var next = checked(combatSnapshotRevision + 1);
-                combatSnapshotStatus = success ? Bxivact.ActCompat.CombatSnapshotStatus.Ended
-                    : Bxivact.ActCompat.CombatSnapshotStatus.PartialImport;
+                combatSnapshotStatus = success ? Aftercast.ActCompat.CombatSnapshotStatus.Ended
+                    : Aftercast.ActCompat.CombatSnapshotStatus.PartialImport;
                 combatSnapshotRevision = next;
                 // Import completion changes status only; public ACT mutations cannot rewrite an existing version.
                 if (latestCombatSnapshot is { } snapshot)
@@ -64,7 +64,7 @@ namespace Advanced_Combat_Tracker
             }
         }
 
-        internal Bxivact.ActCompat.CombatSnapshotData? ReadCombatSnapshot(ulong afterRevision)
+        internal Aftercast.ActCompat.CombatSnapshotData? ReadCombatSnapshot(ulong afterRevision)
         {
             lock (CombatGate)
             {
@@ -74,16 +74,16 @@ namespace Advanced_Combat_Tracker
                 combatSnapshotFailure?.Throw();
                 var snapshot = latestCombatSnapshot!;
                 // Each caller owns its array; replacing an entry must not corrupt future reads of the same revision.
-                return snapshot with { Combatants = (Bxivact.ActCompat.CombatantSnapshotData[])snapshot.Combatants.Clone() };
+                return snapshot with { Combatants = (Aftercast.ActCompat.CombatantSnapshotData[])snapshot.Combatants.Clone() };
             }
         }
 
-        private Bxivact.ActCompat.CombatSnapshotData CaptureCombatSnapshot(EncounterData encounter)
+        private Aftercast.ActCompat.CombatSnapshotData CaptureCombatSnapshot(EncounterData encounter)
         {
             if (encounter.Items.Count > 65536)
                 throw new InvalidOperationException("Combat snapshots support at most 65536 actors.");
             var allies = encounter.GetAllies();
-            var actors = new Bxivact.ActCompat.CombatantSnapshotData[encounter.Items.Count];
+            var actors = new Aftercast.ActCompat.CombatantSnapshotData[encounter.Items.Count];
             for (var index = 0; index < actors.Length; index++)
             {
                 var actor = encounter.Items.Values[index];

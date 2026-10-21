@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <AssemblyName>Bxivact.PluginFixture</AssemblyName>
+    <AssemblyName>Aftercast.PluginFixture</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
     <Compile Include="../CombatFixture.cs" Link="CombatFixture.cs" />

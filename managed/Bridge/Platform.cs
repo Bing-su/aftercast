@@ -1,7 +1,7 @@
 using System.Reflection;
 using System.Runtime.Loader;
 
-namespace Bxivact.Bridge;
+namespace Aftercast.Bridge;
 
 internal static class Platform
 {

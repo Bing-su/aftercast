@@ -1,7 +1,7 @@
 using System.Collections.Concurrent;
 using System.Text;
 using Advanced_Combat_Tracker;
-using Bxivact.ActCompat;
+using Aftercast.ActCompat;
 
 internal static class LogHostChecks
 {
@@ -12,7 +12,7 @@ internal static class LogHostChecks
 
     internal static void Run()
     {
-        var directory = Directory.CreateTempSubdirectory("bxivact-log-host-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-log-host-");
         try
         {
             using var environment = new HostEnvironment(directory.FullName);
@@ -51,7 +51,7 @@ internal static class LogHostChecks
 
     private static void ReopenFromCallback()
     {
-        var directory = Directory.CreateTempSubdirectory("bxivact-log-reopen-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-log-reopen-");
         try
         {
             using var environment = new HostEnvironment(directory.FullName);
@@ -83,7 +83,7 @@ internal static class LogHostChecks
 
     private static void HistoricalZone()
     {
-        var directory = Directory.CreateTempSubdirectory("bxivact-log-zone-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-log-zone-");
         try
         {
             using var environment = new HostEnvironment(directory.FullName);

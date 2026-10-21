@@ -1,6 +1,6 @@
 using System.Diagnostics;
 
-namespace Bxivact.Bridge;
+namespace Aftercast.Bridge;
 
 // The caller pumps this queue on its owner thread; dispatch never creates a substitute UI thread.
 internal sealed class OwnerContext : SynchronizationContext, IDisposable

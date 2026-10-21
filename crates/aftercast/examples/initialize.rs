@@ -1,4 +1,4 @@
-use bxivact::{Host, HostConfig, LogSubscriptionConfig, PluginConfig, extract_bridge};
+use aftercast::{Host, HostConfig, LogSubscriptionConfig, PluginConfig, extract_bridge};
 use camino::Utf8PathBuf;
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {

@@ -3,8 +3,8 @@ using System.Collections;
 using System.Diagnostics;
 using System.Reflection;
 using System.Text.Json;
-using Bxivact.ActCompat;
-using Bxivact.Bridge;
+using Aftercast.ActCompat;
+using Aftercast.Bridge;
 
 // Opt-in synthetic buffer load only: these measurements do not establish network capture or plugin parser throughput.
 internal static class LogLoadChecks
@@ -74,7 +74,7 @@ internal static class LogLoadChecks
                 producerDone.Set();
             }
         })
-        { IsBackground = true, Name = "Bxivact synthetic log producer" };
+        { IsBackground = true, Name = "Aftercast synthetic log producer" };
         var joined = false;
         producer.Start();
         try

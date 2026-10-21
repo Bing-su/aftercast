@@ -1,6 +1,6 @@
 using System.Drawing;
 using Advanced_Combat_Tracker;
-using Bxivact.ActCompat;
+using Aftercast.ActCompat;
 
 internal static class RegistrationLifetimeChecks
 {
@@ -11,7 +11,7 @@ internal static class RegistrationLifetimeChecks
 
     internal static void Run()
     {
-        var directory = Directory.CreateTempSubdirectory("bxivact-registration-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-registration-");
         try
         {
             var calls = 0;

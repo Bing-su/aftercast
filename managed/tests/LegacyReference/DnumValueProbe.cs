@@ -1,7 +1,7 @@
 using System.Globalization;
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 // Exercise original member references; expected terms are ACT's built-in English defaults.
 public static class DnumValueProbe

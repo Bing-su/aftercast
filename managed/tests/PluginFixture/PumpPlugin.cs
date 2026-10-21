@@ -1,7 +1,7 @@
 using System.Windows.Forms;
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.PluginFixture;
+namespace Aftercast.PluginFixture;
 
 // Exercise worker-to-owner dispatch through the native host, including deinitialization with a pending Send.
 public class PumpPlugin : IActPluginV1

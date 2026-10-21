@@ -1,7 +1,7 @@
 using System.Globalization;
 using System.Text.Json;
 using Advanced_Combat_Tracker;
-using Bxivact.TestContracts;
+using Aftercast.TestContracts;
 
 // Test-only capture of committed original-plugin submissions. Expected totals must come from the independent action oracle.
 internal sealed class RecordedActionCapture : IDisposable

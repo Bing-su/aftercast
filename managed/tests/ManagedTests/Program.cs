@@ -8,8 +8,8 @@ using System.Runtime.Loader;
 using System.Security.Cryptography;
 using System.Text;
 using Advanced_Combat_Tracker;
-using Bxivact.ActCompat;
-using Bxivact.Bridge;
+using Aftercast.ActCompat;
+using Aftercast.Bridge;
 
 internal static class Program
 {
@@ -62,9 +62,9 @@ internal static class Program
     {
         var actual = typeof(Dnum).Assembly;
         Check(SHA256.HashData(File.ReadAllBytes(actual.Location)).AsSpan().SequenceEqual(
-            SHA256.HashData(File.ReadAllBytes("crates/bxivact/managed/Advanced Combat Tracker.dll"))));
-        var legacy = Assembly.LoadFrom(Path.GetFullPath("managed/tests/LegacyReference/bin/Release/net10.0/Bxivact.LegacyReference.dll"));
-        try { Console.WriteLine(legacy.GetType("Bxivact.LegacyReference.RecordedActionProbe")!.GetMethod("Run")!.Invoke(null, [path])); }
+            SHA256.HashData(File.ReadAllBytes("crates/aftercast/managed/Advanced Combat Tracker.dll"))));
+        var legacy = Assembly.LoadFrom(Path.GetFullPath("managed/tests/LegacyReference/bin/Release/net10.0/Aftercast.LegacyReference.dll"));
+        try { Console.WriteLine(legacy.GetType("Aftercast.LegacyReference.RecordedActionProbe")!.GetMethod("Run")!.Invoke(null, [path])); }
         catch (TargetInvocationException error) when (error.InnerException is not null)
         { ExceptionDispatchInfo.Capture(error.InnerException).Throw(); throw; }
     }
@@ -266,8 +266,8 @@ internal static class Program
             Marshal.WriteInt32(memory, 8, 1);
             Check(EntryPoint.Invoke(memory, 24) == 0);
             var session = Marshal.ReadInt64(memory, 16);
-            var path = Encoding.UTF8.GetBytes(Path.GetFullPath("managed/tests/PluginFixture/bin/Release/net10.0/Bxivact.PluginFixture.dll"));
-            var name = Encoding.UTF8.GetBytes("Bxivact.PluginFixture.GoodPlugin");
+            var path = Encoding.UTF8.GetBytes(Path.GetFullPath("managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll"));
+            var name = Encoding.UTF8.GetBytes("Aftercast.PluginFixture.GoodPlugin");
             var size = 40 + path.Length + name.Length;
             void Reset()
             {
@@ -353,17 +353,17 @@ internal static class Program
     private static void ActBinding()
     {
         // Load only the compiled original-reference probe; never execute the supplied ACT EXE.
-        var legacy = Assembly.LoadFrom(Path.GetFullPath("managed/tests/LegacyReference/bin/Release/net10.0/Bxivact.LegacyReference.dll"));
+        var legacy = Assembly.LoadFrom(Path.GetFullPath("managed/tests/LegacyReference/bin/Release/net10.0/Aftercast.LegacyReference.dll"));
         const string identity = "Advanced Combat Tracker, Version=3.8.5.288, Culture=neutral, PublicKeyToken=a946b61e93d97868";
         Check(legacy.GetReferencedAssemblies().Single(item => item.Name == "Advanced Combat Tracker").FullName == identity);
         var actual = typeof(Dnum).Assembly;
         Check(actual.FullName == identity);
         Check(SHA256.HashData(File.ReadAllBytes(actual.Location)).AsSpan().SequenceEqual(
-            SHA256.HashData(File.ReadAllBytes("crates/bxivact/managed/Advanced Combat Tracker.dll"))));
+            SHA256.HashData(File.ReadAllBytes("crates/aftercast/managed/Advanced Combat Tracker.dll"))));
         Check(!typeof(Dnum).IsValueType && !typeof(Dnum).IsSealed);
         object? Call(string type, string name, params object[] arguments)
         {
-            try { return legacy.GetType("Bxivact.LegacyReference." + type)!.GetMethod(name)!.Invoke(null, arguments); }
+            try { return legacy.GetType("Aftercast.LegacyReference." + type)!.GetMethod(name)!.Invoke(null, arguments); }
             catch (TargetInvocationException error) when (error.InnerException is not null)
             { ExceptionDispatchInfo.Capture(error.InnerException).Throw(); throw; }
         }
@@ -390,7 +390,7 @@ internal static class Program
         Check((string)Call("HitRateProbe", "Run")! == "Hit rates");
         Check(typeof(Dnum).GetProperty("Number")!.GetSetMethod() is null && new Dnum(-11).Number == -11);
         Check(new Dnum(1).ToString() == "1");
-        var directory = Directory.CreateTempSubdirectory("bxivact-contract-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-contract-");
         try
         {
             Check(Call("HostProbe", "Root") is null);

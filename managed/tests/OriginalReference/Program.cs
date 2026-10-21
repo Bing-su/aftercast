@@ -88,7 +88,7 @@ internal static class Program
     private static int RunRecordedActions(string probePath, string transcriptPath)
     {
         var probes = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(probePath));
-        Probe("Original recorded actions", () => probes.GetType("Bxivact.LegacyReference.RecordedActionProbe", throwOnError: true)!
+        Probe("Original recorded actions", () => probes.GetType("Aftercast.LegacyReference.RecordedActionProbe", throwOnError: true)!
             .GetMethod("Run", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [Path.GetFullPath(transcriptPath)])!);
         return 0;
     }
@@ -97,7 +97,7 @@ internal static class Program
     {
         var probes = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(path));
         foreach (var name in new[] { "DefaultGlobalsProbe", "DnumValueProbe", "CombatStateProbe", "DamageStateProbe", "ChildActionProbe", "CombatActionProbe", "CombatEventProbe", "AutomaticAlliesProbe", "EncounterFinalizationProbe", "CombatDurationProbe", "AggregateQueryProbe", "HitRateProbe" })
-            Probe("Original " + name, () => probes.GetType("Bxivact.LegacyReference." + name, throwOnError: true)!
+            Probe("Original " + name, () => probes.GetType("Aftercast.LegacyReference." + name, throwOnError: true)!
                 .GetMethod("Run", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, null)!);
         return 0;
     }

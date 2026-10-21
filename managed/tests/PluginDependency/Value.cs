@@ -1,7 +1,7 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
 
-namespace Bxivact.PluginDependency;
+namespace Aftercast.PluginDependency;
 
 public static class Value
 {

@@ -1,6 +1,6 @@
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 // Compile the same hit-rate and column failure contracts against genuine ACT and the replacement.
 public static class HitRateProbe

@@ -40,7 +40,7 @@ The implementation and guards are in [LinuxPluginCompatibility](../managed/Bridg
 and [LinuxResourceCompatibility](../managed/Bridge/LinuxResourceCompatibility.cs).
 Writer and resource checks exercise exact rewritten behavior and verify that the
 input images remain unchanged. Headless WinForms and chart support is documented
-in the [WinForms crate](../crates/bxivact-winforms/README.md).
+in the [WinForms crate](../crates/aftercast-winforms/README.md).
 
 ## Comparison tests
 

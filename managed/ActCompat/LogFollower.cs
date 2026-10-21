@@ -58,7 +58,7 @@ internal sealed class LogFollower : IDisposable
                     !(InitialPosition == 3 && boundary.SequenceEqual(new byte[] { 0xef, 0xbb, 0xbf }));
             }
             stream = opened;
-            worker = new Thread(Read) { IsBackground = true, Name = "Bxivact log follower" };
+            worker = new Thread(Read) { IsBackground = true, Name = "Aftercast log follower" };
             worker.Start();
         }
         catch

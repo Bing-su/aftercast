@@ -4,14 +4,14 @@ using System.Runtime.Loader;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
-using Bxivact.Bridge;
+using Aftercast.Bridge;
 
 // Only this separate test process loads copied vendor assemblies; no game or capture workers are constructed.
 if (args.Length > 0 && args[0] == "child") return RunChild(args[1], args[2], args[3], bool.Parse(args[4]));
 if (args.Length is < 1 or > 2 || args.Length == 2 && args[1] != "--patched")
     throw new ArgumentException("Pass the pinned SDK deployment directory and optionally --patched.");
 var patched = args.Length == 2;
-var temporary = Directory.CreateTempSubdirectory("bxivact-original-writer-");
+var temporary = Directory.CreateTempSubdirectory("aftercast-original-writer-");
 try
 {
     var deployment = Directory.CreateDirectory(Path.Combine(temporary.FullName, "deployment"));

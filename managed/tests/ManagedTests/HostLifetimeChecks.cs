@@ -1,7 +1,7 @@
 using System.Windows.Forms;
 using Advanced_Combat_Tracker;
-using Bxivact.ActCompat;
-using Bxivact.Bridge;
+using Aftercast.ActCompat;
+using Aftercast.Bridge;
 
 internal static class HostLifetimeChecks
 {
@@ -21,7 +21,7 @@ internal static class HostLifetimeChecks
 
     private static void StopDuringReplacement()
     {
-        var directory = Directory.CreateTempSubdirectory("bxivact-log-replacement-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-log-replacement-");
         try
         {
             using var context = new OwnerContext(_ => throw new Exception("Unexpected posted failure"));
@@ -84,7 +84,7 @@ internal static class HostLifetimeChecks
 
     private static void CheckLifetime(bool stop)
     {
-        var directory = Directory.CreateTempSubdirectory("bxivact-lifetime-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-lifetime-");
         try
         {
             using var context = new OwnerContext(_ => throw new Exception("Unexpected posted callback failure"));
@@ -144,7 +144,7 @@ internal static class HostLifetimeChecks
 
     private static void RejectDispatchedLifecycleWaits()
     {
-        var directory = Directory.CreateTempSubdirectory("bxivact-reentrant-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-reentrant-");
         try
         {
             using var context = new OwnerContext(_ => throw new Exception("Unexpected posted callback failure"));

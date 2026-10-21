@@ -4,7 +4,7 @@ using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
-namespace Bxivact.TestContracts;
+namespace Aftercast.TestContracts;
 
 public sealed record TranscriptProvenance(string InputSha256, string MainPluginSha256, string ParseSha256, string OriginalActSha256);
 public sealed record TranscriptCategory(string Key, string Label, int AllyValue, int Argb);

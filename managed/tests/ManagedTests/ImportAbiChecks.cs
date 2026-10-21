@@ -1,6 +1,6 @@
 using System.Runtime.InteropServices;
 using System.Text;
-using Bxivact.Bridge;
+using Aftercast.Bridge;
 
 internal static class ImportAbiChecks
 {

@@ -3,9 +3,9 @@ using System.Diagnostics;
 using System.Globalization;
 using System.Security.Cryptography;
 using Advanced_Combat_Tracker;
-using Bxivact.ActCompat;
-using Bxivact.Bridge;
-using Bxivact.TestContracts;
+using Aftercast.ActCompat;
+using Aftercast.Bridge;
+using Aftercast.TestContracts;
 
 internal static class OriginalCorpusChecks
 {

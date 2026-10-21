@@ -77,8 +77,8 @@ comparison limits.
 
 | Owner               | Files / rule                                                                                                                   |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| bxivact             | Prebuilt bridge, ACT compatibility, runtime configs and official legacy permission/extension dependencies with bundled notices |
-| bxivact-winforms    | Forms/chart source, independent tests and prebuilt assemblies; Linux-only Rust dependency                                      |
+| aftercast             | Prebuilt bridge, ACT compatibility, runtime configs and official legacy permission/extension dependencies with bundled notices |
+| aftercast-winforms    | Forms/chart source, independent tests and prebuilt assemblies; Linux-only Rust dependency                                      |
 | Cargo extraction    | Select the platform runtime config and Windows extension image; write only into a new private destination                      |
 | Managed native seam | Standard ComponentEntryPoint, private versioned packets, bounded writes and immediate managed error capture                    |
 | Maintainer          | Rebuild checked-in DLLs after managed changes; consumers never invoke dotnet during Cargo build                                |

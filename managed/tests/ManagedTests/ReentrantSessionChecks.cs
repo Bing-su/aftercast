@@ -2,7 +2,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Advanced_Combat_Tracker;
-using Bxivact.Bridge;
+using Aftercast.Bridge;
 
 internal static class ReentrantSessionChecks
 {
@@ -61,7 +61,7 @@ internal static class ReentrantSessionChecks
 
     private static void CheckSession(PluginSession session, long? activeSession)
     {
-        var directory = Directory.CreateTempSubdirectory("bxivact-reentrant-session-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-reentrant-session-");
         var memory = Marshal.AllocHGlobal(24);
         Plugin? plugin = null;
         try

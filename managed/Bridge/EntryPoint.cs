@@ -1,8 +1,8 @@
 using System.Runtime.InteropServices;
 using System.Text;
-using Bxivact.ActCompat;
+using Aftercast.ActCompat;
 
-namespace Bxivact.Bridge;
+namespace Aftercast.Bridge;
 
 // Retain the standard ComponentEntryPoint delegate and existing Rust ABI throughout the migration.
 public static class EntryPoint

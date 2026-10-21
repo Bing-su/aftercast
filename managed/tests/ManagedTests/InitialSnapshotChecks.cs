@@ -3,13 +3,13 @@ using System.Reflection;
 using System.Runtime.ExceptionServices;
 using System.Text;
 using Advanced_Combat_Tracker;
-using Bxivact.ActCompat;
+using Aftercast.ActCompat;
 
 internal static class InitialSnapshotChecks
 {
     internal static void Run()
     {
-        var directory = Directory.CreateTempSubdirectory("bxivact-initial-identity-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-initial-identity-");
         try
         {
             using var host = new HostEnvironment(directory.FullName);

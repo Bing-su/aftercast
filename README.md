@@ -1,4 +1,4 @@
-# bxivact
+# aftercast
 
 An in-process ACT-compatible host for Rust applications. It reuses the existing
 FFXIV ACT plugin's parser and ships a prebuilt .NET 10/C# implementation.
@@ -11,7 +11,7 @@ Consumers need an installed .NET 10 runtime; no SDK or automatic download is use
 | [Development](docs/development.md)                                    | Rebuild, unified verification and package checks                                   |
 | [Domain glossary](GLOSSARY.md)                                        | Encounter, combatant, import, subscription and revision terminology                |
 | [Documentation index](docs/index.md)                                  | Import, log, snapshot and compatibility reference                                  |
-| [Independent Linux WinForms model](crates/bxivact-winforms/README.md) | Headless control and chart compatibility                                           |
+| [Independent Linux WinForms model](crates/aftercast-winforms/README.md) | Headless control and chart compatibility                                           |
 
 Linux fixture-plugin lifecycle, synthetic imports and owned output are tested.
 Prior original-plugin checks cover synthetic input and a recorded Zeromus corpus,

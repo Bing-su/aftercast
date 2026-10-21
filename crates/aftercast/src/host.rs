@@ -7,12 +7,12 @@ use crate::{Error, HostConfig, runtime::ManagedSession};
 ///
 /// ```compile_fail
 /// fn requires_send<T: Send>() {}
-/// requires_send::<bxivact::Host>();
+/// requires_send::<aftercast::Host>();
 /// ```
 ///
 /// ```compile_fail
 /// fn requires_sync<T: Sync>() {}
-/// requires_sync::<bxivact::Host>();
+/// requires_sync::<aftercast::Host>();
 /// ```
 pub struct Host {
     pub(crate) session: ManagedSession,

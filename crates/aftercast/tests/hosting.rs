@@ -1,7 +1,7 @@
 use camino::Utf8Path;
 use std::env;
 
-use bxivact::{Error, Host, HostConfig, extract_bridge};
+use aftercast::{Error, Host, HostConfig, extract_bridge};
 
 fn config(root: &Utf8Path, bridge: &Utf8Path) -> HostConfig {
     HostConfig::builder()
@@ -22,7 +22,7 @@ fn extraction_preserves_existing_directories() {
     assert!(!directory.join("FSharp.Core.dll").exists());
     assert!(!directory.join("FSharp.Core.LICENSE").exists());
     assert!(
-        !std::fs::read_to_string(directory.join("Bxivact.Bridge.deps.json"))
+        !std::fs::read_to_string(directory.join("Aftercast.Bridge.deps.json"))
             .expect("read managed dependencies")
             .contains("FSharp.Core")
     );
@@ -30,13 +30,13 @@ fn extraction_preserves_existing_directories() {
     assert_eq!(
         std::fs::read(directory.join("System.Windows.Forms.dll"))
             .expect("read compatibility assembly"),
-        bxivact_winforms::ASSEMBLY
+        aftercast_winforms::ASSEMBLY
     );
     #[cfg(target_os = "linux")]
     assert_eq!(
         std::fs::read(directory.join("System.Windows.Forms.DataVisualization.dll"))
             .expect("read chart compatibility assembly"),
-        bxivact_winforms::DATAVISUALIZATION_ASSEMBLY
+        aftercast_winforms::DATAVISUALIZATION_ASSEMBLY
     );
     #[cfg(windows)]
     assert!(!directory.join("System.Windows.Forms.dll").exists());
@@ -46,7 +46,7 @@ fn extraction_preserves_existing_directories() {
             .join("System.Windows.Forms.DataVisualization.dll")
             .exists()
     );
-    let assembly = directory.join("Bxivact.Bridge.dll");
+    let assembly = directory.join("Aftercast.Bridge.dll");
     let expected = std::fs::read(&assembly).expect("read extracted assembly");
     let error = extract_bridge(&directory).expect_err("existing directories must be preserved");
     match error {
@@ -79,7 +79,7 @@ fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
     let invalid_bridge = temporary_path.join("invalid-bridge");
     std::fs::create_dir(&invalid_bridge).expect("create invalid configuration fixture");
     std::fs::write(
-        invalid_bridge.join("Bxivact.Bridge.runtimeconfig.json"),
+        invalid_bridge.join("Aftercast.Bridge.runtimeconfig.json"),
         "not JSON",
     )
     .expect("write invalid runtime configuration");

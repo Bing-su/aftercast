@@ -1,7 +1,7 @@
 using System.Runtime.ExceptionServices;
-using Bxivact.ActCompat;
+using Aftercast.ActCompat;
 
-namespace Bxivact.ActCompat
+namespace Aftercast.ActCompat
 {
     // RecordsDispatched measures raw hook dispatch, not whether a plugin accepted a combat record.
     public sealed record ImportResult(long LinesRead, long RecordsDispatched, int Encounters,

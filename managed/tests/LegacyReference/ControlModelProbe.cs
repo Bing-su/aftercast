@@ -1,7 +1,7 @@
 using System.Drawing;
 using System.Windows.Forms;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 public static class ControlModelProbe
 {

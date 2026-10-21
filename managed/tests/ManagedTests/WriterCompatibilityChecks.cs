@@ -2,7 +2,7 @@ using System.Reflection.Metadata;
 using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
-using Bxivact.Bridge;
+using Aftercast.Bridge;
 
 internal static class WriterCompatibilityChecks
 {

@@ -2,7 +2,7 @@ using System.Drawing;
 using System.Security.Cryptography;
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 // A null original UI root can fail only at the final profiling notification after real ranking/trim work.
 public static class EncounterFinalizationProbe

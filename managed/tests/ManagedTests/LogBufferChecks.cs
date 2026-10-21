@@ -4,8 +4,8 @@ using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
-using Bxivact.ActCompat;
-using Bxivact.Bridge;
+using Aftercast.ActCompat;
+using Aftercast.Bridge;
 
 internal static class LogBufferChecks
 {

@@ -1,6 +1,6 @@
 mod common;
 
-use bxivact::{Error, Host, PluginConfig, PluginId};
+use aftercast::{Error, Host, PluginConfig, PluginId};
 use camino::Utf8Path;
 use common::{Deployment, deployment};
 
@@ -8,7 +8,7 @@ fn construct(host: &mut Host, assembly: &Utf8Path, name: &str) -> PluginId {
     host.create_plugin(
         PluginConfig::builder()
             .path(assembly)
-            .type_name(format!("Bxivact.PluginFixture.{name}"))
+            .type_name(format!("Aftercast.PluginFixture.{name}"))
             .build(),
     )
     .expect("construct lifecycle fixture")
@@ -167,7 +167,7 @@ fn initialization_cleanup_and_shutdown_are_session_owned_and_not_retried(
     let state = deployment.directory().join("state 한글");
     let config = || deployment.config();
     let assembly = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Bxivact.PluginFixture.dll")
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll")
         .canonicalize_utf8()
         .expect("build fixtures first");
     let mut host = Host::start(config()).expect("start lifecycle host");

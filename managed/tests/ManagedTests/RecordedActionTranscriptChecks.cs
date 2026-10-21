@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Bxivact.TestContracts;
+using Aftercast.TestContracts;
 
 internal static class RecordedActionTranscriptChecks
 {
@@ -20,7 +20,7 @@ internal static class RecordedActionTranscriptChecks
         Invalid(source with { Configuration = source.Configuration with { CategoryNames = [] } });
         Invalid(source with { Configuration = source.Configuration with { OutgoingLinks = [new(1, ["Missing"])] } });
         Invalid(source with { Configuration = source.Configuration with { OutgoingLinks = [new(3, ["Heal"]), new(1, ["Damage"])] } });
-        var directory = Directory.CreateTempSubdirectory("bxivact-recorded-schema-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-recorded-schema-");
         try
         {
             var path = Path.Combine(directory.FullName, "transcript.json");

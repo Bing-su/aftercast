@@ -1,6 +1,6 @@
 using System.Diagnostics;
 using Advanced_Combat_Tracker;
-using Bxivact.ActCompat;
+using Aftercast.ActCompat;
 
 internal static class DebugLogChecks
 {
@@ -18,7 +18,7 @@ internal static class DebugLogChecks
 
     internal static void Run()
     {
-        var directory = Directory.CreateTempSubdirectory("bxivact-debug-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-debug-");
         using var listener = new Listener();
         Trace.Listeners.Add(listener);
         try

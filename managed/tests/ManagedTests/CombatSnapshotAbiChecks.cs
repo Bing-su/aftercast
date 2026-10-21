@@ -1,14 +1,14 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 using Advanced_Combat_Tracker;
-using Bxivact.Bridge;
+using Aftercast.Bridge;
 
 internal static class CombatSnapshotAbiChecks
 {
     internal static void Run(long session)
     {
         var memory = Marshal.AllocHGlobal(65536);
-        var directory = Directory.CreateTempSubdirectory("bxivact-snapshot-abi-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-snapshot-abi-");
         var shared = ((Lazy<PluginSession>)typeof(EntryPoint)
             .GetField("plugins", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!).Value;
         try

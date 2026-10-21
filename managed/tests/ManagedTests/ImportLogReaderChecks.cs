@@ -91,7 +91,7 @@ internal static class ImportLogReaderChecks
         using (var reader = Create(new MemoryStream(oversized)))
             Throws<InvalidDataException>(() => ReadAll(reader));
 
-        var directory = Directory.CreateTempSubdirectory("bxivact-import-reader-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-import-reader-");
         try
         {
             var path = Path.Combine(directory.FullName, "input.log");

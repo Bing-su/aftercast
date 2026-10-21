@@ -1,6 +1,6 @@
 [workspace]
 resolver = "3"
-members = ["crates/bxivact", "crates/bxivact-winforms"]
+members = ["crates/aftercast", "crates/aftercast-winforms"]
 
 [workspace.package]
 version = "0.1.0"
@@ -8,7 +8,7 @@ edition = "2024"
 publish = false
 
 [workspace.dependencies]
-bxivact-winforms = { path = "crates/bxivact-winforms", version = "0.1.0" }
+aftercast-winforms = { path = "crates/aftercast-winforms", version = "0.1.0" }
 bon = "3.10.2"
 bytes = "1.12.1"
 camino = "1.2.6"

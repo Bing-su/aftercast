@@ -6,9 +6,9 @@ installation. See the [glossary](../GLOSSARY.md) for domain terms.
 ## Deployment and host lifetime
 
 ```rust,no_run
-use bxivact::{Host, HostConfig, extract_bridge};
+use aftercast::{Host, HostConfig, extract_bridge};
 
-fn main() -> Result<(), bxivact::Error> {
+fn main() -> Result<(), aftercast::Error> {
     // Deploy to a new private directory so existing files are never overwritten.
     extract_bridge("/private/app-data/bridge-0.1.0")?;
     let host = Host::start(HostConfig::builder()
@@ -48,7 +48,7 @@ Plugin constructors and callbacks execute trusted code in the consumer process.
 There is no sandbox or assembly unloading. Failed initialization cannot be retried
 on the same instance, and arbitrary plugin side effects cannot be rolled back.
 Session-scoped plugin IDs, subscriptions and revisions cannot be reused after restart.
-The [initialize example](../crates/bxivact/examples/initialize.rs) demonstrates
+The [initialize example](../crates/aftercast/examples/initialize.rs) demonstrates
 pumping, import and owned output through the public interface.
 
 ## Input and owned output

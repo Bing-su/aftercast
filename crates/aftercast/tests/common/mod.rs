@@ -1,4 +1,4 @@
-use bxivact::{HostConfig, extract_bridge};
+use aftercast::{HostConfig, extract_bridge};
 use camino::{Utf8Path, Utf8PathBuf};
 use rstest::fixture;
 

@@ -101,14 +101,14 @@ impl ManagedSession {
         let fxr = find_hostfxr(&root)?;
         let hostfxr = process_hostfxr(fxr)?;
         let context = hostfxr.initialize_for_runtime_config_with_dotnet_root(
-            path_string(&bridge.join("Bxivact.Bridge.runtimeconfig.json"))?,
+            path_string(&bridge.join("Aftercast.Bridge.runtimeconfig.json"))?,
             path_string(&root)?,
         )?;
         let loader = context
-            .get_delegate_loader_for_assembly(path_string(&bridge.join("Bxivact.Bridge.dll"))?)?;
+            .get_delegate_loader_for_assembly(path_string(&bridge.join("Aftercast.Bridge.dll"))?)?;
         let function = |name| {
             loader.get_function_with_default_signature(
-                pdcstr!("Bxivact.Bridge.EntryPoint, Bxivact.Bridge"),
+                pdcstr!("Aftercast.Bridge.EntryPoint, Aftercast.Bridge"),
                 name,
             )
         };

@@ -1,7 +1,7 @@
-# bxivact-winforms
+# aftercast-winforms
 
 A prebuilt C# `System.Windows.Forms.dll` for Linux .NET hosts, exposed as
-`bxivact_winforms::ASSEMBLY`. The companion chart DLL is exposed as
+`aftercast_winforms::ASSEMBLY`. The companion chart DLL is exposed as
 `DATAVISUALIZATION_ASSEMBLY`. C# sources, DLLs and contract tests live here.
 The crate has no Rust dependencies and never starts .NET or invokes its SDK.
 

@@ -70,7 +70,7 @@ namespace Advanced_Combat_Tracker
     }
 }
 
-namespace Bxivact.ActCompat
+namespace Aftercast.ActCompat
 {
     using Advanced_Combat_Tracker;
 

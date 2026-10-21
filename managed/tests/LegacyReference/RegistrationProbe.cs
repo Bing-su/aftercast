@@ -2,7 +2,7 @@ using System.Drawing;
 using System.Runtime.CompilerServices;
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 // Probe registration metadata and callback delivery without creating or claiming aggregated combat data.
 public static class RegistrationProbe
@@ -44,7 +44,7 @@ public static class RegistrationProbe
         Check(damageColumn.Label == "Damage" && damageColumn.DefaultVisible && damageColumn.SqlDataType == "INT" && damageColumn.SqlDataName == "damage");
         Check(encounterColumn.Label == "Encounter" && encounterColumn.DefaultVisible && encounterColumn.SqlDataType == "INT" && encounterColumn.SqlDataName == "encounter");
 
-        const string key = "bxivact-fixture-registration";
+        const string key = "aftercast-fixture-registration";
         var columns = CombatantData.ColumnDefs;
         var definitions = CombatantData.IncomingDamageTypeDataObjects;
         var exports = EncounterData.ExportVariables;

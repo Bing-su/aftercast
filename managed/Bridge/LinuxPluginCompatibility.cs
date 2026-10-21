@@ -6,7 +6,7 @@ using System.Reflection.PortableExecutable;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
 
-namespace Bxivact.Bridge;
+namespace Aftercast.Bridge;
 
 // Pin the inspected bytes; never guess offsets for an unknown plugin build.
 internal static partial class LinuxPluginCompatibility

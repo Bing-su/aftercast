@@ -25,26 +25,26 @@ const FILES: &[(&str, &[u8])] = &[
         include_bytes!("../managed/Dotnet.Compatibility.NOTICES.LICENSE"),
     ),
     (
-        "Bxivact.Bridge.dll",
-        include_bytes!("../managed/Bxivact.Bridge.dll"),
+        "Aftercast.Bridge.dll",
+        include_bytes!("../managed/Aftercast.Bridge.dll"),
     ),
     (
-        "Bxivact.Bridge.deps.json",
-        include_bytes!("../managed/Bxivact.Bridge.deps.json"),
+        "Aftercast.Bridge.deps.json",
+        include_bytes!("../managed/Aftercast.Bridge.deps.json"),
     ),
     (
-        "Bxivact.Bridge.runtimeconfig.json",
+        "Aftercast.Bridge.runtimeconfig.json",
         #[cfg(not(windows))]
-        include_bytes!("../managed/Bxivact.Bridge.runtimeconfig.json"),
+        include_bytes!("../managed/Aftercast.Bridge.runtimeconfig.json"),
         #[cfg(windows)]
-        include_bytes!("../managed/Bxivact.Bridge.runtimeconfig.windows.json"),
+        include_bytes!("../managed/Aftercast.Bridge.runtimeconfig.windows.json"),
     ),
     #[cfg(target_os = "linux")]
-    ("System.Windows.Forms.dll", bxivact_winforms::ASSEMBLY),
+    ("System.Windows.Forms.dll", aftercast_winforms::ASSEMBLY),
     #[cfg(target_os = "linux")]
     (
         "System.Windows.Forms.DataVisualization.dll",
-        bxivact_winforms::DATAVISUALIZATION_ASSEMBLY,
+        aftercast_winforms::DATAVISUALIZATION_ASSEMBLY,
     ),
     (
         "Advanced Combat Tracker.dll",

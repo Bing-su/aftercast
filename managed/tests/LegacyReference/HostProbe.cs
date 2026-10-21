@@ -1,6 +1,6 @@
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 // Emit real ldsfld/stsfld and method calls against the original ACT declarations.
 public static class HostProbe

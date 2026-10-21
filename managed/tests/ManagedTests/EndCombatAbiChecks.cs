@@ -1,17 +1,17 @@
-using Bxivact.Testing;
+using Aftercast.Testing;
 using System.Drawing;
 using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Windows.Forms;
 using Advanced_Combat_Tracker;
-using Bxivact.Bridge;
+using Aftercast.Bridge;
 
 internal static class EndCombatAbiChecks
 {
     internal static void Run(long session)
     {
         var memory = Marshal.AllocHGlobal(24);
-        var directory = Directory.CreateTempSubdirectory("bxivact-end-combat-abi-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-end-combat-abi-");
         var shared = ((Lazy<PluginSession>)typeof(EntryPoint)
             .GetField("plugins", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!).Value;
         void Check(bool condition, [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(condition))] string? expression = null)

@@ -2,7 +2,7 @@ using System.Windows.Forms;
 using System.Xml;
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 // Compile the observed XML signatures against original ACT metadata, including its misspelled finalizer.
 public static class SettingsSerializerProbe

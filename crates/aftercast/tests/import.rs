@@ -1,6 +1,6 @@
 mod common;
 
-use bxivact::{Error, Host, ImportReport, PluginConfig};
+use aftercast::{Error, Host, ImportReport, PluginConfig};
 use camino::Utf8Path;
 use common::{Deployment, deployment};
 
@@ -16,12 +16,12 @@ fn imports_drain_actions_and_recover_after_input_and_plugin_failures(deployment:
         Err(Error::Managed { command: 8, .. })
     ));
     let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
-        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Bxivact.PluginFixture.dll");
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
     let plugin = host
         .create_plugin(
             PluginConfig::builder()
                 .path(path)
-                .type_name("Bxivact.PluginFixture.ImportPlugin")
+                .type_name("Aftercast.PluginFixture.ImportPlugin")
                 .build(),
         )
         .expect("construct import fixture plugin");

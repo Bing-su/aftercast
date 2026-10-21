@@ -1,6 +1,6 @@
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 // Emit the original event, nested delegate, and field signatures for runtime binding checks.
 public static class StartupProbe

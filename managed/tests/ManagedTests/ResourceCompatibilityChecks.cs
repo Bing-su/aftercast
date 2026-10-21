@@ -6,7 +6,7 @@ using System.Reflection.PortableExecutable;
 using System.Runtime.Loader;
 using System.Security.Cryptography;
 using System.Text;
-using Bxivact.Bridge;
+using Aftercast.Bridge;
 
 internal static class ResourceCompatibilityChecks
 {
@@ -28,7 +28,7 @@ internal static class ResourceCompatibilityChecks
         var unknown = (byte[])original.Clone();
         unknown[100] ^= 1;
         Rejected(unknown);
-        var context = new AssemblyLoadContext("bxivact-resource-compatibility-check", true);
+        var context = new AssemblyLoadContext("aftercast-resource-compatibility-check", true);
         context.Resolving += (_, name) =>
         {
             var expected = name.Name switch

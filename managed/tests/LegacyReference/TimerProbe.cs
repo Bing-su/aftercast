@@ -1,7 +1,7 @@
 using System.ComponentModel;
 using FormsTimer = System.Windows.Forms.Timer;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 public static class TimerProbe
 {

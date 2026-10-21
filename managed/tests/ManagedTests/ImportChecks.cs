@@ -1,9 +1,9 @@
-using Bxivact.Testing;
+using Aftercast.Testing;
 using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Advanced_Combat_Tracker;
-using Bxivact.ActCompat;
+using Aftercast.ActCompat;
 
 internal static class ImportChecks
 {
@@ -23,7 +23,7 @@ internal static class ImportChecks
 
     private sealed class Fixture : IDisposable
     {
-        internal readonly DirectoryInfo Directory = System.IO.Directory.CreateTempSubdirectory("bxivact-import-");
+        internal readonly DirectoryInfo Directory = System.IO.Directory.CreateTempSubdirectory("aftercast-import-");
         internal readonly HostEnvironment Host;
         internal readonly FormActMain Root;
         internal readonly ZoneData LiveZone;

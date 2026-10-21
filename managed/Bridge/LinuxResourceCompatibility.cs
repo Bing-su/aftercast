@@ -3,7 +3,7 @@ using System.Reflection.Metadata.Ecma335;
 using System.Reflection.PortableExecutable;
 using System.Security.Cryptography;
 
-namespace Bxivact.Bridge;
+namespace Aftercast.Bridge;
 
 // Restore the original Windows delimiter without changing resource bytes, metadata tokens or exception boundaries.
 internal static partial class LinuxPluginCompatibility

@@ -9,7 +9,7 @@ and `AddPrebuild()` routines, which only populate dictionaries.
 
 ```sh
 dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release -p:RestoreLockedMode=true -- \
-  "binaries/act/Advanced Combat Tracker.exe" crates/bxivact-winforms/managed
+  "binaries/act/Advanced Combat Tracker.exe" crates/aftercast-winforms/managed
 ```
 
 Each stage emits JSON with the actual assembly path or exception. A successful
@@ -23,7 +23,7 @@ three genuine MasterSwing actions through a genuine ZoneData/EncounterData graph
 The fixture is separate from FFXIV defaults and does not exercise host hooks or
 SetEncounter. Aggregate queries report their own failures.
 
-`contracts /absolute/path/Bxivact.LegacyReference.dll` executes the Dnum, combat
+`contracts /absolute/path/Aftercast.LegacyReference.dll` executes the Dnum, combat
 state and configured action reference probes against the original ACT implementation after the same
 bootstrap. Build the LegacyReference project first; this process still loads no
 ActCompat assembly.

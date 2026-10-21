@@ -1,10 +1,10 @@
-using Bxivact.Testing;
+using Aftercast.Testing;
 using System.Drawing;
 using System.Globalization;
 using System.Windows.Forms;
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.PluginFixture;
+namespace Aftercast.PluginFixture;
 
 // Exercise the Rust import boundary using an fixture plugin with deterministic actions.
 public class ImportPlugin : IActPluginV1

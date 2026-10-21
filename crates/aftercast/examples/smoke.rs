@@ -1,4 +1,4 @@
-use bxivact::{Host, HostConfig, extract_bridge};
+use aftercast::{Host, HostConfig, extract_bridge};
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args_os().skip(1);

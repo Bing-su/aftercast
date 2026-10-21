@@ -3,6 +3,26 @@
 version = 4
 
 [[package]]
+name = "aftercast"
+version = "0.1.0"
+dependencies = [
+ "aftercast-winforms",
+ "bon",
+ "bytes",
+ "camino",
+ "netcorehost",
+ "rstest",
+ "scopeguard",
+ "tempfile",
+ "thiserror",
+ "tracing",
+]
+
+[[package]]
+name = "aftercast-winforms"
+version = "0.1.0"
+
+[[package]]
 name = "aho-corasick"
 version = "1.1.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -45,26 +65,6 @@ name = "build-target"
 version = "0.8.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "78e2ceaf91e22593e194211930aea78a41af58e49e872474ebf4335bf649aad1"
-
-[[package]]
-name = "bxivact"
-version = "0.1.0"
-dependencies = [
- "bon",
- "bxivact-winforms",
- "bytes",
- "camino",
- "netcorehost",
- "rstest",
- "scopeguard",
- "tempfile",
- "thiserror",
- "tracing",
-]
-
-[[package]]
-name = "bxivact-winforms"
-version = "0.1.0"
 
 [[package]]
 name = "bytes"

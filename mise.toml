@@ -2,27 +2,27 @@
 managed_tests = "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build --"
 original_tests = "dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release --no-build --"
 act = "binaries/act/Advanced Combat Tracker.exe"
-forms = "crates/bxivact-winforms/managed"
-reference_probe = "managed/tests/LegacyReference/bin/Release/net10.0/Bxivact.LegacyReference.dll"
+forms = "crates/aftercast-winforms/managed"
+reference_probe = "managed/tests/LegacyReference/bin/Release/net10.0/Aftercast.LegacyReference.dll"
 
 [tasks."managed:build"]
 description = "Build the bridge and refresh the Cargo payload"
 depends = ["winforms:build"]
-run = "dotnet publish managed/Bridge/Bridge.csproj -c Release --no-self-contained -o crates/bxivact/managed -p:RestoreLockedMode=true"
+run = "dotnet publish managed/Bridge/Bridge.csproj -c Release --no-self-contained -o crates/aftercast/managed -p:RestoreLockedMode=true"
 
 [tasks."winforms:build"]
 description = "Build the independent WinForms and chart payload"
 run = [
-  "dotnet build crates/bxivact-winforms/managed/Charting/Charting.csproj -c Release -o target/managed/forms -p:RestoreLockedMode=true",
-  "cp target/managed/forms/System.Windows.Forms.dll target/managed/forms/System.Windows.Forms.DataVisualization.dll crates/bxivact-winforms/managed/",
+  "dotnet build crates/aftercast-winforms/managed/Charting/Charting.csproj -c Release -o target/managed/forms -p:RestoreLockedMode=true",
+  "cp target/managed/forms/System.Windows.Forms.dll target/managed/forms/System.Windows.Forms.DataVisualization.dll crates/aftercast-winforms/managed/",
 ]
 
 [tasks."managed:restore"]
 description = "Refresh managed dependency locks"
 run = [
   "dotnet restore managed/Bridge/Bridge.csproj",
-  "dotnet restore crates/bxivact-winforms/managed/Charting/Charting.csproj",
-  "dotnet restore crates/bxivact-winforms/managed/tests/ContractTests.csproj",
+  "dotnet restore crates/aftercast-winforms/managed/Charting/Charting.csproj",
+  "dotnet restore crates/aftercast-winforms/managed/tests/ContractTests.csproj",
   "dotnet restore managed/tests/PluginFixture/PluginFixture.csproj",
   "dotnet restore managed/tests/LegacyReference/LegacyReference.csproj",
   "dotnet restore managed/tests/OriginalReference/OriginalReference.csproj",
@@ -42,13 +42,13 @@ run = [
 [tasks."package:check"]
 description = "Verify both offline Cargo packages"
 run = [
-  "cargo package -p bxivact-winforms --offline",
-  "cargo package -p bxivact --offline --exclude-lockfile --config 'patch.crates-io.bxivact-winforms.path=\"target/package/bxivact-winforms-0.1.0\"'",
+  "cargo package -p aftercast-winforms --offline",
+  "cargo package -p aftercast --offline --exclude-lockfile --config 'patch.crates-io.aftercast-winforms.path=\"target/package/aftercast-winforms-0.1.0\"'",
 ]
 
 [tasks.smoke]
 description = "Extract the bundled payload, start, probe and stop"
-run = "cargo run -p bxivact --example smoke --"
+run = "cargo run -p aftercast --example smoke --"
 
 [tasks."managed:test"]
 description = "Check the bridge and synthetic ACT contracts"
@@ -58,12 +58,12 @@ run = ["{{vars.managed_tests}} bridge", "{{vars.managed_tests}} contracts"]
 [tasks."test:winforms"]
 description = "Check independent WinForms and chart contracts"
 depends = ["winforms:build"]
-run = "dotnet run --project crates/bxivact-winforms/managed/tests/ContractTests.csproj -c Release -p:RestoreLockedMode=true"
+run = "dotnet run --project crates/aftercast-winforms/managed/tests/ContractTests.csproj -c Release -p:RestoreLockedMode=true"
 
 [tasks."test:hosting"]
 description = "Check CLR lifecycle and diagnostics (DOTNET_ROOT required)"
 depends = ["managed:build"]
-run = "cargo test -p bxivact --lib --test hosting -- --ignored"
+run = "cargo test -p aftercast --lib --test hosting -- --ignored"
 
 [tasks."test:plugins"]
 description = "Check plugin lifecycle and owned output (DOTNET_ROOT required)"
@@ -71,7 +71,7 @@ depends = ["managed:test-runner"]
 run = [
   "dotnet build managed/tests/PluginFixture/PluginFixture.csproj -c Release -p:RestoreLockedMode=true",
   "{{vars.managed_tests}} plugins",
-  "cargo test -p bxivact --test plugins --test lifecycle --test import --test logs --test snapshots -- --ignored",
+  "cargo test -p aftercast --test plugins --test lifecycle --test import --test logs --test snapshots -- --ignored",
 ]
 
 [tasks."test:log-load"]

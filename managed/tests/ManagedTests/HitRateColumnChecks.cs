@@ -1,12 +1,12 @@
 using System.Globalization;
 using Advanced_Combat_Tracker;
-using Bxivact.ActCompat;
+using Aftercast.ActCompat;
 
 internal static class HitRateColumnChecks
 {
     internal static void Run()
     {
-        var directory = Directory.CreateTempSubdirectory("bxivact-hit-rate-");
+        var directory = Directory.CreateTempSubdirectory("aftercast-hit-rate-");
         var commas = ActGlobals.mainTableShowCommas;
         var blockIsHit = ActGlobals.blockIsHit;
         var culture = CultureInfo.CurrentCulture;

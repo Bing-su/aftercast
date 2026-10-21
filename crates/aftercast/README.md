@@ -1,4 +1,4 @@
-# bxivact
+# aftercast
 
 An in-process ACT-compatible host for Rust. Implements the .NET 10/C# bridge
 lifecycle, initial ACT contracts, and trusted plugin construction/initialization.
@@ -10,9 +10,9 @@ Consumers need an installed .NET 10 runtime, but no .NET SDK. The prebuilt bridg
 is embedded in the crate. Runtime installation and downloads are never automatic.
 
 ```rust,no_run
-use bxivact::{extract_bridge, Host, HostConfig};
+use aftercast::{extract_bridge, Host, HostConfig};
 
-# fn main() -> Result<(), bxivact::Error> {
+# fn main() -> Result<(), aftercast::Error> {
 extract_bridge("/private/app-data/bridge-0.1.0")?;
 let host = Host::start(HostConfig::builder()
     .dotnet_root("/usr/share/dotnet")

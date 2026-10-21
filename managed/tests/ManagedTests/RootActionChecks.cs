@@ -1,10 +1,10 @@
-using Bxivact.Testing;
+using Aftercast.Testing;
 using System.Drawing;
 using System.Reflection;
 using System.Windows.Forms;
 using Advanced_Combat_Tracker;
-using Bxivact.ActCompat;
-using Bxivact.Bridge;
+using Aftercast.ActCompat;
+using Aftercast.Bridge;
 
 internal static class RootActionChecks
 {
@@ -23,7 +23,7 @@ internal static class RootActionChecks
 
     private sealed class Fixture : IDisposable
     {
-        private readonly DirectoryInfo directory = Directory.CreateTempSubdirectory("bxivact-combat-");
+        private readonly DirectoryInfo directory = Directory.CreateTempSubdirectory("aftercast-combat-");
         internal readonly HostEnvironment Environment;
         internal readonly FormActMain Root;
         internal string LogPath => Path.Combine(directory.FullName, "Network.log");

@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <AssemblyName>Bxivact.Bridge</AssemblyName>
+    <AssemblyName>Aftercast.Bridge</AssemblyName>
     <GenerateRuntimeConfigurationFiles>true</GenerateRuntimeConfigurationFiles>
     <RollForward>LatestPatch</RollForward>
   </PropertyGroup>

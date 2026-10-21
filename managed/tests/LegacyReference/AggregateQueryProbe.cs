@@ -2,7 +2,7 @@ using System.Drawing;
 using System.Runtime.CompilerServices;
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 public static class AggregateQueryProbe
 {

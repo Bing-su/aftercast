@@ -1,6 +1,6 @@
 mod common;
 
-use bxivact::{
+use aftercast::{
     Error, Host, LogLoss, LogSubscription, LogSubscriptionConfig, LogTimeKind, PluginConfig,
 };
 use camino::Utf8Path;
@@ -22,8 +22,8 @@ fn bounded_subscribers_report_loss_without_interrupting_combat_or_owning_clr_mem
         Err(Error::Managed { command: 9, .. })
     ));
     let plugin = host.create_plugin(PluginConfig::builder()
-        .path(Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../../managed/tests/PluginFixture/bin/Release/net10.0/Bxivact.PluginFixture.dll"))
-        .type_name("Bxivact.PluginFixture.ImportPlugin").build()).expect("construct parser fixture");
+        .path(Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll"))
+        .type_name("Aftercast.PluginFixture.ImportPlugin").build()).expect("construct parser fixture");
     host.initialize_plugin(plugin)
         .expect("initialize parser fixture");
     let path = directory.join("input 한글.log");

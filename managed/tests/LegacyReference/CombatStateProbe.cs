@@ -1,7 +1,7 @@
 using System.Drawing;
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 // Verify real object ownership and mutable collections without claiming combat aggregation.
 public static class CombatStateProbe

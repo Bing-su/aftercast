@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <AssemblyName>Bxivact.LegacyReference</AssemblyName>
+    <AssemblyName>Aftercast.LegacyReference</AssemblyName>
     <ActReferencePath Condition="'$(ActReferencePath)' == ''">$(MSBuildThisFileDirectory)../../../binaries/act/Advanced Combat Tracker.exe</ActReferencePath>
   </PropertyGroup>
   <ItemGroup>

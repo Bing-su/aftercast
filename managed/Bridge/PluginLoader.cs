@@ -3,10 +3,10 @@ using System.Runtime.Loader;
 using System.Security.Cryptography;
 using Advanced_Combat_Tracker;
 
-namespace Bxivact.Bridge;
+namespace Aftercast.Bridge;
 
 // Share contracts from the actual bridge context, which netcorehost may isolate from Default.
-internal sealed class PluginContext(string path, byte[] hash) : AssemblyLoadContext("bxivact:" + path)
+internal sealed class PluginContext(string path, byte[] hash) : AssemblyLoadContext("aftercast:" + path)
 {
     private readonly AssemblyDependencyResolver resolver = new(path);
     protected override Assembly? Load(AssemblyName name)

@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>Exe</OutputType>
-    <AssemblyName>Bxivact.OriginalWriter</AssemblyName>
+    <AssemblyName>Aftercast.OriginalWriter</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
     <!-- Exercise the exact production byte rewrite without loading the ACT host or its workers. -->

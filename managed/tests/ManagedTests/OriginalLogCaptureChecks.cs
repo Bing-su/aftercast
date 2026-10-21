@@ -2,7 +2,7 @@ using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Advanced_Combat_Tracker;
-using Bxivact.ActCompat;
+using Aftercast.ActCompat;
 
 internal static class OriginalLogCaptureChecks
 {
@@ -16,7 +16,7 @@ internal static class OriginalLogCaptureChecks
 
     private sealed class Fixture : IDisposable
     {
-        internal readonly DirectoryInfo Directory = System.IO.Directory.CreateTempSubdirectory("bxivact-original-capture-");
+        internal readonly DirectoryInfo Directory = System.IO.Directory.CreateTempSubdirectory("aftercast-original-capture-");
         internal readonly HostEnvironment Host;
         internal readonly FormActMain Root;
         internal string Path => System.IO.Path.Combine(Directory.FullName, "원본.log");

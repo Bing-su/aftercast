@@ -1,5 +1,5 @@
 [package]
-name = "bxivact-winforms"
+name = "aftercast-winforms"
 description = "A prebuilt managed WinForms compatibility assembly for Linux hosts"
 version.workspace = true
 edition.workspace = true

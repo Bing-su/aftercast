@@ -6,13 +6,13 @@
   "compilationOptions": {},
   "targets": {
     ".NETCoreApp,Version=v10.0": {
-      "Bxivact.Bridge/0.1.0": {
+      "Aftercast.Bridge/0.1.0": {
         "dependencies": {
           "System.Security.Permissions": "10.0.13",
           "Advanced Combat Tracker.Reference": "3.8.5.288"
         },
         "runtime": {
-          "Bxivact.Bridge.dll": {}
+          "Aftercast.Bridge.dll": {}
         }
       },
       "System.Security.Permissions/10.0.13": {
@@ -60,7 +60,7 @@
     }
   },
   "libraries": {
-    "Bxivact.Bridge/0.1.0": {
+    "Aftercast.Bridge/0.1.0": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

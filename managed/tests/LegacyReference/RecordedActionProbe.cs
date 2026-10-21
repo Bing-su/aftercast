@@ -1,9 +1,9 @@
 using System.Drawing;
 using System.Globalization;
 using Advanced_Combat_Tracker;
-using Bxivact.TestContracts;
+using Aftercast.TestContracts;
 
-namespace Bxivact.LegacyReference;
+namespace Aftercast.LegacyReference;
 
 // Replay committed parser output through genuine public ACT APIs; expected values never drive action routing or allies.
 public static class RecordedActionProbe
