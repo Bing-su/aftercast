@@ -12,7 +12,7 @@ Consumer behavior is described in [usage](usage.md), with source ownership in
 | Maintainer           | Rust, mise and .NET 10 SDK; global.json permits the latest installed stable 10.0 feature band     |
 | Real CLR tests       | DOTNET_ROOT points to the trusted .NET 10 installation                                            |
 | Original comparisons | Explicit local proprietary ACT/FFXIV artifacts matching the pinned hashes; excluded from packages |
-| TTS backends | Windows installed SAPI voices; Linux libspeechd-dev/libclang-dev and local synthesis module; Edge playback on Linux also needs libasound2-dev. Native/network checks are opt-in |
+| Audio backends | Windows installed SAPI voices; Linux libspeechd-dev/libclang-dev and local synthesis module; file/Edge/PCM playback on Linux needs libasound2-dev. Native/network checks are opt-in; see [audio validation](audio-validation.md) |
 
 Cargo.toml and clippy.toml define the Rust lint policy; verification treats
 warnings as errors. The license is undecided and workspace publication is disabled.
@@ -80,6 +80,8 @@ of the replacement implementation.
 | `mise run test:text-exports` | Compare unaligned exports against genuine ACT on Windows; replacement probe only elsewhere |
 | `mise run test:external-export -- <assembly> <state>` | Exercise Export_All through two combat ends and native clipboard output; restores prior clipboard |
 | `mise run test:timer-models` | Compare timer data/frame contracts with genuine ACT on Windows; replacement probe only elsewhere |
+| `mise run test:audio` | Compare original sound delegates, volumes and start/warning/expiry timer speech on Windows |
+| `cargo test -p aftercast --features audio --test speech -- --ignored` | Run ACT → native speech/effect completion checks; requires local voices and a default audio device |
 | `mise run test:external-timer -- <assembly> <state>` | Exercise unmodified Timer Repeater expiry, combat-only repetition and its native cancel button |
 | `mise run test:eq2-timestamps` | Compare default EQ2 timestamp parsing against original ACT on Windows |
 | `mise run test:external-eq2 -- <assembly> <state>` | Import controlled raw EQ2 records through the unmodified parser; capture actions for original replay |

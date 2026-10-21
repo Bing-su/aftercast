@@ -3,8 +3,8 @@
 TTS is implemented in the standalone `aftercast-tts` crate with local SAPI and
 Speech Dispatcher backends and an explicitly selected online Edge backend.
 ACT's `FormActMain.TTS(string)` forwards bounded, owned UTF-8 requests through the
-existing bridge to Rust. Effects, notifications and spell-timer sounds are outside
-this change.
+existing bridge to Rust. The subsequent [audio follow-up](audio-validation.md)
+adds effects and spell-timer cues; notification windows remain unsupported.
 
 ## Architecture and usage
 

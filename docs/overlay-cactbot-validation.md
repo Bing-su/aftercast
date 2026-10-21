@@ -1,5 +1,9 @@
 # OverlayPlugin and cactbot validation — 2026-10-21
 
+The [audio follow-up](audio-validation.md) also verifies original CEF and WS
+`playSound` requests alongside `cactbotSay`. Native ACT timer speech/effects are
+checked independently through complete Windows and Linux host/device paths.
+
 The controlled Windows x64/.NET 10 stack passes original FFXIV initialization,
 maintained OverlayPlugin phase 2, cactbot addon startup, real CEF rendering and
 real WebSocket delivery into unchanged raidboss bundles. Game memory is replaced

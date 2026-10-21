@@ -7,10 +7,13 @@ creation thread. Domain terms are in the [glossary](../GLOSSARY.md).
 ## Module map
 
 Speech lives in the independent [aftercast-tts crate](../crates/aftercast-tts/README.md).
-[The host adapter](../crates/aftercast/src/speech.rs) drains bounded ACT TTS requests
+[The host adapter](../crates/aftercast/src/speech.rs) drains bounded ACT speech and effect requests
 from managed code during Pump. Direct playback backends and inference-only
 Synthesizer implementations share worker ownership and cancellation; Playback
 adapts CPU PCM/MP3 output without exposing model/tensor types to ACT.
+`SoundPlayer` shares worker admission/cancellation with `Speaker`, with separate
+queues so effects can play during speech. Timer callbacks only enqueue requests;
+device I/O stays on Rust workers. See [audio contracts](audio-validation.md).
 
 | Location                                                                                                                                                                                       | Responsibility                                                                                                                                            |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |

@@ -66,6 +66,24 @@ ACT TTS is opt-in: add the standalone `aftercast-tts` crate and call
 `host.clear_tts()` cancels speech and disables the route. No online fallback is
 automatic. See [TTS setup and limits](tts-validation.md).
 
+Effects are opt-in independently. Enable `aftercast`'s `audio` feature (or select
+`system`/`playback` on your `aftercast-tts` dependency), then configure before loading plugins:
+
+```rust,ignore
+host.set_tts(aftercast_tts::Speaker::system()?)?;
+host.set_sound_player(aftercast_tts::SoundPlayer::system()?)?;
+host.set_audio_settings(&aftercast::AudioSettings {
+    sound_volume: 60,
+    tts_volume: 80,
+    timer_expire: "tts expired".into(),
+    ..Default::default()
+})?;
+```
+
+Pump regularly to dispatch queued requests and observe playback errors. Replacing
+or clearing an output cancels its active and queued work; settings last for one
+session. See [sound/timer contracts and platform validation](audio-validation.md).
+
 | Operation                | Meaning and limits                                                                                             | Detail                           |
 | ------------------------ | -------------------------------------------------------------------------------------------------------------- | -------------------------------- |
 | `end_combat()`           | Quiesce live delivery, drain admitted actions and publish the latest ended result; idle calls are harmless     | [Combat snapshots](snapshots.md) |

@@ -127,6 +127,24 @@ deferred. Edge also implements Synthesizer and uses the same playback path;
 
 ## Verification
 
+Local effects use the independent `SoundPlayer` queue with the `playback` feature:
+
+```rust,no_run
+use aftercast_tts::{SoundPlayer, SoundRequest};
+let sounds = SoundPlayer::system()?;
+sounds.play(SoundRequest::new("beep", 30))?.wait()?;
+# Ok::<(), aftercast_tts::Error>(())
+```
+
+| Output | Contract |
+| --- | --- |
+| `SoundBackend` | Worker-owned injectable player; no ACT types or TTS model dependency |
+| `FilePlayback` | Direct blocking local WAV/MP3/Ogg Vorbis/FLAC/file URI or beep, default device |
+| `SoundPlayer` | Separate FIFO, same completion/cancellation handle contract as speech |
+| Limits | 4096-byte source, 16 MiB encoded file, 300-second playback, no implicit network fetch |
+
+See `docs/audio-validation.md` for ACT timer and original plugin evidence.
+
 ```sh
 cargo test -p aftercast-tts
 cargo test -p aftercast-tts --no-default-features
