@@ -109,6 +109,8 @@ build.rs, automatic runtime download, native UI substitute or consumer NuGet res
 The unified check passes on Windows x64, including CLR lifecycle, fixture-plugin
 initialization, native callback dispatch, import, logs and snapshots.
 See the [Windows validation results](windows-validation.md) for commands and limits.
-Original Windows plugin execution and visible UI rendering, broader encounter families, native Linux capture, sustained live
+Original Windows plugin import/lifecycle results are recorded in the
+[original-artifact report](windows-original-validation.md) and
+[local-log report](local-log-validation.md). Visible UI rendering, broader encounter families, native Linux capture, sustained live
 throughput, full recording durability/rotation and FF Logs acceptance remain
 unverified. Tests of subscriber loss do not establish lossless recording.

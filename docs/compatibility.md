@@ -4,6 +4,9 @@ The host implements the ACT contracts used by its fixtures and the pinned FFXIV
 plugin. Reference tests compare selected behavior with genuine ACT; they do not
 establish complete ACT or Windows parity.
 
+The [ACT compatibility matrix](compatibility-matrix.md) tracks implementation,
+verification evidence and remaining work by feature and API family.
+
 `ActCommands` implements the literal `end` command and ignores unmatched echo
 text, as genuine ACT does (for example, `Hojoring>[EX] Beacon ...`). Recognized
 UI/chat commands such as `clear`, `add `, `macro: ` and `timer ` remain unsupported

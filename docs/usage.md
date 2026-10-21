@@ -81,7 +81,7 @@ Neither output is a durable recording or complete encounter archive.
 | Controls and charts                                          | Headless metadata, ownership and explicit event delivery                                  | Native controls require .NET 10 Desktop Runtime and caller-owned STA; charts are unverified |
 | Rendering/native handles                                     | Explicitly unsupported                                                                    | Native handles and Invoke tested; visible rendering unverified |
 | Live log following                                           | Append, split UTF-8, truncation, same-path replacement and initial partial records tested | Same file-following contracts and fixture live snapshots tested |
-| Original FFXIV plugin                                        | Prior synthetic and recorded Zeromus observations                                         | Execution unverified                                          |
+| Original FFXIV plugin                                        | Prior synthetic and recorded Zeromus observations                                         | 3.0.3.4 import/lifecycle results recorded in the [Windows report](windows-original-validation.md); full compatibility unverified |
 | Native game capture / durable recording / FF Logs acceptance | Unverified                                                                                | Unverified                                                    |
 
 The pinned FFXIV 3.0.3.3 Linux deployment receives three in-memory corrections:

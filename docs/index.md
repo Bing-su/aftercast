@@ -13,4 +13,5 @@
 | [Original log batches](logs.md)                            | Buffer limits, ownership, loss accounting and binary layout             |
 | [Combat snapshots](snapshots.md)                           | Revisions, completion status and binary layout                          |
 | [Compatibility](compatibility.md)                          | ACT identity, Linux corrections, reference inputs and comparison limits |
+| [ACT compatibility matrix](compatibility-matrix.md)         | Feature/API implementation, evidence, gaps and next acceptance milestones |
 | [WinForms support](../crates/aftercast-winforms/README.md) | Headless controls and chart model                                       |
