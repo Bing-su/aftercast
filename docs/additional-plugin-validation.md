@@ -101,6 +101,40 @@ the local evidence directory. The version/type guards now follow the pinned
 ACT behavior; this does not establish compatibility with every member used by
 older plugins.
 
+## Text export workflow follow-up
+
+Unmodified Export_All now completes a live combat-end workflow on Windows:
+two fixture combats export 100 and then 400 cumulative damage from the zone's
+All encounter, rather than only the latest combat. Host diagnostics remain zero,
+and DeInitPlugin/shutdown complete. The native clipboard's previous contents are
+restored in a finally block without printing them. These fixture formatter
+callbacks test the export contract; they are not FFXIV/EQ2 number formatters.
+
+| Contract | Evidence / limit |
+| --- | --- |
+| TextExportFormatOptions and registrations | Original hash-based duplicate equality, including an intentional concatenation collision, is preserved |
+| Unaligned GetTextExport | Configured sort callbacks, reverse order, explicit/empty allies, Unknown exclusion, token extras, unknown tokens, final empty LF and 256-line cap match the same compiled original-reference probe |
+| Callback failures | Replacement checks verify observable diagnostics and empty failure output; format validation precedes best-effort encounter copying |
+| Clipboard | BeforeClipboardSet edits affect native output; local copy works with CopyLocal=false when no remote sharer is connected; three fallback attempts retain failure diagnostics |
+| Full regression | `mise run check` and `mise run test:text-exports` pass |
+| Remaining export scope | Font-aligned overloads, UI configuration/selectors, selective-export options, remote Clipboard Sharer and HTML export remain unimplemented; Linux clipboard explicitly throws |
+
+The original probe bootstraps only disabled export options on an uninitialized
+main object, with native Windows controls; it does not run ACT's main window.
+`TextExportProbe.cs` compiles against genuine ACT and runs in separate original
+and replacement processes. Decompilation inputs are the pinned ACT binary;
+local readable references are under `target/additional-plugins-20261021/decompiled/`.
+
+```powershell
+mise run test:text-exports
+mise run test:external-export -- 'binaries/additional-plugins-20261021/Export_All.dll' 'target/additional-plugins-20261021/export-workflow'
+```
+
+The original text-export comparison uses Desktop Runtime on Windows. On other
+platforms the task runs the replacement probe only. The external-export task
+requires Windows and a writable native clipboard. Runtime evidence is retained
+in `text-exports-reference.txt`, `export-workflow.txt` and `check-exports.txt`.
+
 ## Reproduction
 
 Use a trusted plugin and a private writable test directory. The runner executes

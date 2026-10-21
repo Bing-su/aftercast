@@ -107,6 +107,25 @@ run = '{{vars.managed_tests}} external-plugin "$usage_plugin" "$usage_type" "$us
 # Preserve explicit paths/types on Windows, e.g. a plugin directory containing spaces.
 run_windows = '{{vars.managed_tests}} external-plugin "%usage_plugin%" "%usage_type%" "%usage_state%"'
 
+[tasks."test:text-exports"]
+description = "Compare unaligned text exports with original ACT (Windows native reference)"
+depends = ["managed:references"]
+run = '{{vars.managed_tests}} text-exports'
+run_windows = [
+  '{{vars.managed_tests}} text-exports',
+  'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} text-exports {{vars.reference_probe}}',
+]
+
+[tasks."test:external-export"]
+description = "Exercise unmodified Export_All against two combat ends and restore the native clipboard"
+depends = ["managed:test-runner"]
+usage = '''
+arg "<plugin>" help="Trusted compiled Export_All assembly"
+arg "<state>" help="Private writable test state directory"
+'''
+run = '{{vars.managed_tests}} external-export "$usage_plugin" "$usage_state"'
+run_windows = '{{vars.managed_tests}} external-export "%usage_plugin%" "%usage_state%"'
+
 [tasks."test:original-import"]
 description = "Import the synthetic fixture through an original plugin copy"
 depends = ["managed:test-runner"]

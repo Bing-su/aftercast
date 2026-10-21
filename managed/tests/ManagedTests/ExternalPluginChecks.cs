@@ -4,7 +4,7 @@ using Aftercast.Bridge;
 
 internal static class ExternalPluginChecks
 {
-    internal static void Run(string assemblyPath, string typeName, string statePath)
+    internal static void Run(string assemblyPath, string typeName, string statePath, Action? exercise = null)
     {
         Platform.Prepare();
         var path = Path.GetFullPath(assemblyPath);
@@ -26,6 +26,7 @@ internal static class ExternalPluginChecks
                 session.Pump();
                 Thread.Sleep(10);
             }
+            exercise?.Invoke();
             session.Deinitialize(id);
             if (session.DiagnosticsSnapshot.Item1 != 0)
                 throw new Exception("External plugin diagnostics: " + string.Join("\n", session.DiagnosticsSnapshot.Item2));

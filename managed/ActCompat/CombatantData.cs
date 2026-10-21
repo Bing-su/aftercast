@@ -204,6 +204,15 @@ public class CombatantData : IEquatable<CombatantData>
     public static List<int> DamageSwingTypes = new();
     public static List<int> HealingSwingTypes = new();
     public static Dictionary<string, TextExportFormatter> ExportVariables = new();
+    public class DualComparison(string first, string second) : IComparer<CombatantData>
+    {
+        public int Compare(CombatantData? left, CombatantData? right)
+        {
+            var result = ColumnDefs.TryGetValue(first, out var primary) ? primary.SortComparer(left!, right!) : 0;
+            if (result == 0 && ColumnDefs.TryGetValue(second, out var secondary)) result = secondary.SortComparer(left!, right!);
+            return result != 0 ? result : left!.Damage.CompareTo(right!.Damage);
+        }
+    }
     public static Dictionary<string, ColumnDef> ColumnDefs = new();
     public string GetColumnByName(string name) => ColumnDefs.TryGetValue(name, out var column) ? column.GetCellData(this) : string.Empty;
 

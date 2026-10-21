@@ -41,7 +41,7 @@ internal static class Program
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.DataVisualization.dll"));
         }
         // Modes keep artifact-dependent checks separate from ordinary ABI tests without a test framework dependency.
-        if (mode is "contracts" or "original" or "original-import" or "original-corpus" or "original-log") Platform.Prepare();
+        if (mode is "contracts" or "original" or "original-import" or "original-corpus" or "original-log" or "text-exports") Platform.Prepare();
         switch (mode)
         {
             case "bridge": Bridge(); break;
@@ -57,6 +57,8 @@ internal static class Program
             case "original-log": ObserveOriginal(args[1], args[2], args[3], fixedFixture: false, localLog: true); break;
             case "recorded-actions": RecordedActions(args[1]); break;
             case "external-plugin": ExternalPluginChecks.Run(args[1], args[2], args[3]); break;
+            case "text-exports": TextExportReference(); break;
+            case "external-export": ExternalPluginChecks.Run(args[1], "ACT_Plugin1.Export_All", args[2], ExternalExportChecks.Run); break;
             default: throw new ArgumentException("Unknown managed test mode");
         }
         Console.WriteLine($"Managed {args[0]} contract checks passed.");
@@ -68,6 +70,13 @@ internal static class Program
             SHA256.HashData(File.ReadAllBytes("crates/aftercast/managed/Advanced Combat Tracker.dll"))));
         var legacy = Assembly.LoadFrom(Path.GetFullPath("managed/tests/LegacyReference/bin/Release/net10.0/Aftercast.LegacyReference.dll"));
         try { Console.WriteLine(legacy.GetType("Aftercast.LegacyReference.RecordedActionProbe")!.GetMethod("Run")!.Invoke(null, [path])); }
+        catch (TargetInvocationException error) when (error.InnerException is not null)
+        { ExceptionDispatchInfo.Capture(error.InnerException).Throw(); throw; }
+    }
+    private static void TextExportReference()
+    {
+        var probes = Assembly.LoadFrom(Path.GetFullPath("managed/tests/LegacyReference/bin/Release/net10.0/Aftercast.LegacyReference.dll"));
+        try { Check((string)probes.GetType("Aftercast.LegacyReference.TextExportProbe")!.GetMethod("Run")!.Invoke(null, null)! == "Text exports"); }
         catch (TargetInvocationException error) when (error.InnerException is not null)
         { ExceptionDispatchInfo.Capture(error.InnerException).Throw(); throw; }
     }
@@ -460,6 +469,7 @@ internal static class Program
     private static void Contracts()
     {
         PluginBindingChecks.Run();
+        TextExportChecks.Run();
         LogFollowerChecks.Run();
         InitialBoundaryChecks.Run();
         InitialSnapshotChecks.Run();
