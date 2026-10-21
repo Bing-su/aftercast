@@ -1,34 +1,34 @@
 [package]
 name = "aftercast"
-description = "An in-process ACT-compatible host for Rust applications"
 version.workspace = true
 edition.workspace = true
-publish.workspace = true
+description = "An in-process ACT-compatible host for Rust applications"
 include = [
-  "src/**",
+  "README.md",
   "examples/**",
-  "tests/**",
+  "managed/*.LICENSE",
   "managed/*.dll",
   "managed/*.json",
-  "managed/*.LICENSE",
-  "README.md",
+  "src/**",
+  "tests/**",
 ]
+publish.workspace = true
 
 [dependencies]
 bon.workspace = true
 bytes.workspace = true
 camino.workspace = true
 netcorehost.workspace = true
+scopeguard.workspace = true
 thiserror.workspace = true
 tracing.workspace = true
-scopeguard.workspace = true
+
+[dev-dependencies]
+rstest.workspace = true
+tempfile = "3"
 
 [target.'cfg(target_os = "linux")'.dependencies]
 aftercast-winforms.workspace = true
 
 [lints]
 workspace = true
-
-[dev-dependencies]
-rstest.workspace = true
-tempfile = "3.27.0"

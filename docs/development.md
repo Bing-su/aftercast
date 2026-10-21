@@ -46,8 +46,8 @@ each scenario owns its Host. Exhaustive truncated-prefix checks test every prefi
 | `mise run managed:restore`                              | Intentionally refresh NuGet lock state after dependency changes                        |
 | `mise run managed:build`                                | Rebuild WinForms and publish the portable bridge into Cargo payload files              |
 | `mise run winforms:build`                               | Rebuild the independent forms/chart payload                                            |
-| `mise run managed:test`                                 | Bridge and synthetic ACT contracts                                                    |
-| `mise run test:winforms`                                | Independent WinForms and chart contracts                                              |
+| `mise run managed:test`                                 | Bridge and synthetic ACT contracts                                                     |
+| `mise run test:winforms`                                | Independent WinForms and chart contracts                                               |
 | `mise run test:hosting`                                 | Real CLR lifecycle and diagnostic tests; requires DOTNET_ROOT                          |
 | `mise run test:plugins`                                 | Managed plugin requests and Rust fixture integration; requires DOTNET_ROOT             |
 | `mise run test:log-load`                                | Synthetic buffer bounds, exact subscriber loss and latency/allocation observations     |
@@ -61,14 +61,14 @@ of the replacement implementation.
 
 ## Original-artifact verification
 
-| Command                                                               | Required input and evidence                                                                               |
-| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------- |
+| Command                                                               | Required input and evidence                                                                                     |
+| --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `mise run test:original`                                              | Check reference binding, original constructors/values/actions and shared contracts against both implementations |
-| `mise run test:linux-plugin-compat`                                   | Verify pinned memory/writer/resource corrections against local FFXIV SDK files                            |
-| `mise run test:original-import -- <plugin-copy> <new-state>`          | Original synthetic import, failure recovery and private diagnostics; use a disposable trusted plugin copy |
-| `mise run test:original-corpus -- <plugin-copy> <new-state> <corpus>` | Three pinned Zeromus imports with submitted-action totals and exact subscriber loss                       |
-| `mise run test:recorded-actions -- <transcript>`                      | Compare captured actions, actor totals, allies and encounter totals in both ACT implementations           |
-| `mise run test:original-writer -- <sdk-deployment>`                   | Watchdog-protected original writer child processes; characterize flush/cancellation behavior              |
+| `mise run test:linux-plugin-compat`                                   | Verify pinned memory/writer/resource corrections against local FFXIV SDK files                                  |
+| `mise run test:original-import -- <plugin-copy> <new-state>`          | Original synthetic import, failure recovery and private diagnostics; use a disposable trusted plugin copy       |
+| `mise run test:original-corpus -- <plugin-copy> <new-state> <corpus>` | Three pinned Zeromus imports with submitted-action totals and exact subscriber loss                             |
+| `mise run test:recorded-actions -- <transcript>`                      | Compare captured actions, actor totals, allies and encounter totals in both ACT implementations                 |
+| `mise run test:original-writer -- <sdk-deployment>`                   | Watchdog-protected original writer child processes; characterize flush/cancellation behavior                    |
 
 See [compatibility](compatibility.md) for reference inputs, Linux corrections and
 comparison limits.
@@ -77,8 +77,8 @@ comparison limits.
 
 | Owner               | Files / rule                                                                                                                   |
 | ------------------- | ------------------------------------------------------------------------------------------------------------------------------ |
-| aftercast             | Prebuilt bridge, ACT compatibility, runtime configs and official legacy permission/extension dependencies with bundled notices |
-| aftercast-winforms    | Forms/chart source, independent tests and prebuilt assemblies; Linux-only Rust dependency                                      |
+| aftercast           | Prebuilt bridge, ACT compatibility, runtime configs and official legacy permission/extension dependencies with bundled notices |
+| aftercast-winforms  | Forms/chart source, independent tests and prebuilt assemblies; Linux-only Rust dependency                                      |
 | Cargo extraction    | Select the platform runtime config and Windows extension image; write only into a new private destination                      |
 | Managed native seam | Standard ComponentEntryPoint, private versioned packets, bounded writes and immediate managed error capture                    |
 | Maintainer          | Rebuild checked-in DLLs after managed changes; consumers never invoke dotnet during Cargo build                                |

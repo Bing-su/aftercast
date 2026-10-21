@@ -1,23 +1,23 @@
 [package]
 name = "aftercast-winforms"
-description = "A prebuilt managed WinForms compatibility assembly for Linux hosts"
 version.workspace = true
 edition.workspace = true
-publish.workspace = true
+description = "A prebuilt managed WinForms compatibility assembly for Linux hosts"
 include = [
-  "src/**",
-  "managed/*.dll",
+  "README.md",
   "managed/*.cs",
   "managed/*.csproj",
-  "managed/packages.lock.json",
+  "managed/*.dll",
   "managed/Charting/*.cs",
   "managed/Charting/*.csproj",
   "managed/Charting/packages.lock.json",
+  "managed/packages.lock.json",
   "managed/tests/*.cs",
   "managed/tests/*.csproj",
   "managed/tests/packages.lock.json",
-  "README.md",
+  "src/**",
 ]
+publish.workspace = true
 
 [lints]
 workspace = true
