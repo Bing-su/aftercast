@@ -83,9 +83,9 @@ different version.
 
 | Target | Verification | Remaining boundary |
 | --- | --- | --- |
-| Maintained OverlayPlugin 0.19.111 | [Native startup observation](overlay-cactbot-validation.md): phase 1, with original CEF files present | Missing InitActDone blocks phase 2; update query also encounters missing PluginGetRemoteVersion |
-| CactbotOverlay 0.37.5 | Entry point returns Ready with a native parent tab | OverlayPlugin phase 2/addon Init/event source remain unverified |
-| cactbot raidboss web bundles | Fixture API test in real Edge: alerts, timeline start, forced jump and reset pass | Independent browser verification; native OverlayPlugin/aftercast integration and gameplay remain unverified |
+| Maintained OverlayPlugin 0.19.111 | [Controlled full-stack check](overlay-cactbot-validation.md): phase 2 Initialised, actual CEF bitmap and WS handlers pass; live original/replacement version queries agree | Windows x64; hash-pinned in-memory HtmlRenderer import correction; unknown renderer artifacts unverified |
+| CactbotOverlay 0.37.5 | Addon source registers, starts log subscription and serves original handlers; shutdown removes subscription | Player-state fixture replaces absent game memory; original false .NET version warning documented |
+| cactbot raidboss web bundles | Unchanged page in real CEF and real WS/Edge: alerts, live-log timeline start, forcejump and reset pass | Actual game capture/raids, other overlays, audio and desktop composition remain unverified |
 
 ## Next acceptance milestones
 

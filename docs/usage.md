@@ -51,6 +51,13 @@ Session-scoped plugin IDs, subscriptions and revisions cannot be reused after re
 The [initialize example](../crates/aftercast/examples/initialize.rs) demonstrates
 pumping, import and owned output through the public interface.
 
+| Deferred integration contract | Usage |
+| --- | --- |
+| `InitActDone` | Starts false. A pump marks startup ready after all created instances leave constructed/initializing state and a plugin has initialized. Creating another instance reopens the boundary; shutdown clears it |
+| Startup batch | Initialize FFXIV, OverlayPlugin and cactbot in that order before the first pump; then pump regularly until OverlayPlugin reports Initialised. This lets its deferred addon scan see the full batch |
+| Plugin metadata | ACT's active checkbox and title/status controls are available to registered plugins and remain owned by the host |
+| Shutdown | DeInit runs before owned controls and optional IDisposable cleanup. OverlayPlugin event sources are stopped before their container is disposed so addon timers/hooks do not outlive the embedded host |
+
 ## Input and owned output
 
 | Operation                | Meaning and limits                                                                                             | Detail                           |

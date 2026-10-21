@@ -86,6 +86,9 @@ of the replacement implementation.
 | `mise run test:external-benchmark -- <assembly> <state>` | Exercise original event instrumentation, native table refresh, slow-handler logs and handler restoration |
 | `mise run test:plugin-metadata` | Compare plugin list, version, initial closing state and notification signatures with original ACT on Windows |
 | `mise run observe:overlay-stack -- <ffxiv> <overlay> <cactbot> <state>` | Observe original stack startup and internal errors; completion is not a readiness pass; see [results](overlay-cactbot-validation.md) |
+| `mise run test:overlay-integration -- <ffxiv> <overlay> <cactbot> <state>` | Real CEF and WS/Edge raidboss handlers, alerts, live-log timeline and cleanup; requires prepared CEF and existing Playwright/Edge |
+| `mise run test:overlay-renderer -- <HtmlRenderer.dll>` | Check pinned in-memory native copy correction, bounds, zero length and unchanged source |
+| `mise run test:plugin-updates` | Compare live official plugin-version query with original ACT (network required) |
 | `mise run test:linux-plugin-compat`                                   | Verify pinned memory/writer/resource corrections against local FFXIV SDK files                                  |
 | `mise run test:original-import -- <plugin-copy> <new-state>`          | Original synthetic import, failure recovery and private diagnostics; use a disposable trusted plugin copy       |
 | `mise run test:original-corpus -- <plugin-copy> <new-state> <corpus>` | Three pinned Zeromus imports with submitted-action totals and exact subscriber loss                             |

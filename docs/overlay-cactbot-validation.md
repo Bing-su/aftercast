@@ -1,30 +1,39 @@
 # OverlayPlugin and cactbot validation — 2026-10-21
 
-Original packages came from the [official ACT download list](https://advancedcombattracker.com/download.php).
-The tested release is **[OverlayPlugin/OverlayPlugin 0.19.111](https://github.com/OverlayPlugin/OverlayPlugin/releases/tag/v0.19.111)**,
-the maintained fork, together with **[OverlayPlugin/cactbot 0.37.5](https://github.com/OverlayPlugin/cactbot/releases/tag/v0.37.5)**.
-No downloaded DLL, JavaScript bundle or source was modified. Windows x64/.NET 10
-and the existing original FFXIV 3.0.3.4 copy were used for native startup.
+The controlled Windows x64/.NET 10 stack passes original FFXIV initialization,
+maintained OverlayPlugin phase 2, cactbot addon startup, real CEF rendering and
+real WebSocket delivery into unchanged raidboss bundles. Game memory is replaced
+by an explicit public player-state fixture; log ingress uses the real FFXIV
+plugin. This establishes the tested integration path, not gameplay coverage.
+
+Packages came from the [official ACT download list](https://advancedcombattracker.com/download.php):
+**[OverlayPlugin/OverlayPlugin 0.19.111](https://github.com/OverlayPlugin/OverlayPlugin/releases/tag/v0.19.111)**
+and **[OverlayPlugin/cactbot 0.37.5](https://github.com/OverlayPlugin/cactbot/releases/tag/v0.37.5)**.
+Downloaded files and JavaScript bundles remain unchanged on disk. The host applies
+one hash-pinned **in-memory HtmlRenderer import correction**, described below.
 
 ## Results
 
-| Layer | Observed result | Interpretation |
+| Layer | Asserted result | Boundary |
 | --- | --- | --- |
-| Original FFXIV 3.0.3.4 | Initializes before OverlayPlugin | Startup check; gameplay capture is not tested here |
-| OverlayPlugin | Reaches `Init Phase 1: Waiting for plugins to load` with CEF files present | Blocked: its native timer requires missing `FormActMain.InitActDone`; the updater also encounters missing `PluginGetRemoteVersion(int)` |
-| CactbotOverlay | InitPlugin returns `Ready.` and removes its native settings tab | Entry point only; the subsequent shared pump fails in OverlayPlugin's timer |
-| cactbot addon/event source | Not verified | OverlayPlugin phase 2 has not completed; addon Init, registration and actual game events are not established |
-| raidboss web release | Alarm/alert/info outputs, timeline start, forced jump and reset pass in real Edge | Fixture OverlayPlugin API; independent browser verification, not an aftercast/CEF integration pass |
+| FFXIV 3.0.3.4 | Starts before OverlayPlugin; follows five controlled raw records | No game process or packet capture |
+| OverlayPlugin 0.19.111 | Deferred initialization reaches `Initialised`; no unexpected integration errors | Native Windows x64, prepared CefSharp 95.7.14 |
+| cactbot 0.37.5 | Actual event source registers, starts its ACT log subscription and serves handlers | Player identity/HP/job supplied through its public event API |
+| Original CEF overlay | Unchanged raidboss page renders alerts and timeline; real bitmap frame captured | Desktop composition/transparency and audio not assessed |
+| Original WebSocket server + Edge | Actual handlers, player event and five LogLine events reach unchanged raidboss | Loopback transport, controlled logs |
+| Shutdown | Event-source Stop, plugin DeInit and IDisposable run; cactbot log hook removed and ACT globals cleared | CEF/process restart and long-running reconnect remain untested |
 
-Zero host diagnostics is insufficient evidence of readiness. OverlayPlugin can
-catch an error, display its own dialog and return normally. The observer records
-status, failure phase, selected first-chance exceptions, dialogs and shutdown
-failures. Its successful exit means the observation completed. Pump failures can
-originate from an earlier plugin while a later plugin is being observed.
+The observer alone is not a readiness test: plugins can catch errors and return.
+The integration test additionally asserts final status, source registration,
+actual handler responses, CEF/Edge DOM output, frame capture, log errors and
+cleanup. The original cactbot emits `Requires .NET 4.6 or above. Using 10.` because
+its check independently compares major and minor (`major < 4 || minor < 6`). It
+logs this after startup without aborting. Only that known false version error is
+allowed; other `Error:` log entries fail integration.
 
 ## Pinned inputs
 
-Inputs remain excluded from Git under `binaries/overlay-cactbot-20261021/`.
+Inputs are excluded from Git under `binaries/overlay-cactbot-20261021/`.
 
 | Input | Bytes | SHA-256 |
 | --- | ---: | --- |
@@ -32,86 +41,98 @@ Inputs remain excluded from Git under `binaries/overlay-cactbot-20261021/`.
 | cactbot ZIP, [ACT ID 97](https://advancedcombattracker.com/download.php?id=97) | 10,874,048 | `1a9a277982259e370304ebfda3e81434fbbc039d0ddf5ec299fd776a5d3477f9` |
 | OverlayPlugin.dll, assembly 0.19.111.0 | 18,944 | `45f56980210bf94c3c9c85605867131f102bcd091787223ee1c17e9adb9ca725` |
 | CactbotOverlay.dll, assembly 0.37.5.0 | 10,752 | `c972270c0699e3a51c3966a2df96a5d06c8b4f97e29c9272b10e54a4257babe2` |
+| HtmlRenderer.dll | — | `7d5a9b39940e8a4470398707801fbf4f7d643e082e06dd9e244fbc80549d742f` |
 | CefSharp 95.7.14 x64 archive | 71,848,018 | `1146c6964b95af1f2b63f6b9a58bee3cc59dcb4f7d3c0bc7635c54952eb27211` |
 
 Both plugin DLLs target x64/.NET Framework 4.8. OverlayPlugin references ACT
 3.8.0.283; cactbot references ACT 3.8.4.287 and OverlayPlugin.Common 0.19.86.0.
-REA artifact evidence:
+Independent contract probes use original ACT 3.8.5.288. REA artifact evidence:
 `ev_76184c49d257592ab207cf4a3965a98cdff3058856d845cffecd743bae606ed3`,
 `ev_216a8c77542954b77456791c2e4bd0afa6df49b0fbdf84354c478c160a08efb2`.
-Relevant types were decompiled with maintainer-only ilspycmd 11.1.0.9782 into the
-local evidence directory's `decompiled/` folder.
+Relevant original types were decompiled locally with ilspycmd 11.1.0.9782.
 
-The **current** updater still specifies this legacy CEF dependency URL:
+The maintained updater still specifies this legacy **CEF dependency** URL:
 `https://github.com/ngld/OverlayPlugin/releases/download/v0.7.0/CefSharp-95.7.14-x64.7z`.
-That URL is distinct from the maintained OverlayPlugin release tested here.
-The complete archive was extracted into private test state `OverlayPluginCef/x64`,
-with `version.txt` set to `95.7.14`; no system CEF installation was changed.
-Reaching phase 1 does not establish renderer initialization or complete CefSharp
-compatibility with .NET 10. An earlier bounded download observation without
-complete CEF remained at CEF initialization and is not the final result.
+The tested plugin itself comes from OverlayPlugin/OverlayPlugin. The complete
+archive is extracted into private state `OverlayPluginCef/x64`, with version.txt
+set to `95.7.14`; no system CEF installation is changed.
 
-## Host corrections and checks
+## Host corrections
 
-| Initial blocker | Correction / check | Limit |
-| --- | --- | --- |
-| Missing ActPlugins | Writable list tracks registered plugin data; lifecycle/removal tests added | Ownership remains separate from the public mutable list |
-| Version/closing dependencies | GetVersion reports the compatibility assembly version; IsActClosing becomes true before shutdown callbacks | Original version scanning/logging side effects are not fully replicated |
-| Common fails despite extracted libs | Private libs DLLs resolve in the plugin load context; fixture checks path/context | Shared identity across every addon/dependency is not established |
-| Parent TabControl absent | Windows plugin pages now belong to a native host-owned TabControl | Linux parent-tab UI is outside this change |
-| NotificationAdd binding | Four-argument signature explicitly rejects unsupported notification delivery | No notification UI is claimed |
-| Original contract evidence | Shared PluginMetadataProbe checks list assignment, version, initial closing state and notification signature against original ACT 3.8.5.288 | Replacement fixtures separately check shutdown transitions and native parents |
-
-The observer uses private state, dismisses and records native message boxes
-owned only by its own test thread, and surfaces native Timer exceptions instead
-of leaving WinForms' unhandled-exception dialog open. First-chance exceptions can
-be caught by a plugin and are not individually classified as fatal results.
-
-## Browser verification
-
-The [browser check](../managed/tests/cactbot-browser.cjs) serves the extracted
-release on loopback and loads its unchanged raidboss page in headless Microsoft
-Edge **155.0.4283.62**. Only the OverlayPlugin API is a fixture; unexpected API
-calls and uncaught page exceptions fail the test. Audio is disabled.
-
-| Input | Asserted result |
+| Contract / failure | Implementation and evidence |
 | --- | --- |
-| Player state and Middle La Noscea, zone 134 | Built-in CactbotTest data selected |
-| GameLog echo `cactbot test response` | Alarm `1`, alert `2`, info `3` |
-| Bow emote to the striking dummy | Rendered TimerBars include Angry Dummy, Long Castbar and Final Sting |
-| Echo `test sync2` | Forced jump produces loop bars Two, Three and Four |
-| Farewell emote | Timeline bars cleared |
-| Page exceptions | None |
+| InitActDone | False during construction/initialization; Pump marks a completed startup batch ready only when no pending plugin remains; adding another plugin resets it; shutdown clears it. Lifecycle fixtures cover these transitions. Initialize the whole stack before its first Pump. |
+| Plugin metadata | Host owns native parent tabs, status/title labels and enabled checkboxes separately from mutable ActPlugins entries. cbEnabled is true during Init and false before DeInit. Independent original probe checks metadata/readiness signatures. |
+| PluginGetRemoteVersion(int) | Queries the actual HTTPS ACT endpoint with bounded timeout and legacy WebException errors. Original and replacement both return `v0.19.111` for ID 86; no fabricated version response. |
+| FormImportProgress | Exact nullable ActGlobals field/type required by MiniParse. It remains null because embedded imports have no progress window; a full import-progress UI is not implemented. |
+| Addon type identity | Share OverlayPlugin.Common and Newtonsoft.Json between load contexts, checking name, version, culture and token. Required for cactbot's Func<JObject,JToken> handler signatures. Binding tests include incompatible identities and simple-name loads. |
+| Native CopyMemory | Hash-pinned import correction enables real CEF pixel copying under .NET 10; buffer bounds/zero-length/source-preservation checks plus real capture pass. |
+| Embedded shutdown | Stop registered OverlayPlugin event sources before DeInit/container disposal, then dispose plugin resources once. Generic success/failure fixtures and real cactbot subscription removal are checked. |
 
-The captured screenshot was inspected. This validates browser rendering of the
-fixture; CEF/desktop transparency, game input, event-source delivery, audio and
-actual raid gameplay remain unverified.
+The original HtmlRenderer imports `kernel32!CopyMemory`, which resolves under
+CLR 4 (confirmed independently) but throws EntryPointNotFoundException under
+.NET 10 during rendering. For the exact hash above on Windows x64, the loader
+validates its signature and sole module use, clones its bytes, and changes the
+import to `ucrtbase!memcpy` in the cloned metadata string heap. Internal calls use
+the existing MethodDef token. Windows x64's unified calling convention permits
+the ignored pointer return and zero-extended uint length. Unknown hashes are
+loaded without rewriting; they are **not** claimed renderer-compatible. This
+correction neither patches a user's installation nor changes cactbot JavaScript.
 
-## Reproduction
+## End-to-end assertions
+
+[The managed check](../managed/tests/ManagedTests/OverlayIntegrationChecks.cs)
+starts the original WSServer and a real MiniParseOverlay. CEF DOM inspection goes
+through its real ExecuteScript binding and original cactbotSaveData handler.
+[The browser check](../managed/tests/cactbot-browser.cjs) connects Edge
+**155.0.4283.62** to that original WebSocket server without an injected API in
+integration mode. Its standalone mode remains a separate fixture-only check.
+
+| Input / operation | Asserted CEF and Edge result |
+| --- | --- |
+| Public player-state event; raw zone 134 log | Built-in CactbotTest data selected |
+| Raw GameLog echo `cactbot test response` | Alarm `1`, alert `2`, info `3` |
+| Raw bow emote to striking dummy | TimerBars include Angry Dummy; actual CEF bitmap captured |
+| Raw echo `test sync2` | Forcejump produces bar Three |
+| Raw farewell emote | Timeline bars cleared |
+| cactbotSaveData / cactbotLoadData | Original server handler round trip returns 42 |
+| WebSocket frames / page errors | Actual version response, player event and at least five LogLine events; no uncaught page exceptions |
+
+Raw records are appended to a private file followed through the original FFXIV
+plugin and ACT log events. The player fixture uses public Cactbot entity/event
+types and DispatchToJS; no private callback or fake game process is invoked.
+Both rendered screenshots were inspected. Audio is explicitly disabled.
+
+## Reproduction and evidence
+
+Prepare trusted extracted plugins, the FFXIV copy's chart dependency and CEF:
 
 ```powershell
-mise run test:plugin-metadata
-mise run observe:overlay-stack -- 'target/windows-original-3034/plugin/FFXIV_ACT_Plugin.dll' 'binaries/overlay-cactbot-20261021/OverlayPlugin/OverlayPlugin/OverlayPlugin.dll' 'binaries/overlay-cactbot-20261021/cactbot/cactbot/cactbot/CactbotOverlay.dll' 'target/overlay-cactbot-20261021/stack-cef'
-
-# Use existing Playwright and Microsoft Edge; no npm dependency is added to the product.
+$state = 'target/overlay-cactbot-20261021/stack-cef'
+7z x 'binaries/overlay-cactbot-20261021/CefSharp-95.7.14-x64.7z' "-o$state/OverlayPluginCef/x64" -y
+Set-Content "$state/OverlayPluginCef/x64/version.txt" '95.7.14' -NoNewline
+# Use an existing Playwright install and Microsoft Edge; no product npm dependency is added.
 $env:NODE_PATH = '<existing node_modules containing playwright>'
-node managed/tests/cactbot-browser.cjs 'binaries/overlay-cactbot-20261021/cactbot/cactbot/cactbot' 'target/overlay-cactbot-20261021/browser'
+mise run test:overlay-integration -- 'target/windows-original-3034/plugin/FFXIV_ACT_Plugin.dll' 'binaries/overlay-cactbot-20261021/OverlayPlugin/OverlayPlugin/OverlayPlugin.dll' 'binaries/overlay-cactbot-20261021/cactbot/cactbot/cactbot/CactbotOverlay.dll' $state
+mise run test:overlay-renderer -- 'binaries/overlay-cactbot-20261021/OverlayPlugin/OverlayPlugin/libs/HtmlRenderer.dll'
+mise run test:plugin-metadata
+mise run test:plugin-updates
+mise run check
 ```
 
-| Local evidence, relative to target/overlay-cactbot-20261021/ | Contents |
+| Local evidence relative to target/overlay-cactbot-20261021/ | Contents |
 | --- | --- |
-| overlay-initial.txt, overlay-host-contracts.txt | Initial ACT list and internally caught Common load failures |
-| stack-parent.txt, stack-cef/stack-observation.json | CEF present, native parent tabs, missing API evidence and failure-phase attribution |
-| cef-download.json, cef-extract.txt | Complete CEF archive provenance and extraction |
-| browser.txt, browser/browser-report.json, browser/raidboss.png | Assertions, API requests and rendered UI |
-| check.txt, metadata-reference.txt | Regression suite and independent original comparison |
+| integration-cef.txt, integration-repeat.txt | Complete original CEF + WS/Edge assertions; repeated successfully after the implementation commit with reused private state |
+| stack-cef/stack-observation.json, stack-cef/overlay-integration.log | Original final status, plugin errors and shutdown results |
+| stack-cef/cef-report.json, stack-cef/cef-raidboss.png | Five real CEF DOM probes and captured bitmap |
+| stack-cef/browser/browser-report.json, stack-cef/browser/raidboss.png | Real WS frames/handlers and rendered Edge output |
+| stack-cef/teardown-report.json | Cleared host globals and removed cactbot log subscription |
+| renderer-check.txt, framework-copy.txt | Native memcpy boundary checks and independent CLR 4 original-import check |
+| metadata-reference.txt, update-reference.txt | Independent original ACT contract/version query comparisons |
+| check-integrated.txt, ffxiv-integrated.txt | Full regression suite and original FFXIV synthetic import regression |
+| cef-download.json, cef-extract.txt | CEF archive provenance and extraction |
 
-The full `mise run check` suite and independent metadata reference comparison
-pass. Original FFXIV synthetic import is also rerun after the host changes;
-`ffxiv-regression.txt` records that bounded regression separately from the stack
-startup observation.
-
-Next integration work needs an explicit host-ready lifecycle boundary, remaining
-ACT plugin-manager/update contracts, addon identity checks and an end-to-end
-event-source/renderer test. A constant readiness flag would not establish that
-lifecycle.
+Earlier phase-1/missing-member observations are historical and superseded by
+these integration assertions. Live game memory/network capture, actual raids,
+other cactbot overlays, audio/TTS, desktop composition and sustained operation
+remain outside this controlled verification.
