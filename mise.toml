@@ -1,102 +1,142 @@
+[vars]
+managed_tests = "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build --"
+original_tests = "dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release --no-build --"
+act = "binaries/act/Advanced Combat Tracker.exe"
+forms = "crates/bxivact-winforms/managed"
+reference_probe = "managed/tests/LegacyReference/bin/Release/net10.0/Bxivact.LegacyReference.dll"
+
 [tasks."managed:build"]
-description = "Build the portable C# bridge and prepare the Cargo payload"
+description = "Build the bridge and refresh the Cargo payload"
 depends = ["winforms:build"]
 run = "dotnet publish managed/Bridge/Bridge.csproj -c Release --no-self-contained -o crates/bxivact/managed -p:RestoreLockedMode=true"
 
 [tasks."winforms:build"]
-description = "Build the independent WinForms/chart compatibility assemblies and update their crate payload"
-run = ["dotnet build crates/bxivact-winforms/managed/Charting/Charting.csproj -c Release -o target/managed/forms -p:RestoreLockedMode=true", "cp target/managed/forms/System.Windows.Forms.dll target/managed/forms/System.Windows.Forms.DataVisualization.dll crates/bxivact-winforms/managed/"]
+description = "Build the independent WinForms and chart payload"
+run = [
+  "dotnet build crates/bxivact-winforms/managed/Charting/Charting.csproj -c Release -o target/managed/forms -p:RestoreLockedMode=true",
+  "cp target/managed/forms/System.Windows.Forms.dll target/managed/forms/System.Windows.Forms.DataVisualization.dll crates/bxivact-winforms/managed/",
+]
+
+[tasks."managed:restore"]
+description = "Refresh managed dependency locks"
+run = [
+  "dotnet restore managed/Bridge/Bridge.csproj",
+  "dotnet restore crates/bxivact-winforms/managed/Charting/Charting.csproj",
+  "dotnet restore crates/bxivact-winforms/managed/tests/ContractTests.csproj",
+  "dotnet restore managed/tests/PluginFixture/PluginFixture.csproj",
+  "dotnet restore managed/tests/LegacyReference/LegacyReference.csproj",
+  "dotnet restore managed/tests/OriginalReference/OriginalReference.csproj",
+  "dotnet restore managed/tests/OriginalWriter/OriginalWriter.csproj",
+  "dotnet restore managed/tests/ManagedTests/ManagedTests.csproj",
+]
+
+[tasks.check]
+description = "Run Rust, managed and CLR fixture checks (DOTNET_ROOT required)"
+depends = ["managed:test", "test:winforms", "test:hosting", "test:plugins"]
+run = [
+  "cargo fmt --all --check",
+  "cargo clippy --workspace --all-targets -- -D warnings",
+  "cargo test --workspace",
+]
+
+[tasks."package:check"]
+description = "Verify both offline Cargo packages"
+run = [
+  "cargo package -p bxivact-winforms --offline",
+  "cargo package -p bxivact --offline --exclude-lockfile --config 'patch.crates-io.bxivact-winforms.path=\"target/package/bxivact-winforms-0.1.0\"'",
+]
+
+[tasks.smoke]
+description = "Extract the bundled payload, start, probe and stop"
+run = "cargo run -p bxivact --example smoke --"
+
+[tasks."managed:test"]
+description = "Check the bridge and synthetic ACT contracts"
+depends = ["managed:test-runner"]
+run = ["{{vars.managed_tests}} bridge", "{{vars.managed_tests}} contracts"]
 
 [tasks."test:winforms"]
-description = "Check managed WinForms signatures and explicit UI failures without ACT"
+description = "Check independent WinForms and chart contracts"
 depends = ["winforms:build"]
 run = "dotnet run --project crates/bxivact-winforms/managed/tests/ContractTests.csproj -c Release -p:RestoreLockedMode=true"
 
-[tasks."managed:restore"]
-description = "Restore and lock maintainer-only managed dependencies"
-run = ["dotnet restore managed/Bridge/Bridge.csproj", "dotnet restore crates/bxivact-winforms/managed/Charting/Charting.csproj", "dotnet restore crates/bxivact-winforms/managed/tests/ContractTests.csproj", "dotnet restore managed/tests/PluginFixture/PluginFixture.csproj", "dotnet restore managed/tests/LegacyReference/LegacyReference.csproj", "dotnet restore managed/tests/OriginalReference/OriginalReference.csproj", "dotnet restore managed/tests/OriginalWriter/OriginalWriter.csproj", "dotnet restore managed/tests/ManagedTests/ManagedTests.csproj"]
-
-[tasks.check]
-description = "Check formatting, Rust lints, and bridge tests"
-run = ["cargo fmt --all --check", "cargo clippy --workspace --all-targets -- -D warnings", "cargo test --workspace"]
-
-[tasks."package:check"]
-description = "Verify both offline Cargo packages using the packaged, unpublished WinForms dependency"
-run = ["cargo package -p bxivact-winforms --offline", "cargo package -p bxivact --offline --exclude-lockfile --config 'patch.crates-io.bxivact-winforms.path=\"target/package/bxivact-winforms-0.1.0\"'"]
-
-[tasks.smoke]
-description = "Start, call, and stop the embedded C# bridge using an installed .NET 10"
-run = "cargo run -p bxivact --example smoke --"
-
 [tasks."test:hosting"]
-description = "Exercise real CLR lifecycle tests; requires DOTNET_ROOT"
+description = "Check CLR lifecycle and diagnostics (DOTNET_ROOT required)"
+depends = ["managed:build"]
 run = "cargo test -p bxivact --lib --test hosting -- --ignored"
 
-[tasks."managed:test"]
-description = "Validate the managed ABI header and session ownership"
-depends = ["managed:test-runner", "test:winforms"]
-run = "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- bridge"
+[tasks."test:plugins"]
+description = "Check plugin lifecycle and owned output (DOTNET_ROOT required)"
+depends = ["managed:test-runner"]
+run = [
+  "dotnet build managed/tests/PluginFixture/PluginFixture.csproj -c Release -p:RestoreLockedMode=true",
+  "{{vars.managed_tests}} plugins",
+  "cargo test -p bxivact --test plugins --test lifecycle --test import --test logs --test snapshots -- --ignored",
+]
+
+[tasks."test:log-load"]
+description = "Measure synthetic log-buffer load and loss accounting"
+depends = ["managed:test-runner"]
+run = "{{vars.managed_tests}} log-load"
+
+[tasks."test:original"]
+description = "Compare reference contracts with genuine ACT"
+depends = ["managed:references"]
+run = [
+  "{{vars.managed_tests}} act",
+  '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}}',
+  '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} values',
+  '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} actions',
+  '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} contracts {{vars.reference_probe}}',
+]
+
+[tasks."test:linux-plugin-compat"]
+description = "Check pinned Linux memory, writer and resource corrections"
+depends = ["managed:test-runner"]
+run = "{{vars.managed_tests}} linux"
+
+[tasks."test:original-import"]
+description = "Import the synthetic fixture through an original plugin copy"
+depends = ["managed:test-runner"]
+usage = '''
+arg "<plugin>" help="Trusted plugin assembly copy"
+arg "<state>" help="Private state directory"
+'''
+run = '{{vars.managed_tests}} original-import "$usage_plugin" "$usage_state"'
+
+[tasks."test:original-corpus"]
+description = "Import the pinned Zeromus corpus three times"
+depends = ["managed:test-runner"]
+usage = '''
+arg "<plugin>" help="Trusted plugin assembly copy"
+arg "<state>" help="Private state directory"
+arg "<corpus>" help="Pinned recorded log file"
+'''
+run = '{{vars.managed_tests}} original-corpus "$usage_plugin" "$usage_state" "$usage_corpus"'
+
+[tasks."test:original-writer"]
+description = "Check the original writer in watchdog-protected processes"
+run = "dotnet run --project managed/tests/OriginalWriter/OriginalWriter.csproj -c Release -p:RestoreLockedMode=true --"
+
+[tasks."test:recorded-actions"]
+description = "Replay a transcript through replacement and genuine ACT"
+depends = ["managed:references"]
+usage = 'arg "<transcript>" help="Private JSON emitted by test:original-corpus"'
+run = [
+  '{{vars.managed_tests}} recorded-actions "$usage_transcript"',
+  '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} recorded-actions {{vars.reference_probe}} "$usage_transcript"',
+]
 
 [tasks."managed:test-runner"]
-description = "Build the dependency-free C# contract runner against the two managed implementations"
+hide = true
 depends = ["managed:build"]
 run = "dotnet build managed/tests/ManagedTests/ManagedTests.csproj -c Release -p:RestoreLockedMode=true"
 
-[tasks."test:log-load"]
-description = "Measure synthetic managed log-buffer load and verify exact subscriber-loss accounting"
+[tasks."managed:references"]
+hide = true
 depends = ["managed:test-runner"]
-run = "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- log-load"
-
-[tasks."test:act-binding"]
-description = "Verify original ACT reference identity and bind a compiled probe to the replacement"
-depends = ["managed:test-runner"]
-run = ["dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- prepare-act", "dotnet build managed/tests/LegacyReference/LegacyReference.csproj -c Release -p:RestoreLockedMode=true", "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- act"]
-
-[tasks."test:linux-plugin-compat"]
-description = "Verify the pinned in-memory Linux adjustment; requires the supplied original FFXIV artifacts"
-depends = ["managed:test-runner"]
-run = "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- linux"
-
-[tasks."test:original-reference"]
-description = "Execute pinned original ACT data constructors and configured value/action fixtures without its main form"
-depends = ["winforms:build"]
 run = [
-  'dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release -p:RestoreLockedMode=true -- "binaries/act/Advanced Combat Tracker.exe" crates/bxivact-winforms/managed',
-  'dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release --no-build -- "binaries/act/Advanced Combat Tracker.exe" crates/bxivact-winforms/managed values',
-  'dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release --no-build -- "binaries/act/Advanced Combat Tracker.exe" crates/bxivact-winforms/managed actions',
+  "{{vars.managed_tests}} prepare-act",
+  "dotnet build managed/tests/LegacyReference/LegacyReference.csproj -c Release -p:RestoreLockedMode=true",
+  "dotnet build managed/tests/OriginalReference/OriginalReference.csproj -c Release -p:RestoreLockedMode=true",
 ]
-
-[tasks."test:original-import"]
-description = "Import the fixed synthetic fixture through a trusted original plugin copy; pass plugin-copy and state-directory arguments"
-depends = ["managed:test-runner"]
-run = "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- original-import"
-
-[tasks."test:original-writer"]
-description = "Characterize the pinned original writer in watchdog-protected child processes; pass its SDK deployment directory"
-run = "dotnet run --project managed/tests/OriginalWriter/OriginalWriter.csproj -c Release -p:RestoreLockedMode=true --"
-
-[tasks."test:original-corpus"]
-description = "Import the pinned public Zeromus corpus three times; pass trusted plugin-copy, new state directory and input file"
-depends = ["managed:test-runner"]
-run = "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- original-corpus"
-
-[tasks."test:original-contracts"]
-description = "Run the same compiled value/state probes against replacement and genuine ACT in separate processes"
-depends = ["test:act-binding"]
-run = 'dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release -p:RestoreLockedMode=true -- "binaries/act/Advanced Combat Tracker.exe" crates/bxivact-winforms/managed contracts managed/tests/LegacyReference/bin/Release/net10.0/Bxivact.LegacyReference.dll'
-
-[tasks."test:recorded-actions"]
-description = "Replay one captured action transcript through replacement and genuine ACT in isolated processes"
-depends = ["managed:test-runner"]
-usage = 'arg "<transcript>" help="Private JSON transcript emitted by test:original-corpus"'
-run = '''
-dotnet build managed/tests/LegacyReference/LegacyReference.csproj -c Release -p:RestoreLockedMode=true
-dotnet build managed/tests/OriginalReference/OriginalReference.csproj -c Release -p:RestoreLockedMode=true
-dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- recorded-actions "$usage_transcript"
-dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release --no-build -- "binaries/act/Advanced Combat Tracker.exe" crates/bxivact-winforms/managed recorded-actions managed/tests/LegacyReference/bin/Release/net10.0/Bxivact.LegacyReference.dll "$usage_transcript"
-'''
-
-[tasks."test:plugins"]
-description = "Check trusted plugin construction, initialization and cleanup; requires DOTNET_ROOT"
-depends = ["managed:test-runner"]
-run = ["dotnet build managed/tests/PluginFixture/PluginFixture.csproj -c Release -p:RestoreLockedMode=true", "dotnet run --project managed/tests/ManagedTests/ManagedTests.csproj -c Release --no-build -- plugins", "cargo test -p bxivact --test plugins --test lifecycle --test import --test logs --test snapshots -- --ignored"]
