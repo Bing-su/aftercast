@@ -37,7 +37,7 @@ fn main() -> Result<(), aftercast::Error> {
 
 | Operation                     | Meaning                                                                                              |
 | ----------------------------- | ---------------------------------------------------------------------------------------------------- |
-| `create_plugin(PluginConfig)` | Construct a trusted IActPluginV1; select type_name when more than one eligible type exists           |
+| `create_plugin(PluginConfig)` | Prepare ACT globals/settings directory, then construct a trusted IActPluginV1; Windows requires caller-owned STA; select type_name when more than one eligible type exists |
 | `initialize_plugin(id)`       | Attempt InitPlugin once; return bounded status text; callback return does not prove parser readiness |
 | `pump()`                      | Run owner-thread callbacks and Windows native messages; call regularly from the application's loop   |
 | `diagnostics()`               | Read bounded host diagnostic history without consuming it; inspect total and omitted()               |

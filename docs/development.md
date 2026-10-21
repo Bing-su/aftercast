@@ -75,6 +75,7 @@ of the replacement implementation.
 | Command                                                               | Required input and evidence                                                                                     |
 | --------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | `mise run test:original`                                              | Check reference binding, original constructors/values/actions and shared contracts against both implementations |
+| `mise run test:external-plugin -- <assembly> <type> <state>` | Check explicit trusted plugin construction, lifecycle and host diagnostics; see [additional plugin results](additional-plugin-validation.md) |
 | `mise run test:linux-plugin-compat`                                   | Verify pinned memory/writer/resource corrections against local FFXIV SDK files                                  |
 | `mise run test:original-import -- <plugin-copy> <new-state>`          | Original synthetic import, failure recovery and private diagnostics; use a disposable trusted plugin copy       |
 | `mise run test:original-corpus -- <plugin-copy> <new-state> <corpus>` | Three pinned Zeromus imports with submitted-action totals and exact subscriber loss                             |

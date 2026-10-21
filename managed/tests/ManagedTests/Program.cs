@@ -56,6 +56,7 @@ internal static class Program
             case "original-corpus": ObserveOriginal(args[1], args[2], args[3], fixedFixture: false); break;
             case "original-log": ObserveOriginal(args[1], args[2], args[3], fixedFixture: false, localLog: true); break;
             case "recorded-actions": RecordedActions(args[1]); break;
+            case "external-plugin": ExternalPluginChecks.Run(args[1], args[2], args[3]); break;
             default: throw new ArgumentException("Unknown managed test mode");
         }
         Console.WriteLine($"Managed {args[0]} contract checks passed.");
@@ -79,7 +80,7 @@ internal static class Program
         Directory.CreateDirectory(statePath);
         session.Configure(Path.GetFullPath(statePath));
         var path = Path.GetFullPath(pluginPath);
-        var instance = session.OnOwner(() => PluginLoader.Create(path, "FFXIV_ACT_Plugin.FFXIV_ACT_Plugin"));
+        var instance = session.Construct(path, "FFXIV_ACT_Plugin.FFXIV_ACT_Plugin");
         var id = session.Add(path, instance);
         try
         {
@@ -270,6 +271,7 @@ internal static class Program
     private static void PluginRequests()
     {
         var memory = Marshal.AllocHGlobal(65537);
+        var directory = Directory.CreateTempSubdirectory("aftercast-plugin-requests-");
         try
         {
             Marshal.WriteInt32(memory, 0, 24);
@@ -312,6 +314,10 @@ internal static class Program
             Rejected(() => Marshal.WriteInt32(memory, 24, 0), "outside");
             Rejected(() => Marshal.WriteByte(memory, 40, 0), "NUL");
             Rejected(() => Marshal.WriteByte(memory, 40, 255), "translate");
+            // Production callers configure state before constructing plugins; the ABI fixture must do the same.
+            var shared = ((Lazy<PluginSession>)typeof(EntryPoint)
+                .GetField("plugins", BindingFlags.NonPublic | BindingFlags.Static)!.GetValue(null)!).Value;
+            shared.Configure(directory.FullName);
             Reset();
             Check(EntryPoint.CreatePlugin(memory, size) == 0);
             var instance = Marshal.ReadInt64(memory, 32);
@@ -348,7 +354,7 @@ internal static class Program
             Reset();
             Check(EntryPoint.CreatePlugin(memory, size) == -1 && Diagnostic().Contains("No managed ACT session"));
         }
-        finally { Marshal.FreeHGlobal(memory); }
+        finally { Marshal.FreeHGlobal(memory); directory.Delete(true); }
     }
     private static void PrepareAct()
     {

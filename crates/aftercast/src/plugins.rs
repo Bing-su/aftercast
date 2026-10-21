@@ -27,6 +27,8 @@ impl Host {
     /// Constructs a trusted plugin and retains it until this host stops.
     ///
     /// Constructors execute arbitrary code in this process and may register global handlers.
+    /// ACT globals and the settings directory are available before construction. Windows requires
+    /// a caller-owned STA thread from this operation onward.
     /// No sandbox or assembly unloading is provided. `InitPlugin` and `DeInitPlugin` are not
     /// called by this method. Linux provides only headless status controls, without rendering
     /// or native handles. For example, select a type with

@@ -7,6 +7,9 @@ establish complete ACT or Windows parity.
 The [ACT compatibility matrix](compatibility-matrix.md) tracks implementation,
 verification evidence and remaining work by feature and API family.
 
+[Additional plugin validation](additional-plugin-validation.md) records five
+official downloads, the constructor-order correction and remaining blockers.
+
 `ActCommands` implements the literal `end` command and ignores unmatched echo
 text, as genuine ACT does (for example, `Hojoring>[EX] Beacon ...`). Recognized
 UI/chat commands such as `clear`, `add `, `macro: ` and `timer ` remain unsupported

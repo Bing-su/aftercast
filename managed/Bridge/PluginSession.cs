@@ -83,6 +83,12 @@ internal sealed class PluginSession
         plugins.Add(++nextId, new(path, (IActPluginV1)instance));
         return nextId;
     }
+    internal object Construct(string path, string? typeName) => OnOwner(() =>
+    {
+        // Plugins read ACT globals in constructors, e.g. the official sample's AppDataFolder settings path.
+        _ = Host();
+        return PluginLoader.Create(path, typeName);
+    });
     internal string Initialize(long id) => OnOwner(() => InitializeCore(id));
     private string InitializeCore(long id)
     {

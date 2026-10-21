@@ -8,6 +8,7 @@
 | [Windows validation](windows-validation.md)                 | Windows setup, verified checks and remaining limits                     |
 | [Windows original-artifact validation](windows-original-validation.md) | Supplied ACT/FFXIV checks, extra runtime input and remaining failures |
 | [Local log validation](local-log-validation.md) | Optional host-supplied logs, portable invocation and observed private-log results |
+| [Additional plugin validation](additional-plugin-validation.md) | Official plugin downloads, lifecycle results, constructor fix and concrete blockers |
 | [Glossary](../GLOSSARY.md)                                 | Domain terminology                                                      |
 | [File import](import.md)                                   | Input framing, live-state restoration and partial history               |
 | [Original log batches](logs.md)                            | Buffer limits, ownership, loss accounting and binary layout             |

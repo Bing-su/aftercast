@@ -9,7 +9,14 @@ namespace Aftercast.PluginFixture;
 public class GoodPlugin : IActPluginV1
 {
     public int Value { get; } = PluginDependency.Value.Number;
-    public GoodPlugin() { if (Value != 42) throw new Exception("Dependency returned the wrong value"); }
+    public GoodPlugin()
+    {
+        if (Value != 42) throw new Exception("Dependency returned the wrong value");
+        // Official plugins read AppDataFolder in field initializers, e.g. Config/PluginSample.config.xml.
+        var root = ActGlobals.oFormActMain ?? throw new Exception("ACT globals are missing during construction");
+        if (!Directory.Exists(Path.Combine(root.AppDataFolder.FullName, "Config")))
+            throw new Exception("Plugin settings directory is missing during construction");
+    }
     public void InitPlugin(TabPage tab, Label label) => throw new Exception("InitPlugin must not run during construction");
     public void DeInitPlugin() => throw new Exception("Uninitialized plugins must not receive DeInitPlugin");
 }

@@ -95,6 +95,18 @@ description = "Check pinned Linux memory, writer and resource corrections"
 depends = ["managed:test-runner"]
 run = "{{vars.managed_tests}} linux"
 
+[tasks."test:external-plugin"]
+description = "Check a trusted external plugin's constructor, lifecycle and host diagnostics"
+depends = ["managed:test-runner"]
+usage = '''
+arg "<plugin>" help="Trusted compiled plugin assembly"
+arg "<type>" help="Fully qualified plugin type"
+arg "<state>" help="Private writable test state directory"
+'''
+run = '{{vars.managed_tests}} external-plugin "$usage_plugin" "$usage_type" "$usage_state"'
+# Preserve explicit paths/types on Windows, e.g. a plugin directory containing spaces.
+run_windows = '{{vars.managed_tests}} external-plugin "%usage_plugin%" "%usage_type%" "%usage_state%"'
+
 [tasks."test:original-import"]
 description = "Import the synthetic fixture through an original plugin copy"
 depends = ["managed:test-runner"]

@@ -121,7 +121,7 @@ public static class EntryPoint
     {
         var (path, typeName) = Request(buffer, sizeBytes);
         var id = plugins.Value.OnOwner(() => plugins.Value.Add(path,
-            PluginLoader.Create(path, typeName == "" ? null : typeName)));
+            plugins.Value.Construct(path, typeName == "" ? null : typeName)));
         Marshal.WriteInt64(buffer, 32, id);
         return 0;
     });
