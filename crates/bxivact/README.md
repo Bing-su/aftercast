@@ -54,9 +54,10 @@ to poll for changes. Results own their counters and combatant data after host st
 Check the status for partial imports; this API retains only the latest result.
 `end_combat()` also publishes the final live result without another log record.
 
-On Linux, the pinned FFXIV 3.0.3.3 build receives an in-memory compatibility
+On Linux, the pinned FFXIV 3.0.3.3 build receives in-memory compatibility
 adjustments: its memory component reports Windows administrator status as false,
-and its writer exits through disposal after post-flush cancellation. This does
+its writer exits through disposal after post-flush cancellation, and its resource
+reader preserves Windows CRLF delimiter semantics. This does
 not drain the vendor's pending writer queue. Original files remain unchanged;
 other builds are not rewritten.
 
