@@ -459,6 +459,7 @@ internal static class Program
     // Keep synthetic behavior checks runnable without downloading or locating the proprietary ACT oracle.
     private static void Contracts()
     {
+        PluginBindingChecks.Run();
         LogFollowerChecks.Run();
         InitialBoundaryChecks.Run();
         InitialSnapshotChecks.Run();

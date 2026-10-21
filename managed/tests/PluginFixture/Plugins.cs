@@ -26,6 +26,14 @@ public class ThrowingPlugin : IActPluginV1
     public void InitPlugin(TabPage tab, Label label) { }
     public void DeInitPlugin() { }
 }
+// ACT loads internal plugin types with public constructors, e.g. the distributed Export_All source.
+internal sealed class InternalPlugin : GoodPlugin { }
+public sealed class PrivateConstructorPlugin : IActPluginV1
+{
+    private PrivateConstructorPlugin() { }
+    public void InitPlugin(TabPage tab, Label label) { }
+    public void DeInitPlugin() { }
+}
 public class NeedsArgument(int value) : IActPluginV1
 {
     public int Value => value;

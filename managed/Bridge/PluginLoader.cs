@@ -9,13 +9,22 @@ namespace Aftercast.Bridge;
 internal sealed class PluginContext(string path, byte[] hash) : AssemblyLoadContext("aftercast:" + path)
 {
     private readonly AssemblyDependencyResolver resolver = new(path);
+    internal static bool SupportsActReference(AssemblyName reference)
+    {
+        var actual = typeof(IActPluginV1).Assembly.GetName();
+        // Match ACT's shipped 2.x/3.x binding redirect, e.g. Benchmark's 3.5.0.273 reference.
+        return reference.Name == actual.Name && reference.Version is { } version
+            && version >= new Version(2, 0, 0, 0) && version <= new Version(3, 65535, 65535, 65535)
+            && (reference.CultureName ?? "") == (actual.CultureName ?? "")
+            && reference.GetPublicKeyToken().AsSpan().SequenceEqual(actual.GetPublicKeyToken());
+    }
     protected override Assembly? Load(AssemblyName name)
     {
         var shared = new[] { typeof(IActPluginV1).Assembly, typeof(System.Windows.Forms.TabPage).Assembly }
             .FirstOrDefault(assembly => assembly.GetName().Name == name.Name);
         if (shared is not null)
         {
-            if (name.Name == "Advanced Combat Tracker" && name.FullName != shared.GetName().FullName)
+            if (name.Name == "Advanced Combat Tracker" && !SupportsActReference(name))
                 throw new InvalidOperationException("Unsupported ACT reference: " + name.FullName);
             return shared;
         }
@@ -75,7 +84,7 @@ internal static class PluginLoader
             path = Path.GetFullPath(path);
             var assembly = Load(path);
             stage = "select type";
-            static bool Eligible(Type candidate) => candidate.IsVisible && candidate.IsClass && !candidate.IsAbstract
+            static bool Eligible(Type candidate) => candidate.IsClass && !candidate.IsAbstract
                 && !candidate.ContainsGenericParameters && typeof(IActPluginV1).IsAssignableFrom(candidate)
                 && candidate.GetConstructor(Type.EmptyTypes) is not null;
             Type candidate;
@@ -83,7 +92,7 @@ internal static class PluginLoader
             {
                 candidate = assembly.GetType(typeName, true, false)!;
                 if (!Eligible(candidate))
-                    throw new InvalidOperationException("Type must be a public concrete IActPluginV1 with a public parameterless constructor");
+                    throw new InvalidOperationException("Type must be a concrete IActPluginV1 with a public parameterless constructor");
             }
             else
             {

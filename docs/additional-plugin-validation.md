@@ -32,7 +32,7 @@ member inspection:
 `ev_4faed82e214b8c67a4f2e121f7008ac4b3cfc807054b8bba8789eeded7d08178`.
 Static inspection does not establish successful execution.
 
-## Observed results
+## Initial observed results
 
 | Plugin / type | Constructor | Initialization / tested workflow | First blocker or limit |
 | --- | --- | --- | --- |
@@ -44,7 +44,8 @@ Static inspection does not establish successful execution.
 
 Each failure is a first observed boundary, not a complete list of missing APIs.
 The source-derived dependency notes do not mean those paths executed. No plugin
-source was patched to bypass failures, and binding/type guards were not relaxed.
+source was patched to bypass failures. The following loader work supersedes the
+initial binding/type failures without changing the downloaded plugins.
 
 ## Constructor-order correction
 
@@ -67,6 +68,38 @@ uninitialized plugins still do not receive DeInitPlugin.
 | Regression after correction | `mise run check` passes, including constructor failure recovery, stop/restart, managed/WinForms contracts, Rust tests, formatting and strict Clippy |
 | Existing FFXIV 3.0.3.4 path after correction | Original synthetic import passes three iterations (7 records, 400 damage each), zero worker/private-message errors and successful shutdown |
 | Reusable external-plugin task | Official sample lifecycle passes with a state path containing spaces |
+
+## Loader compatibility follow-up
+
+ACT's supplied executable configuration redirects versions
+`2.0.0.0–3.65535.65535.65535` to `3.8.5.288`. Static inspection of
+`PluginListingPanel.cbEnabled_CheckedChanged` shows byte-array assembly loading,
+interface enumeration and `Assembly.CreateInstance(string)`, without a public
+type requirement. REA evidence:
+`ev_e307ce2aae5552323c421e9d558757f5abe620d34d83e01fa081f2390d39ff76`.
+
+An independent .NET Framework process repeated those loading/creation operations
+against genuine ACT with its original binding configuration. Both Benchmark and
+the nonpublic Export_All class construct and implement genuine IActPluginV1;
+Export_All has a public default constructor. This checks the creation operations,
+not the original plugin-management UI or InitPlugin. The original ACT files were
+unchanged; only the test copy's Internet zone marker was removed for Framework
+LoadFrom. Probe source/configuration are retained under
+`target/additional-plugins-20261021/original-loader/`.
+
+| Change / check | Result |
+| --- | --- |
+| Version redirect | The loader accepts ACT's documented 2.x/3.x range while retaining exact simple-name, culture and public-key-token checks |
+| Nonpublic plugin type | Internal classes with public parameterless constructors are eligible; abstract/open-generic/missing-public-constructor types remain rejected |
+| Boundary regression checks | Old/new version bounds, missing version, wrong name, culture and signing token are checked; Rust integration constructs an internal fixture and rejects a private constructor |
+| Export_All | Constructor, InitPlugin, pumping, DeInitPlugin and shutdown pass with zero host diagnostics; combat-end export is still unimplemented |
+| Benchmark | ACT 3.5 binding succeeds; construction now reaches missing `Advanced_Combat_Tracker.ListViewNoFlicker` |
+| Review and validation | Connected loader/caller/fixture paths reviewed; `mise run check` passes after the change |
+
+Runtime logs are `export-binding-fixed.txt` and `benchmark-binding-fixed.txt` in
+the local evidence directory. The version/type guards now follow the pinned
+ACT behavior; this does not establish compatibility with every member used by
+older plugins.
 
 ## Reproduction
 

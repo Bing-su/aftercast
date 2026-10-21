@@ -42,6 +42,13 @@ fn constructs_trusted_plugins_without_initialization_and_recovers_from_errors(
     let first = create(&mut host, &path, good);
     let second = create(&mut host, &path, good);
     assert_ne!(first, second);
+    create(&mut host, &path, "Aftercast.PluginFixture.InternalPlugin");
+    failure(
+        &mut host,
+        &path,
+        Some("Aftercast.PluginFixture.PrivateConstructorPlugin"),
+        "public parameterless constructor",
+    );
     failure(&mut host, &path, None, "specify type_name");
     failure(
         &mut host,
