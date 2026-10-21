@@ -170,6 +170,30 @@ task runs the replacement probe only. Native cancellation workflow verification
 requires Windows. Evidence files: `timer-reference.txt`, `timer-workflow-final.txt`
 and `check-timers-final.txt` in the local evidence directory.
 
+## EQ2 parser follow-up
+
+The unmodified English EQ2 parser now initializes, registers its options and log
+colors, imports four controlled raw records and cleans up its options on exit.
+
+| Check | Result / scope |
+| --- | --- |
+| Options tree and log colors | Native Windows controls and a headless tree model retain parser registrations; encounter-log rendering remains unsupported |
+| Default EQ2 timestamp parser | Shared original/replacement probe checks displayed dates, invalid values and unspecified DateTime kind; the Unix prefix is not the time source |
+| Controlled raw import | Zone change, two hits and one heal produce 400 damage, 50 healing and two actors with the displayed 2026 timestamp |
+| Original aggregation comparison | The three actions captured from that parser pass the same recorded-action probe in replacement and pinned original ACT |
+| Selection API | Add/remove/check registration is supported; selective combat filtering remains unsupported |
+| Review | `mise run check`, `test:eq2-timestamps`, `test:external-eq2` and `test:recorded-actions` pass |
+
+```powershell
+mise run test:eq2-timestamps
+mise run test:external-eq2 -- 'binaries/additional-plugins-20261021/ACT_English_Parser.dll' 'target/additional-plugins-20261021/eq2-workflow-final'
+mise run test:recorded-actions -- 'target/additional-plugins-20261021/eq2-workflow-final/eq2-actions.json'
+```
+
+This checks a controlled parser path, not actual EQ2 gameplay or every regex,
+audio, options UI and selective parsing mode. Evidence: `check-eq2.txt`,
+`eq2-timestamp-reference.txt`, `eq2-workflow-final.txt` and `eq2-replay.txt`.
+
 ## Reproduction
 
 Use a trusted plugin and a private writable test directory. The runner executes

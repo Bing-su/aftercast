@@ -1,5 +1,8 @@
 namespace Advanced_Combat_Tracker;
 
+// Keep ACT's serialized swing codes, e.g. EQ2's healing actions use 3 rather than a sequential enum index.
+public enum SwingTypeEnum { Melee = 1, NonMelee = 2, Healing = 3, PowerDrain = 10, PowerHealing = 13, Threat = 16, CureDispel = 20 }
+
 public delegate void CombatActionDelegate(bool isImport, CombatActionEventArgs actionInfo);
 public delegate void CombatToggleEventDelegate(bool isImport, CombatToggleEventArgs encounterInfo);
 

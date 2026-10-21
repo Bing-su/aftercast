@@ -145,6 +145,25 @@ arg "<state>" help="Private writable test state directory"
 run = '{{vars.managed_tests}} external-timer "$usage_plugin" "$usage_state"'
 run_windows = '{{vars.managed_tests}} external-timer "%usage_plugin%" "%usage_state%"'
 
+[tasks."test:eq2-timestamps"]
+description = "Compare ACT's default displayed-date log parser (Windows native reference)"
+depends = ["managed:references"]
+run = '{{vars.managed_tests}} eq2-timestamps'
+run_windows = [
+  '{{vars.managed_tests}} eq2-timestamps',
+  'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} eq2-timestamps {{vars.reference_probe}}',
+]
+
+[tasks."test:external-eq2"]
+description = "Import controlled EQ2 logs with the unmodified English parser and save a replay transcript"
+depends = ["managed:test-runner"]
+usage = '''
+arg "<plugin>" help="Trusted compiled ACT_English_Parser assembly"
+arg "<state>" help="Private writable test state directory"
+'''
+run = '{{vars.managed_tests}} external-eq2 "$usage_plugin" "$usage_state"'
+run_windows = '{{vars.managed_tests}} external-eq2 "%usage_plugin%" "%usage_state%"'
+
 [tasks."test:original-import"]
 description = "Import the synthetic fixture through an original plugin copy"
 depends = ["managed:test-runner"]

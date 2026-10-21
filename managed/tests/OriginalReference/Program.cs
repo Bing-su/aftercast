@@ -28,7 +28,7 @@ internal static class Program
         var formsDirectory = Path.GetFullPath(args[1]);
         var hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(actPath)));
         if (hash != ExpectedActHash) throw new InvalidOperationException("Original ACT artifact hash does not match the researched version");
-        if (args.Length >= 3 && args[2] is "text-exports" or "timer-models")
+        if (args.Length >= 3 && args[2] is "text-exports" or "timer-models" or "eq2-timestamps")
             AssemblyLoadContext.Default.LoadFromAssemblyName(new AssemblyName("System.Windows.Forms"));
         else
             foreach (var name in new[] { "System.Windows.Forms.dll", "System.Windows.Forms.DataVisualization.dll" })
@@ -55,6 +55,7 @@ internal static class Program
                 "recorded-actions" when args.Length == 5 => RunRecordedActions(args[3], args[4]),
                 "text-exports" when args.Length == 4 => RunReferenceProbe(args[3], "TextExportProbe", "Original text exports"),
                 "timer-models" when args.Length == 4 => RunReferenceProbe(args[3], "TimerModelProbe", "Original timer models"),
+                "eq2-timestamps" when args.Length == 4 => RunReferenceProbe(args[3], "Eq2TimestampProbe", "Original EQ2 timestamps"),
                 _ => throw new ArgumentException("Unknown original-reference mode")
             };
             return failures + unexpectedFailures == 0 ? 0 : 1;

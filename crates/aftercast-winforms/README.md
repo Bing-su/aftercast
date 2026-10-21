@@ -14,6 +14,7 @@ The crate has no Rust dependencies and never starts .NET or invokes its SDK.
 | InvokeRequired and synchronous Invoke                                        | Cross-thread calls require a caller-owned synchronization context that dispatches on the original owner thread            |
 | Chart, Series / ChartArea / Legend metadata and named collections            | No data binding, plotting or rendering; BeginInit/EndInit have no invalidation work                                       |
 | ListView columns, keyed rows, subitem text and enumeration                   | No native selection; SelectedItems stays empty; collection interfaces and APIs are partial                                |
+| TreeView nodes, ownership, paths and removal | Headless hierarchy only; no selection, expansion or native input |
 | Timer configuration, container lifetime and event registration               | Enabled stores requested state; no automatic Tick callbacks or UI pump                                                    |
 | Button / ButtonBase, CheckBox.Checked / CheckedChanged, Control.Click wiring | Synchronous programmatic state changes; no native input, automatic checkbox toggling, dialog-button behavior or rendering |
 | Unbound ComboBox / ListBox, text/group/link settings controls                | Partial collections; no data binding or native interaction; dialogs/clipboard throw explicitly                            |

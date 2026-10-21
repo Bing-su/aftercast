@@ -36,8 +36,7 @@ public partial class FormActMain
     public delegate DateTime DateTimeLogParser(string logLine);
 
     // Preserve the writable field so plugins can install and restore their own timestamp parser.
-    public DateTimeLogParser GetDateTimeFromLog = static _ =>
-        throw new PlatformNotSupportedException("The embedded host has no default ACT log timestamp parser");
+    public DateTimeLogParser GetDateTimeFromLog = ParseDateTimeFromEQ2Log;
 
     public event LogLineEventDelegate? BeforeLogLineRead;
     public event LogFileChangedDelegate? LogFileChanged;
@@ -45,9 +44,27 @@ public partial class FormActMain
 
     // An embedded library must leave application updates to its consumer.
     public bool GetAutomaticUpdatesAllowed() => false;
-    public int TimeStampLen { get; set; }
-    public bool LogPathHasCharName { get; set; }
-    public System.Text.RegularExpressions.Regex? ZoneChangeRegex { get; set; }
+    public int TimeStampLen { get; set; } = 39;
+    public bool LogPathHasCharName { get; set; } = true;
+    public System.Text.RegularExpressions.Regex? ZoneChangeRegex { get; set; } =
+        new(@"\(\d{10}\)\[.{24}\] You have entered (?::.+?:)?(?<zone>.+)\.");
+
+    private static DateTime ParseDateTimeFromEQ2Log(string line)
+    {
+        try
+        {
+            if (line.Length < 39) return DateTime.MinValue;
+            // ACT reads the displayed date, not the leading Unix counter; unknown month names fall back to January.
+            var month = line.Substring(17, 3) switch
+            {
+                "Feb" => 2, "Mar" => 3, "Apr" => 4, "May" => 5, "Jun" => 6, "Jul" => 7,
+                "Aug" => 8, "Sep" => 9, "Oct" => 10, "Nov" => 11, "Dec" => 12, _ => 1
+            };
+            return new(Convert.ToInt32(line.Substring(33, 4)), month, Convert.ToInt32(line.Substring(21, 2)),
+                Convert.ToInt32(line.Substring(24, 2)), Convert.ToInt32(line.Substring(27, 2)), Convert.ToInt32(line.Substring(30, 2)));
+        }
+        catch { return DateTime.MinValue; }
+    }
 
     internal void DispatchLogLine(bool isImport, LogLineEventArgs logInfo) => InvokeLogHandlers(BeforeLogLineRead, isImport, logInfo);
     internal void DispatchLogFileChanged(bool isImport, string newLogFileName) => LogFileChanged?.Invoke(isImport, newLogFileName);

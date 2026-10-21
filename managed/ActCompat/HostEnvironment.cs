@@ -67,6 +67,7 @@ namespace Advanced_Combat_Tracker
     {
         public static FormActMain? oFormActMain;
         public static FormSpellTimers? oFormSpellTimers;
+        public static FormEncounterLogs? oFormEncounterLogs;
         public static string? charName = "YOU";
     }
 }
@@ -80,6 +81,7 @@ namespace Aftercast.ActCompat
     {
         private readonly FormActMain main;
         private readonly FormSpellTimers timers;
+        private readonly FormEncounterLogs encounterLogs;
         private bool disposed;
         public HostEnvironment(string directory, Action? pumpCallbacks = null, Func<bool>? isDispatchingCallback = null)
         {
@@ -91,10 +93,17 @@ namespace Aftercast.ActCompat
                 main.Dispose();
                 throw new InvalidOperationException("ACT globals are already owned by another environment");
             }
-            try { timers = new(); }
-            catch { main.Dispose(); throw; }
+            try
+            {
+                main.Controls.Add(main.OptionsTreeView);
+                main.OptionsTreeView.Nodes.Add("Data Correction");
+                timers = new();
+                encounterLogs = new(false);
+            }
+            catch { timers?.Dispose(); main.Dispose(); throw; }
             ActGlobals.oFormActMain = main;
             ActGlobals.oFormSpellTimers = timers;
+            ActGlobals.oFormEncounterLogs = encounterLogs;
             // The original parser substitutes this ACT alias for the current player's actor name.
             ActGlobals.charName = "YOU";
             RegistrationLifetime.Reset();
@@ -148,12 +157,14 @@ namespace Aftercast.ActCompat
                 try { StopProcessing(); } catch (Exception error) { errors.Add(error); }
                 try { main.Dispose(); } catch (Exception error) { errors.Add(error); }
                 try { timers.Dispose(); } catch (Exception error) { errors.Add(error); }
+                try { encounterLogs.Dispose(); } catch (Exception error) { errors.Add(error); }
             }
             finally
             {
                 RegistrationLifetime.Reset();
                 ActGlobals.oFormActMain = null;
                 ActGlobals.oFormSpellTimers = null;
+                ActGlobals.oFormEncounterLogs = null;
                 ActGlobals.charName = null;
             }
             if (errors.Count != 0) throw new AggregateException("Host environment disposal failed", errors);

@@ -41,7 +41,7 @@ internal static class Program
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.DataVisualization.dll"));
         }
         // Modes keep artifact-dependent checks separate from ordinary ABI tests without a test framework dependency.
-        if (mode is "contracts" or "original" or "original-import" or "original-corpus" or "original-log" or "text-exports" or "timer-models") Platform.Prepare();
+        if (mode is "contracts" or "original" or "original-import" or "original-corpus" or "original-log" or "text-exports" or "timer-models" or "eq2-timestamps") Platform.Prepare();
         switch (mode)
         {
             case "bridge": Bridge(); break;
@@ -59,8 +59,10 @@ internal static class Program
             case "external-plugin": ExternalPluginChecks.Run(args[1], args[2], args[3]); break;
             case "text-exports": ReferenceContract("TextExportProbe", "Text exports"); break;
             case "timer-models": ReferenceContract("TimerModelProbe", "Timer models"); break;
+            case "eq2-timestamps": ReferenceContract("Eq2TimestampProbe", "EQ2 timestamps"); break;
             case "external-export": ExternalPluginChecks.Run(args[1], "ACT_Plugin1.Export_All", args[2], (_, _) => ExternalExportChecks.Run()); break;
             case "external-timer": ExternalPluginChecks.Run(args[1], "ACT_Plugin.TimerRepeat", args[2], ExternalTimerChecks.Run); break;
+            case "external-eq2": ExternalPluginChecks.Run(args[1], "ACT_Plugin.ACT_English_Parser", args[2], ExternalEq2Checks.Run); break;
             default: throw new ArgumentException("Unknown managed test mode");
         }
         Console.WriteLine($"Managed {args[0]} contract checks passed.");
@@ -410,6 +412,7 @@ internal static class Program
             Check((int)Call("SettingsControlProbe", "Run")! == 2);
         }
         Check((string)Call("RegistrationProbe", "Run")! == "changed callback");
+        Check((string)Call("TreeViewProbe", "Run")! == "Tree nodes");
         Check((string)Call("CombatStateProbe", "Run")! == "Combat state");
         Check((string)Call("DamageStateProbe", "Run")! == "Fixture attack");
         Check((string)Call("ChildActionProbe", "Run")! == "Child actions");
@@ -473,6 +476,7 @@ internal static class Program
         PluginBindingChecks.Run();
         TextExportChecks.Run();
         SpellTimerChecks.Run();
+        Eq2HostChecks.Run();
         LogFollowerChecks.Run();
         InitialBoundaryChecks.Run();
         InitialSnapshotChecks.Run();

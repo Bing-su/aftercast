@@ -15,7 +15,7 @@ public partial class FormActMain
     private int logPauseDepth;
     internal Action? PumpCallbacks { get; set; }
     internal Func<bool>? IsDispatchingCallback { get; set; }
-    private string logFilePath = "", logFileFilter = "", currentZone = "";
+    private string logFilePath = "", logFileFilter = "eq2log*.txt", currentZone = "";
     private DateTime lastKnownTime = DateTime.Now;
     private long lastKnownStamp = Stopwatch.GetTimestamp();
 
