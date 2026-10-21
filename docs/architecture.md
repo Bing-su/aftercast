@@ -39,6 +39,14 @@ Host feature methods pass owned request buffers to ManagedSession. Native calls
 borrow these buffers only for the duration of the call; delegates and loader
 handles remain private. Returned strings, records and snapshots own their data.
 
+[Combat GUI queries](../crates/aftercast/src/combat.rs) read live and retained
+encounters through [the bridge encoder](../managed/Bridge/CombatQueries.cs) and
+[graph queries](../managed/ActCompat/CombatQueries.cs). Reads copy values under
+the combat lock without joining action producers. Weak encounter identities
+remain stable during the session without retaining removed graphs. Import
+completion marks every added encounter's status independently of the latest
+ended snapshot; [query contracts](snapshots.md#gui-combat-queries) describe paging.
+
 ## Lifecycle invariants
 
 Spell-timer definitions, frames and recast modifications live in

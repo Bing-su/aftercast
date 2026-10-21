@@ -34,8 +34,9 @@ fn read(host: &mut aftercast::Host) -> Result<(), aftercast::Error> {
 }
 ```
 
-Only the latest ended encounter is retained for this API. Active-combat queries,
-archives, callbacks and durable storage are not implemented. A later empty import
+Only the latest ended encounter is retained for `combat_snapshot`. For active
+combat and retained history, use the GUI queries below. Callbacks and durable
+storage are not implemented. A later empty import
 does not replace an earlier result. A failed import can replace it with partial
 history. Completion status does not establish that the plugin accepted every raw
 record or flushed its private deferred effects.
@@ -62,7 +63,80 @@ Strings preserve plugin values. The pinned plugin receives the Linux
 [CRLF resource correction](compatibility.md#linux-corrections); snapshot encoding itself
 does not trim or rewrite territory names.
 
-## Private ABI
+## GUI combat queries
+
+| API | Returned data | Idle / removed behavior |
+| --- | --- | --- |
+| `live_combat()` | Active live encounter and participant counters, including DPS/HPS | `None` while idle or importing |
+| `encounters(offset, limit)` | Total count and a page of encounter summaries | Empty page when offset is past the end |
+| `encounter_detail(id)` | Selected encounter summary and participant counters | `None` if a plugin removed it |
+| `encounter_attacks(id, offset, limit)` | Category/attack totals, direction, damage, duration, DPS, hits/criticals/misses/blocks | `None` if removed; otherwise possibly an empty page |
+
+```rust,no_run
+fn refresh(host: &mut aftercast::Host) -> Result<(), aftercast::Error> {
+    // Service plugin callbacks before refreshing UI data, e.g. on an application timer.
+    host.pump()?;
+    if let Some(live) = host.live_combat()? {
+        println!("{}: {} damage", live.summary.title, live.summary.damage);
+        for actor in live.combatants {
+            println!("{}: {} DPS", actor.name, actor.enc_dps);
+        }
+    }
+    let page = host.encounters(0, 50)?;
+    if let Some(row) = page.items.first() {
+        let detail = host.encounter_detail(row.id)?;
+        let attacks = host.encounter_attacks(row.id, 0, 100)?;
+        println!("{detail:?} {attacks:?}");
+    }
+    Ok(())
+}
+```
+
+| Contract | Meaning |
+| --- | --- |
+| Consistency | Each call copies graph values under the ACT combat lock on the host owner thread; separate calls/pages can observe later state |
+| Freshness | Includes already-applied actions; does not drain producers or end combat. Pump regularly and poll at a modest rate, e.g. 5 Hz |
+| Duration | Based on ACT combat records and segments, not elapsed UI wall time; rates retain ACT NaN/infinity behavior |
+| Identity | Opaque `EncounterId`, stable through combat completion and later imports; another host session rejects it |
+| State | `EncounterStatus`: `Active`, `Ended`, `Importing` or `PartialImport`; active live combat is distinct from completed combat |
+| History | Current session's retained ACT graph, including repeated imports and partial results; excludes zone `All` aggregates and duplicate object references |
+| Order | ACT zone/list order, with imported encounters first; not a global chronological sort. Attack rows follow combatant/category/attack key order |
+| Pagination | Offset and limit, 1..256 rows per page; offset must fit signed 32 bits. Refresh the list when graph changes move offsets |
+| Import status | New imports are `Importing` until restoration completes. Failure marks every encounter added by that import `PartialImport`; earlier imports keep their status |
+| Ownership | Strings, participant arrays and attack rows remain valid after later input and host shutdown; subsequent queries read current plugin edits |
+| Aggregates | `All` attack rows and overlapping ACT categories are returned verbatim. Do not sum every row to compute encounter damage |
+| Scope | Participant and attack aggregates; individual swing/log inspection and persistence across process restart are outside these queries |
+| Bounds | 65,536 participants in a detail response and 64 MiB per encoded query. Invalid state or oversize results report an error |
+
+Unlike `combat_snapshot`, these queries read the mutable graph each time and
+provide no frozen revision or change notification. They do not initialize an ACT
+environment when none exists. Removed graphs are not kept alive just for query IDs.
+
+### GUI query ABI
+
+`QueryCombat` uses a separate 48-byte, version-1 little-endian header. Status 0
+means success, 1 requests a larger capacity, and -1 reports a caught error. A
+retry reads the graph again; no records are consumed.
+
+| Offset | Field |
+| --- | --- |
+| 0, 4 | u32 capacity, version 1 |
+| 8 | u64 session |
+| 16, 20 | u32 mode (1 live, 2 list, 3 detail, 4 attacks), offset |
+| 24 | u64 encounter ID, zero for live/list |
+| 32 | u32 page limit |
+| 36, 40, 44 | u32 payload used, required total capacity, reserved zero; initially zero |
+
+Text is u32 UTF-8 byte length followed by bytes. Times are i64 ticks plus u32
+kind. List payloads start with u32 total/count; optional detail/attack payloads
+start with u32 presence (0 or 1). Summaries contain ID, flags (import bit 0,
+`EncounterStatus` in remaining bits),
+zone/title/character, start/end, signed duration/damage/healed and participant
+count. Detail then includes a u32 byte length and the existing snapshot payload.
+Attack pages contain total/count followed by combatant/category/attack strings,
+u32 outgoing, i64 damage/duration, f64 DPS/EncDPS and five i32 counters.
+
+## Private snapshot ABI
 
 `ReadCombatSnapshot` uses the standard native delegate and a 64-byte header.
 Requests and results are little endian. Output fields must initially be zero.
@@ -93,3 +167,10 @@ malformed ABI data, capacity retries and snapshot failure recovery. The original
 FFXIV synthetic fixture checks a 400-damage, two-second, two-combatant result with
 the actual plugin. It is a controlled parser/transport fixture, not representative
 gameplay, native capture, throughput evidence or FF Logs acceptance.
+
+GUI query checks run in the managed `bridge`/`contracts` modes and the existing
+Rust `snapshots` integration scenario. Windows .NET 10 execution covers live
+updates before combat end, stable IDs, retained multi-import history, importing
+and partial-import states, removed encounters, paging, strict framing, signed and
+nonfinite values, ownership and stale-session rejection. Linux execution and
+large-session polling performance have not been measured for these new queries.

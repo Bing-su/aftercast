@@ -272,6 +272,7 @@ internal static class Program
             ImportAbiChecks.Run(session);
             LogAbiChecks.Run(session);
             CombatSnapshotAbiChecks.Run(session);
+            CombatQueryAbiChecks.Run(session);
             EndCombatAbiChecks.Run(session);
             ReentrantSessionChecks.Run(session);
             Marshal.WriteInt32(buffer, 8, 4);
@@ -504,6 +505,7 @@ internal static class Program
         OriginalLogCaptureChecks.Run();
         LogBufferChecks.Run();
         CombatSnapshotChecks.Run();
+        CombatQueryChecks.Run();
         CombatSnapshotEncodingChecks.Run();
         RecordedActionTranscriptChecks.Run();
         OriginalCorpusMessageChecks.Run();

@@ -68,6 +68,7 @@ pub(crate) struct ManagedSession {
     import_log: ManagedFunctionWithDefaultSignature,
     log_command: ManagedFunctionWithDefaultSignature,
     read_combat_snapshot: ManagedFunctionWithDefaultSignature,
+    query_combat: ManagedFunctionWithDefaultSignature,
     speech_command: ManagedFunctionWithDefaultSignature,
     session: u64,
     running: bool,
@@ -86,6 +87,7 @@ pub(crate) enum Request {
     Import,
     Logs,
     Snapshot,
+    Combat,
     Diagnostics,
     Speech,
 }
@@ -118,6 +120,7 @@ impl ManagedSession {
         let import_log = function(pdcstr!("ImportLog"))?;
         let log_command = function(pdcstr!("LogCommand"))?;
         let read_combat_snapshot = function(pdcstr!("ReadCombatSnapshot"))?;
+        let query_combat = function(pdcstr!("QueryCombat"))?;
         let speech_command = function(pdcstr!("SpeechCommand"))?;
         let mut host = Self {
             entry,
@@ -129,6 +132,7 @@ impl ManagedSession {
             import_log,
             log_command,
             read_combat_snapshot,
+            query_combat,
             speech_command,
             session: 0,
             running: false,
@@ -165,6 +169,7 @@ impl ManagedSession {
             Request::Import => (&self.import_log, 8),
             Request::Logs => (&self.log_command, 9),
             Request::Snapshot => (&self.read_combat_snapshot, 10),
+            Request::Combat => (&self.query_combat, 12),
             Request::Speech => (&self.speech_command, 11),
         };
         let length = i32::try_from(packet.len())
@@ -174,7 +179,7 @@ impl ManagedSession {
         let status = unsafe { function(packet.as_mut_ptr().cast(), length) };
         let failed = match request {
             Request::Logs => status < 0,
-            Request::Snapshot => status != 0 && status != 1,
+            Request::Snapshot | Request::Combat => status != 0 && status != 1,
             _ => status != 0,
         };
         if failed {

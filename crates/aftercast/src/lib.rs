@@ -5,6 +5,7 @@
 //! [`Host::start`] with a trusted .NET 10 installation. No SDK or download is used at runtime.
 
 mod bridge;
+mod combat;
 mod diagnostics;
 mod host;
 mod import;
@@ -17,6 +18,9 @@ pub use speech::AudioSettings;
 
 pub use bridge::extract_bridge;
 use camino::Utf8PathBuf;
+pub use combat::{
+    AttackSummary, EncounterDetail, EncounterId, EncounterPage, EncounterStatus, EncounterSummary,
+};
 pub use diagnostics::HostDiagnostics;
 pub use host::Host;
 pub use import::ImportReport;
@@ -31,6 +35,10 @@ pub use snapshots::{CombatRevision, CombatSnapshot, CombatSnapshotStatus, Combat
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("invalid combat query: {0}")]
+    InvalidCombatRequest(String),
+    #[error("invalid managed combat query response: {0}")]
+    InvalidCombatResponse(String),
     #[error("text-to-speech failed: {0}")]
     Speech(#[from] aftercast_tts::Error),
     #[error("sound playback failed: {0}")]

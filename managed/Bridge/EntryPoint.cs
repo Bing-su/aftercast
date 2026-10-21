@@ -5,7 +5,7 @@ using Aftercast.ActCompat;
 namespace Aftercast.Bridge;
 
 // Retain the standard ComponentEntryPoint delegate and existing Rust ABI throughout the migration.
-public static class EntryPoint
+public static partial class EntryPoint
 {
     private static readonly object gate = new();
     private static HostSession? active;

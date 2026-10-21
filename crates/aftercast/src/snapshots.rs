@@ -106,7 +106,7 @@ pub(crate) fn larger_snapshot_capacity(packet: &[u8]) -> Result<usize, Error> {
     Ok(required.max(packet.len().saturating_mul(2)).min(MAX_PACKET))
 }
 
-fn graph_time(ticks: i64, kind: u32) -> Result<LogTimestamp, Error> {
+pub(crate) fn graph_time(ticks: i64, kind: u32) -> Result<LogTimestamp, Error> {
     if !(0..=MAX_TICKS).contains(&ticks) {
         return Err(invalid("invalid graph timestamp"));
     }
@@ -252,6 +252,32 @@ pub(crate) fn decode_snapshot(
         .get(SNAPSHOT_HEADER..)
         .and_then(|bytes| bytes.get(..used))
         .ok_or_else(|| invalid("snapshot payload exceeds capacity"))?;
+    decode_result(
+        payload,
+        count,
+        CombatRevision {
+            session,
+            sequence: revision,
+        },
+        superseded_versions,
+        is_import,
+        status,
+    )
+    .map(Some)
+}
+
+pub(crate) fn decode_result(
+    payload: &[u8],
+    count: usize,
+    revision: CombatRevision,
+    superseded_versions: u64,
+    is_import: bool,
+    status: CombatSnapshotStatus,
+) -> Result<CombatSnapshot, Error> {
+    let used = payload.len();
+    if count > 65536 {
+        return Err(invalid("too many combatants"));
+    }
     let mut fields = payload
         .get(..RESULT_HEADER)
         .ok_or_else(|| invalid("missing result header"))?;
@@ -279,11 +305,8 @@ pub(crate) fn decode_snapshot(
     {
         return Err(invalid("invalid snapshot string/actor ranges"));
     }
-    Ok(Some(CombatSnapshot {
-        revision: CombatRevision {
-            session,
-            sequence: revision,
-        },
+    Ok(CombatSnapshot {
+        revision,
         superseded_versions,
         is_import,
         status,
@@ -296,7 +319,7 @@ pub(crate) fn decode_snapshot(
         damage,
         healed,
         combatants: actors(payload, actors_offset, count)?,
-    }))
+    })
 }
 
 impl Host {

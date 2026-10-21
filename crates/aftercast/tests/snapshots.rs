@@ -1,7 +1,8 @@
 mod common;
 
 use aftercast::{
-    CombatRevision, CombatSnapshot, CombatSnapshotStatus, Error, Host, LogTimeKind, PluginConfig,
+    CombatRevision, CombatSnapshot, CombatSnapshotStatus, EncounterStatus, Error, Host,
+    LogTimeKind, PluginConfig,
 };
 use camino::Utf8Path;
 use common::{Deployment, deployment};
@@ -14,6 +15,20 @@ fn completed_snapshots_are_owned_versioned_and_recover_from_partial_imports(
     let directory = deployment.directory();
     let config = || deployment.config();
     let mut host = Host::start(config()).expect("start combat snapshot host");
+    assert!(host.live_combat().expect("initial live query").is_none());
+    assert_eq!(host.encounters(0, 16).expect("initial history").total, 0);
+    assert!(matches!(
+        host.encounters(0, 0),
+        Err(Error::InvalidCombatRequest(_))
+    ));
+    assert!(matches!(
+        host.encounters(0, 257),
+        Err(Error::InvalidCombatRequest(_))
+    ));
+    assert!(matches!(
+        host.encounters(u32::MAX, 1),
+        Err(Error::InvalidCombatRequest(_))
+    ));
     host.end_combat()
         .expect("idle completion before initialization");
     assert!(
@@ -46,6 +61,44 @@ fn completed_snapshots_are_owned_versioned_and_recover_from_partial_imports(
         .expect("query completed import")
         .expect("completed import result");
     check_completed(&retained);
+    let page = host.encounters(0, 1).expect("list imported encounter");
+    assert_eq!(page.total, 1);
+    let first_id = page.items[0].id;
+    assert!(page.items[0].is_import);
+    assert_eq!(page.items[0].status, EncounterStatus::Ended);
+    let detail = host
+        .encounter_detail(first_id)
+        .expect("query encounter")
+        .expect("retained encounter");
+    assert_eq!(detail.summary.damage, 400);
+    assert_eq!(detail.combatants.len(), 2);
+    assert!(host.live_combat().expect("idle after import").is_none());
+    let attacks = host
+        .encounter_attacks(first_id, 0, 256)
+        .expect("attack query")
+        .expect("retained attacks");
+    let strike = attacks
+        .items
+        .iter()
+        .find(|row| row.combatant == "Source" && row.category == "Damage" && row.attack == "Strike")
+        .expect("damage attack");
+    assert!(strike.outgoing);
+    assert_eq!(strike.damage, 400);
+    assert_eq!(strike.hits, 2);
+    assert_eq!(
+        host.encounter_attacks(first_id, 1, 1)
+            .expect("attack page")
+            .expect("encounter")
+            .items
+            .len(),
+        1
+    );
+    assert!(
+        host.encounters(1, 1)
+            .expect("empty history page")
+            .items
+            .is_empty()
+    );
     assert_eq!(retained.superseded_versions, 0);
     assert!(
         host.combat_snapshot(Some(retained.revision))
@@ -67,6 +120,18 @@ fn completed_snapshots_are_owned_versioned_and_recover_from_partial_imports(
     );
     assert_eq!(coalesced.superseded_versions, 3);
     let recovered = check_partial_and_recovery(&mut host, &path, coalesced.revision);
+    let history = host.encounters(0, 256).expect("all imports retained");
+    assert_eq!(history.total, 5);
+    assert_eq!(history.items[0].id, first_id);
+    assert_eq!(history.items[3].status, EncounterStatus::PartialImport);
+    assert_eq!(
+        host.encounter_detail(first_id)
+            .expect("old import detail")
+            .expect("old import")
+            .summary
+            .damage,
+        400
+    );
     check_completed(&retained);
     host.deinitialize_plugin(plugin)
         .expect("deinitialize import parser");
@@ -76,6 +141,16 @@ fn completed_snapshots_are_owned_versioned_and_recover_from_partial_imports(
     check_completed(&retained);
     check_completed(&recovered);
     let mut restarted = Host::start(config()).expect("restart managed session");
+    assert!(matches!(
+        restarted.encounter_detail(first_id),
+        Err(Error::InvalidCombatRequest(_))
+    ));
+    assert!(matches!(
+        restarted.encounter_attacks(first_id, 0, 1),
+        Err(Error::InvalidCombatRequest(_))
+    ));
+    assert_eq!(detail.summary.damage, 400);
+    assert_eq!(strike.damage, 400);
     assert!(matches!(
         restarted.combat_snapshot(Some(retained.revision)),
         Err(Error::InvalidSnapshotRequest(_))
@@ -137,6 +212,10 @@ fn check_live_completion(host: &mut Host, directory: &Utf8Path, plugin_path: &Ut
             host.import_log(&path),
             Err(Error::Managed { command: 8, .. })
         ));
+        let live = wait_for_live_totals(host, damage, started);
+        assert_eq!(live.summary.status, EncounterStatus::Active);
+        assert!(!live.summary.is_import);
+        assert_eq!(live.combatants.len(), 2);
         host.end_combat()
             .expect("finish live combat without another log record");
         let result = host
@@ -146,6 +225,14 @@ fn check_live_completion(host: &mut Host, directory: &Utf8Path, plugin_path: &Ut
         assert!(!result.is_import);
         assert_eq!(result.status, CombatSnapshotStatus::Ended);
         assert_eq!(result.damage, damage);
+        assert!(host.live_combat().expect("idle after combat").is_none());
+        let ended = host
+            .encounter_detail(live.summary.id)
+            .expect("same live ID after end")
+            .expect("ended combat");
+        assert_eq!(ended.summary.status, EncounterStatus::Ended);
+        assert_eq!(ended.summary.damage, damage);
+        assert_eq!(live.summary.status, EncounterStatus::Active);
         host.end_combat().expect("idle completion is harmless");
         assert!(
             host.combat_snapshot(Some(result.revision))
@@ -156,6 +243,28 @@ fn check_live_completion(host: &mut Host, directory: &Utf8Path, plugin_path: &Ut
     assert_eq!(host.diagnostics().expect("live diagnostics").total, 0);
     host.deinitialize_plugin(plugin)
         .expect("deinitialize live parser");
+}
+
+fn wait_for_live_totals(
+    host: &mut Host,
+    damage: i64,
+    started: std::time::Instant,
+) -> aftercast::EncounterDetail {
+    loop {
+        host.pump().expect("pump live query");
+        if let Some(live) = host
+            .live_combat()
+            .expect("read active combat")
+            .filter(|live| live.summary.damage == damage)
+        {
+            return live;
+        }
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "live combat totals did not update"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
 }
 
 fn check_completed(snapshot: &CombatSnapshot) {

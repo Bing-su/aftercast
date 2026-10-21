@@ -67,6 +67,7 @@ public partial class FormActMain
             var encounter = new EncounterData(ActGlobals.charName!, currentZone, combatZone);
             combatZone.ActiveEncounter = encounter;
             combatZone.Items.Add(encounter);
+            if (importingLogs) Identity(encounter).Status = Aftercast.ActCompat.CombatSnapshotStatus.Importing;
             // Preserve ACT's historical last-zone index quirk when an older zone was inserted or reused.
             return LastEncounterEvent(encounter);
         }

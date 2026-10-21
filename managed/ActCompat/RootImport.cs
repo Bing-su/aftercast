@@ -185,6 +185,7 @@ namespace Advanced_Combat_Tracker
                     if (Failure is { } callbackError)
                         failures.Add(new InvalidDataException("Log import encountered a subscriber or aggregation failure; partial history was retained", callbackError));
                 // Finalize status after restoration notifications, which can themselves fail or publish a newer live result.
+                root.CompleteImportQueries(importZone, firstEncounter, failures.Count == 0);
                 root.CompleteImportSnapshotState(snapshotBefore, failures.Count == 0);
                 if (failures.Count == 1) ExceptionDispatchInfo.Capture(failures[0]).Throw();
                 if (failures.Count > 1) throw new AggregateException("Log import failed; partial history was retained", failures);

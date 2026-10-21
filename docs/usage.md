@@ -97,6 +97,9 @@ click; Linux Chromium also needs Speech Dispatcher enabled. See the verified
 | `drain_logs(id)`         | Return owned records and exact oldest-record loss ranges; core parsing continues during subscriber overflow    | [Log batches](logs.md)           |
 | `unsubscribe_logs(id)`   | Discard unread subscription records and loss state explicitly                                                  | [Log batches](logs.md)           |
 | `combat_snapshot(after)` | Latest ended encounter and import status, with session-scoped revision polling; intermediate versions coalesce | [Combat snapshots](snapshots.md) |
+| `live_combat()` | Current live encounter and participant counters without ending combat | [GUI queries](snapshots.md#gui-combat-queries) |
+| `encounters(offset, limit)` | Paged session encounter list, including imports and active combat | [GUI queries](snapshots.md#gui-combat-queries) |
+| `encounter_detail(id)` / `encounter_attacks(id, offset, limit)` | Selected encounter participants and paged category/attack aggregates | [GUI queries](snapshots.md#gui-combat-queries) |
 
 Import errors restore live parser context and retain any partial imported history.
 Transport counts are not parsed counts. End-of-file does not flush private plugin

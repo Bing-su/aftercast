@@ -165,6 +165,9 @@ namespace Aftercast.ActCompat
         public Tuple<long, string[]> DiagnosticsSnapshot => main.DiagnosticsSnapshot;
         public ImportResult ImportLog(string path) => main.ImportLog(path);
         public CombatSnapshotData? ReadCombatSnapshot(ulong afterRevision) => main.ReadCombatSnapshot(afterRevision);
+        public CombatPage<EncounterSummaryData> ListEncounters(int offset, int limit) => main.ListEncounters(offset, limit);
+        public EncounterDetailData? ReadEncounter(ulong id, bool live) => main.ReadEncounter(id, live);
+        public CombatPage<AttackSummaryData>? ReadEncounterAttacks(ulong id, int offset, int limit) => main.ReadEncounterAttacks(id, offset, limit);
         public void EnsureCanStop() => main.EnsureCanWaitForLogReader();
         // Quiesce file callbacks before the boundary so an admitted line cannot race encounter finalization.
         public void EndCombat() => main.RunWithLogReadingSuspended(() => main.EndCombat(true));

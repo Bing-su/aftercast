@@ -78,7 +78,7 @@ namespace Advanced_Combat_Tracker
             }
         }
 
-        private Aftercast.ActCompat.CombatSnapshotData CaptureCombatSnapshot(EncounterData encounter)
+        private Aftercast.ActCompat.CombatantSnapshotData[] CaptureCombatants(EncounterData encounter)
         {
             if (encounter.Items.Count > 65536)
                 throw new InvalidOperationException("Combat snapshots support at most 65536 actors.");
@@ -93,6 +93,12 @@ namespace Advanced_Combat_Tracker
                     actor.Swings, actor.Hits, actor.CritHits, actor.Heals, actor.Misses, actor.Blocked,
                     actor.Kills, actor.Deaths);
             }
+            return actors;
+        }
+
+        private Aftercast.ActCompat.CombatSnapshotData CaptureCombatSnapshot(EncounterData encounter)
+        {
+            var actors = CaptureCombatants(encounter);
             // Freeze actual getters once after end notifications, before public ACT state can later change.
             return new(combatSnapshotRevision, combatSnapshotImport, combatSnapshotStatus,
                 encounter.ZoneName, encounter.Title, encounter.CharName, encounter.StartTime, encounter.EndTime,

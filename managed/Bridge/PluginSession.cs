@@ -29,6 +29,8 @@ internal sealed class PluginSession
     private readonly LogBuffer logs = new();
     internal Tuple<long, string[]> DiagnosticsSnapshot => environment?.DiagnosticsSnapshot ?? Tuple.Create(0L, Array.Empty<string>());
     internal T OnOwner<T>(Func<T> action) => context is null ? action() : context.Run(action);
+    internal byte[] QueryCombat(int mode, ulong id, int offset, int limit) =>
+        OnOwner(() => CombatQueryEncoding.Encode(environment, mode, id, offset, limit));
     internal int Pump()
     {
         // Pump is the caller's startup boundary; pending plugin instances keep deferred integrations paused.
