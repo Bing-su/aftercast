@@ -219,13 +219,16 @@ internal static class OriginalCorpusChecks
         }
     }
 
-    internal static void CheckMessages(string[] messages)
+    internal static void CheckMessages(string[] messages, string pluginPath)
     {
         var informationPrefixes = new[]
         {
             "FFXIV_ACT_Plugin Version:", "Selected Language ID:", "Selected Process ID:", "Detected Process ID:"
         };
         const string warningPrefix = "SimulatedDamage Timeout with no ticks/GroundAoE: Removing status ";
+        var directory = Path.GetDirectoryName(Path.GetFullPath(pluginPath))!;
+        // The pinned plugin installs its bundled native DLL on first start, e.g. in a fresh disposable deployment.
+        var deploymentNotice = $"Renamed [{Path.Combine(directory, "deucalion-1.5.0.distrib.dll")}] to [{Path.Combine(directory, "deucalion-1.5.0.dll")}]].";
         Check(messages.Length >= 3);
         var notices = 0;
         var warnings = 0;
@@ -239,7 +242,8 @@ internal static class OriginalCorpusChecks
             var body = message[(delimiter + 2)..];
             if (index < 3) Check(body.StartsWith(informationPrefixes[index], StringComparison.Ordinal));
             var information = informationPrefixes.FirstOrDefault(prefix => body.StartsWith(prefix, StringComparison.Ordinal));
-            if (information is not null)
+            if (body == deploymentNotice) notices++;
+            else if (information is not null)
             {
                 Check(!body.AsSpan(information.Length).Trim().IsEmpty);
                 notices++;
@@ -247,7 +251,7 @@ internal static class OriginalCorpusChecks
             else
             {
                 // This corpus-specific warning is reported explicitly; arbitrary exceptions or unknown messages still fail.
-                Check(body.StartsWith(warningPrefix, StringComparison.Ordinal));
+                Check(body.StartsWith(warningPrefix, StringComparison.Ordinal), "Unexpected original parser message: " + message);
                 Check(!body.AsSpan(warningPrefix.Length).Trim().IsEmpty);
                 warnings++;
             }

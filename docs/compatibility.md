@@ -63,6 +63,11 @@ in their private state directory. These files contain names and action text and
 are test inputs, not a public export format. The replay task consumes these files.
 Commands and required arguments are listed in [development](development.md#original-artifact-verification).
 
+The corpus check inspects the plugin's private message sink as well as host
+diagnostics. It accepts the pinned plugin's first-start Deucalion DLL rename only
+for the exact supplied deployment paths. Known simulated-damage timeout warnings
+are counted explicitly; unknown messages still fail with their original text.
+
 ## Original writer
 
 | Property        | Behavior                                                                                                           |

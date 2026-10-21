@@ -189,7 +189,7 @@ internal static class Program
             var parserMessages = ((System.Collections.IEnumerable)list.GetType().GetProperty("Items")!.GetValue(list)!)
                 .Cast<object>().Select(item => item.ToString()!).ToArray();
             var expectedPrefixes = new[] { "FFXIV_ACT_Plugin Version:", "Selected Language ID:", "Selected Process ID:" };
-            if (!fixedFixture) OriginalCorpusChecks.CheckMessages(parserMessages);
+            if (!fixedFixture) OriginalCorpusChecks.CheckMessages(parserMessages, path);
             else
             {
                 foreach (var message in parserMessages) Console.WriteLine("Original parser message: " + message);
@@ -455,6 +455,7 @@ internal static class Program
         CombatSnapshotChecks.Run();
         CombatSnapshotEncodingChecks.Run();
         RecordedActionTranscriptChecks.Run();
+        OriginalCorpusMessageChecks.Run();
         OwnerContextChecks.Run();
         HostLifetimeChecks.Run();
         DiagnosticChecks.Run();
