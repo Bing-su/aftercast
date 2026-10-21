@@ -40,10 +40,11 @@ internal static class Program
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.DataVisualization.dll"));
         }
         // Modes keep artifact-dependent checks separate from ordinary ABI tests without a test framework dependency.
-        if (mode is "original" or "original-import" or "original-corpus") Platform.Prepare();
+        if (mode is "contracts" or "original" or "original-import" or "original-corpus") Platform.Prepare();
         switch (mode)
         {
             case "bridge": Bridge(); break;
+            case "contracts": Contracts(); break;
             case "log-load": LogLoadChecks.Run(); break;
             case "plugins": PluginRequests(); break;
             case "prepare-act": PrepareAct(); break;
@@ -431,6 +432,12 @@ internal static class Program
             Check(Call("HostProbe", "Root") is null);
         }
         finally { directory.Delete(true); }
+        Contracts();
+    }
+
+    // Keep synthetic behavior checks runnable without downloading or locating the proprietary ACT oracle.
+    private static void Contracts()
+    {
         LogFollowerChecks.Run();
         InitialBoundaryChecks.Run();
         InitialSnapshotChecks.Run();

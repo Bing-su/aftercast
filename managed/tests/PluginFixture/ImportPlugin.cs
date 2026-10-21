@@ -1,3 +1,4 @@
+using Bxivact.Testing;
 using System.Drawing;
 using System.Globalization;
 using System.Windows.Forms;
@@ -16,25 +17,7 @@ public class ImportPlugin : IActPluginV1
         root = ActGlobals.oFormActMain!;
         previousParser = root.GetDateTimeFromLog;
         root.GetDateTimeFromLog = line => DateTime.UnixEpoch.AddSeconds(int.Parse(line.Split('|')[0], CultureInfo.InvariantCulture));
-        ActGlobals.charName = "Source";
-        CombatantData.DamageTypeDataOutgoingDamage = "Damage";
-        CombatantData.DamageTypeDataOutgoingHealing = "Healing";
-        CombatantData.DamageTypeDataIncomingDamage = "Taken";
-        CombatantData.DamageTypeDataIncomingHealing = "Received";
-        CombatantData.OutgoingDamageTypeDataObjects = new()
-        {
-            ["Damage"] = new("Damage", -1, Color.Red),
-            ["Healing"] = new("Healing", 1, Color.Green),
-            ["All Out"] = new("All", 0, Color.Transparent)
-        };
-        CombatantData.IncomingDamageTypeDataObjects = new()
-        {
-            ["Taken"] = new("Taken", -1, Color.Red),
-            ["Received"] = new("Received", 1, Color.Green),
-            ["All In"] = new("All", 0, Color.Transparent)
-        };
-        CombatantData.SwingTypeToDamageTypeDataLinksOutgoing = new() { [1] = new() { "Damage" } };
-        CombatantData.SwingTypeToDamageTypeDataLinksIncoming = new() { [1] = new() { "Taken" } };
+        CombatFixture.ConfigureCategories();
         root.BeforeLogLineRead += Read;
         if (Live)
         {

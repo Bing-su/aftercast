@@ -1,3 +1,4 @@
+using Bxivact.Testing;
 using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -28,25 +29,9 @@ internal static class CombatSnapshotChecks
         {
             Host = new(Directory.FullName);
             Root = ActGlobals.oFormActMain!;
-            ActGlobals.charName = "Source";
-            CombatantData.DamageTypeDataOutgoingDamage = "Damage";
-            CombatantData.DamageTypeDataOutgoingHealing = "Healing";
-            CombatantData.DamageTypeDataIncomingDamage = "Taken";
-            CombatantData.DamageTypeDataIncomingHealing = "Received";
-            CombatantData.OutgoingDamageTypeDataObjects = new()
-            {
-                ["Damage"] = new("Damage", -1, Color.Red),
-                ["Healing"] = new("Healing", 1, Color.Green),
-                ["All Out"] = new("All", 0, Color.Transparent)
-            };
-            CombatantData.IncomingDamageTypeDataObjects = new()
-            {
-                ["Taken"] = new("Taken", -1, Color.Red),
-                ["Received"] = new("Received", 1, Color.Green),
-                ["All In"] = new("All", 0, Color.Transparent)
-            };
-            CombatantData.SwingTypeToDamageTypeDataLinksOutgoing = new() { [1] = new() { "Damage" }, [3] = new() { "Healing" } };
-            CombatantData.SwingTypeToDamageTypeDataLinksIncoming = new() { [1] = new() { "Taken" }, [3] = new() { "Received" } };
+            CombatFixture.ConfigureCategories();
+            CombatantData.SwingTypeToDamageTypeDataLinksOutgoing.Add(3, new() { "Healing" });
+            CombatantData.SwingTypeToDamageTypeDataLinksIncoming.Add(3, new() { "Received" });
             Root.LastKnownTime = Epoch;
             Root.ChangeZone("Fixture Zone");
             Root.GetDateTimeFromLog = line => line == "first" ? Epoch : Epoch.AddSeconds(2);

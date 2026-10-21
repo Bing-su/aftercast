@@ -1,3 +1,4 @@
+using Bxivact.Testing;
 using System.Drawing;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -31,25 +32,7 @@ internal static class ImportChecks
         {
             Host = new(Directory.FullName);
             Root = ActGlobals.oFormActMain!;
-            ActGlobals.charName = "Source";
-            CombatantData.DamageTypeDataOutgoingDamage = "Damage";
-            CombatantData.DamageTypeDataOutgoingHealing = "Healing";
-            CombatantData.DamageTypeDataIncomingDamage = "Taken";
-            CombatantData.DamageTypeDataIncomingHealing = "Received";
-            CombatantData.OutgoingDamageTypeDataObjects = new()
-            {
-                ["Damage"] = new("Damage", -1, Color.Red),
-                ["Healing"] = new("Healing", 1, Color.Green),
-                ["All Out"] = new("All", 0, Color.Transparent)
-            };
-            CombatantData.IncomingDamageTypeDataObjects = new()
-            {
-                ["Taken"] = new("Taken", -1, Color.Red),
-                ["Received"] = new("Received", 1, Color.Green),
-                ["All In"] = new("All", 0, Color.Transparent)
-            };
-            CombatantData.SwingTypeToDamageTypeDataLinksOutgoing = new() { [1] = new() { "Damage" } };
-            CombatantData.SwingTypeToDamageTypeDataLinksIncoming = new() { [1] = new() { "Taken" } };
+            CombatFixture.ConfigureCategories();
             Root.LastKnownTime = Epoch.AddDays(1);
             Root.ChangeZone("Live Zone");
             Root.LogFilePath = "live.log";

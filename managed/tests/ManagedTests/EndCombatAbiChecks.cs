@@ -1,3 +1,4 @@
+using Bxivact.Testing;
 using System.Drawing;
 using System.Reflection;
 using System.Runtime.InteropServices;
@@ -35,7 +36,7 @@ internal static class EndCombatAbiChecks
             shared.Configure(directory.FullName);
             _ = shared.OnOwner(() => typeof(PluginSession).GetMethod("Host", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(shared, null));
             var root = ActGlobals.oFormActMain!;
-            ConfigureCategories();
+            CombatFixture.ConfigureCategories();
             using var control = shared.OnOwner(() => new Control());
             var ownerThread = Environment.CurrentManagedThreadId;
             var callbackCount = 0;
@@ -71,26 +72,5 @@ internal static class EndCombatAbiChecks
         }
     }
 
-    private static void ConfigureCategories()
-    {
-        ActGlobals.charName = "Source";
-        CombatantData.DamageTypeDataOutgoingDamage = "Damage";
-        CombatantData.DamageTypeDataOutgoingHealing = "Healing";
-        CombatantData.DamageTypeDataIncomingDamage = "Taken";
-        CombatantData.DamageTypeDataIncomingHealing = "Received";
-        CombatantData.OutgoingDamageTypeDataObjects = new()
-        {
-            ["Damage"] = new("Damage", -1, Color.Red),
-            ["Healing"] = new("Healing", 1, Color.Green),
-            ["All Out"] = new("All", 0, Color.Transparent)
-        };
-        CombatantData.IncomingDamageTypeDataObjects = new()
-        {
-            ["Taken"] = new("Taken", -1, Color.Red),
-            ["Received"] = new("Received", 1, Color.Green),
-            ["All In"] = new("All", 0, Color.Transparent)
-        };
-        CombatantData.SwingTypeToDamageTypeDataLinksOutgoing = new() { [1] = new() { "Damage" } };
-        CombatantData.SwingTypeToDamageTypeDataLinksIncoming = new() { [1] = new() { "Taken" } };
-    }
+
 }

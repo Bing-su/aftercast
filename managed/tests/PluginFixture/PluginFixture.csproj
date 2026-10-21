@@ -3,6 +3,7 @@
     <AssemblyName>Bxivact.PluginFixture</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <Compile Include="../CombatFixture.cs" Link="CombatFixture.cs" />
     <ProjectReference Include="../PluginDependency/PluginDependency.csproj" />
     <ProjectReference Include="../../ActCompat/ActCompat.csproj" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" GeneratePathProperty="true" PrivateAssets="all" ExcludeAssets="all" />
