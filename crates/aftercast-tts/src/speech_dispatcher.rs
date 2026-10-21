@@ -94,9 +94,8 @@ impl Backend for SpeechDispatcher {
                 )));
             }
             match self.events.recv_timeout(Duration::from_millis(20)) {
-                Ok((event, ended)) if event == id => {
-                    return if ended { Ok(()) } else { Err(Error::Cancelled) };
-                }
+                Ok((event, true)) if event == id => return Ok(()),
+                Ok((event, false)) if event == id => return Err(Error::Cancelled),
                 Ok(_) | Err(mpsc::RecvTimeoutError::Timeout) => (),
                 Err(mpsc::RecvTimeoutError::Disconnected) => return Err(Error::Closed),
             }

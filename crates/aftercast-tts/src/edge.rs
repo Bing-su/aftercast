@@ -1,5 +1,4 @@
-use std::io::Cursor;
-use std::time::{Duration, Instant};
+use std::time::Duration;
 
 use msedge_tts::tts::{
     SpeechConfig,
@@ -7,7 +6,7 @@ use msedge_tts::tts::{
 };
 use tokio::runtime::{Builder, Runtime};
 
-use crate::{Backend, Cancellation, Error, Utterance, failure};
+use crate::{Backend, Cancellation, Error, SynthesizedAudio, Synthesizer, Utterance, failure};
 
 /// Online Edge Read Aloud backend. Selection is explicit; no local backend falls back to this service.
 pub struct Edge {
@@ -29,8 +28,8 @@ impl Edge {
         })
     }
 
-    /// Fetch MP3 bytes without opening an audio device, useful to verify online synthesis in headless environments.
-    pub fn synthesize(
+    /// Fetch unscaled MP3 bytes without an audio device; volume is applied by playback.
+    pub fn synthesize_mp3(
         &mut self,
         utterance: &Utterance,
         cancellation: &Cancellation,
@@ -44,7 +43,7 @@ impl Edge {
             audio_format: "audio-24khz-48kbitrate-mono-mp3".into(),
             pitch: 0,
             rate: i32::from(utterance.rate),
-            volume: i32::from(utterance.volume) - 100,
+            volume: 0,
         };
         // The dependency embeds strings in SSML; escape plain text here and restrict voice IDs to their documented form.
         let text = escape_text(&utterance.text);
@@ -103,23 +102,19 @@ async fn fetch(text: &str, config: &SpeechConfig) -> Result<Vec<u8>, Error> {
 
 impl Backend for Edge {
     fn speak(&mut self, utterance: &Utterance, cancellation: &Cancellation) -> Result<(), Error> {
-        let audio = self.synthesize(utterance, cancellation)?;
-        cancellation.check()?;
-        let stream = rodio::DeviceSinkBuilder::open_default_sink().map_err(failure)?;
-        let player = rodio::play(stream.mixer(), Cursor::new(audio)).map_err(failure)?;
-        let started = Instant::now();
-        while !player.empty() {
-            if cancellation.is_cancelled() {
-                player.stop();
-                return Err(Error::Cancelled);
-            }
-            if started.elapsed() > Duration::from_secs(300) {
-                player.stop();
-                return Err(Error::Backend("Edge playback timed out".into()));
-            }
-            std::thread::sleep(Duration::from_millis(20));
-        }
-        Ok(())
+        let audio = Synthesizer::synthesize(self, utterance, cancellation)?;
+        crate::playback::play(audio, utterance.volume, cancellation)
+    }
+}
+
+impl Synthesizer for Edge {
+    fn synthesize(
+        &mut self,
+        utterance: &Utterance,
+        cancellation: &Cancellation,
+    ) -> Result<SynthesizedAudio, Error> {
+        self.synthesize_mp3(utterance, cancellation)
+            .map(SynthesizedAudio::Mp3)
     }
 }
 

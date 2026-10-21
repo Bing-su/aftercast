@@ -8,7 +8,8 @@ description = "Pluggable offline and online text-to-speech for Windows and Linux
 [features]
 default = ["system", "edge"]
 system = ["dep:windows", "dep:speech-dispatcher"]
-edge = ["dep:msedge-tts", "dep:tokio", "dep:rodio"]
+playback = ["dep:rodio"]
+edge = ["dep:msedge-tts", "dep:tokio", "playback"]
 
 [dependencies]
 thiserror.workspace = true

@@ -33,11 +33,11 @@ fn edge_synthesizes_real_mp3_and_rejects_precancelled_work() {
     let cancel = Cancellation::default();
     cancel.cancel();
     assert!(matches!(
-        edge.synthesize(&Utterance::new("cancelled"), &cancel),
+        edge.synthesize_mp3(&Utterance::new("cancelled"), &cancel),
         Err(Error::Cancelled)
     ));
     let audio = edge
-        .synthesize(
+        .synthesize_mp3(
             &Utterance::new("애프터캐스트 음성 테스트입니다. <태그> & 문자"),
             &Cancellation::default(),
         )
@@ -49,10 +49,50 @@ fn edge_synthesizes_real_mp3_and_rejects_precancelled_work() {
         std::thread::sleep(std::time::Duration::from_millis(10));
         signal.cancel();
     });
-    let result = edge.synthesize(
+    let result = edge.synthesize_mp3(
         &Utterance::new("진행 중인 합성을 취소합니다. ".repeat(60)),
         &during,
     );
     canceller.join().expect("join cancellation helper");
     assert!(matches!(result, Err(Error::Cancelled)));
+}
+
+#[cfg(feature = "playback")]
+#[test]
+#[ignore = "requires a working audio device; plays silent fixture PCM, no model is loaded"]
+fn pcm_synthesizer_uses_common_playback_and_cancellation() {
+    use aftercast_tts::{
+        Cancellation, Error, PcmAudio, Playback, Speaker, SynthesizedAudio, Synthesizer, Utterance,
+    };
+
+    struct PcmFixture;
+    impl Synthesizer for PcmFixture {
+        fn synthesize(
+            &mut self,
+            request: &Utterance,
+            cancellation: &Cancellation,
+        ) -> Result<SynthesizedAudio, Error> {
+            cancellation.check()?;
+            let samples = if request.text == "long" {
+                240_000
+            } else {
+                6000
+            };
+            Ok(SynthesizedAudio::Pcm(PcmAudio::new(
+                vec![0.0; samples],
+                24_000,
+                1,
+            )?))
+        }
+    }
+    let speaker = Speaker::new(|| Ok(Playback::new(PcmFixture))).expect("PCM fixture backend");
+    speaker
+        .speak(Utterance::new("short"))
+        .expect("enqueue")
+        .wait()
+        .expect("PCM completion");
+    let speech = speaker.speak(Utterance::new("long")).expect("enqueue");
+    std::thread::sleep(std::time::Duration::from_millis(100));
+    speech.cancel();
+    assert!(matches!(speech.wait(), Err(Error::Cancelled)));
 }

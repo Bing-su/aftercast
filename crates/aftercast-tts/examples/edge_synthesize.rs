@@ -8,7 +8,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     let text = args.next().ok_or("text is required")?;
     let voice = args.next().ok_or("voice is required")?;
     let mut backend = Edge::new(voice)?;
-    let bytes = backend.synthesize(&Utterance::new(text), &Cancellation::default())?;
+    let bytes = backend.synthesize_mp3(&Utterance::new(text), &Cancellation::default())?;
     println!("Synthesized {} bytes", bytes.len());
     std::fs::write(path, bytes)?;
     Ok(())

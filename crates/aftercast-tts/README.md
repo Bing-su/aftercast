@@ -33,6 +33,7 @@ speech.wait()?;
 | Default: `system`, `edge` | Build local platform backend and optional online backend |
 | `default-features = false, features = ["system"]` | Local backend only; excludes Edge/network/audio-decoder dependencies |
 | `default-features = false, features = ["edge"]` | Edge only; Linux does not require libspeechd |
+| `default-features = false, features = ["playback"]` | PCM/MP3 playback adapter for custom inference engines; no Edge/system-TTS dependencies |
 | No features | Trait, bounded worker and custom backends only; used by the ACT host dependency |
 
 Linux builds with `system` require libspeechd headers and libclang for generated
@@ -88,6 +89,42 @@ after playback completes and must cooperate with cancellation and bound external
 I/O waits. Arbitrary third-party backends that ignore this contract can delay
 shutdown. Shared queues and lifecycle handling remain in Speaker.
 
+## Preparing for local neural TTS
+
+Implement `Synthesizer` when an engine produces audio rather than playing it
+directly. `Playback<S>` adapts it to the same Backend/queue contract:
+
+```rust,no_run
+use aftercast_tts::{Error, Playback, Speaker, Synthesizer};
+
+// load() can create a non-Send model/device/tokenizer on its owning worker.
+fn speaker_for_model<S: Synthesizer>(
+    load: impl FnOnce() -> Result<S, Error> + Send + 'static,
+) -> Result<Speaker, Error> {
+    Speaker::new(move || load().map(Playback::new))
+}
+```
+
+| Extension contract | Responsibility |
+| --- | --- |
+| `Synthesizer::synthesize` | Convert plain text to `SynthesizedAudio`; apply requested voice/rate, leave volume to Playback |
+| `PcmAudio::new(samples, sample_rate, channels)` | Validate CPU-owned interleaved f32 PCM; preserve the model's actual sample rate/channel count |
+| PCM limits | Finite normalized -1..1 samples, 1..8 channels, 1..192000 Hz, up to 64 Mi samples and 300 seconds |
+| `SynthesizedAudio::Mp3` | Encoded output, e.g. Edge; common playback checks size and decodes it |
+| Model lifecycle | Factory loads model/tokenizer/vocoder/device once; synthesize reuses them; Drop releases them on that same thread |
+| Device boundary | Engine performs tensor dtype/layout conversion and CPU readback; no framework-specific tensor/device type enters the common API |
+| Runtime engine selection | `Box<dyn Synthesizer>` works with Playback; `Box<dyn Backend>` works with Speaker factories |
+| Cancellation | Check between inference stages/chunks and before readback; an already executing GPU kernel need not be preemptible |
+
+This seam is intended to accept future Burn or burn-onnx implementations for
+Hugging Face models. Model acquisition, tokenizer/phonemizer, weights, vocoder,
+compute backend and engine-specific settings stay with that implementation.
+Voice IDs can select engine-defined speaker profiles. No Burn/Hugging Face
+dependency, model download or real neural inference is implemented now.
+The current contract returns a complete utterance; streaming inference output is
+deferred. Edge also implements Synthesizer and uses the same playback path;
+`Edge::synthesize_mp3` remains available for headless byte-level verification.
+
 ## Verification
 
 ```sh
@@ -100,7 +137,7 @@ cargo run -p aftercast-tts --example speak -- edge '음성 테스트' ko-KR-SunH
 ```
 
 Windows SAPI and Linux Speech Dispatcher playback completion, cancellation and
-recovery were run locally. Edge real Korean MP3 synthesis and Windows playback
+recovery were run locally. Edge real Korean MP3 synthesis and Windows/Linux playback
 were also run. Automated completion is based on backend/device APIs; audible
 quality is not measured. See the repository's `docs/tts-validation.md` for evidence
 and ACT integration limits.

@@ -10,10 +10,13 @@
 
 #[cfg(feature = "edge")]
 mod edge;
+#[cfg(feature = "playback")]
+mod playback;
 #[cfg(all(windows, feature = "system"))]
 mod sapi;
 #[cfg(all(target_os = "linux", feature = "system"))]
 mod speech_dispatcher;
+mod synthesis;
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak, mpsc};
@@ -21,10 +24,13 @@ use std::thread::{self, JoinHandle};
 
 #[cfg(feature = "edge")]
 pub use edge::Edge;
+#[cfg(feature = "playback")]
+pub use playback::Playback;
 #[cfg(all(windows, feature = "system"))]
 pub use sapi::Sapi;
 #[cfg(all(target_os = "linux", feature = "system"))]
 pub use speech_dispatcher::SpeechDispatcher;
+pub use synthesis::{PcmAudio, SynthesizedAudio, Synthesizer};
 
 /// Recoverable failures; queue acceptance does not imply synthesis/playback succeeded.
 #[derive(Debug, thiserror::Error)]
@@ -32,6 +38,8 @@ pub use speech_dispatcher::SpeechDispatcher;
 pub enum Error {
     #[error("invalid speech request: {0}")]
     InvalidRequest(&'static str),
+    #[error("invalid synthesized audio: {0}")]
+    InvalidAudio(&'static str),
     #[error("speech queue is full")]
     QueueFull,
     #[error("speech was cancelled")]
@@ -62,7 +70,8 @@ impl Utterance {
         }
     }
 
-    fn validate(&self) -> Result<(), Error> {
+    /// Shared validation for direct backend/synthesizer callers; Speaker and Playback call this before dispatch.
+    pub fn validate(&self) -> Result<(), Error> {
         if self.text.trim().is_empty()
             || self.text.len() > 4096
             || self
@@ -97,6 +106,13 @@ impl Utterance {
 /// Implementations must check cancellation regularly and bound external I/O waits.
 pub trait Backend: 'static {
     fn speak(&mut self, utterance: &Utterance, cancellation: &Cancellation) -> Result<(), Error>;
+}
+
+// Keep runtime backend selection usable with the same worker factory as concrete engine types.
+impl<T: Backend + ?Sized> Backend for Box<T> {
+    fn speak(&mut self, utterance: &Utterance, cancellation: &Cancellation) -> Result<(), Error> {
+        (**self).speak(utterance, cancellation)
+    }
 }
 
 /// Cooperative cancellation shared with a backend. For example, check between audio chunks.
@@ -271,6 +287,7 @@ impl Drop for Speaker {
 
 #[cfg(any(
     feature = "edge",
+    feature = "playback",
     all(feature = "system", any(windows, target_os = "linux"))
 ))]
 fn failure(error: impl std::fmt::Display) -> Error {
