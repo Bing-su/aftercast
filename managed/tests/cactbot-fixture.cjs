@@ -37,14 +37,14 @@ async function installFixtureApi(page, displayLanguage = 'en') {
   }, displayLanguage);
 }
 
-// Use the shipped Summerford response trigger instead of synthesizing a sound/speech API call.
-async function triggerResponse(page) {
-  await page.evaluate(() => {
+// Use shipped Summerford log triggers instead of synthesizing a sound/speech API call.
+async function triggerResponse(page, line = 'cactbot test response', code = '0038') {
+  await page.evaluate(({ line, code }) => {
     window.__OverlayCallback({ type: 'onPlayerChangedEvent', detail: { name: 'Fixture Player', id: 0x10000001, job: 'PLD', level: 100, currentHP: 1000, maxHP: 1000 } });
     window.__OverlayCallback({ type: 'ChangeZone', zoneID: 134, zoneName: 'Middle La Noscea' });
-    const rawLine = '00|2026-01-01T00:00:00.0000000+00:00|0038||cactbot test response|fixture';
+    const rawLine = `00|2026-01-01T00:00:00.0000000+00:00|${code}||${line}|fixture`;
     window.__OverlayCallback({ type: 'LogLine', rawLine, line: rawLine.split('|') });
-  });
+  }, { line, code });
 }
 
 module.exports = { serveCactbot, installFixtureApi, triggerResponse };

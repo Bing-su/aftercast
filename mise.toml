@@ -165,6 +165,18 @@ arg "<state>" help="Private state with original CEF files prepared"
 run = '{{vars.managed_tests}} overlay-integration "$usage_ffxiv" "$usage_overlay" "$usage_cactbot" "$usage_state"'
 run_windows = '{{vars.managed_tests}} overlay-integration "%usage_ffxiv%" "%usage_overlay%" "%usage_cactbot%" "%usage_state%"'
 
+[tasks."test:browser-audio"]
+description = "Verify shipped cactbot HTMLAudio and local Web Speech playback with real Chromium/Edge"
+usage = '''
+arg "<cactbot>" help="Extracted cactbot root containing ui and resources"
+arg "<state>" help="Writable browser audio report directory"
+'''
+run = 'sh managed/tests/cactbot-audio-linux.sh "$usage_cactbot" "$usage_state"'
+run_windows = [
+  'node --test managed/tests/cactbot-audio.test.cjs',
+  'node managed/tests/cactbot-audio.cjs "%usage_cactbot%" "%usage_state%"',
+]
+
 [tasks."test:plugin-updates"]
 description = "Query the official ACT plugin version endpoint from replacement and original ACT (Windows, network)"
 depends = ["managed:references"]

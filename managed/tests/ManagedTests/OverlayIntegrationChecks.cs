@@ -55,6 +55,7 @@ internal static class OverlayIntegrationChecks
         var nativeConfig = Activator.CreateInstance(core.GetType("RainbowMage.OverlayPlugin.Overlays.MiniParseOverlayConfig")!, "aftercast integration")!;
         nativeConfig.GetType().GetProperty("Url")!.SetValue(nativeConfig, new Uri(Path.Combine(cactbotPath, "ui", "raidboss", "raidboss.html")).AbsoluteUri + "?timeline=1&alerts=1&audio=1");
         nativeConfig.GetType().GetProperty("IsVisible")!.SetValue(nativeConfig, false);
+        nativeConfig.GetType().GetProperty("MuteWhenHidden")!.SetValue(nativeConfig, false);
         nativeConfig.GetType().GetProperty("IsLocked")!.SetValue(nativeConfig, true);
         nativeConfig.GetType().GetProperty("Size")!.SetValue(nativeConfig, new System.Drawing.Size(800, 500));
         using var native = (IDisposable)Activator.CreateInstance(core.GetType("RainbowMage.OverlayPlugin.Overlays.MiniParseOverlay")!, nativeConfig, "aftercast integration", container)!;
@@ -65,6 +66,8 @@ internal static class OverlayIntegrationChecks
         overlayData.Remove("aftercast-cef-inspection");
         var snapshots = new List<JsonElement>();
         CheckCef(0, snapshot => snapshot.GetProperty("loaded").GetBoolean());
+        var renderer = nativeForm.GetType().GetProperty("Renderer")!.GetValue(nativeForm)!;
+        renderer.GetType().GetMethod("SetMuted")!.Invoke(renderer, new object[] { false });
         // Observe native HTMLAudio events without replacing the original cactbot bundle or CEF player.
         native.GetType().GetMethod("ExecuteScript")!.Invoke(native, new object[] {
             File.ReadAllText("managed/tests/cactbot-audio-observer.cjs") + "\nobserveAudio();" });
@@ -149,7 +152,8 @@ internal static class OverlayIntegrationChecks
             if (child.ExitCode != 0) throw new Exception("Full-stack browser verification failed: " + errors);
             CheckCef(5, snapshot => snapshot.GetProperty("audio").EnumerateArray().Any(audio =>
                 audio.GetProperty("type").GetString() == "media" && audio.GetProperty("src").GetString()!.EndsWith("/BigWigs/Alarm.webm") &&
-                audio.GetProperty("playing").GetBoolean() && audio.GetProperty("ended").GetBoolean()));
+                audio.GetProperty("playing").GetBoolean() && audio.GetProperty("ended").GetBoolean() &&
+                !audio.GetProperty("muted").GetBoolean() && audio.GetProperty("volume").GetDouble() > 0 && audio.GetProperty("time").GetDouble() > 0));
             var cefAudio = snapshots[^1].GetProperty("audio");
             if (cefAudio.EnumerateArray().Any(audio => audio.TryGetProperty("error", out _))) throw new Exception("CEF audio reported a playback error");
             File.WriteAllText(Path.Combine(state, "cef-audio-report.json"), cefAudio.GetRawText());
