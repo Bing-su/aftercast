@@ -9,6 +9,8 @@ namespace Advanced_Combat_Tracker
         public IActPluginV1 pluginObj = null!;
         public TabPage tpPluginSpace = null!;
         public Label lblPluginStatus = null!;
+        public Label lblPluginTitle = null!;
+        public CheckBox cbEnabled = null!;
     }
 
     public partial class FormActMain(DirectoryInfo appDataFolder) : Form
@@ -23,10 +25,12 @@ namespace Advanced_Combat_Tracker
         public DirectoryInfo AppDataFolder => appDataFolder;
         public List<ActPluginData> ActPlugins { get; set; } = new();
         public bool IsActClosing { get; private set; }
+        public bool InitActDone { get; private set; }
         public Version GetVersion() => typeof(FormActMain).Assembly.GetName().Version!;
         public void NotificationAdd(string title, string message, EventHandler? showCallback = null, object? senderObject = null) =>
             throw new NotSupportedException("ACT notification windows are not implemented");
-        internal void BeginClosing() => IsActClosing = true;
+        internal void SetInitializationComplete(bool complete) => InitActDone = complete && !IsActClosing;
+        internal void BeginClosing() { IsActClosing = true; InitActDone = false; }
         public ActPluginData? PluginGetSelfData(IActPluginV1? plugin) =>
             plugin is not null && plugins.TryGetValue(plugin, out var data) ? data : null;
         public void WriteExceptionLog(Exception? error, string context) => RecordDiagnostic(error, context, failOwner: true);
@@ -87,6 +91,7 @@ namespace Advanced_Combat_Tracker
         public static FormActMain? oFormActMain;
         public static FormSpellTimers? oFormSpellTimers;
         public static FormEncounterLogs? oFormEncounterLogs;
+        public static FormImportProgress? oFormImportProgress;
         public static string? charName = "YOU";
     }
 }
@@ -134,6 +139,7 @@ namespace Aftercast.ActCompat
         }
         public void Register(ActPluginData data) => main.Register(data);
         public void BeginClosing() => main.BeginClosing();
+        public void SetInitializationComplete(bool complete) => main.SetInitializationComplete(complete);
         public void Unregister(IActPluginV1 plugin) => main.Unregister(plugin);
         public event Action<OriginalLogRecord> OriginalLogRecordRead
         {

@@ -3,6 +3,9 @@ using System.Windows.Forms;
 
 namespace Advanced_Combat_Tracker;
 
+// Embedded imports have no progress window; the nullable global lets consumers detect the absence of UI.
+public class FormImportProgress : Form { }
+
 public partial class FormActMain
 {
     public TreeView OptionsTreeView { get; set; } = new();

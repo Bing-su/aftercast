@@ -9,6 +9,13 @@ namespace Aftercast.Bridge;
 internal sealed class PluginContext(string path, byte[] hash) : AssemblyLoadContext("aftercast:" + path)
 {
     private readonly AssemblyDependencyResolver resolver = new(path);
+    private static readonly object contractGate = new();
+    private static readonly Dictionary<string, Assembly> overlayContracts = new();
+    internal static bool MatchesSharedContract(AssemblyName reference, AssemblyName actual) =>
+        reference.Name == actual.Name && (reference.Version is null || actual.Version >= reference.Version)
+        && (reference.CultureName ?? "") == (actual.CultureName ?? "")
+        && (reference.Version is null && reference.GetPublicKeyToken() is not { Length: > 0 } ||
+            reference.GetPublicKeyToken().AsSpan().SequenceEqual(actual.GetPublicKeyToken()));
     internal static bool SupportsActReference(AssemblyName reference)
     {
         var actual = typeof(IActPluginV1).Assembly.GetName();
@@ -47,6 +54,32 @@ internal sealed class PluginContext(string path, byte[] hash) : AssemblyLoadCont
         var resolved = resolver.ResolveAssemblyToPath(name);
         var sibling = Path.Combine(Path.GetDirectoryName(path)!, name.Name + ".dll");
         var library = Path.Combine(Path.GetDirectoryName(path)!, "libs", name.Name + ".dll");
+        if (name.Name == "HtmlRenderer")
+        {
+            var rendererPath = resolved ?? (File.Exists(sibling) ? sibling : File.Exists(library) ? library : null);
+            if (rendererPath is not null && OverlayRendererCompatibility.LoadIfKnown(this, rendererPath) is { } renderer) return renderer;
+        }
+        // Addon signatures contain both the OverlayPlugin interfaces and Newtonsoft tokens; share their identities.
+        if (name.Name is "OverlayPlugin.Common" or "Newtonsoft.Json")
+        {
+            lock (contractGate)
+            {
+                if (overlayContracts.TryGetValue(name.Name, out var contract))
+                {
+                    if (!MatchesSharedContract(name, contract.GetName())) throw new FileLoadException("Incompatible overlay contract: " + name);
+                    return contract;
+                }
+                var contractPath = resolved ?? (File.Exists(sibling) ? sibling : File.Exists(library) ? library : null);
+                if (contractPath is not null)
+                {
+                    if (!MatchesSharedContract(name, AssemblyName.GetAssemblyName(contractPath)))
+                        throw new FileLoadException("Incompatible overlay contract: " + name);
+                    contract = LoadFromAssemblyPath(contractPath);
+                    overlayContracts.Add(name.Name, contract);
+                    return contract;
+                }
+            }
+        }
         if (resolved is not null) return LoadFromAssemblyPath(resolved);
         if (File.Exists(sibling)) return LoadFromAssemblyPath(sibling);
         // OverlayPlugin ships private dependencies under libs; resolve them in this plugin's context.

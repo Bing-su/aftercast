@@ -28,7 +28,7 @@ internal static class Program
         var formsDirectory = Path.GetFullPath(args[1]);
         var hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(actPath)));
         if (hash != ExpectedActHash) throw new InvalidOperationException("Original ACT artifact hash does not match the researched version");
-        if (args.Length >= 3 && args[2] is "text-exports" or "timer-models" or "eq2-timestamps" or "benchmark-ui" or "plugin-metadata")
+        if (args.Length >= 3 && args[2] is "text-exports" or "timer-models" or "eq2-timestamps" or "benchmark-ui" or "plugin-metadata" or "plugin-updates")
             AssemblyLoadContext.Default.LoadFromAssemblyName(new AssemblyName("System.Windows.Forms"));
         else
             foreach (var name in new[] { "System.Windows.Forms.dll", "System.Windows.Forms.DataVisualization.dll" })
@@ -58,6 +58,7 @@ internal static class Program
                 "eq2-timestamps" when args.Length == 4 => RunReferenceProbe(args[3], "Eq2TimestampProbe", "Original EQ2 timestamps"),
                 "benchmark-ui" when args.Length == 4 => RunReferenceProbe(args[3], "BenchmarkUiProbe", "Original Benchmark UI"),
                 "plugin-metadata" when args.Length == 4 => RunReferenceProbe(args[3], "PluginMetadataProbe", "Original plugin metadata"),
+                "plugin-updates" when args.Length == 4 => RunReferenceProbe(args[3], "PluginUpdateProbe", "Original plugin update query"),
                 _ => throw new ArgumentException("Unknown original-reference mode")
             };
             return failures + unexpectedFailures == 0 ? 0 : 1;

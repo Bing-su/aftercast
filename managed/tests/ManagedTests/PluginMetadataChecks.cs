@@ -6,6 +6,29 @@ using Aftercast.Bridge;
 
 internal static class PluginMetadataChecks
 {
+    private sealed class DisposableFixture(bool fail) : IActPluginV1, IDisposable
+    {
+        internal int Disposals, Deinitializations;
+        public void InitPlugin(TabPage tab, Label label) { if (fail) throw new InvalidOperationException("fixture initialization failure"); }
+        public void DeInitPlugin() => Deinitializations++;
+        public void Dispose()
+        {
+            if (Deinitializations != (fail ? 0 : 1)) throw new Exception("Dispose ran before DeInitPlugin completed");
+            Disposals++;
+        }
+    }
+    private sealed class ReadyFixture : IActPluginV1
+    {
+        public void InitPlugin(TabPage tab, Label label)
+        {
+            if (ActGlobals.oFormActMain!.InitActDone) throw new Exception("Plugin startup was marked complete before initialization");
+        }
+        public void DeInitPlugin()
+        {
+            if (ActGlobals.oFormActMain!.IsActClosing && ActGlobals.oFormActMain.InitActDone)
+                throw new Exception("Startup readiness survived shutdown");
+        }
+    }
     private sealed class Fixture(bool closing) : IActPluginV1
     {
         public void InitPlugin(TabPage tab, Label label)
@@ -15,6 +38,9 @@ internal static class PluginMetadataChecks
             if (root.IsActClosing || root.GetVersion() != new Version(3, 8, 5, 288) ||
                 root.ActPlugins.Single().pluginObj != this || root.PluginGetSelfData(this) != root.ActPlugins.Single())
                 throw new Exception("Plugin metadata is not available during initialization");
+            var data = root.PluginGetSelfData(this)!;
+            if (!data.cbEnabled.Checked || data.lblPluginTitle.Text != data.pluginFile.Name)
+                throw new Exception("Plugin enable/title controls were not initialized");
         }
         private static void CheckNativeParent(TabPage tab)
         {
@@ -25,6 +51,7 @@ internal static class PluginMetadataChecks
             var root = ActGlobals.oFormActMain!;
             if (root.IsActClosing != closing || root.ActPlugins.Single().pluginObj != this)
                 throw new Exception("Plugin metadata or closing state was cleared before DeInitPlugin");
+            if (root.PluginGetSelfData(this)!.cbEnabled.Checked) throw new Exception("Plugin stayed enabled during DeInitPlugin");
         }
     }
     internal static void Run()
@@ -58,6 +85,42 @@ internal static class PluginMetadataChecks
                     }
                 }
                 finally { session.Stop(); }
+            }
+            var batch = new PluginSession();
+            batch.Configure(directory.FullName);
+            try
+            {
+                var first = batch.Add(typeof(ReadyFixture).Assembly.Location, new ReadyFixture());
+                var second = batch.Add(typeof(ReadyFixture).Assembly.Location, new ReadyFixture());
+                batch.Initialize(first);
+                batch.Pump();
+                if (ActGlobals.oFormActMain!.InitActDone) throw new Exception("Pending plugin did not hold the startup boundary");
+                batch.Initialize(second);
+                if (ActGlobals.oFormActMain.InitActDone) throw new Exception("Initialize marked readiness before the owner pump");
+                batch.Pump();
+                if (!ActGlobals.oFormActMain.InitActDone) throw new Exception("Completed batch did not become ready");
+                var later = batch.Add(typeof(ReadyFixture).Assembly.Location, new ReadyFixture());
+                if (ActGlobals.oFormActMain.InitActDone) throw new Exception("New plugin did not reopen startup admission");
+                batch.Initialize(later);
+                batch.Pump();
+                if (!ActGlobals.oFormActMain.InitActDone) throw new Exception("Later plugin batch did not complete");
+            }
+            finally { batch.Stop(); }
+            foreach (var fail in new[] { false, true })
+            {
+                var lifetime = new PluginSession();
+                lifetime.Configure(directory.FullName);
+                var fixture = new DisposableFixture(fail);
+                try
+                {
+                    var id = lifetime.Add(typeof(DisposableFixture).Assembly.Location, fixture);
+                    try { lifetime.Initialize(id); if (fail) throw new Exception("Fixture failure was lost"); }
+                    catch (InvalidOperationException) when (fail) { }
+                    if (!fail) lifetime.Deinitialize(id);
+                }
+                finally { lifetime.Stop(); }
+                if (fixture.Disposals != 1 || fixture.Deinitializations != (fail ? 0 : 1))
+                    throw new Exception("Plugin Dispose/DeInit order or at-most-once ownership failed");
             }
         }
         finally { directory.Delete(true); }

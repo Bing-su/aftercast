@@ -147,6 +147,34 @@ run_windows = [
   'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} plugin-metadata {{vars.reference_probe}}',
 ]
 
+[tasks."test:overlay-integration"]
+description = "Verify original OverlayPlugin/cactbot WS handlers and live log delivery into raidboss (Windows, existing Playwright/Edge)"
+depends = ["managed:test-runner"]
+usage = '''
+arg "<ffxiv>" help="Trusted original FFXIV plugin copy"
+arg "<overlay>" help="Trusted maintained OverlayPlugin DLL"
+arg "<cactbot>" help="Trusted CactbotOverlay DLL"
+arg "<state>" help="Private state with original CEF files prepared"
+'''
+run = '{{vars.managed_tests}} overlay-integration "$usage_ffxiv" "$usage_overlay" "$usage_cactbot" "$usage_state"'
+run_windows = '{{vars.managed_tests}} overlay-integration "%usage_ffxiv%" "%usage_overlay%" "%usage_cactbot%" "%usage_state%"'
+
+[tasks."test:plugin-updates"]
+description = "Query the official ACT plugin version endpoint from replacement and original ACT (Windows, network)"
+depends = ["managed:references"]
+run = 'echo "Original update endpoint comparison requires Windows"'
+run_windows = [
+  '{{vars.managed_tests}} plugin-updates',
+  'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} plugin-updates {{vars.reference_probe}}',
+]
+
+[tasks."test:overlay-renderer"]
+description = "Check pinned in-memory HtmlRenderer native copy compatibility on Windows x64"
+depends = ["managed:test-runner"]
+usage = 'arg "<renderer>" help="Original HtmlRenderer.dll from OverlayPlugin 0.19.111"'
+run = '{{vars.managed_tests}} overlay-renderer "$usage_renderer"'
+run_windows = '{{vars.managed_tests}} overlay-renderer "%usage_renderer%"'
+
 [tasks."test:timer-models"]
 description = "Compare ACT timer values and frame contracts (Windows native reference)"
 depends = ["managed:references"]

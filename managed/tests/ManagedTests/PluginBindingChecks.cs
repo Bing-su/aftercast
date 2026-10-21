@@ -5,6 +5,16 @@ internal static class PluginBindingChecks
 {
     internal static void Run()
     {
+        var actualContract = new AssemblyName("Newtonsoft.Json, Version=13.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed");
+        if (!PluginContext.MatchesSharedContract(new("Newtonsoft.Json"), actualContract))
+            throw new Exception("Simple-name dependency version check was rejected");
+        if (!PluginContext.MatchesSharedContract(new("Newtonsoft.Json, Version=12.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed"), actualContract))
+            throw new Exception("Compatible addon JSON reference was rejected");
+        foreach (var reference in new[] {
+            "Newtonsoft.Json, Version=14.0.0.0, Culture=neutral, PublicKeyToken=30ad4fe6b2a6aeed",
+            "Newtonsoft.Json, Version=12.0.0.0, Culture=neutral, PublicKeyToken=null",
+            "Newtonsoft.Json, Version=12.0.0.0, Culture=ko-KR, PublicKeyToken=30ad4fe6b2a6aeed" })
+            if (PluginContext.MatchesSharedContract(new(reference), actualContract)) throw new Exception("Incompatible addon contract accepted");
         const string identity = "Advanced Combat Tracker, Culture=neutral, PublicKeyToken=a946b61e93d97868";
         foreach (var version in new[] { "2.0.0.0", "3.5.0.273", "3.8.5.288", "3.65535.65535.65535" })
             if (!PluginContext.SupportsActReference(new AssemblyName(identity) { Version = Version.Parse(version) }))

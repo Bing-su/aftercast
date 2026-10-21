@@ -12,7 +12,7 @@ using Aftercast.Bridge;
 // Record incomplete startup honestly: zero host diagnostics alone does not establish plugin readiness.
 internal static class OverlayStackChecks
 {
-    internal static void Run(string ffxiv, string overlay, string cactbot, string state)
+    internal static void Run(string ffxiv, string overlay, string cactbot, string state, Action<PluginSession>? exercise = null)
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("This stack observation requires Windows");
         // Surface native Timer failures in the report instead of opening WinForms' unhandled-exception dialog.
@@ -62,12 +62,6 @@ internal static class OverlayStackChecks
                     phase = "initialize";
                     status = session.Initialize(id);
                     var label = ActGlobals.oFormActMain!.PluginGetSelfData((IActPluginV1)plugin)!.lblPluginStatus;
-                    var elapsed = Stopwatch.StartNew();
-                    phase = "pump";
-                    // CEF is downloaded asynchronously; a brief generic lifecycle pump cannot establish readiness.
-                    while (elapsed.Elapsed < TimeSpan.FromSeconds(2) || type == "RainbowMage.OverlayPlugin.PluginLoader" &&
-                        elapsed.Elapsed < TimeSpan.FromSeconds(60) && label.Text == status && dialogs.Count == startDialog)
-                    { session.Pump(); Thread.Sleep(10); }
                     status = label.Text;
                 }
                 catch (Exception error) { failure = error.ToString(); }
@@ -78,6 +72,18 @@ internal static class OverlayStackChecks
                     dialogs = dialogs.Skip(startDialog).ToArray(), exceptions = observed });
                 Console.WriteLine($"{type}: status={status}; failure={failure?.Split('\n')[0]}; dialogs={dialogs.Count - startDialog}");
             }
+            // Load all selected plugins before the first owner pump marks the startup batch complete.
+            try
+            {
+                var elapsed = Stopwatch.StartNew();
+                while (elapsed.Elapsed < TimeSpan.FromSeconds(12)) { session.Pump(); Thread.Sleep(10); }
+            }
+            catch (Exception error) { stages.Add(new { pumpFailure = error.ToString() }); }
+            stages.Add(new { finalPlugins = ActGlobals.oFormActMain!.ActPlugins.Select(data => new {
+                plugin = data.pluginObj.GetType().FullName, status = data.lblPluginStatus.Text,
+                logs = data.tpPluginSpace.Controls.Find("logBox", true).Select(control => control.Text).ToArray()
+            }).ToArray() });
+            exercise?.Invoke(session);
         }
         finally
         {

@@ -10,7 +10,7 @@ internal sealed class PluginRecord(string path, IActPluginV1 plugin)
     internal readonly string Path = path;
     internal readonly IActPluginV1 Plugin = plugin;
     internal PluginState State;
-    internal (TabPage Tab, Label Label)? Controls;
+    internal (TabPage Tab, Label Label, Label Title, CheckBox Enabled)? Controls;
 }
 
 // EntryPoint serializes calls; mark states before callbacks so failures are never implicitly retried.
@@ -27,6 +27,9 @@ internal sealed class PluginSession
     internal T OnOwner<T>(Func<T> action) => context is null ? action() : context.Run(action);
     internal int Pump()
     {
+        // Pump is the caller's startup boundary; pending plugin instances keep deferred integrations paused.
+        OnOwner(() => { environment?.SetInitializationComplete(initialized.Count != 0 &&
+            plugins.Values.All(plugin => plugin.State is not (PluginState.Constructed or PluginState.Initializing))); return 0; });
         var callbacks = context?.Pump() ?? 0;
         OnOwner(() => { environment?.AdvanceTimers(); return 0; });
         return callbacks;
@@ -68,8 +71,10 @@ internal sealed class PluginSession
         plugin.Controls = null;
         environment?.Unregister(plugin.Plugin);
         var errors = new List<Exception>();
-        foreach (var control in new Control[] { controls.Tab, controls.Label })
+        foreach (var control in new Control[] { controls.Tab, controls.Label, controls.Title, controls.Enabled })
             try { control.Dispose(); } catch (Exception error) { errors.Add(error); }
+        if (plugin.Plugin is IDisposable resource && plugin.Plugin is not Control { IsDisposed: true })
+            try { resource.Dispose(); } catch (Exception error) { errors.Add(error); }
         if (errors.Count != 0) throw new AggregateException("Host control disposal failed", errors);
     }
     internal void Configure(string path)
@@ -85,6 +90,7 @@ internal sealed class PluginSession
     }
     internal long Add(string path, object instance)
     {
+        environment?.SetInitializationComplete(false);
         plugins.Add(++nextId, new(path, (IActPluginV1)instance));
         return nextId;
     }
@@ -92,6 +98,7 @@ internal sealed class PluginSession
     {
         // Plugins read ACT globals in constructors, e.g. the official sample's AppDataFolder settings path.
         _ = Host();
+        environment!.SetInitializationComplete(false);
         return PluginLoader.Create(path, typeName);
     });
     internal string Initialize(long id) => OnOwner(() => InitializeCore(id));
@@ -105,11 +112,12 @@ internal sealed class PluginSession
         {
             var host = Host();
             var data = new ActPluginData { pluginObj = plugin.Plugin, pluginFile = new(plugin.Path), tpPluginSpace = new() };
-            try { data.lblPluginStatus = new(); } catch { data.tpPluginSpace.Dispose(); throw; }
+            try { data.lblPluginStatus = new(); data.lblPluginTitle = new() { Text = Path.GetFileName(plugin.Path) }; data.cbEnabled = new() { Checked = true }; }
+            catch { data.lblPluginTitle?.Dispose(); data.lblPluginStatus?.Dispose(); data.tpPluginSpace.Dispose(); throw; }
             // Capture owned controls separately: plugin code can mutate the public metadata fields.
             var tab = data.tpPluginSpace;
             var label = data.lblPluginStatus;
-            plugin.Controls = (tab, label);
+            plugin.Controls = (tab, label, data.lblPluginTitle, data.cbEnabled);
             // ACT supplies usable UI handles before InitPlugin; worker Invoke calls must not create them.
             if (OperatingSystem.IsWindows())
             {
@@ -146,7 +154,9 @@ internal sealed class PluginSession
         if (plugin.State != PluginState.Initialized)
             throw new InvalidOperationException("Only an initialized plugin can be deinitialized");
         plugin.State = PluginState.Stopped;
+        if (plugin.Controls is { } owned) owned.Enabled.Checked = false;
         var errors = new List<Exception>();
+        try { OverlayPluginLifetime.StopEventSources(plugin.Plugin); } catch (Exception error) { errors.Add(error); }
         try { plugin.Plugin.DeInitPlugin(); } catch (Exception error) { errors.Add(error); }
         try { Cleanup(plugin); } catch (Exception error) { errors.Add(error); }
         if (errors.Count != 0) throw new AggregateException("DeInitPlugin failed for " + plugin.Path, errors);

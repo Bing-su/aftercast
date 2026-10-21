@@ -58,7 +58,10 @@ internal static class Program
             case "recorded-actions": RecordedActions(args[1]); break;
             case "external-plugin": ExternalPluginChecks.Run(args[1], args[2], args[3]); break;
             case "overlay-stack": OverlayStackChecks.Run(args[1], args[2], args[3], args[4]); return;
+            case "overlay-integration": OverlayStackChecks.Run(args[1], args[2], args[3], args[4], OverlayIntegrationChecks.Run); return;
             case "plugin-metadata": ReferenceContract("PluginMetadataProbe", "Plugin metadata"); break;
+            case "plugin-updates": ReferenceContract("PluginUpdateProbe", "Plugin update query"); break;
+            case "overlay-renderer": OverlayRendererChecks.Run(args[1]); break;
             case "text-exports": ReferenceContract("TextExportProbe", "Text exports"); break;
             case "timer-models": ReferenceContract("TimerModelProbe", "Timer models"); break;
             case "eq2-timestamps": ReferenceContract("Eq2TimestampProbe", "EQ2 timestamps"); break;
