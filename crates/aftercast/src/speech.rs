@@ -6,13 +6,31 @@ use bytes::{BufMut, BytesMut};
 use crate::runtime::Request;
 use crate::{Error, Host};
 
-pub(crate) struct SpeechOutput {
-    speaker: Speaker,
+pub(crate) struct AudioOutput<T> {
+    backend: T,
     pending: VecDeque<Speech>,
 }
-pub(crate) struct SoundOutput {
-    player: SoundPlayer,
-    pending: VecDeque<Speech>,
+
+impl<T> AudioOutput<T> {
+    fn new(backend: T) -> Self {
+        Self {
+            backend,
+            pending: VecDeque::new(),
+        }
+    }
+
+    fn drain_completed(&mut self) -> Result<(), aftercast_tts::Error> {
+        // FIFO completion preserves later failures for the next pump, e.g. two failed effects.
+        while let Some(job) = self.pending.front() {
+            let result = job.try_wait();
+            if matches!(result, Ok(None)) {
+                break;
+            }
+            self.pending.pop_front();
+            result?;
+        }
+        Ok(())
+    }
 }
 
 /// ACT audio volumes and default timer cues. Per-definition start/warning cues take precedence.
@@ -53,10 +71,7 @@ impl Host {
     pub fn set_sound_player(&mut self, player: SoundPlayer) -> Result<(), Error> {
         self.session
             .request(Request::Speech, &mut packet(self.session.id(), 3, 1, 32))?;
-        self.sounds = Some(SoundOutput {
-            player,
-            pending: VecDeque::new(),
-        });
+        self.sounds = Some(AudioOutput::new(player));
         Ok(())
     }
     pub fn clear_sound_player(&mut self) -> Result<(), Error> {
@@ -100,10 +115,7 @@ impl Host {
     pub fn set_tts(&mut self, speaker: Speaker) -> Result<(), Error> {
         self.session
             .request(Request::Speech, &mut packet(self.session.id(), 1, 1, 32))?;
-        self.speech = Some(SpeechOutput {
-            speaker,
-            pending: VecDeque::new(),
-        });
+        self.speech = Some(AudioOutput::new(speaker));
         Ok(())
     }
 
@@ -119,15 +131,7 @@ impl Host {
         let Some(output) = &mut self.speech else {
             return Ok(());
         };
-        // Completions follow the worker's FIFO order; report each failure without consuming later failures.
-        while let Some(speech) = output.pending.front() {
-            let result = speech.try_wait();
-            if matches!(result, Ok(None)) {
-                break;
-            }
-            output.pending.pop_front();
-            result?;
-        }
+        output.drain_completed()?;
         // At most 32 accepted jobs keeps completion state bounded even when a backend is slow.
         while output.pending.len() < 32 {
             let mut request = packet(self.session.id(), 2, 0, 4128);
@@ -149,7 +153,7 @@ impl Host {
                 })?;
             let text = std::str::from_utf8(bytes)
                 .map_err(|e| Error::InvalidSpeechResponse(e.to_string()))?;
-            output.pending.push_back(output.speaker.speak(Utterance {
+            output.pending.push_back(output.backend.speak(Utterance {
                 volume: volume(&request)?,
                 ..Utterance::new(text)
             })?);
@@ -161,14 +165,7 @@ impl Host {
         let Some(output) = &mut self.sounds else {
             return Ok(());
         };
-        while let Some(job) = output.pending.front() {
-            let result = job.try_wait();
-            if matches!(result, Ok(None)) {
-                break;
-            }
-            output.pending.pop_front();
-            result.map_err(Error::Sound)?;
-        }
+        output.drain_completed().map_err(Error::Sound)?;
         while output.pending.len() < 32 {
             let mut request = packet(self.session.id(), 4, 0, 4128);
             self.session.request(Request::Speech, &mut request)?;
@@ -188,7 +185,7 @@ impl Host {
                 .ok_or_else(|| Error::InvalidSpeechResponse("invalid sound source".into()))?;
             output.pending.push_back(
                 output
-                    .player
+                    .backend
                     .play(SoundRequest::new(source, volume(&request)?))
                     .map_err(Error::Sound)?,
             );

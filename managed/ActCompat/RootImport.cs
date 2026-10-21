@@ -28,6 +28,35 @@ namespace Advanced_Combat_Tracker
             lock (CombatGate) { if (activeImport is { } operation) operation.Failure ??= error; }
         }
 
+        // Keep the live parser context together; both capture and restoration require CombatGate.
+        private sealed class LiveParserContext(FormActMain root)
+        {
+            private readonly ZoneData zone = root.combatZone;
+            internal readonly string Path = root.logFilePath;
+            private readonly string currentZone = root.currentZone;
+            private readonly string? character = ActGlobals.charName;
+            private readonly DateTime time = root.lastKnownTime, hostileTime = root.lastHostileTime;
+            private readonly long clock = root.lastKnownStamp;
+            private readonly (string Name, DateTime Start) zoneContext = root.zoneContext;
+            private readonly bool readLock = root.ReadThreadLock, importing = root.importingLogs;
+
+            internal void Restore()
+            {
+                root.combatZone = zone;
+                root.logFilePath = Path;
+                root.currentZone = currentZone;
+                ActGlobals.charName = character;
+                root.lastKnownTime = time;
+                // Continue the live estimate across import, e.g. an existing timer still ages during replay.
+                root.lastKnownStamp = clock;
+                root.lastHostileTime = hostileTime;
+                root.zoneContext = zoneContext;
+                root.inCombat = false;
+                root.importingLogs = importing;
+                root.ReadThreadLock = readLock;
+            }
+        }
+
         internal ImportResult ImportLog(string absolutePath)
         {
             ArgumentException.ThrowIfNullOrEmpty(absolutePath);
@@ -82,28 +111,14 @@ namespace Advanced_Combat_Tracker
             private ImportResult ReadImport(ImportLogReader reader, string path)
             {
                 var snapshotBefore = root.GetCombatSnapshotRevision();
-                ZoneData liveZone, importZone;
-                string livePath, liveCurrentZone;
-                string? liveCharacter;
-                DateTime liveTime, liveHostile;
-                long liveClock;
-                (string Name, DateTime Start) liveContext;
-                bool liveReadLock, liveImport;
+                LiveParserContext live;
+                ZoneData importZone;
                 int firstEncounter;
                 lock (root.CombatGate)
                 {
                     root.EnsureCombatStateInitialized();
                     importZone = root.combatZones[0];
-                    liveZone = root.combatZone;
-                    livePath = root.logFilePath;
-                    liveCurrentZone = root.currentZone;
-                    liveCharacter = ActGlobals.charName;
-                    liveTime = root.lastKnownTime;
-                    liveClock = root.lastKnownStamp;
-                    liveHostile = root.lastHostileTime;
-                    liveContext = root.zoneContext;
-                    liveReadLock = root.ReadThreadLock;
-                    liveImport = root.importingLogs;
+                    live = new(root);
                     firstEncounter = importZone.Items.Count;
                     root.combatZone = importZone;
                     root.logFilePath = path;
@@ -162,22 +177,8 @@ namespace Advanced_Combat_Tracker
                     catch (Exception error) { failures.Add(error); }
                     finally
                     {
-                        lock (root.CombatGate)
-                        {
-                            root.combatZone = liveZone;
-                            root.logFilePath = livePath;
-                            root.currentZone = liveCurrentZone;
-                            ActGlobals.charName = liveCharacter;
-                            root.lastKnownTime = liveTime;
-                            // Continue the live estimate across import, e.g. an existing timer still ages during replay.
-                            root.lastKnownStamp = liveClock;
-                            root.lastHostileTime = liveHostile;
-                            root.zoneContext = liveContext;
-                            root.inCombat = false;
-                            root.importingLogs = liveImport;
-                            root.ReadThreadLock = liveReadLock;
-                        }
-                        root.NotifyImportFileChanged(false, livePath);
+                        lock (root.CombatGate) live.Restore();
+                        root.NotifyImportFileChanged(false, live.Path);
                     }
                 }
                 lock (root.CombatGate)

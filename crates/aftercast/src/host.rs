@@ -1,4 +1,7 @@
+use aftercast_tts::{SoundPlayer, Speaker};
+
 use crate::runtime::ManagedSession;
+use crate::speech::AudioOutput;
 use crate::{Error, HostConfig};
 
 /// A single active bridge lifetime on the calling thread.
@@ -17,8 +20,8 @@ use crate::{Error, HostConfig};
 /// ```
 pub struct Host {
     pub(crate) session: ManagedSession,
-    pub(crate) speech: Option<crate::speech::SpeechOutput>,
-    pub(crate) sounds: Option<crate::speech::SoundOutput>,
+    pub(crate) speech: Option<AudioOutput<Speaker>>,
+    pub(crate) sounds: Option<AudioOutput<SoundPlayer>>,
 }
 
 impl Host {

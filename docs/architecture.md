@@ -15,6 +15,11 @@ adapts CPU PCM/MP3 output without exposing model/tensor types to ACT.
 queues so effects can play during speech. Timer callbacks only enqueue requests;
 device I/O stays on Rust workers. See [audio contracts](audio-validation.md).
 
+The private `aftercast-tts::worker` module owns queue admission, cancellation and
+completion handles; speech and effects reuse it through their existing public
+types. The host adapter shares FIFO completion bookkeeping while keeping speech
+and effect queues and errors independent.
+
 | Location                                                                                                                                                                                       | Responsibility                                                                                                                                            |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Host](../crates/aftercast/src/host.rs)                                                                                                                                                        | Public lifecycle operations                                                                                                                               |
@@ -62,6 +67,8 @@ An import operation exists until restoration notifications and snapshot status
 have completed. Its first callback failure is retained, even after input reading
 ends. A newer live snapshot published by restoration callbacks remains newer
 than the imported result. Import and live framing retain their distinct contracts.
+`LiveParserContext` captures and restores the live parser state under the combat
+gate before restoration subscribers run, including the monotonic clock baseline.
 
 ## Binary compatibility
 

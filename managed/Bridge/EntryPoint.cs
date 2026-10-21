@@ -89,6 +89,12 @@ public static class EntryPoint
         if (active is null) throw new InvalidOperationException("No managed ACT session is active");
         if (session != active.Id) throw new InvalidOperationException("The request does not own the active managed ACT session");
     }
+    private static void ValidateHeader(nint buffer, int sizeBytes, string message)
+    {
+        // Call only after capacity checks, e.g. ImportLog's 64-byte minimum, so header reads are safe.
+        if (!BitConverter.IsLittleEndian || Marshal.ReadInt32(buffer, 0) != sizeBytes || Marshal.ReadInt32(buffer, 4) != 1)
+            throw new ArgumentException(message, nameof(buffer));
+    }
     private static (string Path, string TypeName) Request(nint buffer, int sizeBytes)
     {
         if (buffer == 0 || sizeBytes < 40 || sizeBytes > 65536)
@@ -135,8 +141,7 @@ public static class EntryPoint
     {
         // Reserve output capacity before callbacks, so a short buffer cannot duplicate side effects.
         if (buffer == 0 || sizeBytes != 8224) throw new ArgumentException("Plugin command requires 8224 bytes", nameof(buffer));
-        if (!BitConverter.IsLittleEndian || Marshal.ReadInt32(buffer, 0) != sizeBytes || Marshal.ReadInt32(buffer, 4) != 1)
-            throw new ArgumentException("Plugin command ABI size/version mismatch", nameof(buffer));
+        ValidateHeader(buffer, sizeBytes, "Plugin command ABI size/version mismatch");
         Marshal.WriteInt32(buffer, 28, 0);
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
         var id = Marshal.ReadInt64(buffer, 16);
@@ -174,8 +179,7 @@ public static class EntryPoint
         // Validate input and reserve the entire result before invoking any plugin or touching history.
         if (buffer == 0 || sizeBytes < headerSize || sizeBytes > 65536)
             throw new ArgumentException("Import request must contain 64..65536 bytes", nameof(buffer));
-        if (!BitConverter.IsLittleEndian || Marshal.ReadInt32(buffer, 0) != sizeBytes || Marshal.ReadInt32(buffer, 4) != 1)
-            throw new ArgumentException("Import ABI size/version mismatch", nameof(buffer));
+        ValidateHeader(buffer, sizeBytes, "Import ABI size/version mismatch");
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
         var offset = Marshal.ReadInt32(buffer, 16);
         var length = Marshal.ReadInt32(buffer, 20);
@@ -202,8 +206,7 @@ public static class EntryPoint
         const int maximumSize = headerSize + 64 * 1024 * 1024;
         if (buffer == 0 || sizeBytes < headerSize || sizeBytes > maximumSize)
             throw new ArgumentException("Log command capacity is outside supported bounds", nameof(buffer));
-        if (!BitConverter.IsLittleEndian || Marshal.ReadInt32(buffer, 0) != sizeBytes || Marshal.ReadInt32(buffer, 4) != 1)
-            throw new ArgumentException("Log command ABI size/version mismatch", nameof(buffer));
+        ValidateHeader(buffer, sizeBytes, "Log command ABI size/version mismatch");
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
         var id = unchecked((ulong)Marshal.ReadInt64(buffer, 16));
         var command = Marshal.ReadInt32(buffer, 24);
@@ -282,8 +285,7 @@ public static class EntryPoint
         // Validate all input before querying the graph; a capacity retry never consumes a version.
         if (buffer == 0 || sizeBytes < headerSize || sizeBytes > maximumSize)
             throw new ArgumentException("Snapshot capacity is outside supported bounds", nameof(buffer));
-        if (!BitConverter.IsLittleEndian || Marshal.ReadInt32(buffer, 0) != sizeBytes || Marshal.ReadInt32(buffer, 4) != 1)
-            throw new ArgumentException("Snapshot ABI size/version mismatch", nameof(buffer));
+        ValidateHeader(buffer, sizeBytes, "Snapshot ABI size/version mismatch");
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
         for (var offset = 24; offset < headerSize; offset += 8)
             if (Marshal.ReadInt64(buffer, offset) != 0)
@@ -312,8 +314,7 @@ public static class EntryPoint
         const int bufferSize = headerSize + 1024 * 1024;
         if (buffer == 0 || sizeBytes != bufferSize)
             throw new ArgumentException($"Diagnostics request requires {bufferSize} bytes", nameof(buffer));
-        if (!BitConverter.IsLittleEndian || Marshal.ReadInt32(buffer, 0) != bufferSize || Marshal.ReadInt32(buffer, 4) != 1)
-            throw new ArgumentException("Diagnostics ABI size/version mismatch", nameof(buffer));
+        ValidateHeader(buffer, bufferSize, "Diagnostics ABI size/version mismatch");
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
         // Capture count and retained messages together so workers cannot produce a mismatched snapshot.
         var (total, messages) = plugins.Value.DiagnosticsSnapshot;

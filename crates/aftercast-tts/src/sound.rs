@@ -1,4 +1,5 @@
-use crate::{Cancellation, Error, Speech, Worker};
+use crate::worker::Worker;
+use crate::{Cancellation, Error, Speech};
 
 /// A local file (including file:// URIs), or the ACT timer's built-in beep.
 /// HTTP sources are deliberately not fetched; applications can supply their own SoundBackend.

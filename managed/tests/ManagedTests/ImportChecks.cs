@@ -50,6 +50,7 @@ internal static class ImportChecks
             Check(ReferenceEquals(Root.ActiveZone, LiveZone));
             Check(Root.LogFilePath == "live.log" && Root.CurrentZone == "Live Zone");
             Check(Root.LastKnownTime == Epoch.AddDays(1) && ActGlobals.charName == "Source");
+            Check(Root.LastHostileTime == DateTime.MinValue);
             Check(Root.ReadThreadLock && !Root.InCombat);
         }
         public void Dispose()
@@ -83,7 +84,12 @@ internal static class ImportChecks
         var root = fixture.Root;
         File.WriteAllText(fixture.Path, "first\n\nsecond\nno-time\n", new UTF8Encoding(false));
         var notifications = new List<(bool Import, string Path)>();
-        root.LogFileChanged += (import, path) => notifications.Add((import, path));
+        root.LogFileChanged += (import, path) =>
+        {
+            // Restoration subscribers must see the complete live context, e.g. the original zone and clock.
+            if (!import) fixture.CheckRestored();
+            notifications.Add((import, path));
+        };
         var before = 0;
         root.BeforeLogLineRead += (import, info) =>
         {

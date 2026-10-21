@@ -135,3 +135,39 @@ pub(crate) fn plugin_packet(
     packet.extend_from_slice(type_name.as_bytes());
     Ok(packet)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[rstest::rstest]
+    fn plugin_requests_bound_lengths_and_preserve_utf8() {
+        let packet =
+            plugin_packet(9, "/플러그인/測試.dll", Some("Example.Plugin")).expect("encode request");
+        assert_eq!(packet.get(8..16), Some(9_u64.to_le_bytes().as_slice()));
+        assert_eq!(
+            packet.get(40..),
+            Some("/플러그인/測試.dllExample.Plugin".as_bytes())
+        );
+        for (path, name) in [
+            ("/bad\0path", "Plugin".to_owned()),
+            ("/plugin", "bad\0type".to_owned()),
+            ("/plugin", "x".repeat(4097)),
+        ] {
+            assert!(matches!(
+                plugin_packet(1, path, Some(&name)),
+                Err(Error::InvalidPluginRequest(_))
+            ));
+        }
+        assert_eq!(
+            plugin_packet(1, &"x".repeat(65496), None)
+                .expect("maximum request")
+                .len(),
+            65536
+        );
+        assert!(matches!(
+            plugin_packet(1, &"x".repeat(65497), None),
+            Err(Error::InvalidPluginRequest(_))
+        ));
+    }
+}
