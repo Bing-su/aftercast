@@ -1,28 +1,44 @@
 using System.Collections;
+using System.ComponentModel;
 using System.Drawing;
 
 namespace System.Windows.Forms;
 
-public enum AutoScaleMode { None, Font, Dpi, Inherit }
-public enum AutoSizeMode { GrowAndShrink, GrowOnly }
-public enum DockStyle { None, Top, Bottom, Left, Right, Fill }
-[Flags]
-public enum AnchorStyles { None = 0, Top = 1, Bottom = 2, Left = 4, Right = 8 }
-
-public struct Padding
+// Keep ownership, caller-owned dispatch and disposal together without fabricating native windows.
+public class Control : Component
 {
-    public Padding(int all) : this(all, all, all, all) { }
-    public Padding(int left, int top, int right, int bottom)
-    { Left = left; Top = top; Right = right; Bottom = bottom; }
-    public int Left { get; set; }
-    public int Top { get; set; }
-    public int Right { get; set; }
-    public int Bottom { get; set; }
-}
+    private bool disposed;
+    private string text = "";
+    public string Name { get; set; } = "";
+    public virtual string Text { get => text; set => text = value ?? ""; }
+    // Keep event wiring usable without synthesizing mouse input or a native window.
+    public event EventHandler? Click;
+    protected virtual void OnClick(EventArgs e) => Click?.Invoke(this, e);
+    public bool IsDisposed => disposed;
+    public nint Handle => throw new PlatformNotSupportedException("Linux WinForms native handles are not implemented");
+    public void CreateControl() => throw new PlatformNotSupportedException("Linux WinForms rendering is not implemented");
+    protected override void Dispose(bool disposing)
+    {
+        if (disposed || Disposing) return;
+        Disposing = true;
+        var errors = new List<Exception>();
+        try
+        {
+            if (disposing)
+            {
+                Parent?.Controls.Remove(this);
+                // Attempt every child even when a plugin's disposal callback fails.
+                foreach (Control child in Controls.Cast<Control>().ToArray())
+                    try { child.Dispose(); } catch (Exception error) { errors.Add(error); }
+                Controls.Clear();
+            }
+            disposed = true;
+            try { base.Dispose(disposing); } catch (Exception error) { errors.Add(error); }
+        }
+        finally { Disposing = false; }
+        if (errors.Count != 0) throw new AggregateException("Control disposal failed", errors);
+    }
 
-// Store designer geometry and ownership; these operations never invoke a native layout engine.
-public partial class Control
-{
     private Point location;
     private Size size;
     private bool visible = true;
