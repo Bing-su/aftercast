@@ -59,7 +59,15 @@ public static class AudioProbe
             }
             Cue(0, "tts custom start"); Cue(1, "tts custom warning"); Cue(0, "none"); Cue(0, wave);
             Cue(0, "tts"); Cue(1, "tts");
-            var expected = new[] { "sound:effect.wav:61", "sound:sapi.wav:37", "tts: custom start", "tts: custom warning", "sound:effect.wav:61", "tts: Fixture started", "tts: Fixture warning" };
+            Set(main, "TimerStartSound", "tts"); Set(main, "TimerWarningSound", "tts"); Set(main, "TimerExpireSound", "tts");
+            var soundOptions = typeof(FormActMain).GetField("opSound", fields)?.GetValue(main);
+            if (soundOptions is not null)
+                foreach (var name in new[] { "rbSndStartTTS", "rbSndWarnTTS", "rbSndTimerTTS" })
+                    ((RadioButton)soundOptions.GetType().GetField(name, fields)!.GetValue(soundOptions)!).Checked = true;
+            Cue(0, " "); Cue(1, ""); Cue(2, "ignored");
+            if (main.MakeAbsolutePathString("nested/effect.wav", directory.FullName) != Path.GetFullPath(Path.Combine(directory.FullName, "nested/effect.wav")))
+                throw new Exception("Relative sound path resolution changed");
+            var expected = new[] { "sound:effect.wav:61", "sound:sapi.wav:37", "tts: custom start", "tts: custom warning", "sound:effect.wav:61", "tts: Fixture started", "tts: Fixture warning", "tts: Fixture started", "tts: Fixture warning", "tts: Fixture expired" };
             if (!calls.SequenceEqual(expected)) throw new Exception("Audio oracle mismatch: " + string.Join(" | ", calls));
             return "Audio";
         }

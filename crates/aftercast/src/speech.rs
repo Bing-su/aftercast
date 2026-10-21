@@ -167,7 +167,7 @@ impl Host {
                 break;
             }
             output.pending.pop_front();
-            result?;
+            result.map_err(Error::Sound)?;
         }
         while output.pending.len() < 32 {
             let mut request = packet(self.session.id(), 4, 0, 4128);
@@ -189,7 +189,8 @@ impl Host {
             output.pending.push_back(
                 output
                     .player
-                    .play(SoundRequest::new(source, volume(&request)?))?,
+                    .play(SoundRequest::new(source, volume(&request)?))
+                    .map_err(Error::Sound)?,
             );
         }
         Ok(())

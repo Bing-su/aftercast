@@ -39,6 +39,13 @@ impl SoundBackend for FilePlayback {
             }
             std::path::PathBuf::from(&request.source)
         };
+        // Reject devices/FIFOs before open: reading a pipe could otherwise block cancellation and worker teardown.
+        let metadata = std::fs::metadata(&path).map_err(failure)?;
+        if !metadata.is_file() || metadata.len() > 16 * 1024 * 1024 {
+            return Err(Error::InvalidAudio(
+                "sound requires a regular file of at most 16 MiB",
+            ));
+        }
         let mut bytes = Vec::new();
         std::fs::File::open(path)
             .map_err(failure)?

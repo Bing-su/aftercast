@@ -33,6 +33,8 @@ pub use snapshots::{CombatRevision, CombatSnapshot, CombatSnapshotStatus, Combat
 pub enum Error {
     #[error("text-to-speech failed: {0}")]
     Speech(#[from] aftercast_tts::Error),
+    #[error("sound playback failed: {0}")]
+    Sound(#[source] aftercast_tts::Error),
     #[error("invalid managed speech response: {0}")]
     InvalidSpeechResponse(String),
     #[error("invalid combat snapshot request: {0}")]

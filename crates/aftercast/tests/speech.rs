@@ -121,6 +121,15 @@ impl SoundBackend for AudioRecorder {
     }
 }
 
+struct FailingSound;
+impl SoundBackend for FailingSound {
+    fn play(&mut self, _: &SoundRequest, _: &Cancellation) -> Result<(), aftercast_tts::Error> {
+        Err(aftercast_tts::Error::Backend(
+            "fixture sound failure".into(),
+        ))
+    }
+}
+
 #[rstest::rstest]
 #[ignore = "requires .NET 10 and built fixture; run mise run test:plugins on Windows or Linux"]
 fn act_sound_and_timer_cues_cross_the_bridge_with_independent_volumes(deployment: Deployment) {
@@ -161,6 +170,27 @@ fn act_sound_and_timer_cues_cross_the_bridge_with_independent_volumes(deployment
         sounds.recv_timeout(timeout).expect("warning beep"),
         ("beep".into(), 61)
     );
+    host.set_sound_player(SoundPlayer::new(|| Ok(FailingSound)).expect("failing player"))
+        .expect("replace sound route");
+    for _ in 0..2 {
+        let plugin = host.create_plugin(PluginConfig::builder()
+            .path(Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll").canonicalize_utf8().expect("fixture path"))
+            .type_name("Aftercast.PluginFixture.SoundPlugin").build()).expect("repeat sound caller");
+        host.initialize_plugin(plugin).expect("sound acceptance");
+    }
+    let deadline = Instant::now() + timeout;
+    let mut failures = 0;
+    while failures < 2 {
+        match host.pump() {
+            Err(Error::Sound(aftercast_tts::Error::Backend(message))) => {
+                assert_eq!(message, "fixture sound failure");
+                failures += 1;
+            }
+            Ok(_) => assert!(Instant::now() < deadline, "lost an effect failure"),
+            other => panic!("unexpected effect result: {other:?}"),
+        }
+        std::thread::sleep(Duration::from_millis(1));
+    }
     host.clear_sound_player().expect("clear sound");
     host.clear_tts().expect("clear speech");
     host.stop().expect("stop");

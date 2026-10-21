@@ -40,6 +40,25 @@ fn sound_fifo_reports_failures_and_continues_at_the_requested_volume() {
 
 #[cfg(feature = "playback")]
 #[test]
+fn non_file_sources_fail_before_opening_a_device_or_reading_special_files() {
+    let mut backend = aftercast_tts::FilePlayback;
+    let cancel = Cancellation::default();
+    assert!(matches!(
+        backend.play(
+            &SoundRequest::new(std::env::temp_dir().to_string_lossy(), 100),
+            &cancel
+        ),
+        Err(Error::InvalidAudio(_))
+    ));
+    #[cfg(target_os = "linux")]
+    assert!(matches!(
+        backend.play(&SoundRequest::new("/dev/zero", 100), &cancel),
+        Err(Error::InvalidAudio(_))
+    ));
+}
+
+#[cfg(feature = "playback")]
+#[test]
 #[ignore = "requires a real default audio device; run on Windows and Linux"]
 fn native_sound_file_uri_beep_completion_cancellation_and_decoder_failure() {
     let path = std::env::temp_dir().join(format!("aftercast-sound-{}.wav", std::process::id()));
