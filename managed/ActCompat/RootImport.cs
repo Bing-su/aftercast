@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Runtime.ExceptionServices;
 using Aftercast.ActCompat;
 
@@ -85,6 +86,7 @@ namespace Advanced_Combat_Tracker
                 string livePath, liveCurrentZone;
                 string? liveCharacter;
                 DateTime liveTime, liveHostile;
+                long liveClock;
                 (string Name, DateTime Start) liveContext;
                 bool liveReadLock, liveImport;
                 int firstEncounter;
@@ -97,6 +99,7 @@ namespace Advanced_Combat_Tracker
                     liveCurrentZone = root.currentZone;
                     liveCharacter = ActGlobals.charName;
                     liveTime = root.lastKnownTime;
+                    liveClock = root.lastKnownStamp;
                     liveHostile = root.lastHostileTime;
                     liveContext = root.zoneContext;
                     liveReadLock = root.ReadThreadLock;
@@ -106,6 +109,7 @@ namespace Advanced_Combat_Tracker
                     root.logFilePath = path;
                     root.currentZone = "Import Zone";
                     root.lastKnownTime = DateTime.MinValue;
+                    root.lastKnownStamp = Stopwatch.GetTimestamp();
                     root.importingLogs = true;
                     root.ReadThreadLock = true;
                 }
@@ -124,7 +128,7 @@ namespace Advanced_Combat_Tracker
                         lock (root.CombatGate)
                         {
                             // Original raw import retains host time on MinValue, but passes the local MinValue to hooks.
-                            if (detectedTime != DateTime.MinValue) root.lastKnownTime = detectedTime;
+                            root.LastKnownTime = detectedTime;
                             root.GlobalTimeSorter++;
                             timeSorter = root.GlobalTimeSorter;
                             root.UpdateRawZone(line);
@@ -164,6 +168,8 @@ namespace Advanced_Combat_Tracker
                             root.currentZone = liveCurrentZone;
                             ActGlobals.charName = liveCharacter;
                             root.lastKnownTime = liveTime;
+                            // Continue the live estimate across import, e.g. an existing timer still ages during replay.
+                            root.lastKnownStamp = liveClock;
                             root.lastHostileTime = liveHostile;
                             root.zoneContext = liveContext;
                             root.inCombat = false;

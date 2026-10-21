@@ -78,6 +78,8 @@ of the replacement implementation.
 | `mise run test:external-plugin -- <assembly> <type> <state>` | Check explicit trusted plugin construction, lifecycle and host diagnostics; see [additional plugin results](additional-plugin-validation.md) |
 | `mise run test:text-exports` | Compare unaligned exports against genuine ACT on Windows; replacement probe only elsewhere |
 | `mise run test:external-export -- <assembly> <state>` | Exercise Export_All through two combat ends and native clipboard output; restores prior clipboard |
+| `mise run test:timer-models` | Compare timer data/frame contracts with genuine ACT on Windows; replacement probe only elsewhere |
+| `mise run test:external-timer -- <assembly> <state>` | Exercise unmodified Timer Repeater expiry, combat-only repetition and its native cancel button |
 | `mise run test:linux-plugin-compat`                                   | Verify pinned memory/writer/resource corrections against local FFXIV SDK files                                  |
 | `mise run test:original-import -- <plugin-copy> <new-state>`          | Original synthetic import, failure recovery and private diagnostics; use a disposable trusted plugin copy       |
 | `mise run test:original-corpus -- <plugin-copy> <new-state> <corpus>` | Three pinned Zeromus imports with submitted-action totals and exact subscriber loss                             |

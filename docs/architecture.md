@@ -27,6 +27,13 @@ handles remain private. Returned strings, records and snapshots own their data.
 
 ## Lifecycle invariants
 
+Spell-timer definitions, frames and recast modifications live in
+[FormSpellTimers](../managed/ActCompat/FormSpellTimers.cs). Host pumping advances
+warning/expiry/removal events outside its state gate. Live accepted combat actions
+notify timers after BeforeCombatAction edits; imports bypass that notification.
+The log time estimate adds monotonic elapsed time, and import restoration retains
+the live clock baseline. The host owns and disposes its timer form.
+
 | Transition                | Ordering                                                                                                              |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | Host startup failure      | Release the active lease; close an admitted managed session before dropping loader handles                            |

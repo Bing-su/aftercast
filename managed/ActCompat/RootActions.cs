@@ -69,6 +69,10 @@ public partial class FormActMain
         }
     }
 
+    public void AddCombatAction(int swingType, bool critical, string special, string attacker, string attackType,
+        Dnum damage, DateTime time, int timeSorter, string victim, string damageType) =>
+        AddCombatAction(new(swingType, critical, special, damage, time, timeSorter, attackType, attacker, damageType, victim));
+
     public void AddCombatAction(MasterSwing action)
     {
         lock (CombatGate)
@@ -86,6 +90,12 @@ public partial class FormActMain
             lock (CombatGate) import = importingLogs;
             NotifyCombatActions(BeforeCombatAction, import, info, "BeforeCombatAction subscriber", cancelable: true);
             if (info.cancelAction) return;
+            if (!import)
+                ActGlobals.oFormSpellTimers?.NotifySpell(info.attacker.ToLower(), info.theAttackType,
+                    info.attacker == ActGlobals.charName || info.victim == ActGlobals.charName, info.victim.ToLower(), info.damage.Number >= 0,
+                    new() { ["attacker"] = info.attacker, ["critical"] = info.critical.ToString(), ["damage"] = info.damage.Number.ToString(),
+                        ["special"] = info.special, ["attacktype"] = info.theAttackType, ["damagetype"] = info.theDamageType,
+                        ["time"] = info.time.ToLongTimeString() });
             var warn = false;
             lock (CombatGate)
             {

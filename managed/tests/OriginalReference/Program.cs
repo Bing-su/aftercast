@@ -28,7 +28,7 @@ internal static class Program
         var formsDirectory = Path.GetFullPath(args[1]);
         var hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(actPath)));
         if (hash != ExpectedActHash) throw new InvalidOperationException("Original ACT artifact hash does not match the researched version");
-        if (args.Length >= 3 && args[2] == "text-exports")
+        if (args.Length >= 3 && args[2] is "text-exports" or "timer-models")
             AssemblyLoadContext.Default.LoadFromAssemblyName(new AssemblyName("System.Windows.Forms"));
         else
             foreach (var name in new[] { "System.Windows.Forms.dll", "System.Windows.Forms.DataVisualization.dll" })
@@ -53,7 +53,8 @@ internal static class Program
                 "actions" when args.Length == 3 => AggregateValues.Run(act),
                 "contracts" when args.Length == 4 => RunContracts(args[3]),
                 "recorded-actions" when args.Length == 5 => RunRecordedActions(args[3], args[4]),
-                "text-exports" when args.Length == 4 => RunTextExports(args[3]),
+                "text-exports" when args.Length == 4 => RunReferenceProbe(args[3], "TextExportProbe", "Original text exports"),
+                "timer-models" when args.Length == 4 => RunReferenceProbe(args[3], "TimerModelProbe", "Original timer models"),
                 _ => throw new ArgumentException("Unknown original-reference mode")
             };
             return failures + unexpectedFailures == 0 ? 0 : 1;
@@ -96,10 +97,10 @@ internal static class Program
             .GetMethod("Run", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [Path.GetFullPath(transcriptPath)])!);
         return 0;
     }
-    private static int RunTextExports(string probePath)
+    private static int RunReferenceProbe(string probePath, string probe, string stage)
     {
         var probes = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(probePath));
-        Probe("Original text exports", () => probes.GetType("Aftercast.LegacyReference.TextExportProbe", true)!
+        Probe(stage, () => probes.GetType("Aftercast.LegacyReference." + probe, true)!
             .GetMethod("Run")!.Invoke(null, null)!);
         return 0;
     }

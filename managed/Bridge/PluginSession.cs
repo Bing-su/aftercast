@@ -25,7 +25,12 @@ internal sealed class PluginSession
     private readonly LogBuffer logs = new();
     internal Tuple<long, string[]> DiagnosticsSnapshot => environment?.DiagnosticsSnapshot ?? Tuple.Create(0L, Array.Empty<string>());
     internal T OnOwner<T>(Func<T> action) => context is null ? action() : context.Run(action);
-    internal int Pump() => context?.Pump() ?? 0;
+    internal int Pump()
+    {
+        var callbacks = context?.Pump() ?? 0;
+        OnOwner(() => { environment?.AdvanceTimers(); return 0; });
+        return callbacks;
+    }
     internal void EndCombat() => OnOwner(() => { environment?.EndCombat(); return 0; });
     internal void EnsureCanStop() => environment?.EnsureCanStop();
     internal ulong SubscribeLogs(int maxRecords, int maxBytes) => OnOwner(() => logs.Subscribe(maxRecords, maxBytes));

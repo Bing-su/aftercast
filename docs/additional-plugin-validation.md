@@ -135,6 +135,41 @@ platforms the task runs the replacement probe only. The external-export task
 requires Windows and a writable native clipboard. Runtime evidence is retained
 in `text-exports-reference.txt`, `export-workflow.txt` and `check-exports.txt`.
 
+## Timer workflow follow-up
+
+Unmodified Timer Repeater now passes lifecycle, repeat-on-expiry, combat-only
+repetition and cancellation through its own native Button. Its own one-second
+WinForms Timer creates that button while the host pumps Windows messages.
+Expiry is driven by the host's timer state processing during pump; no plugin
+source or private handler is modified/invoked by the test.
+
+| Contract | Evidence / limit |
+| --- | --- |
+| TimerData, TimerMod, SpellTimer and TimerFrame | A shared genuine-ACT reference probe checks defaults, case/key equality, duplicate-mod handling, truncation, master selection, empty sentinels and owner/target removal windows |
+| Timer state | Registration/lookups, category/self restrictions, master/nonmaster ticks, two-second duplicate suppression, warning/expiry/removal and recast mods are implemented |
+| Combat input | Edited accepted actions notify before aggregation; cancelled/imported actions do not start live timers |
+| Estimated time | LastKnownTime plus monotonic elapsed time; MinValue setter is ignored; import restores the live monotonic baseline rather than restarting elapsed time |
+| Ownership | Host owns/disposes its timer form, clears the global on teardown and processes events on the caller's pumped context |
+| Review and checks | `mise run check`, `mise run test:timer-models` and `mise run test:external-timer` pass; callback invocation occurs outside the timer state gate |
+| Remaining scope | Sound-enabled definitions explicitly reject; timer editor/rendering, localization and additional TimerData constructor overloads remain unsupported. Precise original UI scheduling/diagnostic parity is not established |
+
+The native workflow advances the host log clock to expire known definitions;
+it also pumps real time for the plugin's native UI timer. The model reference
+uses a stopped original estimator and a monotonic replacement baseline, with
+integer-second cases away from rounding boundaries. It compares values without
+starting the original timer window. Original timer behavior was read from the
+pinned ACT binary with ilspycmd 11.1.0.9782, retained locally under `decompiled/`.
+
+```powershell
+mise run test:timer-models
+mise run test:external-timer -- 'binaries/additional-plugins-20261021/TimerRepeatPlugin.dll' 'target/additional-plugins-20261021/timer-workflow-final'
+```
+
+The original model comparison uses Desktop Runtime on Windows; elsewhere the
+task runs the replacement probe only. Native cancellation workflow verification
+requires Windows. Evidence files: `timer-reference.txt`, `timer-workflow-final.txt`
+and `check-timers-final.txt` in the local evidence directory.
+
 ## Reproduction
 
 Use a trusted plugin and a private writable test directory. The runner executes

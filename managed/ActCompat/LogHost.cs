@@ -1,3 +1,5 @@
+using System.Diagnostics;
+
 namespace Advanced_Combat_Tracker;
 
 public partial class FormActMain
@@ -14,11 +16,21 @@ public partial class FormActMain
     internal Action? PumpCallbacks { get; set; }
     internal Func<bool>? IsDispatchingCallback { get; set; }
     private string logFilePath = "", logFileFilter = "", currentZone = "";
-    private DateTime lastKnownTime;
+    private DateTime lastKnownTime = DateTime.Now;
+    private long lastKnownStamp = Stopwatch.GetTimestamp();
 
     public string LogFileFilter { get { lock (logGate) return logFileFilter; } set { lock (logGate) logFileFilter = value; } }
     public string LogFilePath { get { lock (logGate) return logFilePath; } set { lock (logGate) logFilePath = value; } }
-    public DateTime LastKnownTime { get { lock (logGate) return lastKnownTime; } set { lock (logGate) lastKnownTime = value; } }
+    public DateTime LastKnownTime
+    {
+        get { lock (logGate) return lastKnownTime; }
+        set
+        {
+            if (value == DateTime.MinValue) return;
+            lock (logGate) { lastKnownTime = value; lastKnownStamp = Stopwatch.GetTimestamp(); }
+        }
+    }
+    public DateTime LastEstimatedTime { get { lock (logGate) return lastKnownTime + Stopwatch.GetElapsedTime(lastKnownStamp); } }
     public string CurrentZone { get { lock (logGate) return currentZone; } set { lock (logGate) currentZone = value; } }
     public event LogLineEventDelegate? OnLogLineRead;
 
@@ -171,7 +183,7 @@ public partial class FormActMain
         lock (logGate)
         {
             if (logHostStopped || generation != logGeneration) return;
-            if (timestamp != DateTime.MinValue) lastKnownTime = timestamp;
+            LastKnownTime = timestamp;
             GlobalTimeSorter++;
             timeSorter = GlobalTimeSorter;
             UpdateRawZone(line);
