@@ -14,6 +14,9 @@ include = [
 ]
 publish.workspace = true
 
+[features]
+audio = ["aftercast-tts/system", "aftercast-tts/playback"]
+
 [dependencies]
 aftercast-tts = { version = "0.1.0", path = "../aftercast-tts", default-features = false }
 bon.workspace = true

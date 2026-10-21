@@ -13,6 +13,7 @@ mod plugins;
 mod runtime;
 mod snapshots;
 mod speech;
+pub use speech::AudioSettings;
 
 pub use bridge::extract_bridge;
 use camino::Utf8PathBuf;

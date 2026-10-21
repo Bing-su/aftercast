@@ -14,6 +14,7 @@ mod edge;
 mod playback;
 #[cfg(all(windows, feature = "system"))]
 mod sapi;
+mod sound;
 #[cfg(all(target_os = "linux", feature = "system"))]
 mod speech_dispatcher;
 mod synthesis;
@@ -25,9 +26,10 @@ use std::thread::{self, JoinHandle};
 #[cfg(feature = "edge")]
 pub use edge::Edge;
 #[cfg(feature = "playback")]
-pub use playback::Playback;
+pub use playback::{FilePlayback, Playback};
 #[cfg(all(windows, feature = "system"))]
 pub use sapi::Sapi;
+pub use sound::{SoundBackend, SoundPlayer, SoundRequest};
 #[cfg(all(target_os = "linux", feature = "system"))]
 pub use speech_dispatcher::SpeechDispatcher;
 pub use synthesis::{PcmAudio, SynthesizedAudio, Synthesizer};
@@ -159,16 +161,18 @@ impl Speech {
     }
 }
 
-struct Work {
-    utterance: Utterance,
+struct Work<T> {
+    request: T,
     result: mpsc::SyncSender<Result<(), Error>>,
     cancellation: Cancellation,
 }
 
 /// A bounded FIFO (32 waiting requests plus the active utterance). Failures are
 /// returned through Speech, never converted to successful silence. No network fallback is implicit.
-pub struct Speaker {
-    sender: Option<mpsc::SyncSender<Work>>,
+pub struct Speaker(Worker<Utterance>);
+
+struct Worker<T> {
+    sender: Option<mpsc::SyncSender<Work<T>>>,
     pending: Mutex<Vec<Weak<AtomicBool>>>,
     worker: Option<JoinHandle<()>>,
 }
@@ -178,44 +182,7 @@ impl Speaker {
     pub fn new<B: Backend>(
         factory: impl FnOnce() -> Result<B, Error> + Send + 'static,
     ) -> Result<Self, Error> {
-        let (sender, receiver) = mpsc::sync_channel::<Work>(32);
-        let (ready, initialized) = mpsc::sync_channel(1);
-        let worker = thread::Builder::new()
-            .name("aftercast-tts".into())
-            .spawn(move || {
-                let mut backend = match factory() {
-                    Ok(backend) => {
-                        drop(ready.send(Ok(())));
-                        backend
-                    }
-                    Err(error) => {
-                        drop(ready.send(Err(error)));
-                        return;
-                    }
-                };
-                for work in receiver {
-                    let result = work
-                        .cancellation
-                        .check()
-                        .and_then(|()| backend.speak(&work.utterance, &work.cancellation));
-                    work.cancellation.0.store(true, Ordering::Release);
-                    drop(work.result.send(result));
-                }
-            })
-            .map_err(|e| Error::Backend(e.to_string()))?;
-        if let Err(error) = initialized
-            .recv()
-            .map_err(|_disconnected| Error::Closed)
-            .and_then(|r| r)
-        {
-            drop(worker.join());
-            return Err(error);
-        }
-        Ok(Self {
-            sender: Some(sender),
-            pending: Mutex::new(Vec::new()),
-            worker: Some(worker),
-        })
+        Worker::new(factory, B::speak).map(Self)
     }
 
     /// Local system backend only: SAPI on Windows, Speech Dispatcher on Linux.
@@ -238,6 +205,60 @@ impl Speaker {
 
     pub fn speak(&self, utterance: Utterance) -> Result<Speech, Error> {
         utterance.validate()?;
+        self.0.submit(utterance)
+    }
+
+    pub fn cancel_all(&self) {
+        self.0.cancel_all();
+    }
+}
+
+impl<T: Send + 'static> Worker<T> {
+    fn new<B: 'static>(
+        factory: impl FnOnce() -> Result<B, Error> + Send + 'static,
+        perform: fn(&mut B, &T, &Cancellation) -> Result<(), Error>,
+    ) -> Result<Self, Error> {
+        let (sender, receiver) = mpsc::sync_channel::<Work<T>>(32);
+        let (ready, initialized) = mpsc::sync_channel(1);
+        let worker = thread::Builder::new()
+            .name("aftercast-tts".into())
+            .spawn(move || {
+                let mut backend = match factory() {
+                    Ok(backend) => {
+                        drop(ready.send(Ok(())));
+                        backend
+                    }
+                    Err(error) => {
+                        drop(ready.send(Err(error)));
+                        return;
+                    }
+                };
+                for work in receiver {
+                    let result = work
+                        .cancellation
+                        .check()
+                        .and_then(|()| perform(&mut backend, &work.request, &work.cancellation));
+                    work.cancellation.0.store(true, Ordering::Release);
+                    drop(work.result.send(result));
+                }
+            })
+            .map_err(|e| Error::Backend(e.to_string()))?;
+        if let Err(error) = initialized
+            .recv()
+            .map_err(|_disconnected| Error::Closed)
+            .and_then(|r| r)
+        {
+            drop(worker.join());
+            return Err(error);
+        }
+        Ok(Self {
+            sender: Some(sender),
+            pending: Mutex::new(Vec::new()),
+            worker: Some(worker),
+        })
+    }
+
+    fn submit(&self, request: T) -> Result<Speech, Error> {
         let cancellation = Cancellation(Arc::new(AtomicBool::new(false)));
         let (result, receiver) = mpsc::sync_channel(1);
         let mut pending = self.pending.lock().map_err(|_poisoned| Error::Closed)?;
@@ -246,7 +267,7 @@ impl Speaker {
             .as_ref()
             .ok_or(Error::Closed)?
             .try_send(Work {
-                utterance,
+                request,
                 result,
                 cancellation: cancellation.clone(),
             })
@@ -264,8 +285,10 @@ impl Speaker {
             cancellation,
         })
     }
+}
 
-    pub fn cancel_all(&self) {
+impl<T> Worker<T> {
+    fn cancel_all(&self) {
         if let Ok(mut pending) = self.pending.lock() {
             for flag in pending.drain(..).filter_map(|flag| flag.upgrade()) {
                 flag.store(true, Ordering::Release);
@@ -274,7 +297,7 @@ impl Speaker {
     }
 }
 
-impl Drop for Speaker {
+impl<T> Drop for Worker<T> {
     fn drop(&mut self) {
         self.cancel_all();
         self.sender.take();

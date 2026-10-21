@@ -16,6 +16,7 @@ internal static class OverlayIntegrationChecks
         var overlay = root.ActPlugins.Single(data => data.pluginObj.GetType().FullName == "RainbowMage.OverlayPlugin.PluginLoader");
         if (!root.InitActDone || overlay.lblPluginStatus.Text != "Initialised") throw new Exception("OverlayPlugin startup did not complete");
         session.ConfigureSpeech(true);
+        session.ConfigureSound(true);
         var container = overlay.pluginObj.GetType().GetProperty("Container")!.GetValue(overlay.pluginObj)!;
         object Resolve(string typeName)
         {
@@ -66,6 +67,11 @@ internal static class OverlayIntegrationChecks
         CheckCef(0, snapshot => snapshot.GetProperty("loaded").GetBoolean());
         // Exercise the original CEF/cactbot handler; the Rust backend is verified independently by the host fixture test.
         native.GetType().GetMethod("ExecuteScript")!.Invoke(native, new object[] { "callOverlayHandler({call:'cactbotSay',text:'Aftercast CEF speech fixture'})" });
+        var soundFile = Path.Combine(state, "aftercast-effect.wav");
+        // The transport probe records requests; the Rust device test independently decodes/plays a valid WAV.
+        File.WriteAllBytes(soundFile, [0]);
+        File.WriteAllText(Path.Combine(state, "sound-ready.json"), JsonSerializer.Serialize(new { file = soundFile }));
+        native.GetType().GetMethod("ExecuteScript")!.Invoke(native, new object[] { "callOverlayHandler({call:'playSound',file:" + JsonSerializer.Serialize(soundFile) + "})" });
         var start = new ProcessStartInfo("node") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
         foreach (var argument in new[] { Path.GetFullPath("managed/tests/cactbot-browser.cjs"), cactbotPath, Path.Combine(state, "browser"), state }) start.ArgumentList.Add(argument);
         using var child = Process.Start(start)!;
@@ -145,6 +151,15 @@ internal static class OverlayIntegrationChecks
             if (speech.Count != 2 || !speech.Contains("Aftercast CEF speech fixture") || !speech.Contains("Aftercast WS speech fixture"))
                 throw new Exception("Original cactbotSay did not route CEF/WS requests to ACT TTS");
             File.WriteAllText(Path.Combine(state, "tts-route.json"), JsonSerializer.Serialize(speech));
+            var sounds = new List<string>();
+            Tuple<byte[], int> sound;
+            while ((sound = session.DrainSound()).Item1.Length != 0)
+            {
+                if (sound.Item2 != 100) throw new Exception("Overlay sound volume changed");
+                sounds.Add(System.Text.Encoding.UTF8.GetString(sound.Item1));
+            }
+            if (sounds.Count != 2 || sounds.Any(source => source != soundFile)) throw new Exception("Original CEF/WS playSound did not reach ACT");
+            File.WriteAllText(Path.Combine(state, "sound-route.json"), JsonSerializer.Serialize(sounds));
             var pluginLog = string.Join("\n", overlay.tpPluginSpace.Controls.Find("logBox", true).Select(control => control.Text));
             File.WriteAllText(Path.Combine(state, "overlay-integration.log"), pluginLog);
             var unexpected = pluginLog.Split('\n').Where(line =>

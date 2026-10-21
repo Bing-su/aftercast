@@ -190,6 +190,15 @@ run_windows = [
   'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} timer-models {{vars.reference_probe}}',
 ]
 
+[tasks."test:audio"]
+description = "Compare PlaySound delegate/volume and timer TTS dispatch with genuine ACT (Windows)"
+depends = ["managed:references"]
+run = '{{vars.managed_tests}} audio'
+run_windows = [
+  '{{vars.managed_tests}} audio',
+  'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} audio {{vars.reference_probe}}',
+]
+
 [tasks."test:external-timer"]
 description = "Exercise unmodified Timer Repeater expiry, combat restriction and native cancellation"
 depends = ["managed:test-runner"]

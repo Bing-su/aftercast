@@ -18,6 +18,7 @@ use crate::{Error, HostConfig};
 pub struct Host {
     pub(crate) session: ManagedSession,
     pub(crate) speech: Option<crate::speech::SpeechOutput>,
+    pub(crate) sounds: Option<crate::speech::SoundOutput>,
 }
 
 impl Host {
@@ -30,6 +31,7 @@ impl Host {
         ManagedSession::start(config).map(|session| Self {
             session,
             speech: None,
+            sounds: None,
         })
     }
 
@@ -47,6 +49,7 @@ impl Host {
     pub fn pump(&mut self) -> Result<u32, Error> {
         let callbacks = self.session.call(4)?.runtime_major;
         self.pump_speech()?;
+        self.pump_sounds()?;
         Ok(callbacks)
     }
 
@@ -62,6 +65,7 @@ impl Host {
     /// Stops the managed session. The CLR and loaded assemblies may remain in the process.
     pub fn stop(mut self) -> Result<(), Error> {
         self.speech.take();
+        self.sounds.take();
         self.session.stop()
     }
 }

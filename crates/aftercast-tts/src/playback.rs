@@ -1,9 +1,55 @@
 use std::io::Cursor;
+use std::io::Read;
 use std::time::{Duration, Instant};
 
 use rodio::{DeviceSinkBuilder, Player, buffer::SamplesBuffer};
 
 use crate::{Backend, Cancellation, Error, SynthesizedAudio, Synthesizer, Utterance, failure};
+use crate::{PcmAudio, SoundBackend, SoundRequest};
+
+/// Local encoded files and a generated beep, using the default output device.
+/// For queued playback use `SoundPlayer::system()`; direct calls block until completion.
+pub struct FilePlayback;
+
+impl SoundBackend for FilePlayback {
+    fn play(&mut self, request: &SoundRequest, cancellation: &Cancellation) -> Result<(), Error> {
+        request.validate()?;
+        cancellation.check()?;
+        if request.source == "beep" {
+            // A short, quiet tone works with the same output device on both platforms.
+            let samples = (0..4800)
+                .map(|n| (n as f32 * 880.0 * std::f32::consts::TAU / 24000.0).sin() * 0.1)
+                .collect();
+            return play(
+                SynthesizedAudio::Pcm(PcmAudio::new(samples, 24000, 1)?),
+                request.volume,
+                cancellation,
+            );
+        }
+        let path = if request.source.starts_with("file:") {
+            url::Url::parse(&request.source)
+                .map_err(failure)?
+                .to_file_path()
+                .map_err(|()| Error::InvalidRequest("invalid local file URI"))?
+        } else {
+            if request.source.contains("://") {
+                return Err(Error::InvalidRequest(
+                    "system sound playback requires a local file",
+                ));
+            }
+            std::path::PathBuf::from(&request.source)
+        };
+        let mut bytes = Vec::new();
+        std::fs::File::open(path)
+            .map_err(failure)?
+            .take(16 * 1024 * 1024 + 1)
+            .read_to_end(&mut bytes)
+            .map_err(failure)?;
+        cancellation.check()?;
+        // rodio sniffs the container, so the extension need not match WAV/MP3/Ogg/FLAC content.
+        play(SynthesizedAudio::Mp3(bytes), request.volume, cancellation)
+    }
+}
 
 /// Turns an inference-only engine into a queued Backend using common PCM/MP3 playback.
 /// Construct inside the worker, e.g. `Speaker::new(|| Ok(Playback::new(MySynthesizer::load()?)))`.

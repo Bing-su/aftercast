@@ -66,12 +66,14 @@ async function main() {
     await page.goto(base + '/ui/raidboss/raidboss.html?timeline=1&alerts=1&audio=0' + (endpoint ? '&OVERLAY_WS=' + encodeURIComponent(endpoint) : ''), { waitUntil: 'networkidle' });
     if (integration) {
       await page.waitForFunction(() => typeof window.callOverlayHandler === 'function');
-      await page.evaluate(async () => {
+      const sound = JSON.parse(await fs.readFile(path.join(integration, 'sound-ready.json'), 'utf8'));
+      await page.evaluate(async (file) => {
         await window.callOverlayHandler({ call: 'cactbotSaveData', overlay: 'aftercast-integration', data: { roundTrip: 42 } });
         const result = await window.callOverlayHandler({ call: 'cactbotLoadData', overlay: 'aftercast-integration' });
         if (result?.data?.roundTrip !== 42) throw Error('Original cactbot handler round trip failed');
         await window.callOverlayHandler({ call: 'cactbotSay', text: 'Aftercast WS speech fixture' });
-      });
+        await window.callOverlayHandler({ call: 'playSound', file });
+      }, sound.file);
     } else await page.waitForFunction(() => window.fixtureRequests.some(r => r.call === 'cactbotRequestState'));
     await input('state', () => {
       window.__OverlayCallback({ type: 'onPlayerChangedEvent', detail: { name: 'Fixture Player', id: 0x10000001, job: 'PLD', level: 100, currentHP: 1000, maxHP: 1000 } });
@@ -91,7 +93,7 @@ async function main() {
     const timeline = await page.locator('#timeline timer-bar').evaluateAll(bars => bars.map(bar => bar.getAttribute('lefttext')).join('\n'));
     assert(timeline.includes('Angry Dummy'));
     const requests = integration ? wireRequests : await page.evaluate(() => window.fixtureRequests);
-    const allowed = new Set(['subscribe', 'cactbotLoadUser', 'cactbotLoadData', 'cactbotRequestState', 'cactbotSaveData', 'cactbotSay']);
+    const allowed = new Set(['subscribe', 'cactbotLoadUser', 'cactbotLoadData', 'cactbotRequestState', 'cactbotSaveData', 'cactbotSay', 'playSound']);
     assert(requests.every(request => allowed.has(request.call)), 'Unspecified fixture handler response');
     await page.screenshot({ path: path.join(output, 'raidboss.png') });
     await input('jump', () => {

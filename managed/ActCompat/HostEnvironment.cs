@@ -30,7 +30,7 @@ namespace Advanced_Combat_Tracker
         public void NotificationAdd(string title, string message, EventHandler? showCallback = null, object? senderObject = null) =>
             throw new NotSupportedException("ACT notification windows are not implemented");
         internal void SetInitializationComplete(bool complete) => InitActDone = complete && !IsActClosing;
-        internal void BeginClosing() { IsActClosing = true; InitActDone = false; ConfigureSpeech(false); }
+        internal void BeginClosing() { IsActClosing = true; InitActDone = false; ConfigureSpeech(false); ConfigureSound(false); }
         public ActPluginData? PluginGetSelfData(IActPluginV1? plugin) =>
             plugin is not null && plugins.TryGetValue(plugin, out var data) ? data : null;
         public void WriteExceptionLog(Exception? error, string context) => RecordDiagnostic(error, context, failOwner: true);
@@ -110,6 +110,7 @@ namespace Aftercast.ActCompat
         public HostEnvironment(string directory, Action? pumpCallbacks = null, Func<bool>? isDispatchingCallback = null)
         {
             main = new(new DirectoryInfo(directory));
+            main.InitializeAudio();
             main.PumpCallbacks = pumpCallbacks;
             main.IsDispatchingCallback = isDispatchingCallback;
             if (ActGlobals.oFormActMain is not null)
@@ -141,6 +142,16 @@ namespace Aftercast.ActCompat
         public void BeginClosing() => main.BeginClosing();
         public void ConfigureSpeech(bool enabled) => main.ConfigureSpeech(enabled);
         public byte[] DrainSpeech() => main.DrainSpeech();
+        public void ConfigureSound(bool enabled) => main.ConfigureSound(enabled);
+        public Tuple<byte[], int> DrainSound() => main.DrainSound();
+        public int TtsVolume => main.TtsVolume;
+        public void ConfigureAudio(int soundVolume, int ttsVolume, string[] timerSounds)
+        {
+            if (soundVolume is < 0 or > 100 || ttsVolume is < 0 or > 100 || timerSounds.Length != 3)
+                throw new ArgumentException("Invalid audio settings");
+            main.SoundVolume = soundVolume; main.TtsVolume = ttsVolume;
+            (main.TimerStartSound, main.TimerWarningSound, main.TimerExpireSound) = (timerSounds[0], timerSounds[1], timerSounds[2]);
+        }
         public void SetInitializationComplete(bool complete) => main.SetInitializationComplete(complete);
         public void Unregister(IActPluginV1 plugin) => main.Unregister(plugin);
         public event Action<OriginalLogRecord> OriginalLogRecordRead

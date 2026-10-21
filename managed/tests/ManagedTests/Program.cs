@@ -64,6 +64,7 @@ internal static class Program
             case "overlay-renderer": OverlayRendererChecks.Run(args[1]); break;
             case "text-exports": ReferenceContract("TextExportProbe", "Text exports"); break;
             case "timer-models": ReferenceContract("TimerModelProbe", "Timer models"); break;
+            case "audio": ReferenceContract("AudioProbe", "Audio"); break;
             case "eq2-timestamps": ReferenceContract("Eq2TimestampProbe", "EQ2 timestamps"); break;
             case "benchmark-ui": ReferenceContract("BenchmarkUiProbe", "Benchmark UI"); break;
             case "external-benchmark": ExternalPluginChecks.Run(args[1], "ACT_Plugin.EventHandlerBenchmark", args[2], ExternalBenchmarkChecks.Run); break;
@@ -483,6 +484,7 @@ internal static class Program
     {
         PluginBindingChecks.Run();
         SpeechChecks.Run();
+        SoundChecks.Run();
         TextExportChecks.Run();
         SpellTimerChecks.Run();
         Eq2HostChecks.Run();

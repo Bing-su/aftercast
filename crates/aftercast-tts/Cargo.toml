@@ -8,14 +8,15 @@ description = "Pluggable offline and online text-to-speech for Windows and Linux
 [features]
 default = ["system", "edge"]
 system = ["dep:windows", "dep:speech-dispatcher"]
-playback = ["dep:rodio"]
+playback = ["dep:rodio", "dep:url"]
 edge = ["dep:msedge-tts", "dep:tokio", "playback"]
 
 [dependencies]
 thiserror.workspace = true
 msedge-tts = { version = "0.4.1", default-features = false, features = ["tokio-runtime"], optional = true }
 tokio = { version = "1", features = ["rt", "net", "time", "macros"], optional = true }
-rodio = { version = "0.23", default-features = false, features = ["playback", "mp3"], optional = true }
+rodio = { version = "0.23", default-features = false, features = ["playback", "mp3", "wav", "vorbis", "flac"], optional = true }
+url = { version = "2", optional = true }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = ["Win32_Media_Speech", "Win32_System_Com"], optional = true }

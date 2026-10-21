@@ -240,18 +240,36 @@ public static class EntryPoint
         // A drain always reserves the maximum text size before dequeue; retries cannot lose or duplicate an utterance.
         if (buffer == 0 || !BitConverter.IsLittleEndian || sizeBytes is not (headerSize or headerSize + 4096) ||
             Marshal.ReadInt32(buffer, 0) != sizeBytes || Marshal.ReadInt32(buffer, 4) != 1 ||
-            Marshal.ReadInt64(buffer, 24) != 0)
+            (Marshal.ReadInt32(buffer, 16) != 5 && Marshal.ReadInt64(buffer, 24) != 0))
             throw new ArgumentException("Invalid speech command header", nameof(buffer));
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
         var command = Marshal.ReadInt32(buffer, 16);
         var argument = Marshal.ReadInt32(buffer, 20);
         if (command == 1 && sizeBytes == headerSize && argument is 0 or 1)
             plugins.Value.ConfigureSpeech(argument == 1);
+        else if (command == 3 && sizeBytes == headerSize && argument is 0 or 1)
+            plugins.Value.ConfigureSound(argument == 1);
         else if (command == 2 && sizeBytes == headerSize + 4096 && argument == 0)
         {
             var text = plugins.Value.DrainSpeech();
             Marshal.Copy(text, 0, buffer + headerSize, text.Length);
             Marshal.WriteInt32(buffer, 20, text.Length);
+            Marshal.WriteInt32(buffer, 24, plugins.Value.TtsVolume);
+        }
+        else if (command == 4 && sizeBytes == headerSize + 4096 && argument == 0)
+        {
+            var sound = plugins.Value.DrainSound();
+            Marshal.Copy(sound.Item1, 0, buffer + headerSize, sound.Item1.Length);
+            Marshal.WriteInt32(buffer, 20, sound.Item1.Length);
+            Marshal.WriteInt32(buffer, 24, sound.Item2);
+        }
+        else if (command == 5 && sizeBytes == headerSize + 4096 && argument is > 0 and <= 4096)
+        {
+            var bytes = new byte[argument];
+            Marshal.Copy(buffer + headerSize, bytes, 0, argument);
+            var timers = new System.Text.UTF8Encoding(false, true).GetString(bytes).Split('\0');
+            if (timers.Length != 3 || timers.Any(text => text.Any(char.IsControl))) throw new ArgumentException("Invalid timer sound settings");
+            plugins.Value.ConfigureAudio(Marshal.ReadInt32(buffer, 24), Marshal.ReadInt32(buffer, 28), timers);
         }
         else throw new ArgumentException("Invalid speech command or capacity", nameof(buffer));
         return 0;

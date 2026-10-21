@@ -1,4 +1,5 @@
 using System.Windows.Forms;
+using System.Text.RegularExpressions;
 
 namespace Advanced_Combat_Tracker;
 
@@ -18,8 +19,6 @@ public class FormSpellTimers : Form
     public event SpellTimerEventDelegate? OnSpellTimerRemoved;
     public void AddEditTimerDef(TimerData definition)
     {
-        if (definition.StartSoundData.Length != 0 || definition.WarningSoundData.Length != 0)
-            throw new NotSupportedException("Spell timer audio is not implemented");
         lock (gate) TimerDefs[definition.Key] = definition;
     }
     public void RemoveTimerDef(TimerData definition) { lock (gate) TimerDefs.Remove(definition.Key); }
@@ -76,6 +75,7 @@ public class FormSpellTimers : Form
     public void NotifySpell(string attacker, string spell, bool self, string victim, bool success, Dictionary<string, string> extra)
     {
         TimerFrame frame;
+        string? startSound = null;
         lock (gate)
         {
             ObjectDisposedException.ThrowIf(IsDisposed, this);
@@ -95,9 +95,6 @@ public class FormSpellTimers : Form
             }
             var definition = restricted ?? general;
             if (definition is null || definition.RestrictToMe && !self && !WhiteList.ContainsKey(attacker) && !WhiteList.ContainsKey(victim)) return;
-            // Audio is a separate ACT subsystem; do not silently accept sound-enabled timer definitions.
-            if (definition.StartSoundData.Length != 0 || definition.WarningSoundData.Length != 0)
-                throw new NotSupportedException("Spell timer audio is not implemented");
             var key = TimerFrame.GetKey(definition.Name, attacker);
             if (!frames.TryGetValue(key, out frame!)) frames.Add(key, frame = new(attacker, definition));
             frame.TimerData = definition;
@@ -107,9 +104,10 @@ public class FormSpellTimers : Form
             if (recent < TimeSpan.FromSeconds(2)) return;
             var master = recent >= TimeSpan.FromSeconds(12) || definition.OnlyMasterTicks;
             var timer = new SpellTimer(master, definition.TimerValue, definition.Modable ? GetRecastMods(attacker) : new(), now) { ExtraInfo = extra };
-            if (master) { frame.ExpireSounded = false; frame.WarningSounded = false; }
+            if (master) { frame.ExpireSounded = false; frame.WarningSounded = false; startSound = frame.StartSoundData; }
             frame.SpellTimers.Add(timer);
         }
+        if (startSound is not null) TimerSound(frame, 0, startSound, extra);
         Notify(OnSpellTimerNotify, frame, nameof(OnSpellTimerNotify));
     }
 
@@ -139,7 +137,12 @@ public class FormSpellTimers : Form
             }
         }
         // Repeater can restart or cancel a frame here; invoke plugins outside the frame gate.
-        if (notification is not null) Notify(handlers, notification, eventName);
+        if (notification is not null)
+        {
+            TimerSound(notification, eventName == nameof(OnSpellTimerWarning) ? 1 : 2,
+                notification.WarningSoundData, notification.SpellTimers.FirstOrDefault()?.ExtraInfo);
+            Notify(handlers, notification, eventName);
+        }
         if (IsDisposed) return;
         TimerFrame? removed = null;
         lock (gate)
@@ -154,5 +157,37 @@ public class FormSpellTimers : Form
         foreach (var callback in handlers?.GetInvocationList() ?? [])
             try { ((SpellTimerEventDelegate)callback)(frame); }
             catch (Exception error) { ActGlobals.oFormActMain?.WriteExceptionLog(error, "FormSpellTimers->" + name); }
+    }
+
+    private static string Substitute(string text, Dictionary<string, string> extra)
+    {
+        // ACT substitutes nested capture labels; cap expansion so a plugin's ${cycle} cannot stall the owner thread.
+        for (var i = 0; i < 32; i++)
+        {
+            var match = Regex.Match(text, @"\$\{([^}]+)\}");
+            if (!match.Success) return text;
+            var key = match.Groups[1].Value;
+            text = text[..match.Index] + extra.GetValueOrDefault(key, key) + text[(match.Index + match.Length)..];
+            if (text.Length > 4096) throw new ArgumentException("Timer sound substitution exceeds its bounded size");
+        }
+        throw new ArgumentException("Timer sound substitution is recursive or exceeds 32 captures");
+    }
+
+    private static void TimerSound(TimerFrame frame, int state, string data, Dictionary<string, string>? extra = null)
+    {
+        var root = ActGlobals.oFormActMain!;
+        try
+        {
+            if (state != 2 && extra is not null) data = Substitute(data, extra);
+            if (state == 2) data = root.TimerExpireSound;
+            else if (string.IsNullOrWhiteSpace(data)) data = state == 0 ? root.TimerStartSound : root.TimerWarningSound;
+            if (data == "tts") data = "tts " + frame.Name + (state == 0 ? " started" : state == 1 ? " warning" : " expired");
+            if (data == "none" || string.IsNullOrWhiteSpace(data)) return;
+            if (data == "beep") root.Beep();
+            else if (data.StartsWith("tts ", StringComparison.Ordinal)) root.TTS(data[3..]);
+            else if (File.Exists(data)) root.PlaySound(data);
+            else throw new FileNotFoundException("Could not find WAV: " + data, data);
+        }
+        catch (Exception error) { root.WriteExceptionLog(error, "SpellTimers->PlaySound"); }
     }
 }
