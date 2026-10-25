@@ -112,6 +112,36 @@ shutdown. Subscriber loss and superseded snapshot versions have different meanin
 one reports omitted observations, the other reports replaced versions of a result.
 Neither output is a durable recording or complete encounter archive.
 
+## Data corrections
+
+Prepare `DataCorrections.xml` in the private data directory before starting the
+host. It is read-only startup configuration; shutdown does not rewrite it.
+
+```xml
+<DataCorrections>
+  <RenameFix>
+    <Rename Before="Pet" After="Owner" Active="True" />
+  </RenameFix>
+  <AbilityRedirectFix>
+    <Redirect Ability="Strike" Into="Player" Type="1" Active="True" />
+  </AbilityRedirectFix>
+</DataCorrections>
+```
+
+| Contract       | Behavior                                                                                                                     |
+| -------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| Names          | Exact, case-sensitive attacker and victim replacement after normalization                                                    |
+| Redirects      | Exact ability match replaces the attacker; Type 1 damage swing types, 2 healing types, 3 neither, other values all types     |
+| Order          | Renames, then redirects, then BeforeCombatAction, then live timers and aggregation; imported actions receive corrections too |
+| Multiple rules | ACT's sorted display-key order, not XML order; later matching rules see earlier edits                                        |
+| Duplicates     | Rename duplicates retain the first rule; redirect duplicates update only its type, preserving original Active state          |
+| Validation     | DTDs are prohibited; malformed XML, missing required attributes and invalid numbers fail startup; 4 MiB character limit      |
+
+This implements the headless rename/redirect path, not every ACT correction
+option or its settings editor. Selective `EncounterData` constructors also honor
+the host's SelectiveList; ordinary host-created encounters keep their existing
+nonselective policy.
+
 ## Custom triggers
 
 The host loads `CustomTriggers.xml` from its private data directory before plugin

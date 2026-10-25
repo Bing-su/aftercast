@@ -86,6 +86,7 @@ public partial class FormActMain
         {
             action.NormalizeForHost();
             var info = new CombatActionEventArgs(action);
+            lock (CombatGate) { RenameCombatant(info); RedirectAbility(info); }
             bool import;
             lock (CombatGate) import = importingLogs;
             NotifyCombatActions(BeforeCombatAction, import, info, "BeforeCombatAction subscriber", cancelable: true);

@@ -121,6 +121,7 @@ namespace Aftercast.ActCompat
             try
             {
                 main.LoadCustomTriggers(Path.Combine(directory, "CustomTriggers.xml"));
+                main.LoadDataCorrections(Path.Combine(directory, "DataCorrections.xml"));
                 main.Controls.Add(main.OptionsTreeView);
                 main.OptionsTreeView.Nodes.Add("Data Correction");
                 if (OperatingSystem.IsWindows()) main.InitializeNativePluginTabs();

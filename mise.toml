@@ -147,6 +147,14 @@ run = [
   '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} custom-trigger-models {{vars.reference_probe}}',
 ]
 
+[tasks."test:data-corrections"]
+description = "Compare headless rename/ability redirect rules with genuine ACT"
+depends = ["managed:references"]
+run = [
+  "{{vars.managed_tests}} data-corrections",
+  '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} data-corrections {{vars.reference_probe}}',
+]
+
 [tasks."test:external-export"]
 description = "Exercise unmodified Export_All against two combat ends and restore the native clipboard"
 depends = ["managed:test-runner"]
