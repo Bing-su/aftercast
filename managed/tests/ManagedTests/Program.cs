@@ -41,7 +41,7 @@ internal static class Program
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.DataVisualization.dll"));
         }
         // Modes keep artifact-dependent checks separate from ordinary ABI tests without a test framework dependency.
-        if (mode is "contracts" or "original" or "original-import" or "original-corpus" or "original-log" or "text-exports" or "timer-models" or "eq2-timestamps") Platform.Prepare();
+        if (mode is "contracts" or "original" or "original-import" or "original-corpus" or "original-log" or "text-exports" or "timer-models" or "eq2-timestamps" or "parent-settings") Platform.Prepare();
         switch (mode)
         {
             case "bridge": Bridge(); break;
@@ -65,6 +65,7 @@ internal static class Program
             case "text-exports": ReferenceContract("TextExportProbe", "Text exports"); break;
             case "timer-models": ReferenceContract("TimerModelProbe", "Timer models"); break;
             case "audio": ReferenceContract("AudioProbe", "Audio"); break;
+            case "parent-settings": ReferenceContract("ParentSettingsProbe", "Parent settings"); break;
             case "eq2-timestamps": ReferenceContract("Eq2TimestampProbe", "EQ2 timestamps"); break;
             case "benchmark-ui": ReferenceContract("BenchmarkUiProbe", "Benchmark UI"); break;
             case "external-benchmark": ExternalPluginChecks.Run(args[1], "ACT_Plugin.EventHandlerBenchmark", args[2], ExternalBenchmarkChecks.Run); break;
@@ -497,6 +498,7 @@ internal static class Program
         RegistrationLifetimeChecks.Run();
         DebugLogChecks.Run();
         CombatPolicyChecks.Run();
+        ParentSettingsChecks.Run();
         RootCombatStateChecks.Run();
         RootActionChecks.Run();
         HitRateColumnChecks.Run();

@@ -116,10 +116,19 @@ run_windows = '{{vars.managed_tests}} external-plugin "%usage_plugin%" "%usage_t
 [tasks."test:text-exports"]
 description = "Compare unaligned text exports with original ACT (Windows native reference)"
 depends = ["managed:references"]
-run = '{{vars.managed_tests}} text-exports'
+run = "{{vars.managed_tests}} text-exports"
 run_windows = [
-  '{{vars.managed_tests}} text-exports',
+  "{{vars.managed_tests}} text-exports",
   'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} text-exports {{vars.reference_probe}}',
+]
+
+[tasks."test:parent-settings"]
+description = "Check parent settings; compare with genuine ACT on Windows"
+depends = ["managed:references"]
+run = "{{vars.managed_tests}} parent-settings"
+run_windows = [
+  "{{vars.managed_tests}} parent-settings",
+  'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} parent-settings {{vars.reference_probe}}',
 ]
 
 [tasks."test:external-export"]
@@ -149,7 +158,7 @@ description = "Compare plugin list, version and closing-state data signatures wi
 depends = ["managed:references"]
 run = 'echo "Plugin metadata reference checks require Windows"'
 run_windows = [
-  '{{vars.managed_tests}} plugin-metadata',
+  "{{vars.managed_tests}} plugin-metadata",
   'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} plugin-metadata {{vars.reference_probe}}',
 ]
 
@@ -173,7 +182,7 @@ arg "<state>" help="Writable browser audio report directory"
 '''
 run = 'sh managed/tests/cactbot-audio-linux.sh "$usage_cactbot" "$usage_state"'
 run_windows = [
-  'node --test managed/tests/cactbot-audio.test.cjs',
+  "node --test managed/tests/cactbot-audio.test.cjs",
   'node managed/tests/cactbot-audio.cjs "%usage_cactbot%" "%usage_state%"',
 ]
 
@@ -182,7 +191,7 @@ description = "Query the official ACT plugin version endpoint from replacement a
 depends = ["managed:references"]
 run = 'echo "Original update endpoint comparison requires Windows"'
 run_windows = [
-  '{{vars.managed_tests}} plugin-updates',
+  "{{vars.managed_tests}} plugin-updates",
   'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} plugin-updates {{vars.reference_probe}}',
 ]
 
@@ -196,18 +205,18 @@ run_windows = '{{vars.managed_tests}} overlay-renderer "%usage_renderer%"'
 [tasks."test:timer-models"]
 description = "Compare ACT timer values and frame contracts (Windows native reference)"
 depends = ["managed:references"]
-run = '{{vars.managed_tests}} timer-models'
+run = "{{vars.managed_tests}} timer-models"
 run_windows = [
-  '{{vars.managed_tests}} timer-models',
+  "{{vars.managed_tests}} timer-models",
   'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} timer-models {{vars.reference_probe}}',
 ]
 
 [tasks."test:audio"]
 description = "Compare PlaySound delegate/volume and timer TTS dispatch with genuine ACT (Windows)"
 depends = ["managed:references"]
-run = '{{vars.managed_tests}} audio'
+run = "{{vars.managed_tests}} audio"
 run_windows = [
-  '{{vars.managed_tests}} audio',
+  "{{vars.managed_tests}} audio",
   'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} audio {{vars.reference_probe}}',
 ]
 
@@ -224,9 +233,9 @@ run_windows = '{{vars.managed_tests}} external-timer "%usage_plugin%" "%usage_st
 [tasks."test:eq2-timestamps"]
 description = "Compare ACT's default displayed-date log parser (Windows native reference)"
 depends = ["managed:references"]
-run = '{{vars.managed_tests}} eq2-timestamps'
+run = "{{vars.managed_tests}} eq2-timestamps"
 run_windows = [
-  '{{vars.managed_tests}} eq2-timestamps',
+  "{{vars.managed_tests}} eq2-timestamps",
   'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} eq2-timestamps {{vars.reference_probe}}',
 ]
 
@@ -245,7 +254,7 @@ description = "Compare native benchmark column sizing and timestamped UI logs ag
 depends = ["managed:references"]
 run = 'echo "Benchmark UI reference checks require Windows"'
 run_windows = [
-  '{{vars.managed_tests}} benchmark-ui',
+  "{{vars.managed_tests}} benchmark-ui",
   'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} benchmark-ui {{vars.reference_probe}}',
 ]
 
