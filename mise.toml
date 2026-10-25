@@ -131,6 +131,14 @@ run_windows = [
   'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} parent-settings {{vars.reference_probe}}',
 ]
 
+[tasks."test:selective-parsing"]
+description = "Compare selected attacker/victim routing with genuine ACT"
+depends = ["managed:references"]
+run = [
+  "{{vars.managed_tests}} selective-parsing",
+  '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} selective-parsing {{vars.reference_probe}}',
+]
+
 [tasks."test:external-export"]
 description = "Exercise unmodified Export_All against two combat ends and restore the native clipboard"
 depends = ["managed:test-runner"]

@@ -132,7 +132,14 @@ internal static class RootActionChecks
         root.SetEncounter(Epoch, "Source", "Target");
         root.AddCombatAction(Swing(100, 0, 1));
         root.AddCombatAction(Swing(300, 2, 2));
-        foreach (var unsupported in new[] { "reset players", "add Player", "remove Player", "macro all", "macro last",
+        root.ActCommands("add Player");
+        Check(root.SelectiveListGetSelected("player") && root.InCombat);
+        root.ActCommands("remove PLAYER");
+        Check(!root.SelectiveListGetSelected("Player") && root.InCombat);
+        root.ActCommands("add Player");
+        root.ActCommands("reset players");
+        Check(!root.SelectiveListGetSelected("Player") && root.InCombat);
+        foreach (var unsupported in new[] { "macro all", "macro last",
             "macro: test", "clip all", "clip last", "clip last-1", "clear html", "clear", "timer test", null })
         {
             Throws<NotSupportedException>(() => root.ActCommands(unsupported!));

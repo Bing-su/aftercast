@@ -38,6 +38,7 @@ internal static class RegistrationLifetime
         ActGlobals.disableIncrementalCaching = false;
         ActGlobals.restrictToAll = false;
         ActGlobals.longDuration = false;
+        ActGlobals.selectiveList = new();
         CombatantData.ExportVariables = new();
         CombatantData.ColumnDefs = new();
         EncounterData.ExportVariables = new();

@@ -8,7 +8,7 @@ public class EncounterData
     private string title = "Encounter";
     private List<DateTime> startTimes = new();
     private List<DateTime> endTimes = new();
-    // Preserve constructor policy for the later selective combat-action implementation.
+    // The selective overload applies ACT's attacker/victim list policy, e.g. selected attacker actions retain both sides.
     internal readonly bool SelectiveParsing;
     internal readonly bool IgnoreEnemies;
 
@@ -58,7 +58,7 @@ public class EncounterData
 
     internal void EnsureActionSupported()
     {
-        if (SelectiveParsing)
+        if (SelectiveParsing && ActGlobals.oFormActMain is null)
             throw new NotSupportedException("Selective combat parsing requires the host's actual selection policy.");
     }
 
@@ -67,6 +67,8 @@ public class EncounterData
         EnsureActionSupported();
         if (DuplicateDetection && !includedTimeSorters.Add(action.TimeSorter)) return;
         action.ParentEncounter = this;
+        if (SelectiveParsing && !ActGlobals.oFormActMain!.SelectiveListGetSelected(action.Attacker)
+            && (IgnoreEnemies || !ActGlobals.oFormActMain.SelectiveListGetSelected(action.Victim))) return;
         var attackerKey = action.Attacker.ToUpper();
         if (!Items.TryGetValue(attackerKey, out var attacker))
         {

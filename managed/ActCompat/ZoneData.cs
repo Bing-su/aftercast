@@ -24,7 +24,7 @@ public class ZoneData : IComparable<ZoneData>
 
     public void AddCombatAction(MasterSwing action)
     {
-        // Reject unsupported selection before changing segment state or action ownership.
+        // Require a selection provider before changing segments, e.g. a standalone selective graph must not half-apply an action.
         if (PopulateAll) Items[0].EnsureActionSupported();
         Items[^1].EnsureActionSupported();
         if (PopulateAll) Deliver(Items[0], action);

@@ -329,9 +329,10 @@ public partial class FormActMain
             if (InCombat) EndCombat(true);
             return;
         }
-        if (command is null or "reset players" or "macro all" or "macro last" or "clip all" or "clip last" or "clear html" or "clear"
-            || command.StartsWith("add ", StringComparison.Ordinal)
-            || command.StartsWith("remove ", StringComparison.Ordinal)
+        if (command == "reset players") { SelectiveListUncheckAll(); return; }
+        if (command is not null && command.StartsWith("add ", StringComparison.Ordinal)) { SelectiveListAdd(command[4..]); return; }
+        if (command is not null && command.StartsWith("remove ", StringComparison.Ordinal)) { SelectiveListRemove(command[7..], false); return; }
+        if (command is null or "macro all" or "macro last" or "clip all" or "clip last" or "clear html" or "clear"
             || command.StartsWith("macro: ", StringComparison.Ordinal)
             || command.StartsWith("clip last-", StringComparison.Ordinal)
             || command.StartsWith("timer ", StringComparison.Ordinal))
