@@ -17,8 +17,9 @@ device I/O stays on Rust workers. See [audio contracts](audio-validation.md).
 
 The private `aftercast-tts::worker` module owns queue admission, cancellation and
 completion handles; speech and effects reuse it through their existing public
-types. The host adapter shares FIFO completion bookkeeping while keeping speech
-and effect queues and errors independent.
+types. The host adapter shares FIFO completion, bounded draining and response
+validation while keeping speech and effect queues and errors independent. Each
+drain reuses one request packet for up to 32 submissions.
 
 | Location                                                                                                                                                                                       | Responsibility                                                                                                                                            |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -46,6 +47,10 @@ the combat lock without joining action producers. Weak encounter identities
 remain stable during the session without retaining removed graphs. Import
 completion marks every added encounter's status independently of the latest
 ended snapshot; [query contracts](snapshots.md#gui-combat-queries) describe paging.
+Attack paging counts skipped categories without enumerating their attacks. The
+bridge writes text through the standard character-span encoder and returns an
+owned array segment, avoiding per-string byte arrays and a final payload copy.
+See [refactoring measurements](refactoring-performance.md) for the synthetic workload.
 
 ## Lifecycle invariants
 

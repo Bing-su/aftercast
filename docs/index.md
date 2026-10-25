@@ -5,6 +5,7 @@
 | [Usage](usage.md)                                                      | Setup, host/plugin lifecycle and platform support                                   |
 | [Architecture](architecture.md)                                        | Source layout, ownership and lifecycle ordering                                     |
 | [Development](development.md)                                          | Build, verification and package commands                                            |
+| [Refactoring measurements](refactoring-performance.md)                 | Query allocations, synthetic workload, changes and verification limits              |
 | [Windows validation](windows-validation.md)                            | Windows setup, verified checks and remaining limits                                 |
 | [Windows original-artifact validation](windows-original-validation.md) | Supplied ACT/FFXIV checks, extra runtime input and remaining failures               |
 | [Local log validation](local-log-validation.md)                        | Optional host-supplied logs, portable invocation and observed private-log results   |
