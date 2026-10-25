@@ -58,6 +58,7 @@ internal static class Program
                 "audio" when args.Length == 4 => RunReferenceProbe(args[3], "AudioProbe", "Original audio"),
                 "parent-settings" when args.Length == 4 => RunReferenceProbe(args[3], "ParentSettingsProbe", "Original parent settings"),
                 "selective-parsing" when args.Length == 4 => RunReferenceProbe(args[3], "SelectiveParsingProbe", "Original selective parsing"),
+                "custom-trigger-models" when args.Length == 4 => RunReferenceProbe(args[3], "CustomTriggerProbe", "Original custom trigger models"),
                 "eq2-timestamps" when args.Length == 4 => RunReferenceProbe(args[3], "Eq2TimestampProbe", "Original EQ2 timestamps"),
                 "benchmark-ui" when args.Length == 4 => RunReferenceProbe(args[3], "BenchmarkUiProbe", "Original Benchmark UI"),
                 "plugin-metadata" when args.Length == 4 => RunReferenceProbe(args[3], "PluginMetadataProbe", "Original plugin metadata"),

@@ -120,6 +120,7 @@ namespace Aftercast.ActCompat
             }
             try
             {
+                main.LoadCustomTriggers(Path.Combine(directory, "CustomTriggers.xml"));
                 main.Controls.Add(main.OptionsTreeView);
                 main.OptionsTreeView.Nodes.Add("Data Correction");
                 if (OperatingSystem.IsWindows()) main.InitializeNativePluginTabs();
@@ -199,6 +200,7 @@ namespace Aftercast.ActCompat
             try
             {
                 try { StopProcessing(); } catch (Exception error) { errors.Add(error); }
+                try { main.SaveCustomTriggers(Path.Combine(main.AppDataFolder.FullName, "CustomTriggers.xml")); } catch (Exception error) { errors.Add(error); }
                 try { main.Dispose(); } catch (Exception error) { errors.Add(error); }
                 try { timers.Dispose(); } catch (Exception error) { errors.Add(error); }
                 try { encounterLogs.Dispose(); } catch (Exception error) { errors.Add(error); }

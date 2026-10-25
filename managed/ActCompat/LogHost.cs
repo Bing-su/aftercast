@@ -197,6 +197,7 @@ public partial class FormActMain
         InvokeLogHandlers(BeforeLogLineRead, false, info, generation);
         LastLogLine = info.logLine;
         InvokeLogHandlers(OnLogLineRead, false, info, generation);
+        if (IsCurrentLog(generation)) ProcessCustomTriggers(line, info, false);
     }
 
     private void InvokeLogHandlers(LogLineEventDelegate? handlers, bool isImport, LogLineEventArgs info, long? generation = null)
