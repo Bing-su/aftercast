@@ -14,11 +14,8 @@ include = [
 ]
 publish.workspace = true
 
-[features]
-audio = ["aftercast-tts/system", "aftercast-tts/playback"]
-
 [dependencies]
-aftercast-tts = { version = "0.1.0", path = "../aftercast-tts", default-features = false }
+aftercast-tts = { workspace = true, default-features = false }
 bon.workspace = true
 bytes.workspace = true
 camino.workspace = true
@@ -31,11 +28,14 @@ tracing.workspace = true
 rstest.workspace = true
 tempfile = "3"
 
-[target.'cfg(windows)'.dev-dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Com"] }
-
 [target.'cfg(target_os = "linux")'.dependencies]
 aftercast-winforms.workspace = true
+
+[target."cfg(windows)".dev-dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Com"] }
+
+[features]
+audio = ["aftercast-tts/playback", "aftercast-tts/system"]
 
 [lints]
 workspace = true

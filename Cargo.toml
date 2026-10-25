@@ -8,7 +8,8 @@ edition = "2024"
 publish = false
 
 [workspace.dependencies]
-aftercast-winforms = { version = "0.1.0", path = "crates/aftercast-winforms" }
+aftercast-tts = { path = "crates/aftercast-tts", version = "0.1.0" }
+aftercast-winforms = { path = "crates/aftercast-winforms", version = "0.1.0" }
 bon = "3"
 bytes = "1"
 camino = "1"
