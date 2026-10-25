@@ -65,11 +65,11 @@ does not trim or rewrite territory names.
 
 ## GUI combat queries
 
-| API | Returned data | Idle / removed behavior |
-| --- | --- | --- |
-| `live_combat()` | Active live encounter and participant counters, including DPS/HPS | `None` while idle or importing |
-| `encounters(offset, limit)` | Total count and a page of encounter summaries | Empty page when offset is past the end |
-| `encounter_detail(id)` | Selected encounter summary and participant counters | `None` if a plugin removed it |
+| API                                    | Returned data                                                                          | Idle / removed behavior                             |
+| -------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------- |
+| `live_combat()`                        | Active live encounter and participant counters, including DPS/HPS                      | `None` while idle or importing                      |
+| `encounters(offset, limit)`            | Total count and a page of encounter summaries                                          | Empty page when offset is past the end              |
+| `encounter_detail(id)`                 | Selected encounter summary and participant counters                                    | `None` if a plugin removed it                       |
 | `encounter_attacks(id, offset, limit)` | Category/attack totals, direction, damage, duration, DPS, hits/criticals/misses/blocks | `None` if removed; otherwise possibly an empty page |
 
 ```rust,no_run
@@ -92,21 +92,21 @@ fn refresh(host: &mut aftercast::Host) -> Result<(), aftercast::Error> {
 }
 ```
 
-| Contract | Meaning |
-| --- | --- |
-| Consistency | Each call copies graph values under the ACT combat lock on the host owner thread; separate calls/pages can observe later state |
-| Freshness | Includes already-applied actions; does not drain producers or end combat. Pump regularly and poll at a modest rate, e.g. 5 Hz |
-| Duration | Based on ACT combat records and segments, not elapsed UI wall time; rates retain ACT NaN/infinity behavior |
-| Identity | Opaque `EncounterId`, stable through combat completion and later imports; another host session rejects it |
-| State | `EncounterStatus`: `Active`, `Ended`, `Importing` or `PartialImport`; active live combat is distinct from completed combat |
-| History | Current session's retained ACT graph, including repeated imports and partial results; excludes zone `All` aggregates and duplicate object references |
-| Order | ACT zone/list order, with imported encounters first; not a global chronological sort. Attack rows follow combatant/category/attack key order |
-| Pagination | Offset and limit, 1..256 rows per page; offset must fit signed 32 bits. Refresh the list when graph changes move offsets |
+| Contract      | Meaning                                                                                                                                                        |
+| ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Consistency   | Each call copies graph values under the ACT combat lock on the host owner thread; separate calls/pages can observe later state                                 |
+| Freshness     | Includes already-applied actions; does not drain producers or end combat. Pump regularly and poll at a modest rate, e.g. 5 Hz                                  |
+| Duration      | Based on ACT combat records and segments, not elapsed UI wall time; rates retain ACT NaN/infinity behavior                                                     |
+| Identity      | Opaque `EncounterId`, stable through combat completion and later imports; another host session rejects it                                                      |
+| State         | `EncounterStatus`: `Active`, `Ended`, `Importing` or `PartialImport`; active live combat is distinct from completed combat                                     |
+| History       | Current session's retained ACT graph, including repeated imports and partial results; excludes zone `All` aggregates and duplicate object references           |
+| Order         | ACT zone/list order, with imported encounters first; not a global chronological sort. Attack rows follow combatant/category/attack key order                   |
+| Pagination    | Offset and limit, 1..256 rows per page; offset must fit signed 32 bits. Refresh the list when graph changes move offsets                                       |
 | Import status | New imports are `Importing` until restoration completes. Failure marks every encounter added by that import `PartialImport`; earlier imports keep their status |
-| Ownership | Strings, participant arrays and attack rows remain valid after later input and host shutdown; subsequent queries read current plugin edits |
-| Aggregates | `All` attack rows and overlapping ACT categories are returned verbatim. Do not sum every row to compute encounter damage |
-| Scope | Participant and attack aggregates; individual swing/log inspection and persistence across process restart are outside these queries |
-| Bounds | 65,536 participants in a detail response and 64 MiB per encoded query. Invalid state or oversize results report an error |
+| Ownership     | Strings, participant arrays and attack rows remain valid after later input and host shutdown; subsequent queries read current plugin edits                     |
+| Aggregates    | `All` attack rows and overlapping ACT categories are returned verbatim. Do not sum every row to compute encounter damage                                       |
+| Scope         | Participant and attack aggregates; individual swing/log inspection and persistence across process restart are outside these queries                            |
+| Bounds        | 65,536 participants in a detail response and 64 MiB per encoded query. Invalid state or oversize results report an error                                       |
 
 Unlike `combat_snapshot`, these queries read the mutable graph each time and
 provide no frozen revision or change notification. They do not initialize an ACT
@@ -118,13 +118,13 @@ environment when none exists. Removed graphs are not kept alive just for query I
 means success, 1 requests a larger capacity, and -1 reports a caught error. A
 retry reads the graph again; no records are consumed.
 
-| Offset | Field |
-| --- | --- |
-| 0, 4 | u32 capacity, version 1 |
-| 8 | u64 session |
-| 16, 20 | u32 mode (1 live, 2 list, 3 detail, 4 attacks), offset |
-| 24 | u64 encounter ID, zero for live/list |
-| 32 | u32 page limit |
+| Offset     | Field                                                                    |
+| ---------- | ------------------------------------------------------------------------ |
+| 0, 4       | u32 capacity, version 1                                                  |
+| 8          | u64 session                                                              |
+| 16, 20     | u32 mode (1 live, 2 list, 3 detail, 4 attacks), offset                   |
+| 24         | u64 encounter ID, zero for live/list                                     |
+| 32         | u32 page limit                                                           |
 | 36, 40, 44 | u32 payload used, required total capacity, reserved zero; initially zero |
 
 Text is u32 UTF-8 byte length followed by bytes. Times are i64 ticks plus u32

@@ -4,6 +4,10 @@ Rust handles deployment, CLR hosting and owned output. Managed code runs plugins
 and maintains the mutable ACT combat graph. A Host represents one session on its
 creation thread. Domain terms are in the [glossary](../GLOSSARY.md).
 
+The [Dioxus desktop plan](gui-plan.md) describes the proposed GUI consumer and
+dedicated host-thread adapter. It is a future implementation plan, not current
+GUI support.
+
 ## Module map
 
 Speech lives in the independent [aftercast-tts crate](../crates/aftercast-tts/README.md).

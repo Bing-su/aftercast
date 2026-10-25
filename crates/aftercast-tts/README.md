@@ -5,11 +5,11 @@ resources on one worker thread; callers enqueue speech without waiting for
 playback. Applications can use it independently of ACT and without providing
 an async runtime.
 
-| Backend | Platform | Requirements | Network |
-| --- | --- | --- | --- |
-| `Sapi` / `Speaker::system()` | Windows | Installed SAPI voices and an audio device | Local synthesis |
-| `SpeechDispatcher` / `Speaker::system()` | Linux | libspeechd, a running/auto-startable Speech Dispatcher, configured local synthesis module and audio output | Local synthesis when configured with a local module, e.g. espeak-ng |
-| `Edge` | Windows, Linux | Edge Read Aloud service and a working output device for playback | Explicitly selected online synthesis; text is sent to the service |
+| Backend                                  | Platform       | Requirements                                                                                               | Network                                                             |
+| ---------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
+| `Sapi` / `Speaker::system()`             | Windows        | Installed SAPI voices and an audio device                                                                  | Local synthesis                                                     |
+| `SpeechDispatcher` / `Speaker::system()` | Linux          | libspeechd, a running/auto-startable Speech Dispatcher, configured local synthesis module and audio output | Local synthesis when configured with a local module, e.g. espeak-ng |
+| `Edge`                                   | Windows, Linux | Edge Read Aloud service and a working output device for playback                                           | Explicitly selected online synthesis; text is sent to the service   |
 
 There is no automatic fallback from a local backend to Edge. Missing voices,
 daemon/device failures, queue overflow and synthesis/playback failures are errors.
@@ -28,13 +28,13 @@ speech.wait()?;
 # Ok::<(), aftercast_tts::Error>(())
 ```
 
-| Cargo features | Effect |
-| --- | --- |
-| Default: `system`, `edge` | Build local platform backend and optional online backend |
-| `default-features = false, features = ["system"]` | Local backend only; excludes Edge/network/audio-decoder dependencies |
-| `default-features = false, features = ["edge"]` | Edge only; Linux does not require libspeechd |
+| Cargo features                                      | Effect                                                                                 |
+| --------------------------------------------------- | -------------------------------------------------------------------------------------- |
+| Default: `system`, `edge`                           | Build local platform backend and optional online backend                               |
+| `default-features = false, features = ["system"]`   | Local backend only; excludes Edge/network/audio-decoder dependencies                   |
+| `default-features = false, features = ["edge"]`     | Edge only; Linux does not require libspeechd                                           |
 | `default-features = false, features = ["playback"]` | PCM/MP3 playback adapter for custom inference engines; no Edge/system-TTS dependencies |
-| No features | Trait, bounded worker and custom backends only; used by the ACT host dependency |
+| No features                                         | Trait, bounded worker and custom backends only; used by the ACT host dependency        |
 
 Linux builds with `system` require libspeechd headers and libclang for generated
 bindings. Edge playback builds require ALSA development headers. For Debian/Ubuntu:
@@ -68,18 +68,18 @@ change; failures are returned without silently retrying or changing providers.
 
 ## Requests, completion and cancellation
 
-| Contract | Behavior |
-| --- | --- |
-| `Utterance` | Plain text, up to 4096 UTF-8 bytes; optional backend-specific voice ID; rate -100..100 (0 normal), volume 0..100 |
-| Rate mapping | SAPI maps to -10..10; Speech Dispatcher to -100..100; Edge uses percentage adjustment. Equal values do not imply equal acoustic speed |
-| Queue | FIFO, 32 waiting requests plus the active request; `speak()` returns `QueueFull` immediately when full |
-| `Speech::wait()` | Blocks for the final playback result; avoid on an ACT/UI thread |
-| `Speech::try_wait()` | Polls and consumes a completed result once; later polls report `Closed` |
-| `Speech::cancel()` | Cooperative cancellation of this request; queued cancelled requests never reach the backend |
-| `Speaker::cancel_all()` | Cancels active and currently queued requests; later submissions are allowed |
-| Dropping `Speech` | Does not cancel playback |
-| Dropping `Speaker` | Cancels its requests and joins its worker before returning |
-| Built-in playback | Polls cancellation at approximately 20 ms intervals and has a 300-second deadline; OS/library calls can add latency |
+| Contract                | Behavior                                                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------- |
+| `Utterance`             | Plain text, up to 4096 UTF-8 bytes; optional backend-specific voice ID; rate -100..100 (0 normal), volume 0..100                      |
+| Rate mapping            | SAPI maps to -10..10; Speech Dispatcher to -100..100; Edge uses percentage adjustment. Equal values do not imply equal acoustic speed |
+| Queue                   | FIFO, 32 waiting requests plus the active request; `speak()` returns `QueueFull` immediately when full                                |
+| `Speech::wait()`        | Blocks for the final playback result; avoid on an ACT/UI thread                                                                       |
+| `Speech::try_wait()`    | Polls and consumes a completed result once; later polls report `Closed`                                                               |
+| `Speech::cancel()`      | Cooperative cancellation of this request; queued cancelled requests never reach the backend                                           |
+| `Speaker::cancel_all()` | Cancels active and currently queued requests; later submissions are allowed                                                           |
+| Dropping `Speech`       | Does not cancel playback                                                                                                              |
+| Dropping `Speaker`      | Cancels its requests and joins its worker before returning                                                                            |
+| Built-in playback       | Polls cancellation at approximately 20 ms intervals and has a 300-second deadline; OS/library calls can add latency                   |
 
 Implement `Backend::speak(&mut self, &Utterance, &Cancellation)` to add an engine.
 Construct it with `Speaker::new(move || MyBackend::new(...))`; the factory is Send,
@@ -105,16 +105,16 @@ fn speaker_for_model<S: Synthesizer>(
 }
 ```
 
-| Extension contract | Responsibility |
-| --- | --- |
-| `Synthesizer::synthesize` | Convert plain text to `SynthesizedAudio`; apply requested voice/rate, leave volume to Playback |
-| `PcmAudio::new(samples, sample_rate, channels)` | Validate CPU-owned interleaved f32 PCM; preserve the model's actual sample rate/channel count |
-| PCM limits | Finite normalized -1..1 samples, 1..8 channels, 1..192000 Hz, up to 64 Mi samples and 300 seconds |
-| `SynthesizedAudio::Mp3` | Encoded output, e.g. Edge; common playback checks size and decodes it |
-| Model lifecycle | Factory loads model/tokenizer/vocoder/device once; synthesize reuses them; Drop releases them on that same thread |
-| Device boundary | Engine performs tensor dtype/layout conversion and CPU readback; no framework-specific tensor/device type enters the common API |
-| Runtime engine selection | `Box<dyn Synthesizer>` works with Playback; `Box<dyn Backend>` works with Speaker factories |
-| Cancellation | Check between inference stages/chunks and before readback; an already executing GPU kernel need not be preemptible |
+| Extension contract                              | Responsibility                                                                                                                  |
+| ----------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `Synthesizer::synthesize`                       | Convert plain text to `SynthesizedAudio`; apply requested voice/rate, leave volume to Playback                                  |
+| `PcmAudio::new(samples, sample_rate, channels)` | Validate CPU-owned interleaved f32 PCM; preserve the model's actual sample rate/channel count                                   |
+| PCM limits                                      | Finite normalized -1..1 samples, 1..8 channels, 1..192000 Hz, up to 64 Mi samples and 300 seconds                               |
+| `SynthesizedAudio::Mp3`                         | Encoded output, e.g. Edge; common playback checks size and decodes it                                                           |
+| Model lifecycle                                 | Factory loads model/tokenizer/vocoder/device once; synthesize reuses them; Drop releases them on that same thread               |
+| Device boundary                                 | Engine performs tensor dtype/layout conversion and CPU readback; no framework-specific tensor/device type enters the common API |
+| Runtime engine selection                        | `Box<dyn Synthesizer>` works with Playback; `Box<dyn Backend>` works with Speaker factories                                     |
+| Cancellation                                    | Check between inference stages/chunks and before readback; an already executing GPU kernel need not be preemptible              |
 
 This seam is intended to accept future Burn or burn-onnx implementations for
 Hugging Face models. Model acquisition, tokenizer/phonemizer, weights, vocoder,
@@ -136,12 +136,12 @@ sounds.play(SoundRequest::new("beep", 30))?.wait()?;
 # Ok::<(), aftercast_tts::Error>(())
 ```
 
-| Output | Contract |
-| --- | --- |
-| `SoundBackend` | Worker-owned injectable player; no ACT types or TTS model dependency |
-| `FilePlayback` | Direct blocking local WAV/MP3/Ogg Vorbis/FLAC/file URI or beep, default device |
-| `SoundPlayer` | Separate FIFO, same completion/cancellation handle contract as speech |
-| Limits | 4096-byte source, 16 MiB encoded file, 300-second playback, no implicit network fetch |
+| Output         | Contract                                                                              |
+| -------------- | ------------------------------------------------------------------------------------- |
+| `SoundBackend` | Worker-owned injectable player; no ACT types or TTS model dependency                  |
+| `FilePlayback` | Direct blocking local WAV/MP3/Ogg Vorbis/FLAC/file URI or beep, default device        |
+| `SoundPlayer`  | Separate FIFO, same completion/cancellation handle contract as speech                 |
+| Limits         | 4096-byte source, 16 MiB encoded file, 300-second playback, no implicit network fetch |
 
 See `docs/audio-validation.md` for ACT timer and original plugin evidence.
 

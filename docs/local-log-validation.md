@@ -59,29 +59,29 @@ those bounds; this task does not validate a growing live file as a recording.
 
 ## Observed run on this host
 
-| Input | Value |
-| --- | --- |
-| Selected filename | `Network_30303_20261016.log` |
-| Size | 56,562,713 bytes |
-| SHA-256 | `db3d0b055f4f958e1a0c44e6d0d7a4e01bd970f18389072f1a669010a8f48c8c` |
-| Recorded plugin version | 3.0.3.3 |
-| Importing plugin | 3.0.3.4, disposable deployment with local chart DLL |
-| Source integrity | SHA-256 unchanged after all reads |
+| Input                   | Value                                                              |
+| ----------------------- | ------------------------------------------------------------------ |
+| Selected filename       | `Network_30303_20261016.log`                                       |
+| Size                    | 56,562,713 bytes                                                   |
+| SHA-256                 | `db3d0b055f4f958e1a0c44e6d0d7a4e01bd970f18389072f1a669010a8f48c8c` |
+| Recorded plugin version | 3.0.3.3                                                            |
+| Importing plugin        | 3.0.3.4, disposable deployment with local chart DLL                |
+| Source integrity        | SHA-256 unchanged after all reads                                  |
 
-| Check | Result |
-| --- | --- |
-| Three numeric import checks | Pass; identical totals across these runs |
-| Records per run | 315,219 read and dispatched |
-| Encounters / committed actions per run | 19 / 71,290 |
-| Sum of per-encounter combatants | 865; not a unique-player count |
-| Allied damage / healing per run | 32,216,001 / 31,937,359 |
-| Exact subscription loss per run | 315,217 records with capacity 2 |
-| Action-derived totals, snapshots and restored state | Pass |
-| Replay against genuine ACT and aftercast | All three transcripts pass in both implementations |
-| Native shutdown | Completed |
-| Full import command after echo fix | Pass, including strict private-message checks and shutdown |
-| Historical diagnostics captured throughout all imports | 9,003 matched to input type-251 records; 12 informational notices; no new warning or exception |
-| Boundary regressions | Damage-only input passes; two records produce zero loss; an exception after 100 UI messages still fails |
+| Check                                                  | Result                                                                                                  |
+| ------------------------------------------------------ | ------------------------------------------------------------------------------------------------------- |
+| Three numeric import checks                            | Pass; identical totals across these runs                                                                |
+| Records per run                                        | 315,219 read and dispatched                                                                             |
+| Encounters / committed actions per run                 | 19 / 71,290                                                                                             |
+| Sum of per-encounter combatants                        | 865; not a unique-player count                                                                          |
+| Allied damage / healing per run                        | 32,216,001 / 31,937,359                                                                                 |
+| Exact subscription loss per run                        | 315,217 records with capacity 2                                                                         |
+| Action-derived totals, snapshots and restored state    | Pass                                                                                                    |
+| Replay against genuine ACT and aftercast               | All three transcripts pass in both implementations                                                      |
+| Native shutdown                                        | Completed                                                                                               |
+| Full import command after echo fix                     | Pass, including strict private-message checks and shutdown                                              |
+| Historical diagnostics captured throughout all imports | 9,003 matched to input type-251 records; 12 informational notices; no new warning or exception          |
+| Boundary regressions                                   | Damage-only input passes; two records produce zero loss; an exception after 100 UI messages still fails |
 
 The initial `ReportCombatData.EchoCommand` failure came from ordinary
 `Hojoring>[EX] ...` echo text. Genuine ACT ignores unmatched echo text. The host

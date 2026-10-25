@@ -8,12 +8,12 @@ All files under `binaries` retain their original SHA-256 hashes.
 
 ## Inputs
 
-| Artifact | SHA-256 |
-| --- | --- |
-| `binaries/act/Advanced Combat Tracker.exe`, 3.8.5.288 | `934fc00d0a3c8325b0f7445358860b4c013c5dab3d8fff012512acf6502dd657` |
+| Artifact                                                     | SHA-256                                                            |
+| ------------------------------------------------------------ | ------------------------------------------------------------------ |
+| `binaries/act/Advanced Combat Tracker.exe`, 3.8.5.288        | `934fc00d0a3c8325b0f7445358860b4c013c5dab3d8fff012512acf6502dd657` |
 | `binaries/FFXIV_ACT_Plugin_SDK_3.0.3.4/FFXIV_ACT_Plugin.dll` | `f7f0c8894ba1a152b6a453427773496f5948cf412171da773578d8671f643a81` |
-| Embedded Parse / SDK Parse, 3.0.3.4 | `efd2db36df247eb23e0a79dd3d19fb2a970f1b52a48901b722fd07728a2aac4a` |
-| `D:\repos\cactbot\docs\logs\TheAbyssalFractureExtreme.log` | `a5992e53bef80424ba29d0db4db00d0359c727e00532de0873ce49c67732f240` |
+| Embedded Parse / SDK Parse, 3.0.3.4                          | `efd2db36df247eb23e0a79dd3d19fb2a970f1b52a48901b722fd07728a2aac4a` |
+| `D:\repos\cactbot\docs\logs\TheAbyssalFractureExtreme.log`   | `a5992e53bef80424ba29d0db4db00d0359c727e00532de0873ce49c67732f240` |
 
 REA static metadata confirms the plugin's .NET Framework 4.8 target, ACT 3.8.5.288
 reference and separate DataVisualization reference. The embedded parser's
@@ -21,24 +21,24 @@ decompressed hash matches the supplied SDK parser.
 
 ## Results
 
-| Check | Result | Observation |
-| --- | --- | --- |
-| `mise run test:original` | Pass | Genuine ACT constructors, Dnum, configured actions and shared data contracts; model-only control probes run only on Linux |
-| Plugin initialization with SDK files alone | Fail | Desktop Runtime lacks `System.Windows.Forms.DataVisualization.dll` |
-| Initialization with installed Framework chart DLL | Pass | Additional local chart DLL copied into a disposable plugin directory |
-| Synthetic import, three iterations | Pass | Each run: 7 records, 1 encounter, 2 combatants, 400 damage, 0 healing; action, snapshot, subscriber loss and failure-recovery assertions pass |
-| Recorded corpus, three iterations | Pass | Each run: 104,744 records, 3 encounters; actor/ally totals, snapshots, restored state and exact subscriber loss agree with the actions |
-| Recorded-action replay | Pass | All three transcripts pass against both aftercast and genuine ACT in separate processes |
-| Native shutdown before correction | Fail | Missing `Config` directory prevents saving `FFXIV_ACT_Plugin.config.xml` |
-| Native lifecycle after correction | Pass | Startup, zero host worker diagnostics, stop and process exit 0; settings file saved |
-| Strict private-message assertions after review | Pass | Windows permits an empty startup list and reordered informational notices; callback capture avoids the UI's 100-message limit and still rejects unexpected diagnostics |
-| `mise run check` after corrections | Pass | Windows fixture, managed, Rust, formatting and strict Clippy checks |
+| Check                                             | Result | Observation                                                                                                                                                            |
+| ------------------------------------------------- | ------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `mise run test:original`                          | Pass   | Genuine ACT constructors, Dnum, configured actions and shared data contracts; model-only control probes run only on Linux                                              |
+| Plugin initialization with SDK files alone        | Fail   | Desktop Runtime lacks `System.Windows.Forms.DataVisualization.dll`                                                                                                     |
+| Initialization with installed Framework chart DLL | Pass   | Additional local chart DLL copied into a disposable plugin directory                                                                                                   |
+| Synthetic import, three iterations                | Pass   | Each run: 7 records, 1 encounter, 2 combatants, 400 damage, 0 healing; action, snapshot, subscriber loss and failure-recovery assertions pass                          |
+| Recorded corpus, three iterations                 | Pass   | Each run: 104,744 records, 3 encounters; actor/ally totals, snapshots, restored state and exact subscriber loss agree with the actions                                 |
+| Recorded-action replay                            | Pass   | All three transcripts pass against both aftercast and genuine ACT in separate processes                                                                                |
+| Native shutdown before correction                 | Fail   | Missing `Config` directory prevents saving `FFXIV_ACT_Plugin.config.xml`                                                                                               |
+| Native lifecycle after correction                 | Pass   | Startup, zero host worker diagnostics, stop and process exit 0; settings file saved                                                                                    |
+| Strict private-message assertions after review    | Pass   | Windows permits an empty startup list and reordered informational notices; callback capture avoids the UI's 100-message limit and still rejects unexpected diagnostics |
+| `mise run check` after corrections                | Pass   | Windows fixture, managed, Rust, formatting and strict Clippy checks                                                                                                    |
 
-| Corpus pass | Actions | Combatants | Damage | Healing |
-| --- | ---: | ---: | ---: | ---: |
-| 1 | 34,685 | 35 | 122,118,617 | 64,058,062 |
-| 2 | 34,782 | 36 | 122,118,575 | 64,411,177 |
-| 3 | 34,782 | 36 | 122,118,608 | 64,411,140 |
+| Corpus pass | Actions | Combatants |      Damage |    Healing |
+| ----------- | ------: | ---------: | ----------: | ---------: |
+| 1           |  34,685 |         35 | 122,118,617 | 64,058,062 |
+| 2           |  34,782 |         36 | 122,118,575 | 64,411,177 |
+| 3           |  34,782 |         36 | 122,118,608 | 64,411,140 |
 
 These are observations, not fixed expected totals. The vendor parser retains
 private import state and performs stochastic rounding. Every run was checked

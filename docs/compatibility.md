@@ -17,13 +17,13 @@ and throw rather than pretending to perform those operations.
 
 ## Reference artifacts
 
-| Input           | Version / location                                                   | Validation                                                                                                                                                                  |
-| --------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Genuine ACT     | 3.8.5.288; `binaries/act/Advanced Combat Tracker.exe`                | [OriginalReference](../managed/tests/OriginalReference/Program.cs) checks the full executable hash before loading                                                           |
-| FFXIV plugin    | 3.0.3.3; local SDK deployment or disposable plugin copy              | [Plugin compatibility](../managed/Bridge/LinuxPluginCompatibility.cs) and the [integration runner](../managed/tests/ManagedTests/Program.cs) pin main and dependency hashes |
-| Windows FFXIV plugin | 3.0.3.4; `binaries/FFXIV_ACT_Plugin_SDK_3.0.3.4` | [Windows original-artifact results](windows-original-validation.md) record numeric success, extra chart dependency and diagnostic failures |
-| Synthetic input | [ffxiv-synthetic.log](../managed/tests/fixtures/ffxiv-synthetic.log) | Seven genuine-writer records with territory/player/actor/party state and two action effects totaling 400 damage                                                             |
-| Recorded input  | `TheAbyssalFractureExtreme.log` from cactbot documentation           | [OriginalCorpusChecks](../managed/tests/ManagedTests/OriginalCorpusChecks.cs) checks its hash, 104,744 records and three encounters                                         |
+| Input                | Version / location                                                   | Validation                                                                                                                                                                  |
+| -------------------- | -------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Genuine ACT          | 3.8.5.288; `binaries/act/Advanced Combat Tracker.exe`                | [OriginalReference](../managed/tests/OriginalReference/Program.cs) checks the full executable hash before loading                                                           |
+| FFXIV plugin         | 3.0.3.3; local SDK deployment or disposable plugin copy              | [Plugin compatibility](../managed/Bridge/LinuxPluginCompatibility.cs) and the [integration runner](../managed/tests/ManagedTests/Program.cs) pin main and dependency hashes |
+| Windows FFXIV plugin | 3.0.3.4; `binaries/FFXIV_ACT_Plugin_SDK_3.0.3.4`                     | [Windows original-artifact results](windows-original-validation.md) record numeric success, extra chart dependency and diagnostic failures                                  |
+| Synthetic input      | [ffxiv-synthetic.log](../managed/tests/fixtures/ffxiv-synthetic.log) | Seven genuine-writer records with territory/player/actor/party state and two action effects totaling 400 damage                                                             |
+| Recorded input       | `TheAbyssalFractureExtreme.log` from cactbot documentation           | [OriginalCorpusChecks](../managed/tests/ManagedTests/OriginalCorpusChecks.cs) checks its hash, 104,744 records and three encounters                                         |
 
 Original ACT and FFXIV binaries are local test inputs, excluded from Git and Cargo
 packages. The ACT replacement preserves the assembly identity
