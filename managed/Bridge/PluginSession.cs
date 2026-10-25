@@ -29,7 +29,7 @@ internal sealed class PluginSession
     private readonly LogBuffer logs = new();
     internal Tuple<long, string[]> DiagnosticsSnapshot => environment?.DiagnosticsSnapshot ?? Tuple.Create(0L, Array.Empty<string>());
     internal T OnOwner<T>(Func<T> action) => context is null ? action() : context.Run(action);
-    internal byte[] QueryCombat(int mode, ulong id, int offset, int limit) =>
+    internal ArraySegment<byte> QueryCombat(int mode, ulong id, int offset, int limit) =>
         OnOwner(() => CombatQueryEncoding.Encode(environment, mode, id, offset, limit));
     internal int Pump()
     {
@@ -125,7 +125,7 @@ internal sealed class PluginSession
     internal byte[] DrainSpeech() => OnOwner(() => environment?.DrainSpeech() ?? Array.Empty<byte>());
     internal int TtsVolume => ttsVolume;
     internal void ConfigureSound(bool enabled) => OnOwner(() => { soundEnabled = enabled; environment?.ConfigureSound(enabled); return 0; });
-    internal Tuple<byte[], int> DrainSound() => OnOwner(() => environment?.DrainSound() ?? Tuple.Create(Array.Empty<byte>(), 0));
+    internal (byte[] Bytes, int Volume) DrainSound() => OnOwner(() => environment?.DrainSound() ?? (Array.Empty<byte>(), 0));
     internal void ConfigureAudio(int sound, int tts, string[] timers) => OnOwner(() =>
     {
         if (sound is < 0 or > 100 || tts is < 0 or > 100 || timers.Length != 3) throw new ArgumentException("Invalid audio settings");

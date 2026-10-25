@@ -93,10 +93,10 @@ public partial class FormActMain
             if (next is not null) DisposeRetiredFollower(next);
             throw;
         }
-        foreach (var callback in LogFileChanged?.GetInvocationList() ?? [])
+        foreach (var callback in Delegate.EnumerateInvocationList(LogFileChanged))
         {
             if (!IsCurrentLog(generation)) return;
-            try { ((LogFileChangedDelegate)callback)(false, path); }
+            try { callback(false, path); }
             catch (Exception error) { WriteExceptionLog(error, "LogFileChanged subscriber"); }
         }
     }
@@ -202,10 +202,10 @@ public partial class FormActMain
 
     private void InvokeLogHandlers(LogLineEventDelegate? handlers, bool isImport, LogLineEventArgs info, long? generation = null)
     {
-        foreach (var callback in handlers?.GetInvocationList() ?? [])
+        foreach (var callback in Delegate.EnumerateInvocationList(handlers))
         {
             if (generation is { } active && !IsCurrentLog(active)) return;
-            try { ((LogLineEventDelegate)callback)(isImport, info); }
+            try { callback(isImport, info); }
             catch (Exception error) { RecordImportFailure(error); WriteExceptionLog(error, "Log line subscriber"); }
         }
     }

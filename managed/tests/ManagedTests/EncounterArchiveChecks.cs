@@ -25,6 +25,7 @@ internal static class EncounterArchiveChecks
             {
                 CombatFixture.ConfigureCategories();
                 var root = ActGlobals.oFormActMain!;
+                CheckGzip(root);
                 var records = Path.Combine(directory.FullName, "records.xml");
                 root.EncDatabaseAdd(new(1, epoch, epoch.AddSeconds(2), "Metadata <한글>", "Source", "logs"));
                 root.ZoneDatabaseAdd(new(0, epoch, epoch.AddSeconds(2), "Fixture", "Source", "logs"));
@@ -45,6 +46,9 @@ internal static class EncounterArchiveChecks
                 var id = host.ListEncounters(0, 16).Items.Single().Id;
                 Check(host.ArchiveOperation(2, output, id, true) == 1);
                 var exported = File.ReadAllBytes(output);
+                var xmlOutput = Path.Combine(directory.FullName, "export.xml");
+                Check(host.ArchiveOperation(2, xmlOutput, id, false) == 1);
+                Check(File.ReadAllBytes(xmlOutput).SequenceEqual(root.MemDecompressGzip(exported)));
                 Throws<IOException>(() => host.ArchiveOperation(2, output, id, true));
                 Check(File.ReadAllBytes(output).SequenceEqual(exported));
                 for (var missing = 1; missing <= 8; missing++)
@@ -135,5 +139,27 @@ internal static class EncounterArchiveChecks
             Console.WriteLine("ACT XML/gzip imports, atomic history checkpoints, filtered restart restoration and corruption boundaries passed.");
         }
         finally { directory.Delete(true); }
+    }
+
+    private static void CheckGzip(FormActMain root)
+    {
+        // Produced independently by gzip -n for "123456789"; its IEEE CRC-32 is CBF43926.
+        var known = Convert.FromHexString("1F8B080000000000000333343236313533B7B004002639F4CB09000000");
+        Check(root.MemDecompressGzip(known).AsSpan().SequenceEqual("123456789"u8));
+        var bytes = new byte[8192 * 3 + 17];
+        for (var index = 0; index < bytes.Length; index++) bytes[index] = (byte)index;
+        Check(root.MemDecompressGzip(root.MemCompressGZip(bytes)).SequenceEqual(bytes));
+        var empty = Convert.FromHexString("1F8B080000000000000303000000000000000000");
+        Check(root.MemDecompressGzip(empty).Length == 0);
+        var compressedEmpty = root.MemCompressGZip([]);
+        Check(compressedEmpty.AsSpan().SequenceEqual(empty));
+        Check(root.MemDecompressGzip(compressedEmpty).Length == 0);
+        foreach (var field in new[] { known.Length - 8, known.Length - 4 })
+        {
+            var corrupt = (byte[])known.Clone();
+            corrupt[field] ^= 1;
+            Throws<InvalidDataException>(() => root.MemDecompressGzip(corrupt));
+        }
+        Throws<ArgumentNullException>(() => root.MemCompressGZip(null!));
     }
 }

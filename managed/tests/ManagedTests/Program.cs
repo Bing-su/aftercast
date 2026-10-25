@@ -41,12 +41,14 @@ internal static class Program
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.DataVisualization.dll"));
         }
         // Modes keep artifact-dependent checks separate from ordinary ABI tests without a test framework dependency.
-        if (mode is "contracts" or "original" or "original-import" or "original-corpus" or "original-log" or "text-exports" or "timer-models" or "eq2-timestamps" or "parent-settings") Platform.Prepare();
+        if (mode is "contracts" or "query-load" or "archive-load" or "original" or "original-import" or "original-corpus" or "original-log" or "text-exports" or "timer-models" or "eq2-timestamps" or "parent-settings") Platform.Prepare();
         switch (mode)
         {
             case "bridge": Bridge(); break;
             case "contracts": Contracts(); break;
             case "log-load": LogLoadChecks.Run(); break;
+            case "query-load": CombatQueryLoadChecks.Run(); break;
+            case "archive-load": ArchiveLoadChecks.Run(); break;
             case "plugins": PluginRequests(); break;
             case "prepare-act": PrepareAct(); break;
             case "act": ActBinding(); break;

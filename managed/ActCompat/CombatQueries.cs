@@ -94,17 +94,20 @@ namespace Advanced_Combat_Tracker
                 var items = new List<AttackSummaryData>();
                 foreach (var actor in encounter.Items.Values)
                     foreach (var category in actor.Items)
-                        foreach (var attack in category.Value.Items)
+                    {
+                        var attacks = category.Value.Items;
+                        // Skip whole categories outside the page, e.g. a late page need not visit every earlier attack.
+                        var first = Math.Clamp(offset - total, 0, attacks.Count);
+                        var end = first + Math.Min(limit - items.Count, attacks.Count - first);
+                        for (var index = first; index < end; index++)
                         {
-                            if (total >= offset && items.Count < limit)
-                            {
-                                var value = attack.Value;
-                                items.Add(new(actor.Name, category.Key, attack.Key, category.Value.Outgoing,
-                                    value.Damage, value.Duration.Ticks, value.DPS, value.EncDPS,
-                                    value.Swings, value.Hits, value.CritHits, value.Misses, value.Blocked));
-                            }
-                            total = checked(total + 1);
+                            var value = attacks.Values[index];
+                            items.Add(new(actor.Name, category.Key, attacks.Keys[index], category.Value.Outgoing,
+                                value.Damage, value.Duration.Ticks, value.DPS, value.EncDPS,
+                                value.Swings, value.Hits, value.CritHits, value.Misses, value.Blocked));
                         }
+                        total = checked(total + attacks.Count);
+                    }
                 return new(total, items.ToArray());
             }
         }

@@ -146,7 +146,7 @@ namespace Aftercast.ActCompat
         public void ConfigureSpeech(bool enabled) => main.ConfigureSpeech(enabled);
         public byte[] DrainSpeech() => main.DrainSpeech();
         public void ConfigureSound(bool enabled) => main.ConfigureSound(enabled);
-        public Tuple<byte[], int> DrainSound() => main.DrainSound();
+        public (byte[] Bytes, int Volume) DrainSound() => main.DrainSound();
         public int TtsVolume => main.TtsVolume;
         public void ConfigureAudio(int soundVolume, int ttsVolume, string[] timerSounds)
         {

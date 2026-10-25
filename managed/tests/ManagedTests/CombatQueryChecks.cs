@@ -1,6 +1,9 @@
 using System.Runtime.CompilerServices;
+using System.Buffers.Binary;
+using System.Text;
 using Advanced_Combat_Tracker;
 using Aftercast.ActCompat;
+using Aftercast.Bridge;
 using Aftercast.Testing;
 
 internal static class CombatQueryChecks
@@ -18,6 +21,7 @@ internal static class CombatQueryChecks
             using var host = new HostEnvironment(directory.FullName);
             var root = ActGlobals.oFormActMain!;
             CombatFixture.ConfigureCategories();
+            root.ChangeZone("Zone 한글\0🙂");
             Check(host.ReadEncounter(0, true) is null);
             Check(host.ListEncounters(0, 16).Total == 0);
             void Add(int second, long amount)
@@ -46,12 +50,21 @@ internal static class CombatQueryChecks
             Check(host.ReadEncounter(0, true) is null);
             var ended = host.ReadEncounter(id, false)!;
             Check(ended.Summary.Status == EncounterStatus.Ended && ended.Summary.Id == id && ended.Summary.Damage == 400);
+            CheckEncoding(host, ended.Summary);
             var attacks = host.ReadEncounterAttacks(id, 0, 256)!;
             var strike = attacks.Items.Single(value => value.Combatant == "Source" && value.Category == "Damage" && value.Attack == "Strike 한글");
             Check(strike.Outgoing && strike.Damage == 400 && strike.Hits == 2 && strike.EncDPS == 200);
             Check(attacks.Items.Any(value => !value.Outgoing && value.Combatant == "Target"));
             Check(host.ReadEncounterAttacks(id, 1, 1)!.Items.Single() == attacks.Items[1]);
             Check(host.ReadEncounterAttacks(id, int.MaxValue, 1)!.Items.Length == 0);
+            // Exercise category transitions, e.g. a page can start in All and end in an individual attack list.
+            foreach (var limit in new[] { 1, 2, 3, 256 })
+                for (var offset = 0; offset <= attacks.Total + 1; offset++)
+                {
+                    var slice = host.ReadEncounterAttacks(id, offset, limit)!;
+                    Check(slice.Total == attacks.Total);
+                    Check(slice.Items.SequenceEqual(attacks.Items.Skip(offset).Take(limit)));
+                }
             Add(4, 7);
             root.EndCombat(true);
             Check(host.ListEncounters(0, 16).Total == 2);
@@ -68,6 +81,44 @@ internal static class CombatQueryChecks
         finally { directory.Delete(true); }
         Console.WriteLine("Live combat, stable encounter IDs, owned detail and attack page checks passed.");
     });
+
+    private static void CheckEncoding(HostEnvironment host, EncounterSummaryData expected)
+    {
+        var payload = CombatQueryEncoding.Encode(host, 2, 0, 0, 1);
+        using var stream = new MemoryStream(payload.Array!, payload.Offset, payload.Count, writable: false);
+        using var reader = new BinaryReader(stream, Encoding.UTF8);
+        string Text() => new UTF8Encoding(false, true).GetString(reader.ReadBytes(reader.ReadInt32()));
+        Check(reader.ReadInt32() == 1 && reader.ReadInt32() == 1);
+        Check(reader.ReadUInt64() == expected.Id);
+        Check(reader.ReadUInt32() == (uint)expected.Status << 1);
+        Check(Text() == expected.Zone && Text() == expected.Title && Text() == expected.Character);
+        Check(reader.ReadInt64() == expected.Start.Ticks && reader.ReadUInt32() == (uint)expected.Start.Kind);
+        Check(reader.ReadInt64() == expected.End.Ticks && reader.ReadUInt32() == (uint)expected.End.Kind);
+        Check(reader.ReadInt64() == expected.DurationTicks && reader.ReadInt64() == expected.Damage);
+        Check(reader.ReadInt64() == expected.Healed && reader.ReadInt32() == expected.Combatants);
+        Check(stream.Position == stream.Length);
+        // A second encoding cannot rewrite a previously returned owned segment, e.g. a GUI retaining an earlier page.
+        var empty = CombatQueryEncoding.Encode(null, 2, 0, 0, 1);
+        Check(empty.Count == 8 && payload.Count > empty.Count);
+        stream.Position = 8;
+        Check(reader.ReadUInt64() == expected.Id);
+        var encounter = ActGlobals.oFormActMain!.ActiveZone.ActiveEncounter!;
+        var originalZone = encounter.ZoneName;
+        try
+        {
+            // Cross encoder/buffer boundaries, e.g. a surrogate pair after 255 ASCII characters and embedded NUL.
+            var zone = new string('x', 255) + "🙂" + new string('한', 4096) + "\0";
+            encounter.ZoneName = zone;
+            var large = CombatQueryEncoding.Encode(host, 2, 0, 0, 1).AsSpan();
+            var length = BinaryPrimitives.ReadInt32LittleEndian(large[20..]);
+            Check(length == Encoding.UTF8.GetByteCount(zone));
+            Check(new UTF8Encoding(false, true).GetString(large.Slice(24, length)) == zone);
+            encounter.ZoneName = "\uD800";
+            try { CombatQueryEncoding.Encode(host, 2, 0, 0, 1); throw new Exception("Invalid UTF-16 query text was accepted"); }
+            catch (EncoderFallbackException) { }
+        }
+        finally { encounter.ZoneName = originalZone; }
+    }
 
     private static void CheckImports(HostEnvironment host, FormActMain root, string directory)
     {

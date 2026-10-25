@@ -169,9 +169,18 @@ namespace Advanced_Combat_Tracker
                     {
                         lock (root.CombatGate)
                         {
-                            var added = importZone.Items.Skip(firstEncounter).ToArray();
-                            result = new(lines, dispatched, added.Length, added.Sum(encounter => encounter.NumCombatants),
-                                added.Sum(encounter => encounter.Damage), added.Sum(encounter => encounter.Healed));
+                            var encounters = 0;
+                            var combatants = 0;
+                            long damage = 0, healed = 0;
+                            for (var index = firstEncounter; index < importZone.Items.Count; index++)
+                            {
+                                var encounter = importZone.Items[index];
+                                encounters++;
+                                combatants = checked(combatants + encounter.NumCombatants);
+                                damage = checked(damage + encounter.Damage);
+                                healed = checked(healed + encounter.Healed);
+                            }
+                            result = new(lines, dispatched, encounters, combatants, damage, healed);
                         }
                     }
                     catch (Exception error) { failures.Add(error); }
@@ -195,8 +204,8 @@ namespace Advanced_Combat_Tracker
 
         private void NotifyImportFileChanged(bool importing, string path)
         {
-            foreach (var callback in LogFileChanged?.GetInvocationList() ?? [])
-                try { ((LogFileChangedDelegate)callback)(importing, path); }
+            foreach (var callback in Delegate.EnumerateInvocationList(LogFileChanged))
+                try { callback(importing, path); }
                 catch (Exception error) { RecordImportFailure(error); WriteExceptionLog(error, "LogFileChanged subscriber"); }
         }
     }

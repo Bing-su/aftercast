@@ -43,7 +43,11 @@ public class FormSpellTimers : Form
     }
     public List<TimerMod> GetRecastMods(string caster)
     {
-        lock (gate) return TimerMods.Where(mod => mod.Victim.ToLower() == caster.ToLower()).ToList();
+        lock (gate)
+        {
+            var name = caster.ToLower();
+            return TimerMods.Where(mod => mod.Victim.ToLower() == name).ToList();
+        }
     }
     public void ApplyTimerMod(string attacker, string victim, string name, float value, int duration)
     {
@@ -58,7 +62,8 @@ public class FormSpellTimers : Form
     {
         lock (gate)
         {
-            TimerMods.RemoveAll(mod => mod.Attacker == owner.ToLower());
+            var name = owner.ToLower();
+            TimerMods.RemoveAll(mod => mod.Attacker == name);
             foreach (var frame in frames.Values) frame.RemoveModOwner(owner, ActGlobals.oFormActMain!.LastKnownTime);
         }
     }
@@ -66,7 +71,8 @@ public class FormSpellTimers : Form
     {
         lock (gate)
         {
-            TimerMods.RemoveAll(mod => mod.Victim == target.ToLower());
+            var name = target.ToLower();
+            TimerMods.RemoveAll(mod => mod.Victim == name);
             foreach (var frame in frames.Values) frame.RemoveModTarget(target, ActGlobals.oFormActMain!.LastKnownTime);
         }
     }
@@ -90,8 +96,12 @@ public class FormSpellTimers : Form
                 var data = TimerDefs[keys[i]];
                 if (!data.ActiveInList) continue;
                 if (!data.RestrictToCategory) general = data;
-                else if (data.Category.ToLower() == attacker || data.Category.ToLower() == victim ||
-                    data.Category.ToLower() == ActGlobals.oFormActMain!.CurrentZone.ToLower()) restricted = data;
+                else
+                {
+                    var category = data.Category.ToLower();
+                    if (category == attacker || category == victim ||
+                        category == ActGlobals.oFormActMain!.CurrentZone.ToLower()) restricted = data;
+                }
             }
             var definition = restricted ?? general;
             if (definition is null || definition.RestrictToMe && !self && !WhiteList.ContainsKey(attacker) && !WhiteList.ContainsKey(victim)) return;
@@ -154,8 +164,8 @@ public class FormSpellTimers : Form
     }
     private static void Notify(SpellTimerEventDelegate? handlers, TimerFrame frame, string name)
     {
-        foreach (var callback in handlers?.GetInvocationList() ?? [])
-            try { ((SpellTimerEventDelegate)callback)(frame); }
+        foreach (var callback in Delegate.EnumerateInvocationList(handlers))
+            try { callback(frame); }
             catch (Exception error) { ActGlobals.oFormActMain?.WriteExceptionLog(error, "FormSpellTimers->" + name); }
     }
 

@@ -22,6 +22,15 @@ internal static class TextExportChecks
             main.RemoveTextFormat(0);
             var actor = new CombatantData("Source", empty);
             empty.Items.Add("SOURCE", actor);
+            foreach (var text in new[] { "", "a", "\n", "a\n", "a\r\n\nb", new string('x', 20000),
+                string.Join('\n', Enumerable.Repeat("한글", 255)), string.Join('\n', Enumerable.Repeat("한글", 256)),
+                string.Join('\n', Enumerable.Repeat("한글", 257)) })
+            {
+                // Compare ACT's split semantics, e.g. trailing empty lines count toward the 256-entry limit.
+                var expected = string.Concat(text.Split('\n').Take(256).Select(line => line + "\n"));
+                if (main.GetTextExport(empty, new(text, "missing", false, false, "")) != expected)
+                    throw new Exception("Text export framing changed");
+            }
             CombatantData.ExportVariables["fail"] = new("fail", "", "", (_, _) => throw new Exception("fixture formatter failure"));
             if (main.GetTextExport(empty, new("{fail}", "missing", false, false, "")) != "" || host.Diagnostics.Item1 != 1)
                 throw new Exception("Formatter failure was lost or escaped the export boundary");

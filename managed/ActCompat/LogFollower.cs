@@ -1,4 +1,5 @@
 using System.Text;
+using System.Runtime.InteropServices;
 
 namespace Advanced_Combat_Tracker;
 
@@ -166,6 +167,7 @@ internal sealed class LogFollower : IDisposable
         var position = InitialPosition;
         var bytes = new byte[4096];
         var reverseLine = new List<byte>();
+        var encoding = new UTF8Encoding(false, true);
         var skipTail = true;
         var oversized = false;
         string? MatchLine(bool atStart = false)
@@ -174,7 +176,7 @@ internal sealed class LogFollower : IDisposable
             reverseLine.Reverse();
             try
             {
-                var text = new UTF8Encoding(false, true).GetString(reverseLine.ToArray()).TrimEnd('\r');
+                var text = encoding.GetString(CollectionsMarshal.AsSpan(reverseLine)).TrimEnd('\r');
                 if (atStart && text.StartsWith('\uFEFF')) text = text[1..];
                 var match = regex.Match(text);
                 return match.Success && match.Groups["zone"].Success ? match.Groups["zone"].Value : null;
@@ -203,7 +205,7 @@ internal sealed class LogFollower : IDisposable
                 }
                 else if (!skipTail && !oversized)
                 {
-                    if (reverseLine.Count == 8 * 1024 * 1024)
+                    if (reverseLine.Count == MaximumLineLength)
                     {
                         oversized = true;
                         reverseLine.Clear();

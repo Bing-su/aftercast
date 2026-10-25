@@ -27,8 +27,12 @@ internal sealed class PluginContext(string path, byte[] hash) : AssemblyLoadCont
     }
     protected override Assembly? Load(AssemblyName name)
     {
-        var shared = new[] { typeof(IActPluginV1).Assembly, typeof(System.Windows.Forms.TabPage).Assembly }
-            .FirstOrDefault(assembly => assembly.GetName().Name == name.Name);
+        var shared = name.Name switch
+        {
+            "Advanced Combat Tracker" => typeof(IActPluginV1).Assembly,
+            "System.Windows.Forms" => typeof(System.Windows.Forms.TabPage).Assembly,
+            _ => null
+        };
         if (shared is not null)
         {
             if (name.Name == "Advanced Combat Tracker" && !SupportsActReference(name))
@@ -52,13 +56,16 @@ internal sealed class PluginContext(string path, byte[] hash) : AssemblyLoadCont
         if (name.Name is "System.Security.Permissions" or "System.Windows.Extensions")
             return Default.LoadFromAssemblyName(name);
         var resolved = resolver.ResolveAssemblyToPath(name);
-        var sibling = Path.Combine(Path.GetDirectoryName(path)!, name.Name + ".dll");
-        var library = Path.Combine(Path.GetDirectoryName(path)!, "libs", name.Name + ".dll");
-        if (name.Name == "HtmlRenderer")
+        if (resolved is null)
         {
-            var rendererPath = resolved ?? (File.Exists(sibling) ? sibling : File.Exists(library) ? library : null);
-            if (rendererPath is not null && OverlayRendererCompatibility.LoadIfKnown(this, rendererPath) is { } renderer) return renderer;
+            var directory = Path.GetDirectoryName(path)!;
+            var sibling = Path.Combine(directory, name.Name + ".dll");
+            var library = Path.Combine(directory, "libs", name.Name + ".dll");
+            // OverlayPlugin keeps private dependencies under libs; all loaders use this same fallback order.
+            resolved = File.Exists(sibling) ? sibling : File.Exists(library) ? library : null;
         }
+        if (name.Name == "HtmlRenderer" && resolved is not null &&
+            OverlayRendererCompatibility.LoadIfKnown(this, resolved) is { } renderer) return renderer;
         // Addon signatures contain both the OverlayPlugin interfaces and Newtonsoft tokens; share their identities.
         if (name.Name is "OverlayPlugin.Common" or "Newtonsoft.Json")
         {
@@ -69,22 +76,18 @@ internal sealed class PluginContext(string path, byte[] hash) : AssemblyLoadCont
                     if (!MatchesSharedContract(name, contract.GetName())) throw new FileLoadException("Incompatible overlay contract: " + name);
                     return contract;
                 }
-                var contractPath = resolved ?? (File.Exists(sibling) ? sibling : File.Exists(library) ? library : null);
-                if (contractPath is not null)
+                if (resolved is not null)
                 {
-                    if (!MatchesSharedContract(name, AssemblyName.GetAssemblyName(contractPath)))
+                    if (!MatchesSharedContract(name, AssemblyName.GetAssemblyName(resolved)))
                         throw new FileLoadException("Incompatible overlay contract: " + name);
-                    contract = LoadFromAssemblyPath(contractPath);
+                    contract = LoadFromAssemblyPath(resolved);
                     overlayContracts.Add(name.Name, contract);
                     return contract;
                 }
             }
         }
-        if (resolved is not null) return LoadFromAssemblyPath(resolved);
-        if (File.Exists(sibling)) return LoadFromAssemblyPath(sibling);
-        // OverlayPlugin ships private dependencies under libs; resolve them in this plugin's context.
-        if (File.Exists(library)) return LoadFromAssemblyPath(library);
-        return null; // Let framework and Costura resolution run when no file exists.
+        // Let framework and Costura resolution run when no file exists.
+        return resolved is null ? null : LoadFromAssemblyPath(resolved);
     }
     protected override nint LoadUnmanagedDll(string name)
     {
@@ -100,7 +103,8 @@ internal static class PluginLoader
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
     private static Assembly Load(string path)
     {
-        var hash = SHA256.HashData(File.ReadAllBytes(path));
+        byte[] hash;
+        using (var file = File.OpenRead(path)) hash = SHA256.HashData(file);
         if (assemblies.TryGetValue(path, out var previous))
         {
             if (!previous.Hash.AsSpan().SequenceEqual(hash))

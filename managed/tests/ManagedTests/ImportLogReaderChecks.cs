@@ -74,6 +74,11 @@ internal static class ImportLogReaderChecks
             Check(ReadAll(reader).SequenceEqual(new[] { "", "", "" }), "empty records without invented trailing record");
         using (var reader = Create(new ShortReadStream(new byte[] { 0xef, 0xbb, 0xbf }, 1)))
             Check(ReadAll(reader).Length == 0, "BOM-only file");
+        var records = new[] { "first", "한글", "", new string('x', 4095), "🙂", "last" };
+        var framed = Encoding.UTF8.GetBytes(string.Join('\n', records));
+        foreach (var chunk in new[] { 1, 7, 4096 })
+            using (var reader = Create(new ShortReadStream(framed, chunk)))
+                Check(ReadAll(reader).SequenceEqual(records), "buffered and direct decoding agree across record boundaries");
         foreach (var bytes in new[] { new byte[] { 0xc3, 0x28, 10 }, new byte[] { 0xe2, 0x82 } })
             using (var reader = Create(new ShortReadStream(bytes, 1)))
                 Throws<InvalidDataException>(() => ReadAll(reader));

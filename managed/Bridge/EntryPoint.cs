@@ -262,9 +262,9 @@ public static partial class EntryPoint
         else if (command == 4 && sizeBytes == headerSize + 4096 && argument == 0)
         {
             var sound = plugins.Value.DrainSound();
-            Marshal.Copy(sound.Item1, 0, buffer + headerSize, sound.Item1.Length);
-            Marshal.WriteInt32(buffer, 20, sound.Item1.Length);
-            Marshal.WriteInt32(buffer, 24, sound.Item2);
+            Marshal.Copy(sound.Bytes, 0, buffer + headerSize, sound.Bytes.Length);
+            Marshal.WriteInt32(buffer, 20, sound.Bytes.Length);
+            Marshal.WriteInt32(buffer, 24, sound.Volume);
         }
         else if (command == 5 && sizeBytes == headerSize + 4096 && argument is > 0 and <= 4096)
         {

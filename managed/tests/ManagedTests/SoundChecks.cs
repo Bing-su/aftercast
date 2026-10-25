@@ -17,11 +17,11 @@ internal static class SoundChecks
             var wave = Path.Combine(directory.FullName, "한글 sound.wav"); File.WriteAllBytes(wave, [0]);
             root.PlaySound(wave);
             var sound = host.DrainSound();
-            if (Encoding.UTF8.GetString(sound.Item1) != wave || sound.Item2 != 61) throw new Exception("Sound path/volume changed");
+            if (Encoding.UTF8.GetString(sound.Bytes) != wave || sound.Volume != 61) throw new Exception("Sound path/volume changed");
             Parallel.For(0, 32, _ => root.PlaySound(wave));
             try { root.PlaySound(wave); throw new Exception("Unbounded sound queue"); } catch (InvalidOperationException) { }
             host.ConfigureSound(true);
-            if (host.DrainSound().Item1.Length != 0) throw new Exception("Replacing sound player retained old audio");
+            if (host.DrainSound().Bytes.Length != 0) throw new Exception("Replacing sound player retained old audio");
             var epoch = DateTime.UnixEpoch;
             root.LastKnownTime = epoch;
             var data = new TimerData("Fixture", "Audio") { TimerValue = 30, WarningValue = 10, StartSoundData = "tts ${attacker} ${missing}", WarningSoundData = "beep" };
@@ -36,16 +36,16 @@ internal static class SoundChecks
             if (host.DrainSpeech().Length != 0) throw new Exception("Nonmaster tick sounded");
             data.StartSoundData = "none";
             root.LastKnownTime = epoch.AddSeconds(21); host.AdvanceTimers();
-            if (Encoding.UTF8.GetString(host.DrainSound().Item1) != "beep") throw new Exception("Timer warning did not request beep");
+            if (Encoding.UTF8.GetString(host.DrainSound().Bytes) != "beep") throw new Exception("Timer warning did not request beep");
             host.AdvanceTimers();
-            if (host.DrainSound().Item1.Length != 0) throw new Exception("Warning sound repeated");
+            if (host.DrainSound().Bytes.Length != 0) throw new Exception("Warning sound repeated");
             root.LastKnownTime = epoch.AddSeconds(31); host.AdvanceTimers();
             var expiry = Encoding.UTF8.GetString(host.DrainSpeech());
             if (expiry != " expired") throw new Exception("Expiry did not use configured speech: '" + expiry + "'; diagnostics=" + string.Join(" | ", host.DiagnosticsSnapshot.Item2));
             host.AdvanceTimers();
             if (host.DrainSpeech().Length != 0) throw new Exception("Expiry speech repeated");
             root.PlaySound(wave); host.BeginClosing();
-            if (host.DrainSound().Item1.Length != 0) throw new Exception("Closing retained sound");
+            if (host.DrainSound().Bytes.Length != 0) throw new Exception("Closing retained sound");
         }
         finally { directory.Delete(true); }
     }

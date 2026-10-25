@@ -48,8 +48,16 @@ public partial class FormActMain
                 Append(playerFormat, (key, extra) => CombatantData.ExportVariables.TryGetValue(key, out var formatter)
                     ? formatter.GetExportString(actor, extra) : TextExportFormatterCap1 + key + TextExportFormatterCap2);
             }
-            // ACT keeps empty split entries and appends a final LF, e.g. an empty export becomes "\n".
-            return string.Concat(output.ToString().Split('\n').Take(256).Select(line => line + "\n"));
+            // ACT retains at most 256 LF-delimited entries, e.g. empty output becomes "\n" and "a\n" becomes "a\n\n".
+            var lines = 0;
+            var length = 0;
+            foreach (var chunk in output.GetChunks())
+                foreach (var character in chunk.Span)
+                {
+                    length++;
+                    if (character == '\n' && ++lines == 256) return output.ToString(0, length);
+                }
+            return output.Append('\n').ToString();
 
             void Append(string template, Func<string, string, string> expand)
             {

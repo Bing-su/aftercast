@@ -18,8 +18,8 @@ public partial class FormActMain
     {
         if (!OperatingSystem.IsWindows()) throw new PlatformNotSupportedException("The headless host has no system clipboard");
         var info = new ClipboardEventArgs(text, copyLocal);
-        foreach (var callback in BeforeClipboardSet?.GetInvocationList() ?? [])
-            try { ((ClipboardEventDelegate)callback)(info); }
+        foreach (var callback in Delegate.EnumerateInvocationList(BeforeClipboardSet))
+            try { callback(info); }
             catch (Exception error) { WriteExceptionLog(error, "BeforeClipboardSet"); }
         // With no remote Clipboard Sharer connection, ACT copies locally even when CopyLocal is false.
         if (InvokeRequired) Invoke((Action)(() => CopyToWindowsClipboard(info.ClipContent)));

@@ -165,11 +165,11 @@ internal static class OverlayIntegrationChecks
                 throw new Exception("Original cactbotSay did not route CEF/WS requests to ACT TTS");
             File.WriteAllText(Path.Combine(state, "tts-route.json"), JsonSerializer.Serialize(speech));
             var sounds = new List<string>();
-            Tuple<byte[], int> sound;
-            while ((sound = session.DrainSound()).Item1.Length != 0)
+            (byte[] Bytes, int Volume) sound;
+            while ((sound = session.DrainSound()).Bytes.Length != 0)
             {
-                if (sound.Item2 != 100) throw new Exception("Overlay sound volume changed");
-                sounds.Add(System.Text.Encoding.UTF8.GetString(sound.Item1));
+                if (sound.Volume != 100) throw new Exception("Overlay sound volume changed");
+                sounds.Add(System.Text.Encoding.UTF8.GetString(sound.Bytes));
             }
             if (sounds.Count != 2 || sounds.Any(source => source != soundFile)) throw new Exception("Original CEF/WS playSound did not reach ACT");
             File.WriteAllText(Path.Combine(state, "sound-route.json"), JsonSerializer.Serialize(sounds));

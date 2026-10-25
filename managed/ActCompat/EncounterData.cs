@@ -158,7 +158,7 @@ public class EncounterData
         internal int Weight;
     }
 
-    private List<CombatantData> AggregateActors() => IgnoreEnemies ? new(Items.Values) : GetAllies();
+    private ICollection<CombatantData> AggregateActors() => IgnoreEnemies ? Items.Values : GetAllies();
     public long Damage => AggregateActors().Aggregate(0L, static (total, actor) => unchecked(total + actor.Damage));
     public long Healed => AggregateActors().Aggregate(0L, static (total, actor) => unchecked(total + actor.Healed));
     public int NumAllies => GetAllies().Count;
@@ -169,7 +169,7 @@ public class EncounterData
         get
         {
             var actors = AggregateActors();
-            if (actors.Count == 0) actors = new(Items.Values);
+            if (actors.Count == 0) actors = Items.Values;
             return actors.Aggregate(DateTime.MinValue, static (latest, actor) => actor.ShortEndTime > latest ? actor.ShortEndTime : latest);
         }
     }
@@ -225,10 +225,10 @@ public class EncounterData
         if (SelectiveParsing && IgnoreEnemies) return "Encounter";
         var allies = GetAllies();
         if (allies.Count == 0) return "Encounter";
-        var enemies = Items.Values.Where(actor => !allies.Contains(actor)).ToList();
         var ranked = new List<(string Name, double Score)>();
-        foreach (var enemy in enemies)
+        foreach (var enemy in Items.Values)
         {
+            if (allies.Contains(enemy)) continue;
             // ACT divides integer damage before rounding the score through a single-precision float.
             var score = enemy.Deaths > 0 ? (float)(enemy.DamageTaken / enemy.Deaths) : (float)enemy.DamageTaken;
             ranked.Add((enemy.Name, score));

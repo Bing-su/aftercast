@@ -166,9 +166,9 @@ public partial class FormActMain
         actionCallbackDepth++;
         try
         {
-            foreach (var callback in handlers?.GetInvocationList() ?? [])
+            foreach (var callback in Delegate.EnumerateInvocationList(handlers))
             {
-                try { ((CombatActionDelegate)callback)(import, info); }
+                try { callback(import, info); }
                 catch (Exception error) { RecordImportFailure(error); WriteExceptionLog(error, context); }
                 // Use ACT's isolated-handler mode: a cancellation cannot be undone by later subscribers.
                 if (cancelable && info.cancelAction) break;
@@ -179,8 +179,8 @@ public partial class FormActMain
 
     private void NotifyCombatToggle(CombatToggleEventDelegate? handlers, bool import, CombatToggleEventArgs info)
     {
-        foreach (var callback in handlers?.GetInvocationList() ?? [])
-            try { ((CombatToggleEventDelegate)callback)(import, info); }
+        foreach (var callback in Delegate.EnumerateInvocationList(handlers))
+            try { callback(import, info); }
             catch (Exception error) { RecordImportFailure(error); WriteExceptionLog(error, "Combat transition subscriber"); }
     }
 

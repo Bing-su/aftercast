@@ -90,6 +90,16 @@ description = "Measure synthetic log-buffer load and loss accounting"
 depends = ["managed:test-runner"]
 run = "{{vars.managed_tests}} log-load"
 
+[tasks."test:query-load"]
+description = "Measure combat query paging and encoding allocations"
+depends = ["managed:test-runner"]
+run = "{{vars.managed_tests}} query-load"
+
+[tasks."test:archive-load"]
+description = "Measure bounded gzip archive decompression and verification"
+depends = ["managed:test-runner"]
+run = "{{vars.managed_tests}} archive-load"
+
 [tasks."test:original"]
 description = "Compare reference contracts with genuine ACT"
 depends = ["managed:references"]

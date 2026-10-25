@@ -157,7 +157,15 @@ public partial class FormActMain
 
     public byte[] MemCompressGZip(byte[] bytes)
     {
+        ArgumentNullException.ThrowIfNull(bytes);
+        return CompressArchive(bytes);
+    }
+
+    private static byte[] CompressArchive(ReadOnlySpan<byte> bytes)
+    {
         if (bytes.Length > ArchiveLimit) throw new InvalidDataException("Archive exceeds 64 MiB");
+        // .NET skips an unwritten gzip stream; emit a valid empty member so even [] round-trips.
+        if (bytes.IsEmpty) return Convert.FromHexString("1F8B080000000000000303000000000000000000");
         using var output = new MemoryStream();
         using (var gzip = new GZipStream(output, CompressionMode.Compress, leaveOpen: true)) gzip.Write(bytes);
         return output.ToArray();
@@ -169,22 +177,32 @@ public partial class FormActMain
         using var gzip = new GZipStream(input, CompressionMode.Decompress);
         using var output = new MemoryStream();
         var buffer = new byte[8192];
+        var checksum = uint.MaxValue;
         int length;
         while ((length = gzip.Read(buffer)) > 0)
         {
             if (output.Length + length > ArchiveLimit) throw new InvalidDataException("Expanded archive exceeds 64 MiB");
             output.Write(buffer, 0, length);
+            foreach (var value in buffer.AsSpan(0, length))
+                checksum = (checksum >> 8) ^ ArchiveCrc32[(byte)(checksum ^ value)];
         }
-        var result = output.ToArray();
         // GZipStream can accept a missing footer; verify the single-member ACT checksum and size explicitly.
-        var checksum = uint.MaxValue;
-        foreach (var value in result)
-        {
-            checksum ^= value;
-            for (var bit = 0; bit < 8; bit++) checksum = (checksum >> 1) ^ ((checksum & 1) != 0 ? 0xedb88320U : 0);
-        }
-        if (BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(bytes.Length - 4)) != result.Length ||
+        if (BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(bytes.Length - 4)) != output.Length ||
             BinaryPrimitives.ReadUInt32LittleEndian(bytes.AsSpan(bytes.Length - 8)) != ~checksum) throw new InvalidDataException("Gzip checksum or length mismatch");
-        return result;
+        return output.ToArray();
+    }
+
+    private static readonly uint[] ArchiveCrc32 = CreateArchiveCrc32();
+    private static uint[] CreateArchiveCrc32()
+    {
+        // Precompute the IEEE CRC-32 byte transitions once instead of branching eight times per expanded byte.
+        var table = new uint[256];
+        for (var index = 0; index < table.Length; index++)
+        {
+            var value = (uint)index;
+            for (var bit = 0; bit < 8; bit++) value = (value >> 1) ^ ((value & 1) != 0 ? 0xedb88320U : 0);
+            table[index] = value;
+        }
+        return table;
     }
 }

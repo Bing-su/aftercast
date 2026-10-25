@@ -9,16 +9,17 @@ public partial class FormActMain
     public PlaySoundDelegate PlaySoundMethod = null!;
     public PlayTtsDelegate PlayTtsMethod = null!;
     private readonly object soundGate = new();
-    private readonly Queue<Tuple<byte[], int>> sounds = new();
+    private static readonly UTF8Encoding AudioEncoding = new(false, true);
+    private readonly Queue<(byte[] Bytes, int Volume)> sounds = new();
     private bool soundEnabled;
     private int soundDepth;
     internal int SoundVolume = 100, TtsVolume = 100;
     internal string TimerStartSound = "none", TimerWarningSound = "none", TimerExpireSound = "none";
     internal void InitializeAudio() { PlaySoundMethod = QueueSound; PlayTtsMethod = QueueSpeech; }
     internal void ConfigureSound(bool enabled) { lock (soundGate) { soundEnabled = enabled; sounds.Clear(); } }
-    internal Tuple<byte[], int> DrainSound()
+    internal (byte[] Bytes, int Volume) DrainSound()
     {
-        lock (soundGate) return sounds.TryDequeue(out var sound) ? sound : Tuple.Create(Array.Empty<byte>(), 0);
+        lock (soundGate) return sounds.TryDequeue(out var sound) ? sound : (Array.Empty<byte>(), 0);
     }
     public string MakeAbsolutePathString(string FilePath, string ReferenceFolderPath) =>
         Path.IsPathRooted(FilePath) ? FilePath : Path.GetFullPath(Path.Combine(string.IsNullOrWhiteSpace(ReferenceFolderPath) ? AppContext.BaseDirectory : ReferenceFolderPath, FilePath));
@@ -41,13 +42,13 @@ public partial class FormActMain
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(source);
         if (source.Length > 4096) throw new ArgumentException("Sound source exceeds its bounded size");
-        var bytes = new UTF8Encoding(false, true).GetBytes(source);
+        var bytes = AudioEncoding.GetBytes(source);
         if (bytes.Length > 4096 || source.Any(char.IsControl) || volume is < 0 or > 100) throw new ArgumentException("Invalid sound source or volume");
         lock (soundGate)
         {
             if (IsActClosing || !soundEnabled) throw new InvalidOperationException("Configure a Rust sound player before requesting audio");
             if (sounds.Count == 32) throw new InvalidOperationException("Sound queue is full");
-            sounds.Enqueue(Tuple.Create(bytes, volume));
+            sounds.Enqueue((bytes, volume));
         }
     }
 }

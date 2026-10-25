@@ -18,17 +18,22 @@ public partial class FormActMain
     {
         if (!File.Exists(HistoryIndex)) return;
         var loaded = new List<StoredEncounter>();
+        var files = new HashSet<string>(StringComparer.Ordinal);
         foreach (XmlElement element in ReadArchiveDocument(HistoryIndex, "Records").SelectNodes("/Records/Record")!)
         {
             var file = RequiredAttribute(element, "Archive");
             // Only content-addressed sibling files are allowed; a modified index cannot read e.g. ../../private.xml.
-            if (file.Length != 68 || !file.EndsWith(".act", StringComparison.Ordinal) || !file[..64].All(char.IsAsciiHexDigit)) throw new XmlException("Invalid archive filename");
+            if (file.Length != 68 || !file.EndsWith(".act", StringComparison.Ordinal) ||
+                file.AsSpan(0, 64).ContainsAnyExcept("0123456789abcdefABCDEF"))
+                throw new XmlException("Invalid archive filename");
+            if (!files.Add(file)) throw new XmlException("Duplicate history archive");
             var record = ReadHistoryRecord(element);
             if (record.Type != 1) throw new XmlException("Expected encounter history record");
-            loaded.Add(new(file, RequiredAttribute(element, "ZoneName"), DateTime.FromBinary(long.Parse(RequiredAttribute(element, "ZoneStart"), CultureInfo.InvariantCulture)),
-                record, bool.Parse(RequiredAttribute(element, "Partial"))));
+            var zone = RequiredAttribute(element, "ZoneName");
+            var zoneStart = DateTime.FromBinary(long.Parse(RequiredAttribute(element, "ZoneStart"), CultureInfo.InvariantCulture));
+            var partial = bool.Parse(RequiredAttribute(element, "Partial"));
+            loaded.Add(new(file, zone, zoneStart, record, partial));
         }
-        if (loaded.Select(item => item.File).Distinct(StringComparer.Ordinal).Count() != loaded.Count) throw new XmlException("Duplicate history archive");
         storedEncounters = loaded;
         foreach (var entry in loaded) EncDatabaseAdd(entry.Record);
     }
@@ -45,52 +50,57 @@ public partial class FormActMain
             {
                 EnsureImportAdmission();
                 if (inCombat) throw new InvalidOperationException("End live combat before archive operations");
-                switch (command)
+                count = command switch
                 {
-                    case 1:
-                        var imported = ReadEncounterFile(text);
-                        count = AttachArchives(imported.Select(encounter => (encounter, (StoredEncounter?)null)).ToList());
-                        break;
-                    case 2:
-                        var encounter = QueryEncounters().Select(item => item.Encounter).SingleOrDefault(item => Identity(item).Id == id)
-                            ?? throw new ArgumentException("Encounter does not belong to this session");
-                        var xml = EncodeEncounter(encounter, history: false);
-                        var payload = compressed ? MemCompressGZip(xml) : xml;
-                        WriteAtomic(text, stream => stream.Write(payload), overwrite: false);
-                        count = 1;
-                        break;
-                    case 3: count = SaveEncounterHistory(); break;
-                    case 4:
-                        LoadHistoryIndex();
-                        var restored = new List<(EncounterData, StoredEncounter?)>();
-                        var existing = QueryEncounters().Select(item => archivedEncounters.TryGetValue(item.Encounter, out var identity) ? identity.File : null).ToHashSet();
-                        var sorter = GlobalTimeSorter;
-                        try
-                        {
-                            foreach (var entry in storedEncounters)
-                                if (!existing.Contains(entry.File) && (entry.Record.Label.Contains(text, StringComparison.OrdinalIgnoreCase) ||
-                                    entry.Zone.Contains(text, StringComparison.OrdinalIgnoreCase) || entry.Record.CharName.Contains(text, StringComparison.OrdinalIgnoreCase)))
-                                {
-                                    var bytes = ReadBoundedFile(Path.Combine(HistoryDirectory, entry.File));
-                                    if (Convert.ToHexStringLower(SHA256.HashData(bytes)) + ".act" != entry.File) throw new InvalidDataException("History archive hash mismatch");
-                                    var items = DecodeEncounterFile(bytes);
-                                    if (items.Count != 1) throw new InvalidDataException("Expected one encounter per history archive");
-                                    restored.Add((items[0], entry));
-                                }
-                        }
-                        catch { GlobalTimeSorter = sorter; throw; }
-                        count = AttachArchives(restored);
-                        break;
-                    default: throw new ArgumentException("Unknown archive command");
-                }
+                    1 => AttachArchives(ReadEncounterFile(text).Select(encounter => (encounter, (StoredEncounter?)null))),
+                    2 => ExportEncounter(text, id, compressed),
+                    3 => SaveEncounterHistory(),
+                    4 => RestoreEncounterHistory(text),
+                    _ => throw new ArgumentException("Unknown archive command")
+                };
             }
         }));
         return count;
     }
 
-    private int AttachArchives(List<(EncounterData Encounter, StoredEncounter? Stored)> encounters)
+    private int ExportEncounter(string path, ulong id, bool compressed)
+    {
+        var encounter = QueryEncounters().Select(item => item.Encounter).SingleOrDefault(item => Identity(item).Id == id)
+            ?? throw new ArgumentException("Encounter does not belong to this session");
+        var xml = EncodeEncounter(encounter, history: false);
+        var payload = compressed ? CompressArchive(xml.AsSpan()).AsMemory() : xml.AsMemory();
+        WriteAtomic(path, stream => stream.Write(payload.Span), overwrite: false);
+        return 1;
+    }
+
+    private int RestoreEncounterHistory(string filter)
+    {
+        LoadHistoryIndex();
+        var restored = new List<(EncounterData, StoredEncounter?)>();
+        var existing = QueryEncounters().Select(item => archivedEncounters.TryGetValue(item.Encounter, out var identity) ? identity.File : null).ToHashSet();
+        var sorter = GlobalTimeSorter;
+        try
+        {
+            foreach (var entry in storedEncounters)
+            {
+                if (existing.Contains(entry.File) || !(entry.Record.Label.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
+                    entry.Zone.Contains(filter, StringComparison.OrdinalIgnoreCase) || entry.Record.CharName.Contains(filter, StringComparison.OrdinalIgnoreCase))) continue;
+                var bytes = ReadBoundedFile(Path.Combine(HistoryDirectory, entry.File));
+                if (Convert.ToHexStringLower(SHA256.HashData(bytes)) + ".act" != entry.File) throw new InvalidDataException("History archive hash mismatch");
+                var items = DecodeEncounterFile(bytes);
+                if (items.Count != 1) throw new InvalidDataException("Expected one encounter per history archive");
+                restored.Add((items[0], entry));
+            }
+        }
+        catch { GlobalTimeSorter = sorter; throw; }
+        // Parse every selected payload before attaching any graph, e.g. a corrupt second archive publishes neither.
+        return AttachArchives(restored);
+    }
+
+    private int AttachArchives(IEnumerable<(EncounterData Encounter, StoredEncounter? Stored)> encounters)
     {
         var target = combatZones[0];
+        var count = 0;
         foreach (var (encounter, stored) in encounters)
         {
             encounter.Parent = target;
@@ -102,28 +112,33 @@ public partial class FormActMain
                 if (stored.Partial) Identity(encounter).Status = Aftercast.ActCompat.CombatSnapshotStatus.PartialImport;
             }
             target.Items.Add(encounter);
+            count++;
         }
-        return encounters.Count;
+        return count;
     }
 
-    private byte[] EncodeEncounter(EncounterData encounter, bool history)
+    private ArraySegment<byte> EncodeEncounter(EncounterData encounter, bool history)
     {
         using var output = new MemoryStream();
         WriteEncounterXml([encounter], output, true, history);
         if (output.Length > ArchiveLimit) throw new InvalidDataException("Encounter XML exceeds 64 MiB");
-        return output.ToArray();
+        // Retain only the used range, e.g. compression can read the XML without making a second full-size array.
+        return new(output.GetBuffer(), 0, checked((int)output.Length));
     }
     private static byte[] ReadBoundedFile(string path)
     {
         using var stream = File.OpenRead(path);
         if (stream.Length > ArchiveLimit) throw new InvalidDataException("Archive file exceeds 64 MiB");
-        var result = new byte[checked((int)stream.Length)]; stream.ReadExactly(result); return result;
+        var result = new byte[checked((int)stream.Length)];
+        stream.ReadExactly(result);
+        return result;
     }
     private List<EncounterData> ReadEncounterFile(string path) => DecodeEncounterFile(ReadBoundedFile(path));
     private List<EncounterData> DecodeEncounterFile(byte[] bytes)
     {
         var xml = bytes.Length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b ? MemDecompressGzip(bytes) : bytes;
-        using var input = new MemoryStream(xml); return XmlToEncounters(input);
+        using var input = new MemoryStream(xml);
+        return XmlToEncounters(input);
     }
 
     private int SaveEncounterHistory()
@@ -139,7 +154,7 @@ public partial class FormActMain
             if (encounter.Active || encounter.Items.Count == 0) continue;
             if (!encounter.Items.Values.Any(actor => actor.AllOut.TryGetValue("All", out var all) && all.Items.Count > 0))
                 throw new InvalidOperationException("Encounter has no outgoing swings to archive; its manual graph cannot be reconstructed");
-            var bytes = MemCompressGZip(EncodeEncounter(encounter, history: true));
+            var bytes = CompressArchive(EncodeEncounter(encounter, history: true).AsSpan());
             var file = Convert.ToHexStringLower(SHA256.HashData(bytes)) + ".act";
             var path = Path.Combine(HistoryDirectory, file);
             if (!File.Exists(path)) WriteAtomic(path, stream => stream.Write(bytes), overwrite: false);

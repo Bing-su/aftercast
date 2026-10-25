@@ -16,8 +16,8 @@ namespace Advanced_Combat_Tracker
             if (observers is null || line.Length == 0) return;
             // One immutable snapshot is shared by all observers, e.g. later hook edits cannot replace its Line.
             var record = new Aftercast.ActCompat.OriginalLogRecord(isImport, path, line, time, timeSorter);
-            foreach (var observer in observers.GetInvocationList())
-                try { ((Action<Aftercast.ActCompat.OriginalLogRecord>)observer)(record); }
+            foreach (var observer in Delegate.EnumerateInvocationList(observers))
+                try { observer(record); }
                 catch (Exception error)
                 {
                     // Optional capture failures remain visible without changing import/parser success.

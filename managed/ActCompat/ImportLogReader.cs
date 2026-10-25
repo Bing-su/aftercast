@@ -41,7 +41,7 @@ internal sealed class ImportLogReader : IDisposable
             if (offset == count && !ReadChunk())
             {
                 if (pending.Length == 0) { line = ""; return false; }
-                line = DecodeRecord();
+                line = DecodeRecord(pending.GetBuffer().AsSpan(0, (int)pending.Length));
                 return true;
             }
             var remaining = buffer.AsSpan(offset, count - offset);
@@ -54,11 +54,20 @@ internal sealed class ImportLogReader : IDisposable
             var fragment = delimiter < 0 ? remaining : remaining[..delimiter];
             if (pending.Length + fragment.Length > MaximumRecordLength)
                 throw new InvalidDataException($"Import record exceeds {MaximumRecordLength} UTF-8 bytes.");
-            pending.Write(fragment);
             offset += fragment.Length;
-            if (delimiter < 0) continue;
+            if (delimiter < 0)
+            {
+                pending.Write(fragment);
+                continue;
+            }
             skipLf = buffer[offset++] == (byte)'\r';
-            line = DecodeRecord();
+            // Decode complete in-buffer records directly; only records spanning reads need a copy.
+            if (pending.Length == 0) line = DecodeRecord(fragment);
+            else
+            {
+                pending.Write(fragment);
+                line = DecodeRecord(pending.GetBuffer().AsSpan(0, (int)pending.Length));
+            }
             return true;
         }
     }
@@ -97,9 +106,9 @@ internal sealed class ImportLogReader : IDisposable
         if (stream.Length < initialLength) throw new EndOfStreamException("The import file was truncated during reading.");
     }
 
-    private string DecodeRecord()
+    private string DecodeRecord(ReadOnlySpan<byte> record)
     {
-        try { return encoding.GetString(pending.GetBuffer(), 0, (int)pending.Length); }
+        try { return encoding.GetString(record); }
         catch (DecoderFallbackException error) { throw new InvalidDataException("The import record is not valid UTF-8.", error); }
         finally { pending.SetLength(0); }
     }

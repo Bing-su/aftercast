@@ -23,13 +23,13 @@ public static partial class EntryPoint
         for (var field = 36; field < header; field += 4)
             if (Marshal.ReadInt32(buffer, field) != 0) throw new ArgumentException("Combat query output must initially be zero");
         var bytes = plugins.Value.QueryCombat(mode, id, offset, limit);
-        if (bytes.Length > sizeBytes - header)
+        if (bytes.Count > sizeBytes - header)
         {
-            Marshal.WriteInt32(buffer, 40, checked(header + bytes.Length));
+            Marshal.WriteInt32(buffer, 40, checked(header + bytes.Count));
             return 1;
         }
-        Marshal.Copy(bytes, 0, buffer + header, bytes.Length);
-        Marshal.WriteInt32(buffer, 36, bytes.Length);
+        Marshal.Copy(bytes.Array!, bytes.Offset, buffer + header, bytes.Count);
+        Marshal.WriteInt32(buffer, 36, bytes.Count);
         return 0;
     });
 }
@@ -39,7 +39,7 @@ internal static class CombatQueryEncoding
     internal const int MaximumBytes = 64 * 1024 * 1024;
     private static readonly UTF8Encoding Utf8 = new(false, true);
 
-    internal static byte[] Encode(HostEnvironment? host, int mode, ulong id, int offset, int limit)
+    internal static ArraySegment<byte> Encode(HostEnvironment? host, int mode, ulong id, int offset, int limit)
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Utf8, true);
@@ -50,10 +50,11 @@ internal static class CombatQueryEncoding
         }
         void Text(string text)
         {
-            Budget(4L + Utf8.GetByteCount(text));
-            var bytes = Utf8.GetBytes(text);
-            writer.Write(bytes.Length);
-            writer.Write(bytes);
+            var length = Utf8.GetByteCount(text);
+            Budget(4L + length);
+            writer.Write(length);
+            // The char-span overload writes UTF-8 without another length prefix or a per-string byte array.
+            writer.Write(text.AsSpan());
         }
         void Time(DateTime time) { writer.Write(time.Ticks); writer.Write((uint)time.Kind); }
         void Summary(EncounterSummaryData value)
@@ -110,6 +111,7 @@ internal static class CombatQueryEncoding
             }
         }
         Budget(0);
-        return stream.ToArray();
+        // The segment retains the stream's managed array after disposal without copying unused capacity.
+        return new(stream.GetBuffer(), 0, checked((int)stream.Length));
     }
 }

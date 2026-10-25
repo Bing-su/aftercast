@@ -13,8 +13,7 @@ internal static class PersonalDuration
         });
         var starts = encounter.StartTimes;
         var ends = encounter.EndTimes;
-        var personalStarts = new List<DateTime>();
-        var personalEnds = new List<DateTime>();
+        var duration = TimeSpan.Zero;
         var cursor = 0;
         // CombatantData bounds its scan using a copied end list with one open end appended.
         var segments = combatant ? ends.Count + (starts.Count > ends.Count ? 1 : 0) : starts.Count;
@@ -25,19 +24,11 @@ internal static class PersonalDuration
             if (segment < ends.Count && ends[segment] < actions[cursor].Time) continue;
             for (var index = cursor; index < actions.Count; index++)
             {
-                if (personalStarts.Count == personalEnds.Count)
+                var time = actions[index].Time;
+                var openLast = segment == starts.Count - 1 && ends.Count + 1 == starts.Count;
+                if (time >= starts[segment] && time <= (openLast ? encounter.EndTime : ends[segment]))
                 {
-                    var time = actions[index].Time;
-                    var openLast = segment == starts.Count - 1 && ends.Count + 1 == starts.Count;
-                    if (time >= starts[segment] && time <= (openLast ? encounter.EndTime : ends[segment]))
-                    {
-                        personalStarts.Add(time);
-                        cursor = index;
-                    }
-                }
-                if (personalStarts.Count - 1 == personalEnds.Count)
-                {
-                    MasterSwing? last = null;
+                    var last = actions[index];
                     for (var end = index; end < actions.Count; end++)
                     {
                         last = actions[end];
@@ -49,18 +40,12 @@ internal static class PersonalDuration
                         }
                     }
                     // Deliberately use the last action before the next segment, not a clipped wall-clock end.
-                    personalEnds.Add(last!.Time);
+                    duration += last.Time - time;
                     break;
                 }
                 if (segment < ends.Count && actions[index].Time > ends[segment]) break;
             }
         }
-        if (personalStarts.Count - 1 == personalEnds.Count) personalEnds.Add(actions[^1].Time);
-        if (personalStarts.Count != personalEnds.Count)
-            throw new Exception(string.Format("Personal Duration failure.  StartTimes: {0}/{2} EndTimes: {1}/{3}",
-                personalStarts.Count, personalEnds.Count, starts.Count, ends.Count));
-        var duration = TimeSpan.Zero;
-        for (var index = 0; index < personalStarts.Count; index++) duration += personalEnds[index] - personalStarts[index];
         return duration;
     }
 }
