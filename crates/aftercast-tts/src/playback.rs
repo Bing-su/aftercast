@@ -1,5 +1,7 @@
+use std::borrow::Cow;
 use std::io::Cursor;
 use std::io::Read;
+use std::path::Path;
 use std::time::{Duration, Instant};
 
 use rodio::{DeviceSinkBuilder, Player, buffer::SamplesBuffer};
@@ -27,17 +29,19 @@ impl SoundBackend for FilePlayback {
             );
         }
         let path = if request.source.starts_with("file:") {
-            url::Url::parse(&request.source)
-                .map_err(failure)?
-                .to_file_path()
-                .map_err(|()| Error::InvalidRequest("invalid local file URI"))?
+            Cow::Owned(
+                url::Url::parse(&request.source)
+                    .map_err(failure)?
+                    .to_file_path()
+                    .map_err(|()| Error::InvalidRequest("invalid local file URI"))?,
+            )
         } else {
             if request.source.contains("://") {
                 return Err(Error::InvalidRequest(
                     "system sound playback requires a local file",
                 ));
             }
-            std::path::PathBuf::from(&request.source)
+            Cow::Borrowed(Path::new(&request.source))
         };
         // Reject devices/FIFOs before open: reading a pipe could otherwise block cancellation and worker teardown.
         let metadata = std::fs::metadata(&path).map_err(failure)?;
@@ -46,8 +50,8 @@ impl SoundBackend for FilePlayback {
                 "sound requires a regular file of at most 16 MiB",
             ));
         }
-        let mut bytes = Vec::new();
-        std::fs::File::open(path)
+        let mut bytes = Vec::with_capacity(metadata.len() as usize);
+        std::fs::File::open(&path)
             .map_err(failure)?
             .take(16 * 1024 * 1024 + 1)
             .read_to_end(&mut bytes)

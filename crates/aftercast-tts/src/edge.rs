@@ -1,3 +1,4 @@
+use std::borrow::Cow;
 use std::time::Duration;
 
 use msedge_tts::tts::{
@@ -70,12 +71,32 @@ fn validate_voice(voice: &str) -> Result<(), Error> {
     Ok(())
 }
 
-fn escape_text(text: &str) -> String {
-    text.replace('&', "&amp;")
-        .replace('<', "&lt;")
-        .replace('>', "&gt;")
-        .replace('"', "&quot;")
-        .replace('\'', "&apos;")
+fn escape_text(text: &str) -> Cow<'_, str> {
+    let extra: usize = text
+        .bytes()
+        .map(|byte| match byte {
+            b'&' => 4,
+            b'<' | b'>' => 3,
+            b'"' | b'\'' => 5,
+            _ => 0,
+        })
+        .sum();
+    if extra == 0 {
+        return Cow::Borrowed(text);
+    }
+    // Escape source characters once, e.g. an input &amp; must become &amp;amp; rather than escaping our own output.
+    let mut escaped = String::with_capacity(text.len() + extra);
+    for character in text.chars() {
+        match character {
+            '&' => escaped.push_str("&amp;"),
+            '<' => escaped.push_str("&lt;"),
+            '>' => escaped.push_str("&gt;"),
+            '"' => escaped.push_str("&quot;"),
+            '\'' => escaped.push_str("&apos;"),
+            other => escaped.push(other),
+        }
+    }
+    Cow::Owned(escaped)
 }
 
 async fn fetch(text: &str, config: &SpeechConfig) -> Result<Vec<u8>, Error> {
@@ -121,6 +142,7 @@ impl Synthesizer for Edge {
 #[cfg(test)]
 mod tests {
     use super::{escape_text, validate_voice};
+    use std::borrow::Cow;
 
     #[test]
     fn plain_text_cannot_inject_ssml_and_voice_ids_are_restricted() {
@@ -128,6 +150,13 @@ mod tests {
             escape_text("한글 <voice> & '\""),
             "한글 &lt;voice&gt; &amp; &apos;&quot;"
         );
+        assert_eq!(
+            escape_text("&amp;<>&\"'🙂"),
+            "&amp;amp;&lt;&gt;&amp;&quot;&apos;🙂"
+        );
+        for text in ["", "ordinary speech", "한글 🙂"] {
+            assert!(matches!(escape_text(text), Cow::Borrowed(value) if value == text));
+        }
         validate_voice("ko-KR-SunHiNeural").expect("valid service voice ID");
         assert!(matches!(
             validate_voice("ko-KR' /><audio src='remote"),
