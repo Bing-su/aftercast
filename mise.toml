@@ -77,7 +77,7 @@ depends = ["managed:test-runner"]
 run = [
   "dotnet build managed/tests/PluginFixture/PluginFixture.csproj -c Release -p:RestoreLockedMode=true",
   "{{vars.managed_tests}} plugins",
-  "cargo test -p aftercast --test plugins --test lifecycle --test import --test logs --test snapshots --test speech -- --ignored",
+  "cargo test -p aftercast --test plugins --test lifecycle --test import --test logs --test snapshots --test speech --test archives -- --ignored",
 ]
 
 [tasks."test:log-load"]

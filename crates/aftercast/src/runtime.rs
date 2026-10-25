@@ -70,6 +70,7 @@ pub(crate) struct ManagedSession {
     read_combat_snapshot: ManagedFunctionWithDefaultSignature,
     query_combat: ManagedFunctionWithDefaultSignature,
     speech_command: ManagedFunctionWithDefaultSignature,
+    archive_command: ManagedFunctionWithDefaultSignature,
     session: u64,
     running: bool,
     // Keep the native library and delegate loader alive for every managed function call.
@@ -90,6 +91,7 @@ pub(crate) enum Request {
     Combat,
     Diagnostics,
     Speech,
+    Archive,
 }
 
 impl ManagedSession {
@@ -122,6 +124,7 @@ impl ManagedSession {
         let read_combat_snapshot = function(pdcstr!("ReadCombatSnapshot"))?;
         let query_combat = function(pdcstr!("QueryCombat"))?;
         let speech_command = function(pdcstr!("SpeechCommand"))?;
+        let archive_command = function(pdcstr!("ArchiveCommand"))?;
         let mut host = Self {
             entry,
             read_error,
@@ -134,6 +137,7 @@ impl ManagedSession {
             read_combat_snapshot,
             query_combat,
             speech_command,
+            archive_command,
             session: 0,
             running: false,
             _loader: loader,
@@ -171,6 +175,7 @@ impl ManagedSession {
             Request::Snapshot => (&self.read_combat_snapshot, 10),
             Request::Combat => (&self.query_combat, 12),
             Request::Speech => (&self.speech_command, 11),
+            Request::Archive => (&self.archive_command, 13),
         };
         let length = i32::try_from(packet.len())
             .map_err(|error| Error::InvalidPluginRequest(error.to_string()))?;

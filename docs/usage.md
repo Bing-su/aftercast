@@ -112,6 +112,11 @@ shutdown. Subscriber loss and superseded snapshot versions have different meanin
 one reports omitted observations, the other reports replaced versions of a result.
 Neither output is a durable recording or complete encounter archive.
 
+For explicit encounter persistence, ACT XML/gzip interchange and restart search,
+use [encounter archives and history](encounter-archives.md): `save_history()`,
+`restore_history(filter)`, `import_act(path)` and `export_act(id, path, format)`.
+Checkpointing is explicit; ordinary shutdown does not automatically save history.
+
 ## Data corrections
 
 Prepare `DataCorrections.xml` in the private data directory before starting the

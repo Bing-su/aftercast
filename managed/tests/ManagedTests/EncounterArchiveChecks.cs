@@ -52,6 +52,12 @@ internal static class EncounterArchiveChecks
                 Check(host.ArchiveOperation(3, "", 0, false) == 1);
                 Check(host.ArchiveOperation(3, "", 0, false) == 1);
                 saved = File.ReadAllText(index);
+                var manual = new EncounterData("Source", "Fixture Zone", root.ActiveZone);
+                manual.Items["GHOST"] = new CombatantData("Ghost", manual);
+                root.ActiveZone.Items.Add(manual);
+                Throws<InvalidOperationException>(() => host.ArchiveOperation(3, "", 0, false));
+                root.ActiveZone.Items.Remove(manual);
+                Check(File.ReadAllText(index) == saved);
                 using (var checkpoint = new FileStream(Path.Combine(directory.FullName, "history", "checkpoint.lock"), FileMode.Open, FileAccess.ReadWrite, FileShare.None))
                     Throws<IOException>(() => host.ArchiveOperation(3, "", 0, false));
                 Check(File.ReadAllText(index) == saved);
@@ -103,6 +109,29 @@ internal static class EncounterArchiveChecks
             File.WriteAllText(index, saved.Replace("Archive=\"", "Archive=\"../"));
             Throws<XmlException>(() => { using var invalid = new HostEnvironment(directory.FullName); });
             Check(ActGlobals.oFormActMain is null);
+            var partialDirectory = Directory.CreateDirectory(Path.Combine(directory.FullName, "partial-state"));
+            var partialLog = Path.Combine(directory.FullName, "partial.log");
+            File.WriteAllText(partialLog, "fixture\n");
+            using (var partial = new HostEnvironment(partialDirectory.FullName))
+            {
+                CombatFixture.ConfigureCategories();
+                var root = ActGlobals.oFormActMain!;
+                root.OnLogLineRead += (_, _) =>
+                {
+                    root.SetEncounter(epoch, "Source", "Target");
+                    root.AddCombatAction(new MasterSwing(1, false, "", new Dnum(100), epoch, 1, "Strike", "Source", "Physical", "Target"));
+                    throw new InvalidOperationException("Fixture import failure after accepting an action");
+                };
+                Throws<InvalidDataException>(() => partial.ImportLog(partialLog));
+                Check(partial.ArchiveOperation(3, "", 0, false) == 1);
+                Check(root.EncDatabase.Values.Single().FolderHint == directory.FullName);
+            }
+            using (var partial = new HostEnvironment(partialDirectory.FullName))
+            {
+                CombatFixture.ConfigureCategories();
+                Check(partial.ArchiveOperation(4, "", 0, false) == 1);
+                Check(partial.ListEncounters(0, 16).Items.Single().Status == EncounterStatus.PartialImport);
+            }
             Console.WriteLine("ACT XML/gzip imports, atomic history checkpoints, filtered restart restoration and corruption boundaries passed.");
         }
         finally { directory.Delete(true); }

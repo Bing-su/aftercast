@@ -1,5 +1,8 @@
 # Synchronous file import
 
+For saved ACT encounter XML/gzip and persistent history, use the separate
+[archive APIs](encounter-archives.md).
+
 `Host::import_log(path)` returns an owned `ImportReport` after reading the captured
 file prefix and draining submitted ACT
 actions. This is a synchronous owner-thread operation through initialized plugins.

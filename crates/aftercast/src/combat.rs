@@ -10,8 +10,8 @@ const MAX_BYTES: usize = 64 * 1024 * 1024;
 /// Stable identity of an in-memory encounter in one host session; invalid after restart.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct EncounterId {
-    session: u64,
-    value: u64,
+    pub(crate) session: u64,
+    pub(crate) value: u64,
 }
 
 /// Current encounter lifecycle; imports remain Importing until their whole operation completes.

@@ -137,6 +137,8 @@ public partial class FormActMain
         foreach (var (encounter, _) in QueryEncounters())
         {
             if (encounter.Active || encounter.Items.Count == 0) continue;
+            if (!encounter.Items.Values.Any(actor => actor.AllOut.TryGetValue("All", out var all) && all.Items.Count > 0))
+                throw new InvalidOperationException("Encounter has no outgoing swings to archive; its manual graph cannot be reconstructed");
             var bytes = MemCompressGZip(EncodeEncounter(encounter, history: true));
             var file = Convert.ToHexStringLower(SHA256.HashData(bytes)) + ".act";
             var path = Path.Combine(HistoryDirectory, file);

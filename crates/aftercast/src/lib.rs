@@ -4,7 +4,9 @@
 //! Call [`extract_bridge`] once to deploy the bundled, prebuilt C# component, then use
 //! [`Host::start`] with a trusted .NET 10 installation. No SDK or download is used at runtime.
 
+mod archives;
 mod bridge;
+pub use archives::ActFormat;
 mod combat;
 mod diagnostics;
 mod host;
@@ -35,6 +37,10 @@ pub use snapshots::{CombatRevision, CombatSnapshot, CombatSnapshotStatus, Combat
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("invalid archive request: {0}")]
+    InvalidArchiveRequest(String),
+    #[error("invalid archive response: {0}")]
+    InvalidArchiveResponse(String),
     #[error("invalid combat query: {0}")]
     InvalidCombatRequest(String),
     #[error("invalid managed combat query response: {0}")]
