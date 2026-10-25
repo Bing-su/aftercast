@@ -1,5 +1,7 @@
+use std::sync::Arc;
+
 use bytes::{Buf, BufMut, Bytes, BytesMut};
-use camino::Utf8PathBuf;
+use camino::Utf8Path;
 
 use crate::runtime::Request;
 use crate::{Error, Host};
@@ -53,7 +55,8 @@ pub struct LogRecord {
     pub is_import: bool,
     pub timestamp: LogTimestamp,
     pub time_sorter: i32,
-    pub source_path: Utf8PathBuf,
+    /// Owned immutable path; consecutive equal paths in a batch share one allocation.
+    pub source_path: Arc<Utf8Path>,
     /// Valid UTF-8, including any embedded NUL; shares the owned batch allocation.
     pub original_line: Bytes,
 }
@@ -191,7 +194,7 @@ pub(crate) fn decode_logs(packet: Bytes) -> Result<LogBatch, Error> {
         }
         _ => return Err(invalid("invalid missing sequence range")),
     };
-    let mut records = Vec::with_capacity(count);
+    let mut records: Vec<LogRecord> = Vec::with_capacity(count);
     let mut offset = 0;
     let mut previous = loss.map(|loss| loss.last_sequence);
     for _ in 0..count {
@@ -239,12 +242,19 @@ pub(crate) fn decode_logs(packet: Bytes) -> Result<LogBatch, Error> {
         // Canonical ranges above prove this shared slice stays inside the immutable owned packet.
         let absolute_line = LOG_HEADER + offset + line_offset;
         let original_line = packet.slice(absolute_line..LOG_HEADER + end);
+        let path = Utf8Path::new(path);
+        let source_path = match records.last() {
+            Some(previous) if previous.source_path.as_ref() == path => {
+                Arc::clone(&previous.source_path)
+            }
+            _ => Arc::from(path),
+        };
         records.push(LogRecord {
             sequence,
             is_import: flags & 1 != 0,
             timestamp,
             time_sorter,
-            source_path: Utf8PathBuf::from(path),
+            source_path,
             original_line,
         });
         previous = Some(sequence);
@@ -341,8 +351,12 @@ mod tests {
             .copy_from_slice(&value.to_le_bytes());
     }
     fn batch() -> BytesMut {
+        batch_with_paths("/로그", "/log")
+    }
+
+    fn batch_with_paths(first: &str, second: &str) -> BytesMut {
         let mut packet = log_packet(9, 4, 2, LOG_HEADER);
-        for (sequence, path, line) in [(1_u64, "/로그", "first\0"), (2, "/log", "second")] {
+        for (sequence, path, line) in [(1_u64, first, "first\0"), (2, second, "second")] {
             packet.put_u32_le((RECORD_HEADER + path.len() + line.len()) as u32);
             packet.put_u32_le(3);
             packet.put_u64_le(sequence);
@@ -370,7 +384,7 @@ mod tests {
         let result = decode_logs(wire.clone()).expect("decode valid batch");
         let first = result.records.first().expect("first record");
         assert_eq!(first.sequence, 1);
-        assert_eq!(first.source_path, Utf8PathBuf::from("/로그"));
+        assert_eq!(first.source_path.as_ref(), Utf8Path::new("/로그"));
         assert_eq!(first.time_sorter, -10);
         assert!(first.is_import);
         assert_eq!(
@@ -390,6 +404,18 @@ mod tests {
         drop(result);
         drop(wire);
         assert_eq!(original.as_ref(), b"first\0");
+    }
+
+    #[rstest::rstest]
+    fn consecutive_records_share_owned_source_paths() {
+        let wire = batch_with_paths("/same/한글.log", "/same/한글.log").freeze();
+        let batch = decode_logs(wire).expect("valid shared-path batch");
+        let first = batch.records.first().expect("first record");
+        let second = batch.records.last().expect("second record");
+        assert!(Arc::ptr_eq(&first.source_path, &second.source_path));
+        let retained = first.source_path.clone();
+        drop(batch);
+        assert_eq!(retained.as_ref(), Utf8Path::new("/same/한글.log"));
     }
 
     #[rstest::rstest]

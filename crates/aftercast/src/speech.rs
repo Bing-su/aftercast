@@ -3,7 +3,7 @@ use std::collections::VecDeque;
 use aftercast_tts::{SoundPlayer, SoundRequest, Speaker, Speech, Utterance};
 use bytes::{BufMut, BytesMut};
 
-use crate::runtime::Request;
+use crate::runtime::{ManagedSession, Request};
 use crate::{Error, Host};
 
 pub(crate) struct AudioOutput<T> {
@@ -28,6 +28,34 @@ impl<T> AudioOutput<T> {
             }
             self.pending.pop_front();
             result?;
+        }
+        Ok(())
+    }
+
+    fn pump(
+        &mut self,
+        session: &ManagedSession,
+        command: u32,
+        submit: impl Fn(&T, &str, u8) -> Result<Speech, aftercast_tts::Error>,
+        map_error: fn(aftercast_tts::Error) -> Error,
+    ) -> Result<(), Error> {
+        self.drain_completed().map_err(map_error)?;
+        if self.pending.len() >= 32 {
+            return Ok(());
+        }
+        let mut request = packet(session.id(), command, 0, 4128);
+        while self.pending.len() < 32 {
+            session.request(Request::Speech, &mut request)?;
+            let Some((text, volume)) = audio_request(&request)? else {
+                break;
+            };
+            self.pending
+                .push_back(submit(&self.backend, text, volume).map_err(map_error)?);
+            // Reuse one packet per pump; clear outputs so the next dequeue has a valid request header.
+            request
+                .get_mut(20..32)
+                .ok_or_else(|| Error::InvalidSpeechResponse("missing audio header".into()))?
+                .fill(0);
         }
         Ok(())
     }
@@ -131,67 +159,48 @@ impl Host {
         let Some(output) = &mut self.speech else {
             return Ok(());
         };
-        output.drain_completed()?;
-        // At most 32 accepted jobs keeps completion state bounded even when a backend is slow.
-        while output.pending.len() < 32 {
-            let mut request = packet(self.session.id(), 2, 0, 4128);
-            self.session.request(Request::Speech, &mut request)?;
-            let length = request
-                .get(20..24)
-                .and_then(|bytes| bytes.try_into().ok())
-                .map(u32::from_le_bytes)
-                .ok_or_else(|| Error::InvalidSpeechResponse("missing text length".into()))?
-                as usize;
-            if length == 0 {
-                break;
-            }
-            let bytes = request
-                .get(32..)
-                .and_then(|bytes| bytes.get(..length))
-                .ok_or_else(|| {
-                    Error::InvalidSpeechResponse("text exceeds response capacity".into())
-                })?;
-            let text = std::str::from_utf8(bytes)
-                .map_err(|e| Error::InvalidSpeechResponse(e.to_string()))?;
-            output.pending.push_back(output.backend.speak(Utterance {
-                volume: volume(&request)?,
-                ..Utterance::new(text)
-            })?);
-        }
-        Ok(())
+        output.pump(
+            &self.session,
+            2,
+            |speaker, text, volume| {
+                speaker.speak(Utterance {
+                    volume,
+                    ..Utterance::new(text)
+                })
+            },
+            Error::from,
+        )
     }
 
     pub(crate) fn pump_sounds(&mut self) -> Result<(), Error> {
         let Some(output) = &mut self.sounds else {
             return Ok(());
         };
-        output.drain_completed().map_err(Error::Sound)?;
-        while output.pending.len() < 32 {
-            let mut request = packet(self.session.id(), 4, 0, 4128);
-            self.session.request(Request::Speech, &mut request)?;
-            let length = request
-                .get(20..24)
-                .and_then(|bytes| bytes.try_into().ok())
-                .map(u32::from_le_bytes)
-                .ok_or_else(|| Error::InvalidSpeechResponse("missing sound length".into()))?
-                as usize;
-            if length == 0 {
-                break;
-            }
-            let source = request
-                .get(32..)
-                .and_then(|bytes| bytes.get(..length))
-                .and_then(|bytes| std::str::from_utf8(bytes).ok())
-                .ok_or_else(|| Error::InvalidSpeechResponse("invalid sound source".into()))?;
-            output.pending.push_back(
-                output
-                    .backend
-                    .play(SoundRequest::new(source, volume(&request)?))
-                    .map_err(Error::Sound)?,
-            );
-        }
-        Ok(())
+        output.pump(
+            &self.session,
+            4,
+            |player, source, volume| player.play(SoundRequest::new(source, volume)),
+            Error::Sound,
+        )
     }
+}
+
+fn audio_request(request: &[u8]) -> Result<Option<(&str, u8)>, Error> {
+    let length = request
+        .get(20..24)
+        .and_then(|bytes| bytes.try_into().ok())
+        .map(u32::from_le_bytes)
+        .ok_or_else(|| Error::InvalidSpeechResponse("missing audio length".into()))?
+        as usize;
+    if length == 0 {
+        return Ok(None);
+    }
+    let text = request
+        .get(32..)
+        .and_then(|bytes| bytes.get(..length))
+        .and_then(|bytes| std::str::from_utf8(bytes).ok())
+        .ok_or_else(|| Error::InvalidSpeechResponse("invalid audio text or length".into()))?;
+    Ok(Some((text, volume(request)?)))
 }
 
 fn volume(request: &[u8]) -> Result<u8, Error> {
@@ -202,4 +211,40 @@ fn volume(request: &[u8]) -> Result<u8, Error> {
         .and_then(|value| u8::try_from(value).ok())
         .filter(|value| *value <= 100)
         .ok_or_else(|| Error::InvalidSpeechResponse("invalid audio volume".into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[rstest::rstest]
+    fn audio_responses_validate_text_capacity_and_volume() {
+        let mut request = packet(1, 2, 3, 35);
+        request
+            .get_mut(24..28)
+            .expect("volume")
+            .copy_from_slice(&75_u32.to_le_bytes());
+        request
+            .get_mut(32..)
+            .expect("text")
+            .copy_from_slice("한".as_bytes());
+        assert_eq!(
+            audio_request(&request).expect("valid audio"),
+            Some(("한", 75))
+        );
+        for length in 0..request.len() {
+            audio_request(request.get(..length).expect("prefix"))
+                .expect_err("reject truncated audio response");
+        }
+        request
+            .get_mut(24..28)
+            .expect("volume")
+            .copy_from_slice(&101_u32.to_le_bytes());
+        audio_request(&request).expect_err("reject volume above 100");
+        request.get_mut(24..28).expect("volume").fill(0);
+        request.get_mut(32..).expect("text").fill(255);
+        audio_request(&request).expect_err("reject invalid UTF-8");
+        request.get_mut(20..24).expect("length").fill(0);
+        assert_eq!(audio_request(&request).expect("empty queue"), None);
+    }
 }

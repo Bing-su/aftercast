@@ -2,7 +2,7 @@ use bytes::{Buf, BufMut, BytesMut};
 
 use crate::runtime::Request;
 use crate::snapshots::{decode_result, graph_time};
-use crate::{CombatRevision, CombatSnapshotStatus, CombatantSnapshot, Error, Host, LogTimestamp};
+use crate::{CombatantSnapshot, Error, Host, LogTimestamp};
 
 const HEADER: usize = 48;
 const MAX_BYTES: usize = 64 * 1024 * 1024;
@@ -321,18 +321,8 @@ fn decode_detail(payload: &[u8], session: u64) -> Result<Option<EncounterDetail>
         let summary = reader.summary(session)?;
         let length = reader.u32()? as usize;
         // Reuse ACT value validation; this graph read publishes no snapshot revision or completion state.
-        let snapshot = decode_result(
-            reader.take(length)?,
-            summary.combatants as usize,
-            CombatRevision {
-                session,
-                sequence: 0,
-            },
-            0,
-            summary.is_import,
-            CombatSnapshotStatus::Ended,
-        )
-        .map_err(|_snapshot| invalid("invalid encounter participant snapshot"))?;
+        let snapshot = decode_result(reader.take(length)?, summary.combatants as usize)
+            .map_err(|_snapshot| invalid("invalid encounter participant snapshot"))?;
         Some(EncounterDetail {
             summary,
             combatants: snapshot.combatants,

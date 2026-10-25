@@ -233,7 +233,7 @@ impl ManagedSession {
     }
 
     fn error_message(&self) -> String {
-        let mut output = BytesMut::zeroed(8192);
+        let mut output = [0_u8; 8192];
         // SAFETY: ReadError uses ComponentEntryPoint, writes only within capacity, and retains
         // no pointer. All 8192 output bytes are initialized and exclusively borrowed for the call.
         let length = unsafe { (self.read_error)(output.as_mut_ptr().cast(), 8192) };

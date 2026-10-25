@@ -13,6 +13,7 @@ parser acceptance or provide a durable recording.
 | `drain_logs(subscription)`              | Returns an owned batch immediately; capacity retries do not consume records or loss state                                                  |
 | `unsubscribe_logs(subscription)`        | Explicitly discards unread data and retires the identity                                                                                   |
 | `LogRecord.original_line`               | Valid UTF-8 `Bytes`, including embedded NUL; clones share the Rust allocation, never CLR memory                                            |
+| `LogRecord.source_path`                 | Immutable `Arc<Utf8Path>`; consecutive equal source paths in a batch share one allocation                                                  |
 | Record metadata                         | Import flag, source path, original CLR timestamp/kind, captured UTC ticks when known, ACT time sorter and a separate subscription sequence |
 | `LogBatch.dropped`                      | Exact count and contiguous sequence range omitted since the previous successful drain; inspect it even when no records remain              |
 | Host stop / restart                     | Discards unread data; old host/subscription identities are rejected, and a new subscription starts its sequence at one                     |
@@ -23,6 +24,10 @@ can be retained or moved to consumer threads. There is no callback into Rust fro
 the parser and no mandatory async executor.
 Retaining one line slice can keep its entire Rust batch allocation alive; the
 managed queue limits do not bound data deliberately retained by the application.
+Borrow a source path with `record.source_path.as_ref()`. When independent mutable
+storage is needed, use `record.source_path.as_ref().to_owned()` to obtain a
+`Utf8PathBuf`. Retained paths remain valid after dropping the batch or stopping
+the host.
 
 ## Overflow and ownership
 

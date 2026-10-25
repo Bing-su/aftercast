@@ -81,6 +81,19 @@ pub struct CombatSnapshot {
     pub combatants: Vec<CombatantSnapshot>,
 }
 
+// Borrow wire metadata until a caller needs ownership, e.g. encounter detail only retains combatants.
+pub(crate) struct DecodedResult<'a> {
+    pub(crate) zone: &'a str,
+    pub(crate) title: &'a str,
+    pub(crate) character: &'a str,
+    pub(crate) start_time: LogTimestamp,
+    pub(crate) end_time: LogTimestamp,
+    pub(crate) duration_ticks: i64,
+    pub(crate) damage: i64,
+    pub(crate) healed: i64,
+    pub(crate) combatants: Vec<CombatantSnapshot>,
+}
+
 pub(crate) fn snapshot_packet(session: u64, after: u64, capacity: usize) -> BytesMut {
     let mut packet = BytesMut::with_capacity(capacity);
     packet.put_u32_le(capacity as u32);
@@ -125,13 +138,11 @@ pub(crate) fn graph_time(ticks: i64, kind: u32) -> Result<LogTimestamp, Error> {
     })
 }
 
-fn text(payload: &[u8], start: usize, end: usize) -> Result<String, Error> {
+fn text(payload: &[u8], start: usize, end: usize) -> Result<&str, Error> {
     let bytes = payload
         .get(start..end)
         .ok_or_else(|| invalid("snapshot text exceeds capacity"))?;
-    std::str::from_utf8(bytes)
-        .map(str::to_owned)
-        .map_err(|_encoding| invalid("snapshot text is not UTF-8"))
+    std::str::from_utf8(bytes).map_err(|_encoding| invalid("snapshot text is not UTF-8"))
 }
 
 fn actors(
@@ -180,7 +191,7 @@ fn actors(
         let end = offset
             .checked_add(length)
             .ok_or_else(|| invalid("combatant length overflow"))?;
-        let name = text(payload, name_start, end)?;
+        let name = text(payload, name_start, end)?.to_owned();
         actors.push(CombatantSnapshot {
             name,
             is_ally: flags == 1,
@@ -252,28 +263,28 @@ pub(crate) fn decode_snapshot(
         .get(SNAPSHOT_HEADER..)
         .and_then(|bytes| bytes.get(..used))
         .ok_or_else(|| invalid("snapshot payload exceeds capacity"))?;
-    decode_result(
-        payload,
-        count,
-        CombatRevision {
+    let result = decode_result(payload, count)?;
+    Ok(Some(CombatSnapshot {
+        revision: CombatRevision {
             session,
             sequence: revision,
         },
         superseded_versions,
         is_import,
         status,
-    )
-    .map(Some)
+        zone: result.zone.to_owned(),
+        title: result.title.to_owned(),
+        character: result.character.to_owned(),
+        start_time: result.start_time,
+        end_time: result.end_time,
+        duration_ticks: result.duration_ticks,
+        damage: result.damage,
+        healed: result.healed,
+        combatants: result.combatants,
+    }))
 }
 
-pub(crate) fn decode_result(
-    payload: &[u8],
-    count: usize,
-    revision: CombatRevision,
-    superseded_versions: u64,
-    is_import: bool,
-    status: CombatSnapshotStatus,
-) -> Result<CombatSnapshot, Error> {
+pub(crate) fn decode_result(payload: &[u8], count: usize) -> Result<DecodedResult<'_>, Error> {
     let used = payload.len();
     if count > 65536 {
         return Err(invalid("too many combatants"));
@@ -305,11 +316,7 @@ pub(crate) fn decode_result(
     {
         return Err(invalid("invalid snapshot string/actor ranges"));
     }
-    Ok(CombatSnapshot {
-        revision,
-        superseded_versions,
-        is_import,
-        status,
+    Ok(DecodedResult {
         zone: text(payload, zone_offset, title_offset)?,
         title: text(payload, title_offset, character_offset)?,
         character: text(payload, character_offset, actors_offset)?,

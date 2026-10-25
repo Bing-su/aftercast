@@ -88,6 +88,29 @@ fn decoded(packet: &[u8]) -> CombatSnapshot {
 }
 
 #[rstest::rstest]
+fn decoded_result_borrows_metadata_but_owns_combatants() {
+    let wire = fixture();
+    let payload = wire.get(SNAPSHOT_HEADER..).expect("result payload");
+    let result = decode_result(payload, 1).expect("validated result");
+    let mut offset = RESULT_HEADER;
+    for (actual, expected) in [
+        (result.zone, ZONE),
+        (result.title, TITLE),
+        (result.character, CHARACTER),
+    ] {
+        assert_eq!(actual, expected);
+        assert_eq!(
+            actual.as_ptr(),
+            payload.get(offset..).expect("wire text").as_ptr()
+        );
+        offset += expected.len();
+    }
+    let actors = result.combatants;
+    drop(wire);
+    assert_eq!(actors.first().expect("owned actor").name, NAME);
+}
+
+#[rstest::rstest]
 fn owned_snapshot_preserves_unicode_nul_signed_values_and_float_bits() {
     let wire = fixture();
     let result = decoded(&wire);
