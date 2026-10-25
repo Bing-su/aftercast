@@ -12,6 +12,7 @@ public class Dnum : IComparable
         this.damageString = damageString;
     }
     public long Number => number;
+    internal string? RawDamageString => damageString;
     public string DamageString
     {
         get => string.IsNullOrEmpty(damageString) ? ToString() : damageString;

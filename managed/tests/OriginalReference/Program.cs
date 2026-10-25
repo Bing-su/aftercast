@@ -60,6 +60,9 @@ internal static class Program
                 "selective-parsing" when args.Length == 4 => RunReferenceProbe(args[3], "SelectiveParsingProbe", "Original selective parsing"),
                 "custom-trigger-models" when args.Length == 4 => RunReferenceProbe(args[3], "CustomTriggerProbe", "Original custom trigger models"),
                 "data-corrections" when args.Length == 4 => RunReferenceProbe(args[3], "DataCorrectionProbe", "Original data corrections"),
+                "encounter-xml" when args.Length == 4 => RunReferenceProbe(args[3], "EncounterXmlProbe", "Original encounter XML"),
+                "encounter-xml-import" when args.Length == 4 => RunReferenceProbe(args[3], "EncounterXmlProbe", "Original encounter XML import", "RunImport"),
+                "history-records" when args.Length == 4 => RunReferenceProbe(args[3], "HistoryRecordProbe", "Original history records"),
                 "eq2-timestamps" when args.Length == 4 => RunReferenceProbe(args[3], "Eq2TimestampProbe", "Original EQ2 timestamps"),
                 "benchmark-ui" when args.Length == 4 => RunReferenceProbe(args[3], "BenchmarkUiProbe", "Original Benchmark UI"),
                 "plugin-metadata" when args.Length == 4 => RunReferenceProbe(args[3], "PluginMetadataProbe", "Original plugin metadata"),
@@ -106,11 +109,11 @@ internal static class Program
             .GetMethod("Run", BindingFlags.Public | BindingFlags.Static)!.Invoke(null, [Path.GetFullPath(transcriptPath)])!);
         return 0;
     }
-    private static int RunReferenceProbe(string probePath, string probe, string stage)
+    private static int RunReferenceProbe(string probePath, string probe, string stage, string method = "Run")
     {
         var probes = AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.GetFullPath(probePath));
         Probe(stage, () => probes.GetType("Aftercast.LegacyReference." + probe, true)!
-            .GetMethod("Run")!.Invoke(null, null)!);
+            .GetMethod(method)!.Invoke(null, null)!);
         return 0;
     }
 

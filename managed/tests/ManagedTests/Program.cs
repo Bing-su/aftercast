@@ -35,7 +35,7 @@ internal static class Program
     {
         var mode = args[0];
         // Only the original-reference test calls ACT UI types before startup; ABI modes exercise normal binding.
-        if (OperatingSystem.IsLinux() && mode is "act" or "recorded-actions" or "selective-parsing" or "custom-trigger-models" or "data-corrections")
+        if (OperatingSystem.IsLinux() && mode is "act" or "recorded-actions" or "selective-parsing" or "custom-trigger-models" or "data-corrections" or "encounter-xml" or "history-records")
         {
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.dll"));
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.DataVisualization.dll"));
@@ -69,6 +69,9 @@ internal static class Program
             case "selective-parsing": ReferenceContract("SelectiveParsingProbe", "Selective parsing"); break;
             case "custom-trigger-models": ReferenceContract("CustomTriggerProbe", "Custom trigger models"); break;
             case "data-corrections": ReferenceContract("DataCorrectionProbe", "Data corrections"); break;
+            case "encounter-xml": ReferenceContract("EncounterXmlProbe", "Encounter XML export"); break;
+            case "encounter-xml-import": Platform.Prepare(); ReferenceContract("EncounterXmlProbe", "Encounter XML import", "RunImport"); break;
+            case "history-records": ReferenceContract("HistoryRecordProbe", "History record policies"); break;
             case "eq2-timestamps": ReferenceContract("Eq2TimestampProbe", "EQ2 timestamps"); break;
             case "benchmark-ui": ReferenceContract("BenchmarkUiProbe", "Benchmark UI"); break;
             case "external-benchmark": ExternalPluginChecks.Run(args[1], "ACT_Plugin.EventHandlerBenchmark", args[2], ExternalBenchmarkChecks.Run); break;
@@ -89,10 +92,10 @@ internal static class Program
         catch (TargetInvocationException error) when (error.InnerException is not null)
         { ExceptionDispatchInfo.Capture(error.InnerException).Throw(); throw; }
     }
-    private static void ReferenceContract(string probe, string expected)
+    private static void ReferenceContract(string probe, string expected, string method = "Run")
     {
         var probes = Assembly.LoadFrom(Path.GetFullPath("managed/tests/LegacyReference/bin/Release/net10.0/Aftercast.LegacyReference.dll"));
-        try { Check((string)probes.GetType("Aftercast.LegacyReference." + probe)!.GetMethod("Run")!.Invoke(null, null)! == expected); }
+        try { Check((string)probes.GetType("Aftercast.LegacyReference." + probe)!.GetMethod(method)!.Invoke(null, null)! == expected); }
         catch (TargetInvocationException error) when (error.InnerException is not null)
         { ExceptionDispatchInfo.Capture(error.InnerException).Throw(); throw; }
     }
@@ -274,6 +277,7 @@ internal static class Program
             DiagnosticAbiChecks.Run(session);
             SpeechChecks.Abi(session);
             ImportAbiChecks.Run(session);
+            ArchiveAbiChecks.Run(session);
             LogAbiChecks.Run(session);
             CombatSnapshotAbiChecks.Run(session);
             CombatQueryAbiChecks.Run(session);
@@ -504,6 +508,7 @@ internal static class Program
         ParentSettingsChecks.Run();
         CustomTriggerChecks.Run();
         DataCorrectionChecks.Run();
+        EncounterArchiveChecks.Run();
         RootCombatStateChecks.Run();
         RootActionChecks.Run();
         HitRateColumnChecks.Run();

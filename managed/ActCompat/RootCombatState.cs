@@ -94,6 +94,13 @@ public partial class FormActMain
                 if (combatZone.PopulateAll) combatZone.Items[0].EndCombat(false);
                 encounter.EndCombat(true);
             }
+            if (encounter.Items.Count > 0)
+            {
+                // Capture the source hint before import restoration switches back to the live log path.
+                encounter.HistoryRecord = new(1, encounter.StartTime, encounter.EndTime, encounter.Title ?? "", encounter.CharName,
+                    Path.GetDirectoryName(logFilePath) ?? "");
+                EncDatabaseAdd(encounter.HistoryRecord);
+            }
             // The public wrapper clears InCombat and drains queued actions before finalizing this graph.
             return LastEncounterEvent(encounter);
         }

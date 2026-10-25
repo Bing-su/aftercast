@@ -41,6 +41,12 @@ internal sealed class PluginSession
         return callbacks;
     }
     internal void EndCombat() => OnOwner(() => { environment?.EndCombat(); return 0; });
+    internal int ArchiveOperation(int command, string text, ulong id, bool compressed) => OnOwner(() =>
+    {
+        if (command is 1 or 4 && !plugins.Values.Any(plugin => plugin.State == PluginState.Initialized))
+            throw new InvalidOperationException("Archive reconstruction requires initialized parser categories");
+        return Host().ArchiveOperation(command, text, id, compressed);
+    });
     internal void EnsureCanStop() => environment?.EnsureCanStop();
     internal ulong SubscribeLogs(int maxRecords, int maxBytes) => OnOwner(() => logs.Subscribe(maxRecords, maxBytes));
     internal void UnsubscribeLogs(ulong id) => OnOwner(() => { logs.Unsubscribe(id); return 0; });

@@ -131,6 +131,18 @@ run_windows = [
   'dotnet exec --runtimeconfig crates/aftercast/managed/Aftercast.Bridge.runtimeconfig.windows.json managed/tests/OriginalReference/bin/Release/net10.0/Aftercast.OriginalReference.dll "{{vars.act}}" {{vars.forms}} parent-settings {{vars.reference_probe}}',
 ]
 
+[tasks."test:encounter-archives"]
+description = "Compare ACT XML/gzip and history-record contracts against genuine ACT"
+depends = ["managed:references"]
+run = [
+  "{{vars.managed_tests}} encounter-xml",
+  "{{vars.managed_tests}} encounter-xml-import",
+  "{{vars.managed_tests}} history-records",
+  '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} encounter-xml {{vars.reference_probe}}',
+  '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} encounter-xml-import {{vars.reference_probe}}',
+  '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} history-records {{vars.reference_probe}}',
+]
+
 [tasks."test:selective-parsing"]
 description = "Compare selected attacker/victim routing with genuine ACT"
 depends = ["managed:references"]

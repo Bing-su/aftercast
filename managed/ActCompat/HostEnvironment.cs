@@ -122,6 +122,7 @@ namespace Aftercast.ActCompat
             {
                 main.LoadCustomTriggers(Path.Combine(directory, "CustomTriggers.xml"));
                 main.LoadDataCorrections(Path.Combine(directory, "DataCorrections.xml"));
+                main.LoadHistoryIndex();
                 main.Controls.Add(main.OptionsTreeView);
                 main.OptionsTreeView.Nodes.Add("Data Correction");
                 if (OperatingSystem.IsWindows()) main.InitializeNativePluginTabs();
@@ -166,6 +167,7 @@ namespace Aftercast.ActCompat
         public string[] RecentDiagnostics => main.RecentDiagnostics;
         public Tuple<long, string[]> DiagnosticsSnapshot => main.DiagnosticsSnapshot;
         public ImportResult ImportLog(string path) => main.ImportLog(path);
+        public int ArchiveOperation(int command, string text, ulong id, bool compressed) => main.ArchiveOperation(command, text, id, compressed);
         public CombatSnapshotData? ReadCombatSnapshot(ulong afterRevision) => main.ReadCombatSnapshot(afterRevision);
         public CombatPage<EncounterSummaryData> ListEncounters(int offset, int limit) => main.ListEncounters(offset, limit);
         public EncounterDetailData? ReadEncounter(ulong id, bool live) => main.ReadEncounter(id, live);
