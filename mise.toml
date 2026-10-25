@@ -66,6 +66,11 @@ description = "Check independent WinForms and chart contracts"
 depends = ["winforms:build"]
 run = "dotnet run --project crates/aftercast-winforms/managed/tests/ContractTests.csproj -c Release -p:RestoreLockedMode=true"
 
+[tasks."test:winforms-load"]
+description = "Measure headless lookups, tree paths and disposal allocations"
+depends = ["winforms:build"]
+run = "dotnet run --project crates/aftercast-winforms/managed/tests/ContractTests.csproj -c Release -p:RestoreLockedMode=true -- load"
+
 [tasks."test:hosting"]
 description = "Check CLR lifecycle and diagnostics (DOTNET_ROOT required)"
 depends = ["managed:build"]

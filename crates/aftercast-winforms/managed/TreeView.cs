@@ -21,8 +21,19 @@ public class TreeNode : MarshalByRefObject
     public TreeNode? Parent => Owner?.Parent;
     public TreeView? TreeView => Owner?.Tree;
     public int Index => Owner?.IndexOf(this) ?? -1;
-    public string FullPath => TreeView is null ? throw new InvalidOperationException("Node is not in a TreeView") :
-        Parent is null ? Text : Parent.FullPath + TreeView.PathSeparator + Text;
+    public string FullPath
+    {
+        get
+        {
+            var tree = TreeView ?? throw new InvalidOperationException("Node is not in a TreeView");
+            if (Parent is null) return Text;
+            // Build once from live names, e.g. moving a subtree or changing PathSeparator needs no cache invalidation.
+            var parts = new List<string>();
+            for (TreeNode? node = this; node is not null; node = node.Parent) parts.Add(node.Text);
+            parts.Reverse();
+            return string.Join(tree.PathSeparator, parts);
+        }
+    }
     public void Remove() => Owner?.Remove(this);
 }
 
@@ -32,7 +43,15 @@ public class TreeNodeCollection : IEnumerable
     private readonly TreeView? tree;
     internal TreeNodeCollection(TreeNode? parent, TreeView? tree) { Parent = parent; this.tree = tree; }
     internal TreeNode? Parent { get; }
-    internal TreeView? Tree => tree ?? Parent?.TreeView;
+    internal TreeView? Tree
+    {
+        get
+        {
+            var collection = this;
+            while (collection.Parent?.Owner is { } owner) collection = owner;
+            return collection.tree;
+        }
+    }
     public int Count => nodes.Count;
     public TreeNode this[int index] => nodes[index];
     public TreeNode Add(string text) { var node = new TreeNode(text); Add(node); return node; }

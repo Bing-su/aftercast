@@ -42,6 +42,9 @@ internal static class ControlInvokeContracts
         using var control = Create(context);
         var ownerThread = Environment.CurrentManagedThreadId;
         var callbackError = new InvalidOperationException("owner callback failure");
+        var wrapped = new System.Reflection.TargetInvocationException(callbackError);
+        try { control.Invoke((Action)(() => throw wrapped)); throw new Exception("Callback exception swallowed"); }
+        catch (System.Reflection.TargetInvocationException error) { Check(ReferenceEquals(error, wrapped)); }
         Exception? failure = null;
         var executed = 0;
         var worker = new Thread(() =>

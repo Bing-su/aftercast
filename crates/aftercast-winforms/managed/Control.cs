@@ -21,22 +21,25 @@ public class Control : Component
     {
         if (disposed || Disposing) return;
         Disposing = true;
-        var errors = new List<Exception>();
+        List<Exception>? errors = null;
         try
         {
             if (disposing)
             {
                 Parent?.Controls.Remove(this);
-                // Attempt every child even when a plugin's disposal callback fails.
-                foreach (Control child in Controls.Cast<Control>().ToArray())
-                    try { child.Dispose(); } catch (Exception error) { errors.Add(error); }
-                Controls.Clear();
+                if (controls is { } owned)
+                {
+                    // Snapshot siblings before callbacks, e.g. disposing one child may reparent another.
+                    foreach (var child in owned.Snapshot())
+                        try { child.Dispose(); } catch (Exception error) { (errors ??= new()).Add(error); }
+                    owned.Clear();
+                }
             }
             disposed = true;
-            try { base.Dispose(disposing); } catch (Exception error) { errors.Add(error); }
+            try { base.Dispose(disposing); } catch (Exception error) { (errors ??= new()).Add(error); }
         }
         finally { Disposing = false; }
-        if (errors.Count != 0) throw new AggregateException("Control disposal failed", errors);
+        if (errors is not null) throw new AggregateException("Control disposal failed", errors);
     }
 
     private Point location;
@@ -74,6 +77,8 @@ public class Control : Component
     {
         if (InvokeRequired) throw new PlatformNotSupportedException("The caller-owned UI context did not dispatch to the control's owner thread");
         ObjectDisposedException.ThrowIf(IsDisposed, this);
+        // Common UI callbacks need no reflection; direct invocation also preserves the thrown exception object.
+        if (method is Action action) { action(); return null; }
         try { return method.DynamicInvoke(); }
         catch (System.Reflection.TargetInvocationException error) when (error.InnerException is not null)
         { System.Runtime.ExceptionServices.ExceptionDispatchInfo.Capture(error.InnerException).Throw(); throw; }
@@ -137,8 +142,16 @@ public class Control : Component
         internal ControlCollection(Control owner) { this.owner = owner; }
         public int Count => children.Count;
         public Control this[int index] => children[index];
-        public virtual Control? this[string key] => string.IsNullOrEmpty(key) ? null :
-            children.Find(child => string.Equals(child.Name, key, StringComparison.OrdinalIgnoreCase));
+        public virtual Control? this[string key]
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(key)) return null;
+                foreach (var child in children)
+                    if (string.Equals(child.Name, key, StringComparison.OrdinalIgnoreCase)) return child;
+                return null;
+            }
+        }
         public virtual void Add(Control? value)
         {
             if (value is null) return;
@@ -159,10 +172,13 @@ public class Control : Component
         }
         public virtual void Remove(Control? value)
         {
-            var index = children.FindIndex(child => ReferenceEquals(child, value));
-            if (index < 0) return;
-            children.RemoveAt(index);
-            value!.SetParent(null);
+            for (var index = 0; index < children.Count; index++)
+            {
+                if (!ReferenceEquals(children[index], value)) continue;
+                children.RemoveAt(index);
+                value!.SetParent(null);
+                return;
+            }
         }
         public virtual void Clear()
         {
@@ -170,6 +186,7 @@ public class Control : Component
             children.Clear();
         }
         public IEnumerator GetEnumerator() => children.GetEnumerator();
+        internal Control[] Snapshot() => children.ToArray();
     }
     // Update the backing field without re-entering the public reparenting operation.
     private void SetParent(Control? value) => parent = value;

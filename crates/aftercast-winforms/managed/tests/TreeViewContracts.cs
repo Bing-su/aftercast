@@ -21,6 +21,22 @@ internal static class TreeViewContracts
         second.Nodes.Clear();
         try { child.Nodes.Add(parent); throw new Exception("Tree cycle accepted"); }
         catch (ArgumentException) { }
+        const int depth = 2048;
+        var leaf = second.Nodes.Add("root");
+        var names = new List<string> { "root" };
+        for (var index = 1; index < depth; index++)
+        {
+            leaf = leaf.Nodes.Add("node");
+            names.Add("node");
+        }
+        if (leaf.TreeView != second || leaf.FullPath != string.Join('/', names))
+            throw new Exception("Deep tree traversal lost ownership or path segments");
+        second.Nodes[0].Text = "renamed";
+        second.PathSeparator = "::";
+        names[0] = "renamed";
+        if (leaf.FullPath != string.Join("::", names)) throw new Exception("Deep paths retained stale names or separators");
+        second.Nodes.Clear();
+        if (leaf.TreeView is not null) throw new Exception("Detached deep subtree retained its tree");
         Console.WriteLine("Independent tree-node paths, subtree ownership, reattachment and cycle rejection passed.");
     }
 }

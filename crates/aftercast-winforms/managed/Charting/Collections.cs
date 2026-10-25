@@ -8,23 +8,37 @@ public abstract class ChartElementCollection<T> : Collection<T> where T : ChartE
 public abstract class ChartNamedElementCollection<T> : ChartElementCollection<T> where T : ChartNamedElement
 {
     protected abstract string NamePrefix { get; }
-    public T this[string name] => this.FirstOrDefault(item => item.Name == name)
-        ?? throw new ArgumentException("Chart element name was not found", nameof(name));
+    public T this[string name]
+    {
+        get
+        {
+            for (var index = 0; index < Count; index++)
+                if (this[index].Name == name) return this[index];
+            throw new ArgumentException("Chart element name was not found", nameof(name));
+        }
+    }
+
+    private bool Available(string name, T? except)
+    {
+        for (var index = 0; index < Count; index++)
+            if (!ReferenceEquals(this[index], except) && this[index].Name == name) return false;
+        return true;
+    }
 
     private void Attach(T item, int replacing = -1)
     {
         ArgumentNullException.ThrowIfNull(item);
         if (item.NameAvailable is not null) throw new ArgumentException("Chart element already belongs to a collection", nameof(item));
-        bool Available(string name) => this.Where((_, index) => index != replacing).All(existing => existing.Name != name);
+        var previous = replacing < 0 ? null : this[replacing];
         if (item.Name.Length == 0)
         {
             var suffix = 1;
-            while (!Available(NamePrefix + suffix)) suffix++;
+            while (!Available(NamePrefix + suffix, previous)) suffix++;
             item.Name = NamePrefix + suffix;
         }
-        if (!Available(item.Name)) throw new ArgumentException("Chart element name already exists", nameof(item));
+        if (!Available(item.Name, previous)) throw new ArgumentException("Chart element name already exists", nameof(item));
         // Check live names, so renames cannot introduce duplicates or leave a stale lookup index.
-        item.NameAvailable = name => this.All(existing => ReferenceEquals(existing, item) || existing.Name != name);
+        item.NameAvailable = name => Available(name, item);
     }
     protected override void InsertItem(int index, T item)
     {

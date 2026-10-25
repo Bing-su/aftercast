@@ -70,8 +70,16 @@ public class ListView : Control
         public int Count => items.Count;
         public ListViewItem this[int index] => items[index];
         // Read current names on every lookup; plugins assign Name after adding a row.
-        public ListViewItem? this[string key] => string.IsNullOrEmpty(key) ? null :
-            items.Find(item => string.Equals(item.Name, key, StringComparison.OrdinalIgnoreCase));
+        public ListViewItem? this[string key]
+        {
+            get
+            {
+                if (string.IsNullOrEmpty(key)) return null;
+                foreach (var item in items)
+                    if (string.Equals(item.Name, key, StringComparison.OrdinalIgnoreCase)) return item;
+                return null;
+            }
+        }
         public bool ContainsKey(string key) => this[key] is not null;
         public ListViewItem Add(ListViewItem value)
         {
@@ -129,10 +137,11 @@ public class ListViewItem
 
     public class ListViewSubItemCollection : IEnumerable
     {
-        private readonly List<ListViewSubItem> items = [];
+        private readonly List<ListViewSubItem> items;
         internal ListViewSubItemCollection(string[]? values)
         {
             // Subitem zero is the item's text, including when the input array is empty.
+            items = new(values is { Length: > 0 } ? values.Length : 1);
             if (values is not { Length: > 0 }) items.Add(new ListViewSubItem());
             else foreach (var value in values) items.Add(new ListViewSubItem { Text = value });
         }

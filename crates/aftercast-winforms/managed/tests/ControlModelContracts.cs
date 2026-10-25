@@ -61,6 +61,15 @@ internal static class ControlModelContracts
         Check(root.IsDisposed && !root.Disposing && child.IsDisposed && first.IsDisposed && last.IsDisposed);
         Check(root.Controls.Count == 0 && child.Parent is null);
         root.Dispose();
+        using var parent = new Panel();
+        using var destination = new Panel();
+        var moving = new Label();
+        var sibling = new Label();
+        parent.Controls.AddRange([moving, sibling]);
+        // Disposal must visit its original siblings even when a callback moves one into another parent.
+        moving.Disposed += (_, _) => destination.Controls.Add(sibling);
+        parent.Dispose();
+        Check(moving.IsDisposed && sibling.IsDisposed && destination.Controls.Count == 0);
         Console.WriteLine("Control geometry, reparenting, cycle rejection and complete child cleanup passed.");
     }
 }

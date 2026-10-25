@@ -1,5 +1,7 @@
 using System.Windows.Forms;
 
+if (args is ["load"]) { LoadChecks.Run(); return; }
+
 // Check the standalone managed contract without loading ACT or its bridge.
 static void Check(bool condition) { if (!condition) throw new Exception("WinForms compatibility contract check failed"); }
 var assembly = typeof(TabPage).Assembly;
