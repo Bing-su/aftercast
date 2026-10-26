@@ -42,9 +42,11 @@ prior Windows runtime/native-audio evidence does not establish the new process p
 | Parent exits without Rust destructors                                                          | Linux parent-death signal / Windows job kills the stuck worker; state can be reopened                      |
 | Audio destructor waits for owner-dispatched work                                               | Replacement and shutdown continue owner pumping until the backend releases                                 |
 
-Build/deploy `aftercast-worker` with the same crate version and desired audio
-features. Set `AFTERCAST_WORKER` to its absolute path for Rust examples. The test
-harness uses Cargo's built binary path; no global executable installation is used.
+The application calls `run_child_if_requested` before initializing its UI/runtime;
+Host relaunches that same executable with `--aftercast-child`. No standalone worker
+or worker-path environment variable is used. `test:application` builds an app-shaped
+fixture for integration harnesses with generated entry points. The default-path
+regression launches its normal branch and verifies same-file child execution.
 
 | Regression / cleanup                                        | Verification                                                                                                                                                        |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |

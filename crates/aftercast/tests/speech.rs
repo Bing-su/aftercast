@@ -1,84 +1,9 @@
 mod common;
 
 use aftercast::{AudioSettings, Error, Host, PluginConfig};
-use aftercast_tts::{Backend, Cancellation, SoundBackend, SoundRequest, Utterance};
 use camino::Utf8Path;
 use common::{Deployment, deployment};
-use std::io::Write;
 use std::time::Duration;
-
-struct Recorder {
-    file: std::fs::File,
-    state: camino::Utf8PathBuf,
-    speech: bool,
-}
-impl Drop for Recorder {
-    fn drop(&mut self) {
-        if self.speech && self.state.join("audio.probe").exists() {
-            std::fs::write(self.state.join("audio.retiring"), "waiting")
-                .expect("retirement marker");
-            while !self.state.join("audio.released").exists() {
-                std::thread::sleep(Duration::from_millis(1));
-            }
-        }
-    }
-}
-impl Recorder {
-    fn record(&mut self, text: &str, volume: u8) -> Result<(), aftercast_tts::Error> {
-        writeln!(self.file, "{volume}|{text}")
-            .map_err(|error| aftercast_tts::Error::Backend(error.to_string()))?;
-        if text == "fail" {
-            return Err(aftercast_tts::Error::Backend(
-                "fixture playback failure".into(),
-            ));
-        }
-        Ok(())
-    }
-}
-impl Backend for Recorder {
-    fn speak(&mut self, request: &Utterance, _: &Cancellation) -> Result<(), aftercast_tts::Error> {
-        self.record(&request.text, request.volume)
-    }
-}
-impl SoundBackend for Recorder {
-    fn play(
-        &mut self,
-        request: &SoundRequest,
-        _: &Cancellation,
-    ) -> Result<(), aftercast_tts::Error> {
-        self.record(&request.source, request.volume)
-    }
-}
-fn recorder(state: &Utf8Path, name: &str) -> Result<Recorder, aftercast_tts::Error> {
-    std::fs::OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open(state.join(name))
-        .map(|file| Recorder {
-            file,
-            state: state.to_owned(),
-            speech: name == "tts.txt",
-        })
-        .map_err(|error| aftercast_tts::Error::Backend(error.to_string()))
-}
-
-#[test]
-fn audio_worker_entry() {
-    // Running this test binary as the worker keeps injected backends inside the isolation boundary.
-    if std::env::var_os("AFTERCAST_WORKER_ENDPOINT").is_some() {
-        aftercast::run_worker_with_audio(
-            |state| {
-                let backend = recorder(state, "tts.txt")?;
-                aftercast_tts::Speaker::new(|| Ok(backend))
-            },
-            |state| {
-                let backend = recorder(state, "sound.txt")?;
-                aftercast_tts::SoundPlayer::new(|| Ok(backend))
-            },
-        )
-        .expect("audio worker");
-    }
-}
 
 async fn plugin(host: &Host, name: &str) {
     let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
@@ -100,11 +25,7 @@ async fn plugin(host: &Host, name: &str) {
 #[ignore = "requires .NET 10 and fixture; run mise run test:plugins"]
 async fn audio_is_created_played_and_disposed_in_the_worker(deployment: Deployment) {
     assert!(deployment.state.starts_with(deployment.directory()));
-    let executable = std::env::current_exe().expect("test worker path");
-    let worker = Utf8Path::from_path(&executable).expect("UTF-8 test path");
-    let mut host = Host::start(deployment.config_with_worker(worker))
-        .await
-        .expect("host");
+    let mut host = Host::start(deployment.config()).await.expect("host");
     assert_ne!(host.process_id(), std::process::id());
     host.set_tts(true).await.expect("TTS");
     host.set_sound_player(true).await.expect("sound");
@@ -178,11 +99,7 @@ async fn audio_is_created_played_and_disposed_in_the_worker(deployment: Deployme
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires .NET 10 and fixture; run mise run test:plugins"]
 async fn shutdown_retires_audio_before_disposing_its_owner_context(deployment: Deployment) {
-    let executable = std::env::current_exe().expect("test worker path");
-    let worker = Utf8Path::from_path(&executable).expect("UTF-8 test path");
-    let host = Host::start(deployment.config_with_worker(worker))
-        .await
-        .expect("host");
+    let host = Host::start(deployment.config()).await.expect("host");
     host.set_tts(true).await.expect("TTS");
     plugin(&host, "AudioCleanupPlugin").await;
     std::fs::write(deployment.state.join("audio.probe"), "enabled").expect("probe");

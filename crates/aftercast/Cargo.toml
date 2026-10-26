@@ -14,6 +14,10 @@ include = [
 ]
 publish.workspace = true
 
+[[example]]
+name = "test-application"
+path = "tests/support/application.rs"
+
 [dependencies]
 aftercast-tts = { workspace = true, default-features = false }
 bon.workspace = true

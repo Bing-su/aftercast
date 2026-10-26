@@ -2,7 +2,8 @@
 //!
 //! Provides asynchronous host/plugin lifecycles, cancellable imports, log batches and owned combat results.
 //! Call [`extract_bridge`] once to deploy the bundled, prebuilt C# component, then use
-//! [`Host::start`] with a matching worker executable and a trusted .NET 10 installation.
+//! [`Host::start`] with a trusted .NET 10 installation. Call [`run_child_if_requested`]
+//! first in the application's main function to support isolated child execution.
 //! No SDK or download is used at runtime.
 
 mod archives;
@@ -17,8 +18,7 @@ mod logs;
 mod plugins;
 mod process;
 mod runtime;
-/// Entry point for the separately deployed worker executable.
-pub use process::{run_worker, run_worker_with_audio};
+pub use process::{run_child_if_requested, run_child_if_requested_with_audio};
 mod snapshots;
 mod speech;
 pub use speech::AudioSettings;

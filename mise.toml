@@ -73,17 +73,23 @@ run = "dotnet run --project crates/aftercast-winforms/managed/tests/ContractTest
 
 [tasks."test:hosting"]
 description = "Check CLR lifecycle and diagnostics (DOTNET_ROOT required)"
-depends = ["managed:build"]
+depends = ["managed:build", "test:application"]
 run = "cargo test -p aftercast --lib --test hosting -- --ignored"
 
 [tasks."test:plugins"]
 description = "Check plugin lifecycle and owned output (DOTNET_ROOT required)"
-depends = ["managed:test-runner"]
+depends = ["managed:test-runner", "test:application"]
 run = [
   "dotnet build managed/tests/PluginFixture/PluginFixture.csproj -c Release -p:RestoreLockedMode=true",
   "{{vars.managed_tests}} plugins",
   "cargo test -p aftercast --test plugins --test lifecycle --test import --test logs --test snapshots --test speech --test archives --test async_host --test process_isolation -- --ignored",
 ]
+
+[tasks."test:application"]
+hide = true
+description = "Build the application entry-point fixture used by process integration checks"
+depends = ["managed:build"]
+run = "cargo build -p aftercast --example test-application"
 
 [tasks."test:log-load"]
 description = "Measure synthetic log-buffer load and loss accounting"

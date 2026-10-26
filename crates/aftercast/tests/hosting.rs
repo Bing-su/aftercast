@@ -2,10 +2,12 @@ use std::env;
 
 use aftercast::{Error, Host, HostConfig, extract_bridge};
 use camino::Utf8Path;
+#[path = "support/mod.rs"]
+mod support;
 
 fn config(root: &Utf8Path, bridge: &Utf8Path) -> HostConfig {
     HostConfig::builder()
-        .worker_executable(env!("CARGO_BIN_EXE_aftercast-worker"))
+        .application_executable(support::application())
         .dotnet_root(root)
         .data_directory(bridge.join("state"))
         .bridge_directory(bridge)
@@ -94,7 +96,7 @@ async fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
     std::fs::write(&blocked_state, b"preserve existing state path")
         .expect("create blocked state fixture");
     let blocked = HostConfig::builder()
-        .worker_executable(env!("CARGO_BIN_EXE_aftercast-worker"))
+        .application_executable(support::application())
         .dotnet_root(root)
         .bridge_directory(&bridge)
         .data_directory(&blocked_state)

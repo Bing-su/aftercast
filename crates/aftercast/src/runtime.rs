@@ -20,9 +20,9 @@ pub struct HostConfig {
     pub(crate) bridge_directory: Utf8PathBuf,
     #[builder(into)]
     pub(crate) data_directory: Utf8PathBuf,
-    /// Worker built from the same aftercast version and with the desired audio features.
+    /// Defaults to the current application executable. Override for an embedding test harness or launcher.
     #[builder(into)]
-    pub(crate) worker_executable: Utf8PathBuf,
+    pub(crate) application_executable: Option<Utf8PathBuf>,
     /// Includes worker launch, authentication and CLR initialization.
     #[builder(default = Duration::from_secs(30))]
     pub(crate) startup_timeout: Duration,
@@ -56,7 +56,7 @@ pub(crate) enum Request {
     Archive,
 }
 
-// The local variant is constructed only by run_worker; library clients always use IPC.
+// The local variant is constructed only in child mode; library clients always use IPC.
 pub(crate) enum ManagedSession {
     Local(Box<crate::local_runtime::ManagedSession>),
     Remote(RefCell<process::RemoteSession>),

@@ -10,6 +10,61 @@ fn config(deployment: &Deployment) -> HostConfig {
     config.shutdown_timeout = Duration::from_millis(150);
     config
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and built app fixture; run mise run test:plugins"]
+async fn application_relaunches_itself_without_a_worker_path(deployment: Deployment) {
+    let application = common::application();
+    let process = std::process::Command::new(&application)
+        .arg(std::env::var("DOTNET_ROOT").expect("runtime"))
+        .arg(&deployment.bridge)
+        .arg(&deployment.state)
+        .env_remove("AFTERCAST_WORKER_ENDPOINT")
+        .spawn()
+        .expect("launch normal app branch");
+    let mut process = scopeguard::guard(process, |mut process| {
+        drop(process.kill());
+        drop(process.wait());
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(status) = process.try_wait().expect("app status") {
+            assert!(status.success());
+            break;
+        }
+        assert!(
+            Instant::now() < deadline,
+            "same-executable child did not exit"
+        );
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let marker = std::fs::read_to_string(deployment.state.join("app.started"))
+        .expect("normal branch started");
+    let ids: Vec<u32> = marker
+        .split_whitespace()
+        .map(|part| part.parse().expect("process id"))
+        .collect();
+    assert_eq!(ids.len(), 2);
+    assert_ne!(
+        ids.first(),
+        ids.get(1),
+        "the app must host CLR in its child"
+    );
+}
+
+#[test]
+#[ignore = "requires built app fixture; run mise run test:plugins"]
+fn unauthenticated_child_mode_does_not_fall_through_to_application_startup() {
+    let output = std::process::Command::new(common::application())
+        .arg("--aftercast-child")
+        .env_remove("AFTERCAST_WORKER_ENDPOINT")
+        .stdin(std::process::Stdio::null())
+        .output()
+        .expect("child mode");
+    assert!(!output.status.success());
+    assert!(String::from_utf8_lossy(&output.stderr).contains("worker IPC"));
+}
 async fn entered(deployment: &Deployment) {
     let deadline = Instant::now() + Duration::from_secs(5);
     while !deployment.state.join("stuck.entered").exists() {
@@ -236,7 +291,7 @@ async fn startup_deadline_covers_a_worker_that_never_authenticates(deployment: D
         .dotnet_root(std::env::var("DOTNET_ROOT").expect("runtime"))
         .bridge_directory(&deployment.bridge)
         .data_directory(&deployment.state)
-        .worker_executable(worker)
+        .application_executable(worker)
         .startup_timeout(Duration::from_millis(100))
         .build();
     let error = tokio::time::timeout(Duration::from_secs(3), Host::start(config))
@@ -268,7 +323,7 @@ fn exiting_parent_entry() {
             .dotnet_root(std::env::var("DOTNET_ROOT").expect("runtime"))
             .bridge_directory(std::env::var("AFTERCAST_TEST_BRIDGE").expect("bridge"))
             .data_directory(camino::Utf8PathBuf::try_from(state).expect("state path"))
-            .worker_executable(env!("CARGO_BIN_EXE_aftercast-worker"))
+            .application_executable(common::application())
             .build();
         let host = Host::start(config).await.expect("nested worker");
         let state = camino::Utf8PathBuf::from(

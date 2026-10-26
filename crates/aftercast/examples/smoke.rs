@@ -1,7 +1,15 @@
 use aftercast::{Host, HostConfig, extract_bridge};
 
-#[tokio::main(flavor = "current_thread")]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    if aftercast::run_child_if_requested()? {
+        return Ok(());
+    }
+    tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()?
+        .block_on(run())
+}
+async fn run() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args_os().skip(1);
     let root = camino::Utf8PathBuf::try_from(
         args.next()
@@ -14,7 +22,6 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     extract_bridge(&directory)?;
     let config = HostConfig::builder()
-        .worker_executable(std::env::var("AFTERCAST_WORKER")?)
         .dotnet_root(root)
         .data_directory(directory.join("state"))
         .bridge_directory(&directory)

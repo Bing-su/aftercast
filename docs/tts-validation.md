@@ -21,8 +21,8 @@ adds effects and spell-timer cues; notification windows remain unsupported.
 | Rust host                  | Explicit backend injection, automatic delivery, async error reception and shutdown                        |
 
 For standalone playback, add `aftercast-tts` directly to your application's dependencies.
-ACT host playback runs inside `aftercast-worker`; build that executable with `--features audio`.
-Custom worker executables call `run_worker_with_audio` to construct their own backends.
+ACT host playback runs in the application's child mode; build the app with `aftercast/audio`.
+Call `run_child_if_requested_with_audio` first in main to construct custom backends only in the child.
 
 ```toml
 [dependencies]

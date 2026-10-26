@@ -7,12 +7,18 @@ plugin deployment. No SDK, runtime download or plugin sandbox is provided.
 ```rust,no_run
 use aftercast::{extract_bridge, Host, HostConfig};
 
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Dispatch before constructing a UI or executor; child mode never opens the app window.
+    if aftercast::run_child_if_requested()? { return Ok(()); }
+    tokio::runtime::Builder::new_current_thread().enable_all().build()?.block_on(run())?;
+    Ok(())
+}
+
 async fn run() -> Result<(), aftercast::Error> {
     // Extraction is an explicit deployment step; a new directory preserves existing files.
     extract_bridge("/private/app-data/bridge-0.1.0")?;
     let host = Host::start(HostConfig::builder()
         .dotnet_root("/usr/lib/dotnet")
-        .worker_executable("/private/app-bin/aftercast-worker")
         .data_directory("/private/app-data/state")
         .bridge_directory("/private/app-data/bridge-0.1.0")
         .build()).await?;
@@ -34,17 +40,20 @@ async fn run() -> Result<(), aftercast::Error> {
 | Failures     | Command errors return directly; consume playback failures with `next_audio_error().await`; 32 unconsumed audio errors cause host failure               |
 | Lifetime     | Every Host starts a new process and session; a file lock prevents concurrent ownership of the same state directory                                     |
 
-Build and deploy the matching worker with `cargo build -p aftercast --bin aftercast-worker`
-(add `--features audio` for system audio). Supply its explicit path in HostConfig;
-examples read it from `AFTERCAST_WORKER`. Startup has a separate 30-second default deadline.
+Host relaunches the current application executable with `--aftercast-child`.
+No separate worker binary or executable-path setting is required. Call
+`run_child_if_requested()` first in main, before UI/executor initialization. Build
+the app with `aftercast/audio` for system audio. `application_executable` is an
+optional override for embedding harnesses/launchers; ordinary UI apps omit it.
+Startup has a separate 30-second default deadline.
 After either graceful shutdown or `ShutdownTimeout`, call `Host::start` with the same
 configuration and explicitly recreate/initialize plugins. Restart never silently replays commands.
 Forced termination can discard in-memory encounters and interrupt plugin settings writes.
 Isolation provides a process lifetime boundary, not a filesystem/network security sandbox.
 
 `set_tts(true)` and `set_sound_player(true)` construct backends in the child;
-clear methods disable them. Custom backends use a matching custom executable calling
-`run_worker_with_audio`, with factories that execute inside that child.
+clear methods disable them. Custom backends use `run_child_if_requested_with_audio`
+at the same application entry point, with factories that execute only inside its child.
 
 Create all plugins in a startup batch before initializing any of them, then
 initialize in dependency order. Automatic pumping marks startup complete after

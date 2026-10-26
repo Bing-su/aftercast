@@ -19,6 +19,7 @@ use crate::{Error, io_error};
 
 const MAX_FRAME: usize = 128 * 1024 * 1024;
 const TICK: Duration = Duration::from_millis(5);
+const CHILD_ARGUMENT: &str = "--aftercast-child";
 
 fn bind_parent(parent: u32) -> Result<(), Error> {
     #[cfg(target_os = "linux")]
@@ -364,12 +365,18 @@ impl RemoteSession {
         }
         config.dotnet_root = crate::runtime::canonicalize(&config.dotnet_root)?;
         config.bridge_directory = crate::runtime::canonicalize(&config.bridge_directory)?;
-        config.worker_executable = crate::runtime::canonicalize(&config.worker_executable)?;
+        let executable = match &config.application_executable {
+            Some(path) => path.clone(),
+            None => camino::Utf8PathBuf::try_from(std::env::current_exe().map_err(transport)?)
+                .map_err(transport)?,
+        };
+        let executable = crate::runtime::canonicalize(&executable)?;
         let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).map_err(transport)?;
         listener.set_nonblocking(true).map_err(transport)?;
         let mut token = [0; 32];
         getrandom::fill(&mut token).map_err(transport)?;
-        let mut child = Command::new(&config.worker_executable)
+        let mut child = Command::new(&executable)
+            .arg(CHILD_ARGUMENT)
             .env(
                 "AFTERCAST_WORKER_ENDPOINT",
                 listener.local_addr().map_err(transport)?.to_string(),
@@ -378,7 +385,7 @@ impl RemoteSession {
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .spawn()
-            .map_err(|error| io_error(&config.worker_executable, error))?;
+            .map_err(|error| io_error(&executable, error))?;
         control.process_id.store(child.id(), Ordering::Release);
         let mut input = child
             .stdin
@@ -502,10 +509,10 @@ impl RemoteSession {
     }
 }
 
-/// Runs the private authenticated IPC worker. Use the matching `aftercast-worker` executable.
-/// Custom audio backends belong in a custom worker, never in the parent application's address space.
-pub fn run_worker() -> Result<(), Error> {
-    run_worker_with_audio(
+/// Call first in main, before starting a UI or async runtime. Returns true after child mode ends.
+/// Normal launches return false; `--aftercast-child` requires an authenticated supervisor launch.
+pub fn run_child_if_requested() -> Result<bool, Error> {
+    run_child_if_requested_with_audio(
         |_| aftercast_tts::Speaker::system(),
         |_| {
             #[cfg(feature = "audio")]
@@ -522,9 +529,20 @@ pub fn run_worker() -> Result<(), Error> {
     )
 }
 
-/// Custom workers can construct their own backends, e.g. an application-specific synthesizer.
-/// Factories execute in the worker and receive its private state directory.
-pub fn run_worker_with_audio(
+/// Like run_child_if_requested, with child-only factories for custom audio backends.
+/// For example, construct an application-specific synthesizer using its private state directory.
+pub fn run_child_if_requested_with_audio(
+    tts: fn(&camino::Utf8Path) -> Result<aftercast_tts::Speaker, aftercast_tts::Error>,
+    sound: fn(&camino::Utf8Path) -> Result<aftercast_tts::SoundPlayer, aftercast_tts::Error>,
+) -> Result<bool, Error> {
+    if std::env::args_os().nth(1).as_deref() != Some(std::ffi::OsStr::new(CHILD_ARGUMENT)) {
+        return Ok(false);
+    }
+    run_child(tts, sound)?;
+    Ok(true)
+}
+
+fn run_child(
     tts: fn(&camino::Utf8Path) -> Result<aftercast_tts::Speaker, aftercast_tts::Error>,
     sound: fn(&camino::Utf8Path) -> Result<aftercast_tts::SoundPlayer, aftercast_tts::Error>,
 ) -> Result<(), Error> {

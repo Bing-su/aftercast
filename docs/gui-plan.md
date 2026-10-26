@@ -5,13 +5,20 @@ ownership, bounded command admission, Windows STA, message pumping, import jobs
 and shutdown now belong to the library; the GUI must not add another host thread
 or duplicate its command queue.
 
-| Owner           | Responsibility                                                                      |
-| --------------- | ----------------------------------------------------------------------------------- |
-| Dioxus executor | Components, selection, filters, pending state and visible errors                    |
-| `Host`          | Session lifetime, playback error receiver and explicit shutdown completion          |
-| `HostHandle`    | Cloneable Send + Sync access to typed asynchronous operations                       |
-| Worker process  | CLR/plugin lifecycle, native messages, ACT callbacks, timers, audio and graph state |
-| UI state        | Owned encounter summaries/details/pages, session and selection generations          |
+The GUI executable also hosts the isolated child. Its synchronous main must call
+`aftercast::run_child_if_requested()` before Dioxus, WebView, windows, logging
+services or an async runtime are initialized. On true, return immediately; on an
+error, report it and exit. Only false enters normal UI startup. Host relaunches
+that same file with `--aftercast-child`; no separately deployed worker is used.
+Use `run_child_if_requested_with_audio` here if the app supplies custom backends.
+
+| Owner                       | Responsibility                                                                      |
+| --------------------------- | ----------------------------------------------------------------------------------- |
+| Dioxus executor             | Components, selection, filters, pending state and visible errors                    |
+| `Host`                      | Session lifetime, playback error receiver and explicit shutdown completion          |
+| `HostHandle`                | Cloneable Send + Sync access to typed asynchronous operations                       |
+| Same executable, child mode | CLR/plugin lifecycle, native messages, ACT callbacks, timers, audio and graph state |
+| UI state                    | Owned encounter summaries/details/pages, session and selection generations          |
 
 Normal flow: UI action → await HostHandle method → owned result → Dioxus state.
 Create the complete plugin batch before initialization so automatic startup

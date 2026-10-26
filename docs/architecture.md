@@ -39,7 +39,14 @@ Audio backend objects cannot capture a parent HostHandle: their factories run in
 the child. A stuck factory, playback worker or destructor is covered by the same
 process shutdown deadline as a stuck plugin callback.
 
-The worker authenticates a loopback TCP connection using a fresh 256-bit token
+Host resolves the current application executable and starts it with only the
+reserved `--aftercast-child` argument. Application main calls `run_child_if_requested`
+before UI/runtime creation, returning on true or error; false enters normal startup.
+No dedicated worker executable is shipped. The optional application-executable
+override supports embedding test harnesses/launchers. Custom audio factories use
+`run_child_if_requested_with_audio` at the same entry point.
+
+The child authenticates a loopback TCP connection using a fresh 256-bit token
 delivered over its inherited stdin pipe. JSON control metadata and binary ACT
 packets use separate length-prefixed frames capped at 128 MiB; stdout/stderr remain
 independent plugin output. The parent never loads CLR or executes plugin callbacks.

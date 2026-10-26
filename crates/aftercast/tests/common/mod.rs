@@ -1,6 +1,9 @@
 use aftercast::{HostConfig, extract_bridge};
 use camino::{Utf8Path, Utf8PathBuf};
 use rstest::fixture;
+#[path = "../support/mod.rs"]
+mod support;
+pub use support::application;
 
 pub struct Deployment {
     temporary: tempfile::TempDir,
@@ -15,12 +18,8 @@ impl Deployment {
     }
 
     pub fn config(&self) -> HostConfig {
-        self.config_with_worker(Utf8Path::new(env!("CARGO_BIN_EXE_aftercast-worker")))
-    }
-
-    pub fn config_with_worker(&self, worker: &Utf8Path) -> HostConfig {
         HostConfig::builder()
-            .worker_executable(worker)
+            .application_executable(application())
             .dotnet_root(&self.root)
             .bridge_directory(&self.bridge)
             .data_directory(&self.state)

@@ -9,12 +9,18 @@ loop. See the [glossary](../GLOSSARY.md) for domain terms.
 ```rust,no_run
 use aftercast::{Host, HostConfig, extract_bridge};
 
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // Child dispatch must precede UI construction and async runtime initialization.
+    if aftercast::run_child_if_requested()? { return Ok(()); }
+    tokio::runtime::Builder::new_current_thread().enable_all().build()?.block_on(run())?;
+    Ok(())
+}
+
 async fn run() -> Result<(), aftercast::Error> {
     // Deploy before starting the host; existing destinations are never overwritten.
     extract_bridge("/private/app-data/bridge-0.1.0")?;
     let host = Host::start(HostConfig::builder()
         .dotnet_root("/usr/lib/dotnet")
-        .worker_executable("/private/app-bin/aftercast-worker")
         .bridge_directory("/private/app-data/bridge-0.1.0")
         .data_directory("/private/app-data/state")
         .build()).await?;
@@ -47,9 +53,13 @@ Await shutdown (including a ShutdownTimeout result) before restarting with the s
 state directory; concurrent owners receive `Error::StateInUse`. Recreate plugins
 explicitly in the new Host. The worker is a trusted process, not a security sandbox.
 
-Build `aftercast-worker` from the same version (`cargo build -p aftercast --bin aftercast-worker`),
-deploy it alongside the application and pass its explicit path. No PATH search or
-runtime compilation is performed. Set `AFTERCAST_WORKER` for the supplied examples.
+Host starts the current executable with `--aftercast-child`, without forwarding
+normal UI arguments. Call `run_child_if_requested()` first in main; true means
+the child has completed and main must return. Errors must also return without
+falling through to UI startup. An unauthenticated child launch fails visibly.
+No standalone worker executable, environment path setting, PATH search or runtime
+compilation is required. The optional `application_executable` override is for
+embedding harnesses/launchers; omit it in the normal UI application.
 
 ## Plugins and owner callbacks
 
@@ -82,9 +92,9 @@ Imports and archives exclude conflicting mutations; diagnostic and owned graph/l
 queries remain available between processing steps.
 
 Audio is opt-in and speech/effects have independent workers inside the child.
-Build the worker with `--features audio`, then await `set_tts(true)`,
-`set_sound_player(true)` and `set_audio_settings`. Custom worker executables can
-call `run_worker_with_audio` to supply their own backend factories; live backend
+Build the application with `aftercast/audio`, then await `set_tts(true)`,
+`set_sound_player(true)` and `set_audio_settings`. Custom backends use
+`run_child_if_requested_with_audio` in the same main function; live backend
 objects are never transferred from the parent. Consume playback failures through the owning
 `Host::next_audio_error().await`; command acceptance does not establish playback
 success. Its error queue holds 32 entries; overflow fails the host visibly.

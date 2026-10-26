@@ -4,7 +4,7 @@ A process-isolated ACT-compatible host for Rust applications. It reuses the exis
 FFXIV ACT plugin's parser and ships a prebuilt .NET 10/C# implementation.
 Consumers need an installed .NET 10 runtime; no SDK or automatic download is used.
 
-The Rust interface is asynchronous. `Host` owns an `aftercast-worker` child process;
+The Rust interface is asynchronous. `Host` relaunches the app's own executable in child mode;
 clone its `HostHandle` to submit work from other threads. Imports
 support progress and cooperative cancellation. Call `shutdown().await` to observe
 cleanup; callers do not pump the host. The default five-second shutdown deadline
@@ -12,6 +12,10 @@ ends with a killed and reaped worker if plugin code does not return, allowing a
 new Host to reuse its state directory. Process isolation is verified on Linux;
 Windows has cross-compilation coverage, while the runtime reports below describe
 the earlier execution model.
+
+Call `aftercast::run_child_if_requested()` first in main, before starting UI or
+async runtime initialization. No separate worker executable is deployed; the
+application's `--aftercast-child` branch owns CLR, plugins and audio.
 
 | Start here                                                              | Contents                                                                                                                                  |
 | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |

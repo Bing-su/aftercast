@@ -406,7 +406,6 @@ mod tests {
             HostConfig::builder()
                 .dotnet_root(root)
                 .data_directory(directory.join("state"))
-                .worker_executable("unused-in-local-runtime-test")
                 .bridge_directory(directory)
                 .build(),
         )
