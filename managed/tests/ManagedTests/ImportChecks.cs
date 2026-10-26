@@ -67,7 +67,45 @@ internal static class ImportChecks
         HostLifetimeChecks.RunBounded(FailureRestoration);
         HostLifetimeChecks.RunBounded(IdleSegmentation);
         HostLifetimeChecks.RunBounded(LiveReaderResume);
+        HostLifetimeChecks.RunBounded(CooperativePreparation);
         Console.WriteLine("Root import dispatch, aggregation, exclusivity and restoration passed.");
+    }
+
+    private static void CooperativePreparation()
+    {
+        using var fixture = new Fixture();
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        using var context = new Aftercast.Bridge.OwnerContext(error => throw new Exception("Preparation dispatch failed", error));
+        var root = fixture.Root;
+        var path = System.IO.Path.Combine(fixture.Directory.FullName, "blocked-live.log");
+        File.WriteAllText(path, "");
+        File.WriteAllText(fixture.Path, "first\n");
+        root.ReadThreadLock = false;
+        root.LogFilePath = path;
+        root.OnLogLineRead += (import, _) =>
+        {
+            if (import) return;
+            entered.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(5))) throw new Exception("Preparation blocked the owner");
+        };
+        try
+        {
+            root.OpenLog(false, false);
+            File.AppendAllText(path, "blocked\n");
+            Check(entered.Wait(TimeSpan.FromSeconds(5)));
+            // Begin and cancel must remain usable while the previous live callback is still running.
+            fixture.Host.BeginImport(fixture.Path);
+            Check(fixture.Host.AdvanceImport(false) is null && fixture.Host.ImportProgress.LinesRead == 0);
+            Throws<OperationCanceledException>(() => fixture.Host.AdvanceImport(true));
+            Check(root.LogFilePath == path && !root.ReadThreadLock && !root.InCombat);
+            var archive = context.RunOperation(() => fixture.Host.ArchiveOperationAsync(3, "", 0, false));
+            Check(!archive.IsCompleted);
+            release.Set();
+            Check(SpinWait.SpinUntil(() => { context.Pump(); return archive.IsCompleted; }, TimeSpan.FromSeconds(5)));
+            Check(archive.GetAwaiter().GetResult() == 0 && fixture.Host.Diagnostics.Item1 == 0);
+        }
+        finally { release.Set(); fixture.Host.StopLogReading(); }
     }
 
     private static void AddDamage(FormActMain root, LogLineEventArgs info)

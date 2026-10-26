@@ -31,6 +31,12 @@ combat worker. Native calls borrow Rust buffers only for each call; no task keep
 a native pointer across a yield. No async ABI or arbitrary closure executor is
 public. Futures need an executor but do not require a Tokio runtime.
 
+Archive continuations use a private owner-context queue independent of the
+256-entry plugin callback admission limit. Only one archive operation runs at a
+time; its sequential awaits bound the number of pending internal continuations.
+Internal completions run before plugin backlog within the same pump budget, so
+plugin overload cannot strand core cleanup or fail .NET await scheduling.
+
 ## Module map
 
 Speech lives in the independent [aftercast-tts crate](../crates/aftercast-tts/README.md).

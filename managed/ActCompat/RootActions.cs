@@ -261,20 +261,27 @@ public partial class FormActMain
         action();
     }
 
-    private IDisposable SuspendCombatActions()
+    private CombatSuspension SuspendCombatActions(bool wait = true)
     {
         lock (CombatGate)
         {
-            EnsureCanWaitForCombatLifecycle();
+            if (wait) EnsureCanWaitForCombatLifecycle();
+            else if (activeImport is not null || actionAdmissionPaused || actionsClosed)
+                throw new InvalidOperationException("Combat processing is already reserved or closed");
             actionAdmissionPaused = true;
             actionPauseOwner = Environment.CurrentManagedThreadId;
         }
-        try { WaitForCombatTransitions(); WaitForCombatActions(); return new CombatSuspension(this); }
+        try
+        {
+            if (wait) { WaitForCombatTransitions(); WaitForCombatActions(); }
+            return new CombatSuspension(this);
+        }
         catch { lock (CombatGate) { actionAdmissionPaused = false; actionPauseOwner = 0; } throw; }
     }
 
     private sealed class CombatSuspension(FormActMain root) : IDisposable
     {
+        internal bool IsReady { get { lock (root.CombatGate) return root.actionsIdle.IsSet && root.combatTransitionsIdle.IsSet; } }
         public void Dispose() { lock (root.CombatGate) { root.actionAdmissionPaused = false; root.actionPauseOwner = 0; } }
     }
 

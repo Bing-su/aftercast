@@ -2,13 +2,15 @@ using System.Diagnostics;
 
 namespace Aftercast.Bridge;
 
-// The caller pumps this queue on its owner thread; dispatch never creates a substitute UI thread.
+// The host loop pumps this queue on its owner thread, preserving plugin control affinity.
 internal sealed class OwnerContext : SynchronizationContext, IDisposable
 {
-    private sealed record Work(SendOrPostCallback Callback, object? State, TaskCompletionSource<object?>? Completion);
+    private sealed record Work(SendOrPostCallback Callback, object? State, TaskCompletionSource<object?>? Completion, bool Operation = false);
     private readonly int ownerThread = Environment.CurrentManagedThreadId;
     private readonly object gate = new();
     private readonly Queue<Work> pending = new();
+    private readonly Queue<Work> continuations = new();
+    private readonly SynchronizationContext operationContext;
     private readonly Action<Exception> onPostError;
     private bool closed;
     private int dispatchDepth;
@@ -17,6 +19,7 @@ internal sealed class OwnerContext : SynchronizationContext, IDisposable
     internal OwnerContext(Action<Exception> onPostError)
     {
         this.onPostError = onPostError ?? throw new ArgumentNullException(nameof(onPostError));
+        operationContext = new OperationContext(this);
     }
 
     private void RequireOwner()
@@ -25,13 +28,18 @@ internal sealed class OwnerContext : SynchronizationContext, IDisposable
             throw new InvalidOperationException("The host context must be operated on its owner thread");
     }
 
-    internal T Run<T>(Func<T> action)
+    internal T Run<T>(Func<T> action) => RunWithContext(action, this);
+
+    // Only one library archive task is active; its continuations must survive plugin queue saturation.
+    internal T RunOperation<T>(Func<T> action) => RunWithContext(action, operationContext);
+
+    private T RunWithContext<T>(Func<T> action, SynchronizationContext context)
     {
         ArgumentNullException.ThrowIfNull(action);
         RequireOwner();
         lock (gate) ObjectDisposedException.ThrowIf(closed, this);
         var previous = Current;
-        try { SetSynchronizationContext(this); return action(); }
+        try { SetSynchronizationContext(context); return action(); }
         finally { SetSynchronizationContext(previous); }
     }
 
@@ -41,9 +49,16 @@ internal sealed class OwnerContext : SynchronizationContext, IDisposable
         {
             ObjectDisposedException.ThrowIf(closed, this);
             // Bound pending plugin work and report overload to its producer instead of losing callbacks.
-            if (pending.Count == 256) throw new InvalidOperationException("The host context queue is full");
-            pending.Enqueue(work);
+            if (!work.Operation && pending.Count == 256) throw new InvalidOperationException("The host context queue is full");
+            (work.Operation ? continuations : pending).Enqueue(work);
         }
+    }
+
+    private sealed class OperationContext(OwnerContext owner) : SynchronizationContext
+    {
+        public override void Post(SendOrPostCallback callback, object? state) => owner.Enqueue(new(callback, state, null, true));
+        public override void Send(SendOrPostCallback callback, object? state) =>
+            owner.Send(_ => owner.RunOperation(() => { callback(state); return 0; }), null);
     }
 
     public override void Send(SendOrPostCallback callback, object? state)
@@ -76,14 +91,17 @@ internal sealed class OwnerContext : SynchronizationContext, IDisposable
             Work work;
             lock (gate)
             {
-                if (closed || pending.Count == 0) break;
-                work = pending.Dequeue();
+                if (closed || !continuations.TryDequeue(out work!) && !pending.TryDequeue(out work!)) break;
             }
             // Run arbitrary plugin code outside the queue gate, including callbacks that dispose this context.
             try
             {
                 dispatchDepth++;
-                try { Run(() => { work.Callback(work.State); return 0; }); }
+                try
+                {
+                    if (work.Operation) RunOperation(() => { work.Callback(work.State); return 0; });
+                    else Run(() => { work.Callback(work.State); return 0; });
+                }
                 finally { dispatchDepth--; }
                 work.Completion?.TrySetResult(null);
             }
@@ -116,6 +134,7 @@ internal sealed class OwnerContext : SynchronizationContext, IDisposable
             closed = true;
             while (pending.TryDequeue(out var work))
                 work.Completion?.TrySetException(new ObjectDisposedException(nameof(OwnerContext)));
+            continuations.Clear();
         }
     }
 }

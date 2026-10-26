@@ -61,8 +61,11 @@ public partial class FormActMain
         if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() == true)
             throw new InvalidOperationException("Archive operations require the owner thread outside dispatched callbacks");
         EnsureCanWaitForLogReader();
-        using var logs = SuspendLogReading(false);
-        using var combat = SuspendCombatActions();
+        using var logs = SuspendLogReading(false, wait: !asynchronous);
+        // Yield while admitted callbacks/actions settle; native owner messages keep running between checks.
+        while (!logs.IsReady) await Task.Delay(1);
+        using var combat = SuspendCombatActions(wait: !asynchronous);
+        while (!combat.IsReady) await Task.Delay(1);
         lock (CombatGate)
         {
             EnsureImportAdmission();
@@ -85,8 +88,8 @@ public partial class FormActMain
         ArraySegment<byte> xml;
         lock (CombatGate)
         {
-        var encounter = QueryEncounters().Select(item => item.Encounter).SingleOrDefault(item => Identity(item).Id == id)
-            ?? throw new ArgumentException("Encounter does not belong to this session");
+            var encounter = QueryEncounters().Select(item => item.Encounter).SingleOrDefault(item => Identity(item).Id == id)
+                ?? throw new ArgumentException("Encounter does not belong to this session");
             xml = EncodeEncounter(encounter, history: false);
         }
         return await ArchiveIo(asynchronous, () => {

@@ -75,7 +75,7 @@ impl<B: SoundBackend> SoundBackend for NativeRecorder<B> {
 #[ignore = "requires local speech service, audio device, .NET 10 and built fixture"]
 async fn native_act_timer_speech_and_effects_finish_playback(deployment: Deployment) {
     let _host_test = HOST_TEST.lock().await;
-    let mut host = Host::start(deployment.config()).await.expect("host");
+    let host = Host::start(deployment.config()).await.expect("host");
     let (sent, completed) = mpsc::channel();
     let speech_sent = sent.clone();
     let speaker = Speaker::new(move || {

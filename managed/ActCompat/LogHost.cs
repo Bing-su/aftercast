@@ -153,7 +153,7 @@ public partial class FormActMain
     }
 
     // Hold suspension across import steps, e.g. while disk input is pending between host ticks.
-    private IDisposable SuspendLogReading(bool importOperation)
+    private LogSuspension SuspendLogReading(bool importOperation, bool wait = true)
     {
         // Import has already performed lifecycle preflight before reserving its exclusive scope.
         if (!importOperation) EnsureCanWaitForLogReader();
@@ -169,7 +169,8 @@ public partial class FormActMain
         {
             foreach (var reader in readers)
             {
-                reader.Suspend(PumpOwnerCallbacks);
+                if (wait) reader.Suspend(PumpOwnerCallbacks);
+                else reader.RequestSuspension();
                 suspended.Add(reader);
             }
             return new LogSuspension(this, suspended);
@@ -184,6 +185,7 @@ public partial class FormActMain
 
     private sealed class LogSuspension(FormActMain root, List<LogFollower> readers) : IDisposable
     {
+        internal bool IsReady => readers.All(reader => !reader.CallbackActive);
         public void Dispose()
         {
             foreach (var reader in readers) reader.Resume();

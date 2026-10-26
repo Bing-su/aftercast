@@ -13,7 +13,29 @@ internal static class OwnerContextChecks
         DispatchAndFailures();
         CapacityAndPumpBounds();
         ShutdownReleasesSend();
+        OperationContinuesUnderSaturation();
         Console.WriteLine("Owner context dispatch, exception identity, bounded queue/pump and shutdown checks passed.");
+    }
+
+    private static void OperationContinuesUnderSaturation()
+    {
+        var errors = new ConcurrentQueue<Exception>();
+        using var context = new OwnerContext(errors.Enqueue);
+        var owner = Environment.CurrentManagedThreadId;
+        var released = new TaskCompletionSource<object?>();
+        var pluginCalls = 0;
+        var operation = context.RunOperation(async () =>
+        {
+            await released.Task;
+            Check(Environment.CurrentManagedThreadId == owner, "operation resumed away from owner");
+            Check(pluginCalls == 0, "plugin backlog ran before the reserved continuation");
+        });
+        for (var index = 0; index < 256; index++) context.Post(_ => pluginCalls++, null);
+        // Complete on a worker while admission is full, before allowing the owner to drain any callbacks.
+        Task.Run(() => released.SetResult(null)).GetAwaiter().GetResult();
+        Check(!operation.IsCompleted, "operation bypassed owner dispatch");
+        context.Pump();
+        Check(operation.IsCompletedSuccessfully && errors.IsEmpty, "operation was stranded by plugin saturation");
     }
 
     private static void DispatchAndFailures()

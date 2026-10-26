@@ -10,6 +10,23 @@ live timer clock isolation, bounded admission, response loss, startup cancellati
 async audio disposal and archive round trips. Windows target cross-compilation is
 separate from native Windows execution; dated reports describe the earlier model.
 
+## Async execution verification — 2026-10-26
+
+| Check                                      | Observed result | Scope                                                                                                                              |
+| ------------------------------------------ | --------------- | ---------------------------------------------------------------------------------------------------------------------------------- |
+| `mise run check` on Linux                  | Pass            | Rust tests/Clippy, managed contracts, WinForms models, CLR and fixture-plugin integration                                          |
+| Async lifecycle regressions                | Pass            | Admission saturation, dropped responses, startup cancellation, import cancel/reuse/shutdown, live timer clock, async audio cleanup |
+| Reserved continuation regression           | Pass            | Complete core work on the owner while all 256 plugin callback slots are occupied                                                   |
+| `mise run package:check`                   | Pass            | All three offline Cargo packages build from their packaged contents                                                                |
+| Windows GNU target check                   | Pass            | Rust API/target compilation; native Windows runtime behavior not executed                                                          |
+| Local FFXIV 3.0.3.3 via async Rust example | Pass            | Seven synthetic records, 400 damage, no host diagnostics; disposable in-repository plugin copy                                     |
+| Original Zeromus corpus runner             | Pass            | Three imports and per-action consistency checks through the managed compatibility entry point                                      |
+
+Native audio devices, Edge service access and live game collection were not
+retested for this refactor. Linux audio builds need the development headers and
+linker library listed below; extracting them under `target/` for validation does
+not make them package contents.
+
 ## Requirements
 
 | Role                 | Requirements                                                                                                                                                                                                                     |

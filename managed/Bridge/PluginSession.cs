@@ -47,7 +47,11 @@ internal sealed class PluginSession
             throw new InvalidOperationException("Archive reconstruction requires initialized parser categories");
         return Host().ArchiveOperation(command, text, id, compressed);
     });
-    internal void EnsureCanStop() => environment?.EnsureCanStop();
+    internal void EnsureCanStop()
+    {
+        if (archive is not null) throw new InvalidOperationException("Complete the archive operation before stopping the session");
+        environment?.EnsureCanStop();
+    }
     internal ulong SubscribeLogs(int maxRecords, int maxBytes) => OnOwner(() => logs.Subscribe(maxRecords, maxBytes));
     internal void UnsubscribeLogs(ulong id) => OnOwner(() => { logs.Unsubscribe(id); return 0; });
     internal LogDrain DrainLogs(ulong id, int capacity) => OnOwner(() => logs.Drain(id, capacity));
@@ -78,7 +82,7 @@ internal sealed class PluginSession
         if (archive is not null) throw new InvalidOperationException("Archive operation is already active");
         if (command is 1 or 4 && !plugins.Values.Any(plugin => plugin.State == PluginState.Initialized))
             throw new InvalidOperationException("Archive reconstruction requires an initialized plugin");
-        archive = Host().ArchiveOperationAsync(command, text, id, compressed);
+        archive = context!.RunOperation(() => Host().ArchiveOperationAsync(command, text, id, compressed));
         return 0;
     });
     internal int? AdvanceArchive()

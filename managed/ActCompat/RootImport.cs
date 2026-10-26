@@ -108,8 +108,8 @@ namespace Advanced_Combat_Tracker
             internal bool Exclusive;
             internal Exception? Failure;
             internal bool Completed;
-            private bool canceled, ending;
-            private IDisposable? suspension;
+            private bool canceled, ending, prepared;
+            private LogSuspension? suspension;
             private LiveParserContext? live;
             private ZoneData? importZone;
             private int firstEncounter;
@@ -126,12 +126,16 @@ namespace Advanced_Combat_Tracker
 
             internal void Start()
             {
-                suspension = root.SuspendLogReading(true);
-                Exclusive = true;
-                root.WaitForCombatTransitions();
-                root.WaitForCombatActions();
+                suspension = root.SuspendLogReading(true, wait: false);
+            }
+
+            private bool Prepare()
+            {
+                if (!suspension!.IsReady) return false;
                 lock (root.CombatGate)
                 {
+                    if (!root.actionsIdle.IsSet || !root.combatTransitionsIdle.IsSet) return false;
+                    Exclusive = true;
                     if (root.inCombat) throw new InvalidOperationException("End live combat before importing a log file");
                     root.EnsureCombatStateInitialized();
                     snapshotBefore = root.GetCombatSnapshotRevision();
@@ -183,6 +187,8 @@ namespace Advanced_Combat_Tracker
                         input.Writer.TryComplete(error);
                     }
                 });
+                prepared = true;
+                return true;
             }
 
             internal void AbortStart()
@@ -194,6 +200,20 @@ namespace Advanced_Combat_Tracker
             internal ImportResult? Advance(bool cancel)
             {
                 if (Completed) throw new InvalidOperationException("Import is complete");
+                if (!prepared)
+                {
+                    try
+                    {
+                        if (cancel) throw new OperationCanceledException("Import canceled before parser state was acquired");
+                        if (!Prepare()) return null;
+                    }
+                    catch
+                    {
+                        Completed = true;
+                        AbortStart();
+                        throw;
+                    }
+                }
                 if (cancel && !canceled) { canceled = true; cancellation.Cancel(); ending = true; }
                 if (!ending)
                 {

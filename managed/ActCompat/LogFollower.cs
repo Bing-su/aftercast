@@ -315,20 +315,19 @@ internal sealed class LogFollower : IDisposable
 
     internal void Suspend(Action? pump)
     {
+        RequestSuspension();
+        try { while (!callbackIdle.Wait(10)) pump?.Invoke(); }
+        catch { Resume(); throw; }
+    }
+
+    // Reserve suspension without joining a callback, e.g. during an asynchronous import's prepare phase.
+    internal void RequestSuspension()
+    {
         lock (gate)
         {
             if (Thread.CurrentThread == worker && callbackActive)
                 throw new InvalidOperationException("A log callback cannot wait for its own completion");
             suspensionDepth++;
-        }
-        try
-        {
-            while (!callbackIdle.Wait(10)) pump?.Invoke();
-        }
-        catch
-        {
-            Resume();
-            throw;
         }
     }
 
