@@ -1,7 +1,10 @@
 use bytes::{Buf, BufMut, BytesMut};
 use camino::Utf8Path;
+use std::future::Future;
+use std::pin::Pin;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::task::{Context, Poll};
 use std::thread::Thread;
 use tokio::sync::{oneshot, watch};
 
@@ -37,7 +40,20 @@ impl ImportJob {
     }
     /// Completes only after input cleanup, action draining and live-state restoration.
     pub async fn wait(self) -> Result<ImportReport, Error> {
-        self.result.await.map_err(|_error| self.control.error())?
+        self.await
+    }
+}
+
+impl Future for ImportJob {
+    type Output = Result<ImportReport, Error>;
+
+    fn poll(mut self: Pin<&mut Self>, context: &mut Context<'_>) -> Poll<Self::Output> {
+        // Borrowing the job as a future keeps progress/cancel available between polls, e.g. a GUI timer.
+        match Pin::new(&mut self.result).poll(context) {
+            Poll::Ready(Ok(result)) => Poll::Ready(result),
+            Poll::Ready(Err(_closed)) => Poll::Ready(Err(self.control.error())),
+            Poll::Pending => Poll::Pending,
+        }
     }
 }
 

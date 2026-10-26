@@ -40,10 +40,15 @@ async fn imports_drain_actions_and_recover_after_input_and_plugin_failures(deplo
         damage: 400,
         healed: 0,
     };
+    let mut job = host
+        .start_import(&log)
+        .await
+        .expect("start an observable import");
+    let _progress = job.progress();
     assert_eq!(
-        host.import_log(&log)
+        (&mut job)
             .await
-            .expect("import and drain accepted actions"),
+            .expect("await job without consuming its handle"),
         expected
     );
     assert_eq!(
