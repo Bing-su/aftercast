@@ -55,7 +55,8 @@ impl HostHandle {
     ///
     /// Same-thread exceptions reported through ACT's `WriteExceptionLog` during the callback fail this
     /// attempt. Failed instances cannot be retried; construct another instance instead. Arbitrary
-    /// plugin side effects cannot be rolled back. Create the whole plugin batch before initializing it.
+    /// plugin side effects cannot be rolled back. Initialize prerequisites before constructing
+    /// dependents that require their assembly resolvers, e.g. OverlayPlugin before cactbot.
     pub async fn initialize_plugin(&self, plugin: PluginId) -> Result<String, Error> {
         self.plugin_call(plugin, 1).await
     }

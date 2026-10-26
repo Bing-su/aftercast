@@ -89,10 +89,11 @@ async fn check_count_overflow(host: &mut Host, path: &Utf8Path, subscription: Lo
     assert_eq!(record.sequence, 2);
     assert!(record.is_import);
     assert_eq!(
-        record.source_path.as_ref(),
-        path.canonicalize_utf8()
-            .expect("canonical source path")
-            .as_path()
+        record
+            .source_path
+            .canonicalize_utf8()
+            .expect("canonical delivered source path"),
+        path.canonicalize_utf8().expect("canonical source path")
     );
     assert_eq!(record.original_line.as_ref(), b"2|300");
     assert_eq!(record.timestamp.kind, LogTimeKind::Utc);

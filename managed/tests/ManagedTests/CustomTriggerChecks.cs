@@ -17,6 +17,8 @@ internal static class CustomTriggerChecks
     internal static void Run()
     {
         var directory = Directory.CreateTempSubdirectory("aftercast-triggers-");
+        // Match Rust's canonical Windows paths to cover persisted triggers across worker restarts.
+        if (OperatingSystem.IsWindows()) directory = new DirectoryInfo(@"\\?\" + directory.FullName);
         var path = Path.Combine(directory.FullName, "CustomTriggers.xml");
         try
         {

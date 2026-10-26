@@ -1,5 +1,9 @@
 # OverlayPlugin and cactbot validation — 2026-10-21
 
+The [2026-10-26 follow-up](overlay-cactbot-process-validation.md) reruns this
+CEF/Edge integration and additionally checks the current Rust worker path,
+including a legacy CefSharp subprocess path correction and prerequisite startup order.
+
 The [audio follow-up](audio-validation.md) also verifies original CEF and WS
 `playSound` requests alongside `cactbotSay`. Native ACT timer speech/effects are
 checked independently through complete Windows and Linux host/device paths.

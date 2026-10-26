@@ -8,6 +8,8 @@ internal static class DataCorrectionChecks
     internal static void Run()
     {
         var directory = Directory.CreateTempSubdirectory("aftercast-corrections-");
+        // Match Rust's canonical Windows paths to catch XML readers that interpret filenames as URIs.
+        if (OperatingSystem.IsWindows()) directory = new DirectoryInfo(@"\\?\" + directory.FullName);
         var path = Path.Combine(directory.FullName, "DataCorrections.xml");
         const string configuration = "<DataCorrections><RenameFix><Rename Before='Pet' After='Owner'/><Rename Before='Target' After='Enemy'/></RenameFix><AbilityRedirectFix><Redirect Ability='Strike' Into='Player' Type='1'/></AbilityRedirectFix></DataCorrections>";
         try

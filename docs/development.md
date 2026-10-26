@@ -1,5 +1,15 @@
 # Development and validation
 
+Native Windows verification of the current process-isolated host, including
+startup/socket and persisted-XML corrections, is recorded in the
+[2026-10-26 report](windows-process-validation.md). Earlier execution-model limits below
+are historical.
+
+`mise run test:overlay-process -- <runtime> <fresh-run> <ffxiv> <overlay> <cactbot>`
+runs the opt-in CEF/cactbot checks inside two real Rust workers. It requires local
+trusted plugin deployments, prepared `state/OverlayPluginCef/x64` and Playwright;
+see the [reproduction procedure](overlay-cactbot-process-validation.md#reproduction-and-evidence).
+
 Build and test commands are defined in [mise.toml](../mise.toml).
 Consumer behavior is described in [usage](usage.md), with source ownership in
 [architecture](architecture.md).

@@ -56,6 +56,11 @@ run_windows = [
 description = "Extract the bundled payload, start, probe and stop"
 run = "cargo run -p aftercast --example smoke --"
 
+[tasks."test:overlay-process"]
+description = "Verify original CEF/cactbot rendering in two Rust workers (Windows, prepared CEF and Playwright)"
+depends = ["managed:test-runner"]
+run = "cargo run -p aftercast --example overlay-process --"
+
 [tasks."managed:test"]
 description = "Check the bridge and synthetic ACT contracts"
 depends = ["managed:test-runner"]

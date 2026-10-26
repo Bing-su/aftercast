@@ -60,7 +60,9 @@ public partial class FormActMain
     internal void LoadDataCorrections(string path)
     {
         if (!File.Exists(path)) return;
-        using var reader = XmlReader.Create(path, new XmlReaderSettings
+        // Read file streams so canonical Windows paths also work after a host restart.
+        using var stream = File.OpenRead(path);
+        using var reader = XmlReader.Create(stream, new XmlReaderSettings
         { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = 4 * 1024 * 1024 });
         var document = new XmlDocument { XmlResolver = null };
         document.Load(reader);

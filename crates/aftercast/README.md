@@ -57,10 +57,11 @@ Isolation provides a process lifetime boundary, not a filesystem/network securit
 clear methods disable them. Custom backends use `run_child_if_requested_with_audio`
 at the same application entry point, with factories that execute only inside its child.
 
-Create all plugins in a startup batch before initializing any of them, then
-initialize in dependency order. Automatic pumping marks startup complete after
-all constructed plugins have left the pending state. Initialization status is not
-proof that a plugin's private startup has completed.
+Construct and initialize prerequisites before dependents that require their
+assembly resolvers; the tested order is FFXIV, OverlayPlugin, then cactbot.
+Automatic pumping marks startup complete after all constructed plugins have left
+the pending state. Initialization status is not proof that private startup or
+addon registration has completed; verify the required handlers before use.
 
 `import_log(path).await` reads a fixed UTF-8 prefix through the parser and waits
 for accepted actions and state restoration. End live combat first. EOF does not
@@ -70,8 +71,9 @@ interrupt aggregation. Subscriptions are observations, not durable recordings.
 
 [Usage](../../docs/usage.md), [architecture](../../docs/architecture.md) and
 [development](../../docs/development.md) describe deployment, limits and checks.
-The async execution model has Linux fixture coverage and Windows cross-compilation;
-Windows runtime, native devices and live game collection require separate validation.
+The async execution model has Linux fixture coverage and
+[native Windows process validation](../../docs/windows-process-validation.md).
+Windows SAPI/PCM devices were tested separately; live game collection remains unverified.
 Local pinned FFXIV corrections preserve original files and are version checked.
 No files outside this repository are rewritten.
 

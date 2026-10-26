@@ -21,8 +21,9 @@ Use `run_child_if_requested_with_audio` here if the app supplies custom backends
 | UI state                    | Owned encounter summaries/details/pages, session and selection generations          |
 
 Normal flow: UI action → await HostHandle method → owned result → Dioxus state.
-Create the complete plugin batch before initialization so automatic startup
-completion cannot precede construction of addons.
+Construct and initialize prerequisite plugins before their dependents, e.g.
+FFXIV, OverlayPlugin, then cactbot. Gate addon readiness on its handler responses;
+`InitPlugin` returning does not establish completion of deferred startup.
 
 | UI behavior       | Contract                                                                                           |
 | ----------------- | -------------------------------------------------------------------------------------------------- |

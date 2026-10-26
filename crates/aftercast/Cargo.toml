@@ -34,6 +34,7 @@ tracing.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true
+serde_json = "1"
 tempfile = "3"
 
 [dev-dependencies.tokio]
@@ -45,6 +46,7 @@ aftercast-winforms.workspace = true
 libc = "0.2"
 
 [target."cfg(windows)".dependencies]
+dunce = "1"
 windows-sys = { version = "0.61", features = ["Win32_Security", "Win32_System_Com", "Win32_System_JobObjects"] }
 
 [features]

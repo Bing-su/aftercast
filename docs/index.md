@@ -8,6 +8,8 @@
 | [Development](development.md)                                          | Build, verification and package commands                                            |
 | [Refactoring measurements](refactoring-performance.md)                 | Query allocations, synthetic workload, changes and verification limits              |
 | [Windows validation](windows-validation.md)                            | Windows setup, verified checks and remaining limits                                 |
+| [Windows process-isolation validation](windows-process-validation.md) | Current async host, worker cleanup/restart, persisted XML and original FFXIV imports |
+| [Windows OverlayPlugin/cactbot follow-up](overlay-cactbot-process-validation.md) | Current CEF/Edge integration, Rust worker WS checks, startup order and legacy subprocess paths |
 | [Windows original-artifact validation](windows-original-validation.md) | Supplied ACT/FFXIV checks, extra runtime input and remaining failures               |
 | [Local log validation](local-log-validation.md)                        | Optional host-supplied logs, portable invocation and observed private-log results   |
 | [Additional plugin validation](additional-plugin-validation.md)        | Official plugin downloads, lifecycle results, constructor fix and concrete blockers |

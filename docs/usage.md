@@ -75,11 +75,14 @@ mode before it can recursively create more processes.
 | `diagnostics().await`           | Copy bounded diagnostic history; compare total and omitted counts                                 |
 | `shutdown().await`              | Close admission, restore an active import, settle accepted archive work and dispose plugins/audio |
 
-Create **all** plugins in a startup batch first, then initialize FFXIV,
-OverlayPlugin and cactbot in dependency order. Constructed instances keep
-`InitActDone` false until every pending instance has finished initialization.
-Creating another instance reopens that startup state. Native controls remain on
-the internal STA thread; they cannot be accessed directly from a GUI executor.
+Construct and initialize FFXIV, then OverlayPlugin, then cactbot: OverlayPlugin's
+initialization registers the shared assembly resolver needed to construct cactbot.
+Constructed instances keep `InitActDone` false until every pending instance has
+finished initialization; creating another instance reopens that startup state.
+`InitPlugin` can return before addon registration completes, and an open WebSocket
+port alone does not establish cactbot readiness: wait for the required handler response.
+Native controls remain on the internal STA thread; they cannot be accessed directly
+from a GUI executor. See the [Windows integration results](overlay-cactbot-validation.md).
 
 Constructors and callbacks are trusted code inside the worker. Initialization cannot be
 retried on a failed instance, and arbitrary side effects cannot be rolled back.

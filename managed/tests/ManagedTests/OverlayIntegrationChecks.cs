@@ -10,7 +10,9 @@ using Aftercast.Bridge;
 // Use vendor public APIs for fixture state and real log following/WS handlers for the browser; no private callback is invoked.
 internal static class OverlayIntegrationChecks
 {
-    internal static void Run(PluginSession session)
+    internal static void Run(PluginSession session) => Run(session, stopSession: true);
+
+    internal static void Run(PluginSession session, bool stopSession)
     {
         var root = ActGlobals.oFormActMain!;
         var overlay = root.ActPlugins.Single(data => data.pluginObj.GetType().FullName == "RainbowMage.OverlayPlugin.PluginLoader");
@@ -188,6 +190,8 @@ internal static class OverlayIntegrationChecks
             server.GetType().GetMethod("Stop")!.Invoke(server, null);
         }
         native.Dispose();
+        // A Rust-owned worker must be stopped by Host.shutdown, after its parent observes the probe result.
+        if (!stopSession) return;
         session.Stop();
         var remaining = (Delegate?)typeof(FormActMain).GetField("OnLogLineRead", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(root);
         if (ActGlobals.oFormActMain is not null || remaining?.GetInvocationList().Any(handler => ReferenceEquals(handler.Target, cactbot)) == true)

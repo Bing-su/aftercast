@@ -64,7 +64,9 @@ public partial class FormActMain
 
     private static XmlDocument ReadArchiveDocument(string path, string root)
     {
-        using var reader = XmlReader.Create(path, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = ArchiveLimit });
+        // Open paths as files so Windows extended paths, e.g. \\?\C:\state\index.xml, are not parsed as URIs.
+        using var stream = File.OpenRead(path);
+        using var reader = XmlReader.Create(stream, new XmlReaderSettings { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = ArchiveLimit });
         var document = new XmlDocument { XmlResolver = null }; document.Load(reader);
         if (document.DocumentElement?.Name != root) throw new XmlException("Expected " + root + " root");
         return document;

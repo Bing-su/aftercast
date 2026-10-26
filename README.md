@@ -9,9 +9,9 @@ clone its `HostHandle` to submit work from other threads. Imports
 support progress and cooperative cancellation. Call `shutdown().await` to observe
 cleanup; callers do not pump the host. The default five-second shutdown deadline
 ends with a killed and reaped worker if plugin code does not return, allowing a
-new Host to reuse its state directory. Process isolation is verified on Linux;
-Windows has cross-compilation coverage, while the runtime reports below describe
-the earlier execution model.
+new Host to reuse its state directory. Process isolation is verified on Linux and
+[native Windows](docs/windows-process-validation.md), including stuck-worker cleanup
+and restart. Earlier runtime reports below describe the previous execution model.
 
 Call `aftercast::run_child_if_requested()` first in main, before starting UI or
 async runtime initialization. No separate worker executable is deployed; the

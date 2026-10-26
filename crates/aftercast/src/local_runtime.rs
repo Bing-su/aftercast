@@ -236,7 +236,13 @@ impl Drop for ManagedSession {
 
 pub(crate) fn canonicalize(path: &Utf8Path) -> Result<Utf8PathBuf, Error> {
     // UTF-8 symlink names can resolve to non-UTF-8 targets; reject these without lossy conversion.
-    path.canonicalize_utf8().map_err(|e| io_error(path, e))
+    let path = path.canonicalize_utf8().map_err(|e| io_error(path, e))?;
+    // Legacy subprocess loaders (e.g. CefSharp's CLR 4 helper) cannot resolve assemblies under \\?\ paths.
+    #[cfg(windows)]
+    let path = Utf8Path::from_path(dunce::simplified(path.as_std_path()))
+        .unwrap_or(&path)
+        .to_owned();
+    Ok(path)
 }
 
 fn process_hostfxr(path: Utf8PathBuf) -> Result<Hostfxr, Error> {
@@ -314,6 +320,34 @@ fn find_hostfxr(root: &Utf8Path) -> Result<Utf8PathBuf, Error> {
 mod tests {
     use super::ManagedSession as Host;
     use super::*;
+
+    #[cfg(windows)]
+    #[test]
+    fn canonical_paths_remain_usable_by_legacy_subprocess_loaders() {
+        let temporary = tempfile::tempdir().expect("temporary deployment");
+        let path = Utf8Path::from_path(temporary.path())
+            .expect("UTF-8 directory")
+            .join("subprocess 한글.exe");
+        fs::write(&path, b"fixture").expect("subprocess fixture");
+        let canonical = canonicalize(&path).expect("canonical deployment path");
+        assert!(!canonical.as_str().starts_with(r"\\?\"));
+        assert_eq!(
+            canonical.canonicalize_utf8().expect("same file"),
+            path.canonicalize_utf8().expect("original file")
+        );
+        // A trailing dot changes Win32 semantics; retain its extended path rather than target another file.
+        let special = path
+            .canonicalize_utf8()
+            .expect("extended path")
+            .with_file_name("trailing.");
+        fs::write(&special, b"special").expect("extended-only filename");
+        assert!(
+            canonicalize(&special)
+                .expect("preserved path")
+                .as_str()
+                .starts_with(r"\\?\")
+        );
+    }
 
     #[rstest::rstest]
     #[case::stable("10.0.13", Some([10, 0, 13]))]

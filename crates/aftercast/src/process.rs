@@ -357,6 +357,8 @@ fn accept_worker(
     loop {
         match listener.accept() {
             Ok((mut stream, _)) => {
+                // Windows accepts inherit nonblocking mode; authentication and framed reads must wait.
+                stream.set_nonblocking(false).map_err(transport)?;
                 stream
                     .set_read_timeout(Some(Duration::from_millis(100)))
                     .map_err(transport)?;

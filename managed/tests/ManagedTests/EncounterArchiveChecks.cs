@@ -15,6 +15,8 @@ internal static class EncounterArchiveChecks
     internal static void Run()
     {
         var directory = Directory.CreateTempSubdirectory("aftercast-history-");
+        // Match Rust's canonical Windows paths to cover history loading after a worker restart.
+        if (OperatingSystem.IsWindows()) directory = new DirectoryInfo(@"\\?\" + directory.FullName);
         var index = Path.Combine(directory.FullName, "history", "index.xml");
         var output = Path.Combine(directory.FullName, "export.act");
         var epoch = DateTime.UnixEpoch.AddTicks(1234567);
