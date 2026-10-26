@@ -16,6 +16,11 @@ local linters = new Mapping {
         check_list_files = "cargo fmt --check --manifest-path {{workspace_indicator}} --all -- --files-with-diff"
         fix = "cargo fmt --manifest-path {{workspace_indicator}} --all"
     }
+    ["dx_fmt"] = new Step {
+        check = "dx fmt --check"
+        fix = "dx fmt"
+        depends = List("cargo_fmt")
+    }
 }
 
 steps = linters
