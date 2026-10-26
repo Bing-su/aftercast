@@ -1,0 +1,7 @@
+[application]
+name = "aftercast"
+default_platform = "desktop"
+
+[bundle]
+identifier = "dev.aftercast.desktop"
+publisher = "aftercast"

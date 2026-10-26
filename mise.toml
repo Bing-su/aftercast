@@ -56,6 +56,29 @@ run_windows = [
 description = "Extract the bundled payload, start, probe and stop"
 run = "cargo run -p aftercast --example smoke --"
 
+[tasks."gui:css"]
+description = "Install locked Bun tools and build Tailwind/Catppuccin CSS"
+run = ["bun install --cwd crates/aftercast-app --frozen-lockfile", "bun run --cwd crates/aftercast-app build:css"]
+
+[tasks."gui:run"]
+description = "Run the desktop GUI with its embedded .NET runtime"
+run = "cargo run -p aftercast-app"
+
+[tasks."gui:bundle"]
+description = "Build the desktop executable with a pinned, verified .NET runtime embedded by Cargo"
+depends = ["gui:css", "managed:build"]
+run = "cargo build -p aftercast-app --release"
+
+[tasks."test:gui-bundle"]
+description = "Check runtime download/cache verification and atomic embedded-runtime extraction"
+run = ["cargo test -p aftercast-app --test build_bundle", "cargo test -p aftercast-app runtime_bundle::tests"]
+
+[tasks."test:gui"]
+description = "Run Rust app checks and real Windows WebView2 GUI workflows"
+depends = ["gui:css", "managed:test-runner"]
+run = ["cargo test -p aftercast-app", "cargo build -p aftercast-app"]
+run_windows = ["dotnet build managed/tests/PluginFixture/PluginFixture.csproj -c Release -p:RestoreLockedMode=true", "cargo test -p aftercast-app", "cargo build -p aftercast-app", "bun run --cwd crates/aftercast-app test"]
+
 [tasks."test:overlay-process"]
 description = "Verify original CEF/cactbot rendering in two Rust workers (Windows, prepared CEF and Playwright)"
 depends = ["managed:test-runner"]

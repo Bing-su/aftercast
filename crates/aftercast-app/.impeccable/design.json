@@ -1,0 +1,276 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-10-26T13:17:36Z",
+  "title": "Design System: aftercast desktop",
+  "extensions": {
+    "colorMeta": {
+      "primary": {
+        "role": "primary",
+        "displayName": "Catppuccin Mauve",
+        "tonalRamp": [
+          "var(--catppuccin-color-mauve-950)",
+          "var(--catppuccin-color-mauve-900)",
+          "var(--catppuccin-color-mauve-800)",
+          "var(--catppuccin-color-mauve-700)",
+          "var(--catppuccin-color-mauve-600)",
+          "var(--catppuccin-color-mauve-500)",
+          "var(--catppuccin-color-mauve-200)",
+          "var(--catppuccin-color-mauve-50)"
+        ]
+      },
+      "background": {
+        "role": "neutral",
+        "displayName": "Catppuccin Base",
+        "tonalRamp": [
+          "var(--catppuccin-color-crust)",
+          "var(--catppuccin-color-mantle)",
+          "var(--catppuccin-color-base)",
+          "var(--catppuccin-color-surface0)",
+          "var(--catppuccin-color-surface1)",
+          "var(--catppuccin-color-surface2)",
+          "var(--catppuccin-color-subtext1)",
+          "var(--catppuccin-color-text)"
+        ]
+      },
+      "foreground": {
+        "role": "neutral",
+        "displayName": "Catppuccin Text",
+        "tonalRamp": [
+          "var(--catppuccin-color-crust)",
+          "var(--catppuccin-color-mantle)",
+          "var(--catppuccin-color-base)",
+          "var(--catppuccin-color-surface0)",
+          "var(--catppuccin-color-surface1)",
+          "var(--catppuccin-color-surface2)",
+          "var(--catppuccin-color-subtext1)",
+          "var(--catppuccin-color-text)"
+        ]
+      },
+      "muted-foreground": {
+        "role": "neutral",
+        "displayName": "Catppuccin Subtext 1",
+        "tonalRamp": [
+          "var(--catppuccin-color-crust)",
+          "var(--catppuccin-color-mantle)",
+          "var(--catppuccin-color-base)",
+          "var(--catppuccin-color-surface0)",
+          "var(--catppuccin-color-surface1)",
+          "var(--catppuccin-color-surface2)",
+          "var(--catppuccin-color-subtext1)",
+          "var(--catppuccin-color-text)"
+        ]
+      },
+      "border": {
+        "role": "neutral",
+        "displayName": "Catppuccin Surface 1",
+        "tonalRamp": [
+          "var(--catppuccin-color-crust)",
+          "var(--catppuccin-color-mantle)",
+          "var(--catppuccin-color-base)",
+          "var(--catppuccin-color-surface0)",
+          "var(--catppuccin-color-surface1)",
+          "var(--catppuccin-color-surface2)",
+          "var(--catppuccin-color-subtext1)",
+          "var(--catppuccin-color-text)"
+        ]
+      },
+      "accent": {
+        "role": "neutral",
+        "displayName": "Catppuccin Surface 0",
+        "tonalRamp": [
+          "var(--catppuccin-color-crust)",
+          "var(--catppuccin-color-mantle)",
+          "var(--catppuccin-color-base)",
+          "var(--catppuccin-color-surface0)",
+          "var(--catppuccin-color-surface1)",
+          "var(--catppuccin-color-surface2)",
+          "var(--catppuccin-color-subtext1)",
+          "var(--catppuccin-color-text)"
+        ]
+      },
+      "mantle": {
+        "role": "neutral",
+        "displayName": "Catppuccin Mantle",
+        "tonalRamp": [
+          "var(--catppuccin-color-crust)",
+          "var(--catppuccin-color-mantle)",
+          "var(--catppuccin-color-base)",
+          "var(--catppuccin-color-surface0)",
+          "var(--catppuccin-color-surface1)",
+          "var(--catppuccin-color-surface2)",
+          "var(--catppuccin-color-subtext1)",
+          "var(--catppuccin-color-text)"
+        ]
+      },
+      "error": {
+        "role": "error",
+        "displayName": "Catppuccin Red",
+        "tonalRamp": [
+          "var(--catppuccin-color-red-950)",
+          "var(--catppuccin-color-red-900)",
+          "var(--catppuccin-color-red-800)",
+          "var(--catppuccin-color-red-700)",
+          "var(--catppuccin-color-red-600)",
+          "var(--catppuccin-color-red-500)",
+          "var(--catppuccin-color-red-200)",
+          "var(--catppuccin-color-red-50)"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "headline": { "displayName": "Screen heading", "purpose": "Current task heading." },
+      "title": { "displayName": "Encounter heading", "purpose": "Selected encounter title." },
+      "body": {
+        "displayName": "System body",
+        "purpose": "General desktop text and navigation in English and Korean."
+      },
+      "label": {
+        "displayName": "Supporting label",
+        "purpose": "Metadata, captions and footer status."
+      },
+      "field-label": {
+        "displayName": "Field Label",
+        "purpose": "Shared Label default; current settings/log fields use 13px and plugin-type fields use muted 12px text."
+      }
+    },
+    "shadows": [],
+    "motion": [
+      {
+        "name": "control-colours",
+        "value": "color 150ms cubic-bezier(0.4, 0, 0.2, 1), background-color 150ms cubic-bezier(0.4, 0, 0.2, 1), border-color 150ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Shared Button colour transition; disabled for reduced motion. Primary brightness follows the source hover filter without a filter transition."
+      },
+      {
+        "name": "progress-fill",
+        "value": "transform 300ms cubic-bezier(0.4, 0, 0.2, 1)",
+        "purpose": "Translate the shared Progress fill to the bounded completion value; disabled for reduced motion."
+      }
+    ],
+    "breakpoints": [{ "name": "wide-desktop", "value": "1000px" }]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "Shared Button for start host and save settings.",
+      "html": "<button class=\"ds-primary\" type=\"button\">Save settings</button>",
+      "css": ".ds-primary{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 12px;border:0;border-radius:6px;background:var(--catppuccin-color-mauve,#cba6f7);color:var(--catppuccin-color-base,#1e1e2e);font:500 14px/20px 'Segoe UI','Malgun Gothic',sans-serif;cursor:pointer;transition:color 150ms cubic-bezier(.4,0,.2,1),background-color 150ms cubic-bezier(.4,0,.2,1),border-color 150ms cubic-bezier(.4,0,.2,1)}.ds-primary:hover{filter:brightness(.95)}.ds-primary:focus-visible{outline:2px solid var(--catppuccin-color-mauve,#cba6f7);outline-offset:2px}.ds-primary:disabled{pointer-events:none;opacity:.45}@media(prefers-reduced-motion:reduce){.ds-primary{transition:none}}"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Shared Button for import, stop, cancel and reload actions.",
+      "html": "<button class=\"ds-outline\" type=\"button\">Reload settings</button>",
+      "css": ".ds-outline{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 12px;border:1px solid var(--catppuccin-color-surface1,#45475a);border-radius:6px;background:var(--catppuccin-color-base,#1e1e2e);color:var(--catppuccin-color-text,#cdd6f4);font:500 14px/20px 'Segoe UI','Malgun Gothic',sans-serif;cursor:pointer;transition:color 150ms cubic-bezier(.4,0,.2,1),background-color 150ms cubic-bezier(.4,0,.2,1),border-color 150ms cubic-bezier(.4,0,.2,1)}.ds-outline:hover{background:var(--catppuccin-color-surface0,#313244)}.ds-outline:focus-visible{outline:2px solid var(--catppuccin-color-mauve,#cba6f7);outline-offset:2px}.ds-outline:disabled{pointer-events:none;opacity:.45}@media(prefers-reduced-motion:reduce){.ds-outline{transition:none}}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Shared Button for utility actions and table pagination.",
+      "html": "<button class=\"ds-ghost\" type=\"button\">Next</button>",
+      "css": ".ds-ghost{display:inline-flex;align-items:center;justify-content:center;gap:8px;height:36px;padding:0 12px;border:0;border-radius:6px;background:transparent;color:var(--catppuccin-color-subtext1,#bac2de);font:500 14px/20px 'Segoe UI','Malgun Gothic',sans-serif;cursor:pointer;transition:color 150ms cubic-bezier(.4,0,.2,1),background-color 150ms cubic-bezier(.4,0,.2,1)}.ds-ghost:hover{background:var(--catppuccin-color-surface0,#313244);color:var(--catppuccin-color-text,#cdd6f4)}.ds-ghost:focus-visible{outline:2px solid var(--catppuccin-color-mauve,#cba6f7);outline-offset:2px}.ds-ghost:disabled{pointer-events:none;opacity:.45}@media(prefers-reduced-motion:reduce){.ds-ghost{transition:none}}"
+    },
+    {
+      "name": "Path Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Labelled shared Input for log and runtime paths.",
+      "html": "<label class=\"ds-field-label\" for=\"ds-log-path\">Log file</label><input class=\"ds-field\" id=\"ds-log-path\" type=\"text\" placeholder=\"Path to log file\">",
+      "css": ".ds-field-label{display:flex;align-items:center;gap:8px;margin:16px 0 8px;user-select:none;color:var(--catppuccin-color-text,#cdd6f4);font:500 13px/1 'Segoe UI','Malgun Gothic',sans-serif}.ds-field{display:flex;height:36px;width:100%;min-width:0;padding:0 12px;border:1px solid var(--catppuccin-color-surface1,#45475a);border-radius:6px;background:var(--catppuccin-color-base,#1e1e2e);color:var(--catppuccin-color-text,#cdd6f4);font:400 14px/20px 'Segoe UI','Malgun Gothic',sans-serif}.ds-field::placeholder{color:var(--catppuccin-color-subtext1,#bac2de)}.ds-field:focus-visible{outline:2px solid var(--catppuccin-color-mauve,#cba6f7);outline-offset:2px}.ds-field:disabled{opacity:.45}"
+    },
+    {
+      "name": "Sidebar Navigation",
+      "kind": "nav",
+      "refersTo": "navigation-item",
+      "description": "Current-page navigation uses a tonal selection and mauve line icon.",
+      "html": "<nav class=\"ds-nav\" aria-label=\"Navigation\"><button class=\"ds-nav-item\" type=\"button\" aria-current=\"page\"><svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\" aria-hidden=\"true\"><path d=\"M3 3v18h18M7 14v3m5-7v7m5-11v11\"/></svg>Analysis</button><button class=\"ds-nav-item\" type=\"button\">Plugins</button><button class=\"ds-nav-item\" type=\"button\">Settings</button></nav>",
+      "css": ".ds-nav{padding:16px 12px;border-bottom:1px solid var(--catppuccin-color-surface1,#45475a);background:var(--catppuccin-color-mantle,#181825)}.ds-nav-item{display:flex;align-items:center;gap:10px;width:100%;margin:2px 0;padding:10px 12px;border:0;border-radius:6px;background:transparent;color:var(--catppuccin-color-subtext1,#bac2de);font:400 14px/20px 'Segoe UI','Malgun Gothic',sans-serif;text-align:left;cursor:pointer}.ds-nav-item:hover,.ds-nav-item[aria-current=page]{background:var(--catppuccin-color-surface0,#313244);color:var(--catppuccin-color-text,#cdd6f4)}.ds-nav-item[aria-current=page] svg{color:var(--catppuccin-color-mauve,#cba6f7)}.ds-nav-item:focus-visible{outline:2px solid var(--catppuccin-color-mauve,#cba6f7);outline-offset:3px}"
+    },
+    {
+      "name": "Encounter Row",
+      "kind": "custom",
+      "refersTo": "encounter-item",
+      "description": "Two-line encounter button with an explicit selected state.",
+      "html": "<button class=\"ds-encounter\" type=\"button\" aria-pressed=\"true\"><span class=\"ds-encounter-title\">Target</span><span class=\"ds-encounter-zone\">Import Zone</span></button>",
+      "css": ".ds-encounter{display:block;width:100%;padding:12px 20px;border:0;border-bottom:1px solid var(--catppuccin-color-surface1,#45475a);background:var(--catppuccin-color-mantle,#181825);color:var(--catppuccin-color-text,#cdd6f4);font:400 14px/20px 'Segoe UI','Malgun Gothic',sans-serif;text-align:left;cursor:pointer}.ds-encounter-title,.ds-encounter-zone{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.ds-encounter-title{font-weight:500}.ds-encounter-zone{color:var(--catppuccin-color-subtext1,#bac2de);font-size:12px;line-height:16px}.ds-encounter:hover,.ds-encounter[aria-pressed=true]{background:var(--catppuccin-color-surface0,#313244)}.ds-encounter[aria-pressed=true]{color:var(--catppuccin-color-mauve,#cba6f7)}.ds-encounter:focus-visible{outline:2px solid var(--catppuccin-color-mauve,#cba6f7);outline-offset:3px}"
+    },
+    {
+      "name": "Encounter Summary",
+      "kind": "custom",
+      "refersTo": "summary-strip",
+      "description": "Flat tabular metrics above the contribution chart and participant table.",
+      "html": "<div class=\"ds-summary\"><div><span>Damage</span><strong>400</strong></div><div><span>Healing</span><strong>0</strong></div><div><span>Participants</span><strong>2</strong></div><div><span>Duration</span><strong>2 s</strong></div></div>",
+      "css": ".ds-summary{display:flex;gap:36px;padding:20px 0;border-top:1px solid var(--catppuccin-color-surface1,#45475a);background:var(--catppuccin-color-base,#1e1e2e);color:var(--catppuccin-color-text,#cdd6f4);font-family:'Segoe UI','Malgun Gothic',sans-serif;font-variant-numeric:tabular-nums}.ds-summary span{display:block;color:var(--catppuccin-color-subtext1,#bac2de);font-size:12px;line-height:16px}.ds-summary strong{display:block;margin-top:4px;font-size:18px;font-weight:500;line-height:28px}"
+    },
+    {
+      "name": "Field Label",
+      "kind": "custom",
+      "refersTo": "field-label",
+      "description": "Associated shared Label: default medium 14px text, shown with the 13px settings field override.",
+      "html": "<label class=\"ds-label ds-label-settings\" for=\"ds-runtime-path\">.NET runtime directory</label><input class=\"ds-label-input\" id=\"ds-runtime-path\" type=\"text\" value=\"dotnet\">",
+      "css": ".ds-label{display:flex;align-items:center;gap:8px;user-select:none;color:var(--catppuccin-color-text,#cdd6f4);font:500 14px/1 'Segoe UI','Malgun Gothic',sans-serif}.ds-label-settings{margin:16px 0 8px;font-size:13px}.ds-label-input{display:flex;height:36px;width:100%;min-width:0;padding:0 12px;border:1px solid var(--catppuccin-color-surface1,#45475a);border-radius:6px;background:var(--catppuccin-color-base,#1e1e2e);color:var(--catppuccin-color-text,#cdd6f4);font:400 14px/20px 'Segoe UI','Malgun Gothic',sans-serif}.ds-label-input:focus-visible{outline:2px solid var(--catppuccin-color-mauve,#cba6f7);outline-offset:2px}.ds-label-input:disabled{opacity:.45}"
+    },
+    {
+      "name": "Horizontal Separator",
+      "kind": "custom",
+      "refersTo": "separator",
+      "description": "Shared horizontal Separator with the settings group's 24px vertical margins.",
+      "html": "<div class=\"ds-separator\" role=\"separator\" aria-orientation=\"horizontal\"></div>",
+      "css": ".ds-separator{height:1px;width:100%;flex-shrink:0;margin:24px 0;background:var(--catppuccin-color-surface1,#45475a)}"
+    },
+    {
+      "name": "Outline Status Badge",
+      "kind": "chip",
+      "refersTo": "badge-outline",
+      "description": "Noninteractive shared outline Badge, shown with the plugin caller's normal font weight and top margin.",
+      "html": "<span class=\"ds-badge-outline ds-badge-plugin\">Plugin status: Ready</span>",
+      "css": ".ds-badge-outline{display:inline-flex;width:fit-content;align-items:center;gap:8px;border:1px solid var(--catppuccin-color-surface1,#45475a);border-radius:6px;padding:2px 10px;background:transparent;color:var(--catppuccin-color-text,#cdd6f4);font:600 12px/16px 'Segoe UI','Malgun Gothic',sans-serif}.ds-badge-plugin{margin-top:8px;font-weight:400}"
+    },
+    {
+      "name": "Import Progress",
+      "kind": "custom",
+      "refersTo": "progress",
+      "description": "Named bounded ARIA progressbar; representative 40% completion with reduced-motion support.",
+      "html": "<div class=\"ds-progress\" role=\"progressbar\" aria-label=\"Importing log\" aria-valuemin=\"0\" aria-valuemax=\"100\" aria-valuenow=\"40\"><div class=\"ds-progress-fill\" style=\"transform:translateX(-60%)\"></div></div>",
+      "css": ".ds-progress{position:relative;height:8px;width:100%;overflow:hidden;border-radius:calc(infinity * 1px);background:var(--catppuccin-color-surface0,#313244);margin-top:16px}.ds-progress-fill{height:100%;width:100%;background:var(--catppuccin-color-mauve,#cba6f7);transition:transform 300ms cubic-bezier(.4,0,.2,1)}@media(prefers-reduced-motion:reduce){.ds-progress-fill{transition:none}}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Encounter Workspace",
+    "overview": "aftercast is a task-focused Windows desktop workspace. Its visual character comes from the official Catppuccin palette, readable system typography, and flat, divided work areas. Mocha is the default; Macchiato, Frappé, and Latte retain the same semantic roles and component geometry.\n\nThe interface gives most space to the current task while keeping ordered navigation, encounters, host actions, and status available around it. Korean and English use the same quiet typographic hierarchy. The existing Rust components and Tailwind v4 utilities define the system; this document captures that first implemented increment.",
+    "keyCharacteristics": [
+      "Official Catppuccin colours with a restrained mauve action accent.",
+      "System fonts for English and Korean desktop reading.",
+      "Flat surfaces divided by thin borders and tonal changes.",
+      "Compact controls, spacious task content, and persistent status."
+    ],
+    "rules": [
+      {
+        "name": "The Flavour Binding Rule",
+        "body": "Resolve colours through the current Catppuccin flavour; a new screen must change with the existing appearance selector.",
+        "section": "colors"
+      },
+      {
+        "name": "The Flat Workspace Rule",
+        "body": "Use the existing tonal surfaces and borders to separate adjacent work areas.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "**Do** use the live Catppuccin semantic colours across all four flavours.",
+      "**Do** reuse the Rust Button and Input components for matching controls.",
+      "**Do** retain visible field labels, keyboard focus and explicit selected states.",
+      "**Do** use tabular figures for result metrics and preserve readable table scrolling.",
+      "**Do** verify Korean and English at the minimum desktop window size."
+    ],
+    "donts": [
+      "**Don't** hard-code Mocha colours into a screen that supports flavour switching.",
+      "**Don't** replace the system-font stack with a decorative display face.",
+      "**Don't** add shadows or floating-card styling to the existing flat workspace.",
+      "**Don't** use colour alone to identify the current page or selected encounter."
+    ]
+  }
+}

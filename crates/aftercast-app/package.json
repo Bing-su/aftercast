@@ -1,0 +1,15 @@
+{
+  "name": "aftercast-desktop-tests",
+  "private": true,
+  "scripts": {
+    "build:css": "tailwindcss -i tailwind.css -o assets/tailwind.css --minify",
+    "test": "playwright test"
+  },
+  "devDependencies": {
+    "@catppuccin/tailwindcss": "^1.0.0",
+    "@playwright/test": "^1.56.0",
+    "@tailwindcss/cli": "^4.1.0",
+    "tailwindcss": "^4.1.0"
+  },
+  "packageManager": "bun@1.4.4"
+}

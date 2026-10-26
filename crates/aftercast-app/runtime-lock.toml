@@ -1,0 +1,49 @@
+# Official .NET release metadata: https://builds.dotnet.microsoft.com/dotnet/release-metadata/10.0/releases.json
+# Pin complete archives so Cargo builds do not depend on the developer's installed runtime.
+version = "10.0.14"
+
+[[runtimes]]
+target = "x86_64-pc-windows-msvc"
+rid = "win-x64"
+
+[[runtimes.archives]]
+format = "zip"
+url = "https://builds.dotnet.microsoft.com/dotnet/Runtime/10.0.14/dotnet-runtime-10.0.14-win-x64.zip"
+sha512 = "a176095f1db69b42c81acc60940744078d6bf2d2ac643e418342aa9c81889f4bd13e42f4621b131f9e77e4bc781ad46e375956219df9a4f979031d2a5a8d93cd"
+
+[[runtimes.archives]]
+format = "zip"
+url = "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/10.0.14/windowsdesktop-runtime-10.0.14-win-x64.zip"
+sha512 = "3214913702264452ac4b283b6fb2f6c14ab748cea36c7561608245c4a7d8cc10436a160032038865d039a016eab4975f65f1ae906de7615953fbec760f764ac4"
+
+[[runtimes]]
+target = "aarch64-pc-windows-msvc"
+rid = "win-arm64"
+
+[[runtimes.archives]]
+format = "zip"
+url = "https://builds.dotnet.microsoft.com/dotnet/Runtime/10.0.14/dotnet-runtime-10.0.14-win-arm64.zip"
+sha512 = "8690d0dd94ce1d4df66dd34f85b9f86e81ed5db0c4e5fcd281e5d379b9abd0018547556d1d7e8c0ce33a55ac69835c788c8da7c583fc0f58ccbdd6de227a0294"
+
+[[runtimes.archives]]
+format = "zip"
+url = "https://builds.dotnet.microsoft.com/dotnet/WindowsDesktop/10.0.14/windowsdesktop-runtime-10.0.14-win-arm64.zip"
+sha512 = "812d1f97bdf9d66a47de148012470280f88d25fc00a2d0698401ac9173a1de5e983f48854768bc0db2996d708c0cfbf4704d1dc5674e29b4fcfa884ebd787412"
+
+[[runtimes]]
+target = "x86_64-unknown-linux-gnu"
+rid = "linux-x64"
+
+[[runtimes.archives]]
+format = "tar_gz"
+url = "https://builds.dotnet.microsoft.com/dotnet/Runtime/10.0.14/dotnet-runtime-10.0.14-linux-x64.tar.gz"
+sha512 = "634326028645f38731c8c4e71a68356e4ca0d6b6607139a234ab760687f742063edaf33a1f20dda615742d2dc8300ca2ff857619d51fbb38090383b71334af89"
+
+[[runtimes]]
+target = "aarch64-unknown-linux-gnu"
+rid = "linux-arm64"
+
+[[runtimes.archives]]
+format = "tar_gz"
+url = "https://builds.dotnet.microsoft.com/dotnet/Runtime/10.0.14/dotnet-runtime-10.0.14-linux-arm64.tar.gz"
+sha512 = "99e1d6eb5d3de935853404fd378c77cbf813bd3ae094837b5a589000a492c289bf0d01d8a6bff99b4470572d9f85dc0b41239b5b7801e031197b83d527cdfeb2"
