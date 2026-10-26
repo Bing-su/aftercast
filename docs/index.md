@@ -5,6 +5,8 @@
 | [Usage](usage.md)                                                      | Setup, host/plugin lifecycle and platform support                                   |
 | [Architecture](architecture.md)                                        | Source layout, ownership and lifecycle ordering                                     |
 | [Dioxus desktop plan](gui-plan.md)                                     | Library-owned host, GUI stages, ACT analysis/tab workflow targets, evidence limits and acceptance criteria |
+| [GUI test plan](gui-plan.md#gui-test-plan)                              | Rust/Host/CLI tests, planned Playwright Desktop automation, regression scenarios and native/platform limits |
+| [GUI library selections and research](gui-library-research.md)          | Confirmed GUI/application library choices, validation candidates, configuration/storage policy and source evidence |
 | [ACT secondary analysis tools](act-analysis-tools.md)                  | Death/avoidance/special reports, timeline, recast and VCR behavior, data prerequisites and comparison cases |
 | [Development](development.md)                                          | Build, verification and package commands                                            |
 | [Refactoring measurements](refactoring-performance.md)                 | Query allocations, synthetic workload, changes and verification limits              |

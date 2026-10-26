@@ -1,15 +1,82 @@
 # Desktop GUI plan
 
+The [GUI library selections and research](gui-library-research.md) records
+confirmed choices and candidates for components, tables, charts and desktop
+integrations. Selected libraries may be added for their documented purposes;
+candidate suitability, version resolution and Desktop compatibility still need
+verification before implementation is considered complete.
+
+Confirmed library constraints (2026-10-26): do not write application-level JS
+bridges; use Rust/Dioxus component APIs. Dioxus or library-internal JS is distinct
+from an application-owned bridge. Include `dioxus-i18n` and `dioxus-sdk` from the
+initial GUI implementation, with translation resources for UI text and SDK
+features selected for the initial screens. ECharts and Tabulator are excluded;
+evaluate `dioxus-charts` and Chorale against the analysis requirements instead.
+Use Tailwind CSS v4 with Rust/UI's Dioxus component sources, `tw_merge` and its
+Lucide `icons` package as the default UI stack. Track copied sources and licenses;
+check each component for Desktop support and compliance with the no-app-JS-bridge
+constraint. Reuse unstyled Dioxus primitives for missing behavior as needed,
+with the same application theme rather than a second styled component system.
+Use `miette` instead of `anyhow` for application error reporting and `usage-rs`
+(`usage_rs` in Rust) for the application CLI. Preserve concrete library error
+types and include the internal child mode in the common CLI parser. Dispatch on
+the parsed mode before UI or application runtime initialization. Terminal
+diagnostic rendering and localized GUI error presentation use their respective
+output paths; do not display terminal ANSI output as GUI error content.
+Reuse managed .NET Regex for log regex searches and ACT trigger validation and
+execution; do not add an application-owned Rust regex engine. Expose the required
+bounded asynchronous search/validation operations through Host, with explicit
+timeout, cancellation, error and match-position semantics. Those GUI-facing APIs
+are prerequisites, not capabilities already established by the existing trigger
+engine. Distinguish .NET UTF-16 offsets from Rust UTF-8 byte offsets for highlights.
+Selected application utilities also include `tracing-subscriber` and
+`tracing-appender` for diagnostic collection and non-blocking rotating log files,
+`directories` for OS-specific paths outside ACT-related file storage, `open` for
+opening files/folders/URLs with the desktop, and `jiff` for date/time-zone handling.
+Use TOML with `serde` and `toml_edit` (with its `serde` feature enabled) for
+application-owned settings. Declare these dependencies in the GUI/CLI executable
+crate when implementing it. Keep the logging worker guard alive through shutdown
+and flush it outside the UI executor; forced termination can lose buffered logs.
+Keep slow desktop launch helpers off the UI executor and preserve existing
+Host/plugin settings, source timestamp identities and monotonic elapsed-time
+measurement.
+
+ACT-related settings, plugins, data and generated ACT-related logs/history use
+the application executable directory and its existing relative subdirectory
+layout. Resolve paths from the executable location, not the current working
+directory, and pass the resolved Host data path to the child. Do not relocate
+these files into OS-standard application folders or silently fall back there
+when writes fail; show the failure and target path. Preserve existing file names
+and references. This policy does not automatically move/copy user-selected
+external source files. `directories` remains available for other OS-standard
+path needs, not for choosing ACT-related storage.
+
+Store application-owned settings in `config.toml` beside the executable.
+Include a `schema_version` and validate both the version and values. Keep an
+editable TOML document and update changed items rather than serializing the
+entire settings struct over the original; preserve comments, formatting and
+unmodified unknown entries, accounting for `toml_edit`'s preservation limits.
+Report malformed or unsupported settings without silently overwriting them.
+Write a completed temporary file in the same directory and atomically replace
+the destination using platform-appropriate semantics; preserve the old file on
+save failure and keep file I/O off the UI executor. Existing ACT/plugin XML and
+other owned settings retain their current formats. This replaces the earlier
+JSON proposal for application settings, not other existing `serde_json` uses.
+
 The GUI is a future consumer of the asynchronous `aftercast` library. Host
 ownership, bounded command admission, Windows STA, message pumping, import jobs
 and shutdown now belong to the library; the GUI must not add another host thread
 or duplicate its command queue.
 
-The GUI executable also hosts the isolated child. Its synchronous main must call
+The GUI executable also hosts the isolated child. Its synchronous main first
+parses the common CLI with `usage-rs`, including `--aftercast-child`, then
+dispatches on the parsed execution mode. In child mode, call
 `aftercast::run_child_if_requested()` before Dioxus, WebView, windows, logging
-services or an async runtime are initialized. On true, return immediately; on an
-error, report it and exit. Only false enters normal UI startup. Host relaunches
-that same file with `--aftercast-child`; no separately deployed worker is used.
+services or an application async runtime are initialized. Return when child mode
+ends; report errors and exit rather than falling through to normal startup.
+Only normal application mode enters UI startup. Host relaunches that same file
+with `--aftercast-child`; preserve its argument format and supervisor
+authentication. No separately deployed worker is used.
 Use `run_child_if_requested_with_audio` here if the app supplies custom backends.
 
 | Owner                       | Responsibility                                                                      |
@@ -25,6 +92,26 @@ Construct and initialize prerequisite plugins before their dependents, e.g.
 FFXIV, OverlayPlugin, then cactbot. Gate addon readiness on its handler responses;
 `InitPlugin` returning does not establish completion of deferred startup.
 
+## Async from the first GUI implementation
+
+Confirmed requirement (2026-10-26): the first GUI must use asynchronous operations
+from the start, including visible pending/error states and operation lifecycle
+handling. Do not build a synchronous GUI first and defer this to a refactor.
+
+| Area | Implementation rule |
+| --- | --- |
+| UI operations | Await HostHandle operations through Dioxus tasks/hooks. Do not use `block_on`, synchronous waits or long calculations on the UI executor; ordinary short state updates remain synchronous |
+| Blocking work | Prefer async APIs for file/dialog operations where supported. Move unavoidable blocking I/O or expensive processing to bounded background execution, respecting native thread-affinity requirements; marking a function `async` alone does not make it nonblocking |
+| Admission and results | Keep automatic refresh bounded to one in flight, handle Busy/errors, and discard results whose session/selection has changed. For example, selecting encounter B must prevent a late response for A from replacing B's details |
+| Cancellation and lifetime | Tie UI tasks to their component/window/session lifetime. Explicitly request cancellation of host jobs where required; dropping a UI future does not prove the host operation stopped. Keep cleanup and shutdown completion observable |
+| Executor ownership | Reuse Dioxus execution and the existing library-owned Host scheduling. Host futures do not require a Tokio runtime; add runtime infrastructure only for a concrete API requirement and never duplicate the host thread or command queue |
+| Startup boundary | Keep the synchronous child-mode dispatch before UI/runtime initialization as specified above. Asynchronous GUI operation does not move native plugin controls off their owning STA |
+
+Acceptance must include slow operations while navigation, repaint and cancel stay
+responsive; stale selection/session responses; closing a secondary window during
+a request; and shutdown with work pending. Fast fixture results alone do not
+establish nonblocking behavior.
+
 | UI behavior       | Contract                                                                                           |
 | ----------------- | -------------------------------------------------------------------------------------------------- |
 | Startup           | Report runtime/deployment/plugin failures before enabling host actions                             |
@@ -35,6 +122,71 @@ FFXIV, OverlayPlugin, then cactbot. Gate addon readiness on its handler response
 | Shutdown          | Await Host::shutdown; report ShutdownTimeout as a forced exit with potentially lost unsaved state  |
 | Blocked plugin    | Independent supervisor kills/reaps the child after the graceful deadline; a new Host can restart   |
 | Native UI         | Plugin controls remain on the library-owned STA; Dioxus does not convert WinForms controls         |
+
+## GUI test plan
+
+Recorded 2026-10-26. This is a planned test strategy, not evidence that a GUI,
+test harness or CI job already exists. Add the first tests alongside the first
+GUI workflow and expand them as features become available.
+
+### Test layers and tools
+
+| Layer | Tool | Scope and acceptance |
+| --- | --- | --- |
+| State and configuration | `cargo test`, existing `rstest` and `tempfile` | Selection/session generations, pending/error state, settings validation/version handling and TOML edits preserving comments and unmodified entries; save failures preserve the original file |
+| Host integration | Existing Rust process/fixture tests | Actual child startup/authentication, import/cancel, failures, bounded admission, shutdown and restart. GUI tests reuse known fixture expectations rather than treating mocked Host output as integration evidence |
+| CLI | `usage-rs` test feature in dev dependencies | Arguments, help/version, parse errors and exit codes; child mode uses the common parser and never initializes the GUI. Verify the real authenticated supervisor launch separately from parsing the child flag |
+| Desktop UI end to end | Playwright against the running Windows WebView2 app, subject to the feasibility check below | Real Dioxus event handling, displayed results, navigation, dialogs rendered inside the WebView and independent secondary-window context; exercise a real Host with fixtures for core flows |
+| Visual regression | Selected Playwright screenshots after harness validation | Stable key screens in fixed locale, theme, viewport and scale; review intentional baseline changes. Screenshots supplement behavioral assertions rather than replacing them |
+| Native and platform checks | OS automation where reliable, plus documented manual checks | Native file dialogs, plugin-owned WinForms controls, clipboard integration, Korean IME, keyboard/focus, accessibility and DPI. Record evidence per OS/plugin; WebView DOM success alone does not cover these surfaces |
+
+### Windows automation feasibility
+
+Launch the actual desktop executable with test-scoped WebView2 remote debugging,
+then try Playwright's `chromium.connectOverCDP` against its local endpoint. First
+prove attach, a button-to-Rust state change, an actual Host result, a second
+window and process cleanup on the pinned Dioxus/WebView2/Playwright versions.
+CDP has lower fidelity than Playwright's own protocol, so do not assume every
+Playwright feature or artifact is available until exercised.
+
+The test runner's JS/TypeScript is external automation, not an application-owned
+JS bridge. Do not add application JS hooks to bypass ordinary UI interactions.
+Keep debugging flags local to isolated test launches and out of normal packaged
+startup. A browser-hosted component test may supplement this suite but does not
+establish Desktop/Host integration. Linux WebKitGTK needs its own native
+feasibility and execution evidence; Chromium CDP results do not establish it.
+
+| Primary reference | Purpose |
+| --- | --- |
+| [WebView2 debugging](https://learn.microsoft.com/en-us/microsoft-edge/webview2/how-to/debug-visual-studio-code) | Enabling the WebView2 CDP debugging endpoint |
+| [Playwright CDP connection](https://playwright.dev/docs/api/class-browsertype#browser-type-connect-over-cdp) | Connection API and fidelity/Chromium limitations |
+| [usage-rs testing](https://usage.jdx.dev/rust/testing) | Parser, help and executable-output test helpers; verify APIs for the selected version |
+
+### First regression scenarios
+
+| Scenario | Required evidence |
+| --- | --- |
+| Start and import a known log | Visible progress and expected encounter/combatant/action values matching direct fixture queries; errors and partial results remain explicit |
+| Slow import and cancel | Navigation/repaint remain responsive, cancellation is acknowledged and restored Host state is usable; pending state is not cleared merely because a UI future was dropped |
+| Rapid A-to-B selection or session restart | A deliberately late response for A/the previous session cannot replace the current details |
+| Hierarchy and log linkage | Tree selection and row activation reach the same context; parent navigation works; same-timestamp actions open the correct source log entry |
+| Two secondary windows | Windows retain their own encounter context after main selection changes; closing one during a request does not update a dead view or break the other |
+| Change locale/theme and restart | Both rendered UI and persisted `config.toml` reflect the change; comments and unrelated entries survive saving |
+| Invalid/unsupported or unwritable settings | Visible actionable error, original file preserved, and no silent fallback to OS-standard ACT storage |
+| Different working directory | Executable-adjacent `config.toml` and ACT relative paths are still used; parent and child resolve the same intended state |
+| Large tables/logs | Correct sort scope, selection and match highlighting while scrolling/filtering; bounded query/DOM behavior and visible omissions/loss counters where applicable |
+| Failure and shutdown with work pending | Visible failure and completed shutdown or explicit timeout; child processes are reaped and the same disposable state can restart |
+
+### Isolation, synchronization and execution
+
+| Concern | Rule |
+| --- | --- |
+| Disposable state | Stage the executable and required runtime/plugin fixtures into a unique temporary application directory per run. Keep `config.toml` and ACT data beside that executable; never write to the developer's production deployment |
+| Async determinism | Use controllable delayed fixtures for races and cancellation; wait for observable UI/operation completion with bounded timeouts, not fixed sleeps. Prefer accessible role/name locators, with stable test IDs only where needed |
+| Assertions | Check values, selection, file contents, exit status and process lifetime. Fix the locale for text assertions and test locale switching explicitly |
+| Failure evidence | Capture available screenshots, diagnostic logs and runner errors with fixture identity and app/tool/runtime/OS versions; collect Playwright traces only where the validated connection supports them |
+| Execution stages | Run Rust/config/CLI tests in routine checks, a small real Windows Desktop smoke suite once the harness works, and broader native/plugin/platform checks before distribution. These are planned stages, not existing CI jobs |
+| Cleanup | Close windows, await app/Host shutdown and verify owned child cleanup. On test timeout, terminate only test-owned processes and retain failure artifacts before removing disposable state |
 
 ## ACT analysis workflow target
 
