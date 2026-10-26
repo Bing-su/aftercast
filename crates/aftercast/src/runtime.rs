@@ -84,7 +84,7 @@ impl ManagedSession {
             Self::Remote(s) => s.borrow_mut().call(command),
         }
     }
-    pub(crate) fn configure_audio(&self, command: u32, enabled: bool) -> Result<(), Error> {
+    pub(crate) fn configure_audio(&self, command: u32, enabled: bool) -> Result<i32, Error> {
         match self {
             Self::Remote(s) => s.borrow_mut().audio(command, enabled),
             Self::Local(_) => Err(Error::WorkerFailed(

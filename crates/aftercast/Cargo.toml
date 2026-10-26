@@ -38,9 +38,10 @@ features = ["macros", "rt", "time"]
 
 [target.'cfg(target_os = "linux")'.dependencies]
 aftercast-winforms.workspace = true
+libc = "0.2"
 
 [target."cfg(windows)".dependencies]
-windows-sys = { version = "0.61", features = ["Win32_System_Com"] }
+windows-sys = { version = "0.61", features = ["Win32_Security", "Win32_System_Com", "Win32_System_JobObjects"] }
 
 [features]
 audio = ["aftercast-tts/playback", "aftercast-tts/system"]

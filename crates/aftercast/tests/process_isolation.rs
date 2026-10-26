@@ -252,3 +252,126 @@ async fn startup_deadline_covers_a_worker_that_never_authenticates(deployment: D
         .await
         .expect("cleanup");
 }
+
+#[test]
+fn exiting_parent_entry() {
+    let Some(state) = std::env::var_os("AFTERCAST_TEST_EXITING_PARENT") else {
+        return;
+    };
+    // process::exit bypasses Host::drop, exercising the OS binding rather than Rust cleanup.
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_time()
+        .build()
+        .expect("parent runtime");
+    runtime.block_on(async {
+        let config = HostConfig::builder()
+            .dotnet_root(std::env::var("DOTNET_ROOT").expect("runtime"))
+            .bridge_directory(std::env::var("AFTERCAST_TEST_BRIDGE").expect("bridge"))
+            .data_directory(camino::Utf8PathBuf::try_from(state).expect("state path"))
+            .worker_executable(env!("CARGO_BIN_EXE_aftercast-worker"))
+            .build();
+        let host = Host::start(config).await.expect("nested worker");
+        let state = camino::Utf8PathBuf::from(
+            std::env::var("AFTERCAST_TEST_EXITING_PARENT").expect("state"),
+        );
+        std::fs::write(state.join("child.pid"), host.process_id().to_string()).expect("worker pid");
+        let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll",
+        );
+        let plugin = host
+            .create_plugin(
+                PluginConfig::builder()
+                    .path(path)
+                    .type_name("Aftercast.PluginFixture.StuckInitPlugin")
+                    .build(),
+            )
+            .await
+            .expect("stuck plugin");
+        let handle = host.handle();
+        let _initializer = tokio::spawn(async move { handle.initialize_plugin(plugin).await });
+        let deadline = Instant::now() + Duration::from_secs(5);
+        while !state.join("stuck.entered").exists() {
+            assert!(Instant::now() < deadline, "nested callback never started");
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        std::process::exit(0);
+    });
+}
+
+#[cfg(any(target_os = "linux", windows))]
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and fixture; run mise run test:plugins"]
+async fn parent_exit_cannot_leave_a_stuck_worker_holding_state(deployment: Deployment) {
+    #[cfg(target_os = "linux")]
+    {
+        // SAFETY: adopt the test's orphan worker so it can be reaped even when container PID 1 does not reap.
+        let status =
+            unsafe { libc::prctl(libc::PR_SET_CHILD_SUBREAPER, 1, 0_usize, 0_usize, 0_usize) };
+        assert_eq!(status, 0);
+    }
+    let parent = std::process::Command::new(std::env::current_exe().expect("test parent"))
+        .args(["--exact", "exiting_parent_entry", "--nocapture"])
+        .env("AFTERCAST_TEST_EXITING_PARENT", &deployment.state)
+        .env("AFTERCAST_TEST_BRIDGE", &deployment.bridge)
+        .spawn()
+        .expect("launch parent");
+    let mut parent = scopeguard::guard(parent, |mut process| {
+        drop(process.kill());
+        drop(process.wait());
+    });
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        if let Some(status) = parent.try_wait().expect("wait for parent") {
+            assert!(status.success());
+            break;
+        }
+        assert!(Instant::now() < deadline, "parent did not exit");
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    #[cfg(target_os = "linux")]
+    {
+        let pid = std::fs::read_to_string(deployment.state.join("child.pid"))
+            .expect("child pid")
+            .parse::<libc::pid_t>()
+            .expect("numeric pid");
+        let cleanup = scopeguard::guard(pid, |pid| {
+            // SAFETY: this PID is the unreaped adopted child, so failure cleanup cannot target an unrelated process.
+            unsafe {
+                libc::kill(pid, libc::SIGKILL);
+            }
+            // SAFETY: wait only for that recorded child; no status pointer is supplied.
+            unsafe {
+                libc::waitpid(pid, std::ptr::null_mut(), 0);
+            }
+        });
+        loop {
+            // SAFETY: wait only for the recorded child, with no status pointer and no blocking.
+            if unsafe { libc::waitpid(pid, std::ptr::null_mut(), libc::WNOHANG) } == pid {
+                break;
+            }
+            assert!(
+                Instant::now() < deadline,
+                "parent exit left the plugin worker alive"
+            );
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+        scopeguard::ScopeGuard::into_inner(cleanup);
+    }
+    loop {
+        match Host::start(deployment.config()).await {
+            Ok(host) => {
+                host.shutdown().await.expect("new worker cleanup");
+                break;
+            }
+            Err(Error::StateInUse(_)) => {
+                assert!(
+                    Instant::now() < deadline,
+                    "parent exit retained the state lock"
+                );
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            Err(error) => panic!("state reuse failed after parent exit: {error}"),
+        }
+    }
+}

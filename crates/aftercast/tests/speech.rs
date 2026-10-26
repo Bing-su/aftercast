@@ -7,10 +7,25 @@ use common::{Deployment, deployment};
 use std::io::Write;
 use std::time::Duration;
 
-struct Recorder(std::fs::File);
+struct Recorder {
+    file: std::fs::File,
+    state: camino::Utf8PathBuf,
+    speech: bool,
+}
+impl Drop for Recorder {
+    fn drop(&mut self) {
+        if self.speech && self.state.join("audio.probe").exists() {
+            std::fs::write(self.state.join("audio.retiring"), "waiting")
+                .expect("retirement marker");
+            while !self.state.join("audio.released").exists() {
+                std::thread::sleep(Duration::from_millis(1));
+            }
+        }
+    }
+}
 impl Recorder {
     fn record(&mut self, text: &str, volume: u8) -> Result<(), aftercast_tts::Error> {
-        writeln!(self.0, "{volume}|{text}")
+        writeln!(self.file, "{volume}|{text}")
             .map_err(|error| aftercast_tts::Error::Backend(error.to_string()))?;
         if text == "fail" {
             return Err(aftercast_tts::Error::Backend(
@@ -39,7 +54,11 @@ fn recorder(state: &Utf8Path, name: &str) -> Result<Recorder, aftercast_tts::Err
         .create(true)
         .append(true)
         .open(state.join(name))
-        .map(Recorder)
+        .map(|file| Recorder {
+            file,
+            state: state.to_owned(),
+            speech: name == "tts.txt",
+        })
         .map_err(|error| aftercast_tts::Error::Backend(error.to_string()))
 }
 
@@ -127,7 +146,13 @@ async fn audio_is_created_played_and_disposed_in_the_worker(deployment: Deployme
         assert!(matches!(error, Error::Speech(_)), "{error:?}");
         assert!(error.to_string().contains("fixture playback failure"));
     }
-    host.clear_tts().await.expect("disable TTS");
+    plugin(&host, "AudioCleanupPlugin").await;
+    std::fs::write(deployment.state.join("audio.probe"), "enabled")
+        .expect("enable retirement probe");
+    tokio::time::timeout(Duration::from_secs(2), host.clear_tts())
+        .await
+        .expect("audio retirement must keep pumping owner callbacks")
+        .expect("disable TTS");
     host.clear_sound_player().await.expect("disable sound");
     host.shutdown().await.expect("cleanup and reap");
     let restarted = Host::start(deployment.config()).await.expect("restart");
@@ -147,4 +172,26 @@ async fn audio_is_created_played_and_disposed_in_the_worker(deployment: Deployme
         "audio routes must not survive restart"
     );
     restarted.shutdown().await.expect("restart cleanup");
+}
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and fixture; run mise run test:plugins"]
+async fn shutdown_retires_audio_before_disposing_its_owner_context(deployment: Deployment) {
+    let executable = std::env::current_exe().expect("test worker path");
+    let worker = Utf8Path::from_path(&executable).expect("UTF-8 test path");
+    let host = Host::start(deployment.config_with_worker(worker))
+        .await
+        .expect("host");
+    host.set_tts(true).await.expect("TTS");
+    plugin(&host, "AudioCleanupPlugin").await;
+    std::fs::write(deployment.state.join("audio.probe"), "enabled").expect("probe");
+    tokio::time::timeout(Duration::from_secs(3), host.shutdown())
+        .await
+        .expect("shutdown must keep pumping audio cleanup")
+        .expect("graceful cleanup");
+    assert!(
+        deployment.state.join("audio.released").exists(),
+        "cleanup required an owner callback"
+    );
 }

@@ -289,6 +289,7 @@ fn worker_main(
 enum Operation {
     Import(PendingImport),
     Archive(Reply<(i32, BytesMut)>),
+    Audio(Reply<()>),
 }
 
 impl Operation {
@@ -318,6 +319,14 @@ impl Operation {
                     return Some(Self::Archive(reply));
                 }
                 drop(reply.send(result.map(|status| (status, packet))));
+                None
+            }
+            Self::Audio(reply) => {
+                let result = session.configure_audio(102, false);
+                if matches!(result, Ok(1)) {
+                    return Some(Self::Audio(reply));
+                }
+                drop(reply.send(result.map(|_| ())));
                 None
             }
         }
@@ -441,14 +450,20 @@ fn dispatch(core: &mut CoreHost, command: Command, operations: &mut Option<Opera
                 drop(reply.send(Err(Error::Busy)));
                 return;
             }
-            drop(reply.send(core.session.configure_audio(100, speaker)));
+            match core.session.configure_audio(100, speaker) {
+                Ok(1) => *operations = Some(Operation::Audio(reply)),
+                result => drop(reply.send(result.map(|_| ()))),
+            }
         }
         Command::Sound(player, reply) => {
             if operations.is_some() {
                 drop(reply.send(Err(Error::Busy)));
                 return;
             }
-            drop(reply.send(core.session.configure_audio(101, player)));
+            match core.session.configure_audio(101, player) {
+                Ok(1) => *operations = Some(Operation::Audio(reply)),
+                result => drop(reply.send(result.map(|_| ()))),
+            }
         }
         Command::Import(path, pending, reply) => {
             let result = if operations.is_some() {

@@ -39,6 +39,8 @@ prior Windows runtime/native-audio evidence does not establish the new process p
 | Concurrent workers use the same state directory                                                | OS lock rejects the second owner with StateInUse; exit releases ownership                                  |
 | Audio output and injected backend failures                                                     | Factory, playback and disposal execute in a custom child; errors cross IPC                                 |
 | Startup future is dropped                                                                      | Shutdown request still reaches the independent supervisor; state becomes reusable                          |
+| Parent exits without Rust destructors                                                          | Linux parent-death signal / Windows job kills the stuck worker; state can be reopened                      |
+| Audio destructor waits for owner-dispatched work                                               | Replacement and shutdown continue owner pumping until the backend releases                                 |
 
 Build/deploy `aftercast-worker` with the same crate version and desired audio
 features. Set `AFTERCAST_WORKER` to its absolute path for Rust examples. The test

@@ -1,9 +1,12 @@
 use std::collections::VecDeque;
+use std::future::Future;
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::pin::Pin;
 use std::process::{Child, Command, Stdio};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::task::{Context, Poll, Waker};
 use std::thread::{self, JoinHandle};
 use std::time::{Duration, Instant};
 
@@ -17,10 +20,70 @@ use crate::{Error, io_error};
 const MAX_FRAME: usize = 128 * 1024 * 1024;
 const TICK: Duration = Duration::from_millis(5);
 
+fn bind_parent(parent: u32) -> Result<(), Error> {
+    #[cfg(target_os = "linux")]
+    {
+        // SAFETY: prctl installs a death signal with unused arguments zeroed; no pointer is dereferenced.
+        let status = unsafe {
+            libc::prctl(
+                libc::PR_SET_PDEATHSIG,
+                libc::SIGKILL,
+                0_usize,
+                0_usize,
+                0_usize,
+            )
+        };
+        // SAFETY: getppid has no preconditions; checking after prctl closes the parent-exit race.
+        let actual = unsafe { libc::getppid() };
+        if status != 0 {
+            return Err(transport(std::io::Error::last_os_error()));
+        }
+        if u32::try_from(actual).ok() != Some(parent) {
+            return Err(transport("supervisor exited before lifetime binding"));
+        }
+    }
+    #[cfg(not(target_os = "linux"))]
+    let _parent = parent;
+    Ok(())
+}
+
+#[cfg(windows)]
+fn parent_job(child: &Child) -> Result<std::os::windows::io::OwnedHandle, Error> {
+    use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+    use windows_sys::Win32::System::JobObjects::*;
+    // SAFETY: null security/name create a fresh unnamed, non-inheritable job owned below.
+    let raw = unsafe { CreateJobObjectW(std::ptr::null(), std::ptr::null()) };
+    if raw.is_null() {
+        return Err(transport(std::io::Error::last_os_error()));
+    }
+    // SAFETY: CreateJobObjectW returned a unique valid handle, now owned exactly once.
+    let job = unsafe { OwnedHandle::from_raw_handle(raw) };
+    let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+    limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+    // SAFETY: the structure has the required layout/size and both handles remain alive through these calls.
+    let configured = unsafe {
+        SetInformationJobObject(
+            raw,
+            JobObjectExtendedLimitInformation,
+            (&raw const limits).cast(),
+            size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        )
+    };
+    if configured == 0 {
+        return Err(transport(std::io::Error::last_os_error()));
+    }
+    // SAFETY: the spawned child is awaiting its stdin configuration, before running any plugin code.
+    if unsafe { AssignProcessToJobObject(raw, child.as_raw_handle()) } == 0 {
+        return Err(transport(std::io::Error::last_os_error()));
+    }
+    Ok(job)
+}
+
 #[derive(Serialize, Deserialize)]
 struct Launch {
     token: [u8; 32],
     config: HostConfig,
+    parent: u32,
 }
 #[derive(Serialize, Deserialize)]
 struct Message {
@@ -214,10 +277,14 @@ impl Supervisor {
             drop(child.kill());
             drop(child.wait());
         });
+        #[cfg(windows)]
+        let job = parent_job(&child)?;
         // This thread never calls managed code and can kill a worker stuck anywhere in a callback.
         let thread = thread::Builder::new()
             .name("aftercast-supervisor".into())
             .spawn(move || {
+                #[cfg(windows)]
+                let _job = job;
                 let result = watch_child(
                     &mut child,
                     &control,
@@ -324,6 +391,7 @@ impl RemoteSession {
             &Launch {
                 token,
                 config: config.clone(),
+                parent: std::process::id(),
             },
         )?;
         drop(input);
@@ -388,7 +456,7 @@ impl RemoteSession {
         .lifecycle
         .ok_or_else(|| transport("missing lifecycle response"))
     }
-    pub(crate) fn audio(&mut self, command: u32, enabled: bool) -> Result<(), Error> {
+    pub(crate) fn audio(&mut self, command: u32, enabled: bool) -> Result<i32, Error> {
         self.exchange(
             Message {
                 request: None,
@@ -396,12 +464,18 @@ impl RemoteSession {
             },
             &[u8::from(enabled)],
         )
-        .map(|_| ())
+        .map(|(response, _)| response.status)
     }
     pub(crate) fn audio_error(&mut self) -> Option<Error> {
         self.audio.pop_front()
     }
     pub(crate) fn stop(mut self) -> Result<(), Error> {
+        // Retire backends while the managed owner context still exists, including native STA cleanup.
+        let mut audio = Ok(());
+        for command in [100, 101] {
+            let result = self.retire_audio(command);
+            audio = audio.and(result);
+        }
         let result = self
             .exchange(
                 Message {
@@ -415,7 +489,16 @@ impl RemoteSession {
         if matches!(reaped, Err(Error::ShutdownTimeout(_))) {
             return reaped;
         }
-        result.and(reaped)
+        result.and(reaped).and(audio)
+    }
+    fn retire_audio(&mut self, command: u32) -> Result<(), Error> {
+        let mut status = self.audio(command, false)?;
+        while status == 1 {
+            self.call(4)?;
+            status = self.audio(102, false)?;
+            thread::sleep(TICK);
+        }
+        Ok(())
     }
 }
 
@@ -447,6 +530,7 @@ pub fn run_worker_with_audio(
 ) -> Result<(), Error> {
     let address = std::env::var("AFTERCAST_WORKER_ENDPOINT").map_err(transport)?;
     let launch: Launch = read_json(&mut std::io::stdin().lock())?;
+    bind_parent(launch.parent)?;
     let mut stream = TcpStream::connect(address).map_err(transport)?;
     stream.set_nodelay(true).map_err(transport)?;
     stream.write_all(&launch.token).map_err(transport)?;
@@ -477,6 +561,7 @@ pub fn run_worker_with_audio(
     };
     write_json(&mut stream, &startup)?;
     write_frame(&mut stream, &[])?;
+    let mut audio_cleanup = None;
     loop {
         let message: Message = read_json(&mut stream)?;
         let mut packet = BytesMut::from(read_frame(&mut stream)?.as_slice());
@@ -488,9 +573,15 @@ pub fn run_worker_with_audio(
         }
         let mut response = match message.request {
             Some(request) => Response::result(core.session.request(request, &mut packet)),
-            None if message.command == 100 || message.command == 101 => Response::result(
-                configure_audio(&mut core, message.command, &packet, &state, tts, sound).map(|_| 0),
-            ),
+            None if message.command == 100 || message.command == 101 => {
+                let result =
+                    configure_audio(&mut core, message.command, &packet, &state, tts, sound);
+                Response::result(result.and_then(|cleanup| {
+                    audio_cleanup = cleanup;
+                    poll_audio(&mut audio_cleanup)
+                }))
+            }
+            None if message.command == 102 => Response::result(poll_audio(&mut audio_cleanup)),
             None => {
                 let mut response = Response::result(Ok(0));
                 match core.session.call(message.command) {
@@ -513,6 +604,25 @@ pub fn run_worker_with_audio(
     }
 }
 
+type AudioCleanup = Pin<Box<dyn Future<Output = Result<(), Error>>>>;
+
+fn poll_audio(cleanup: &mut Option<AudioCleanup>) -> Result<i32, Error> {
+    // Poll between owner pump requests so native teardown can synchronously invoke that owner.
+    let Some(pending) = cleanup.as_mut() else {
+        return Ok(0);
+    };
+    match pending
+        .as_mut()
+        .poll(&mut Context::from_waker(Waker::noop()))
+    {
+        Poll::Pending => Ok(1),
+        Poll::Ready(result) => {
+            *cleanup = None;
+            result.map(|_| 0)
+        }
+    }
+}
+
 fn configure_audio(
     core: &mut CoreHost,
     command: u32,
@@ -520,7 +630,7 @@ fn configure_audio(
     state: &camino::Utf8Path,
     tts: fn(&camino::Utf8Path) -> Result<aftercast_tts::Speaker, aftercast_tts::Error>,
     sound: fn(&camino::Utf8Path) -> Result<aftercast_tts::SoundPlayer, aftercast_tts::Error>,
-) -> Result<(), Error> {
+) -> Result<Option<AudioCleanup>, Error> {
     let enabled = match packet {
         [0] => false,
         [1] => true,
@@ -529,7 +639,9 @@ fn configure_audio(
     if command == 100 {
         let next = if enabled { Some(tts(state)?) } else { None };
         if let Some(previous) = core.replace_tts(next)? {
-            previous.shutdown_blocking()?;
+            return Ok(Some(Box::pin(async move {
+                previous.shutdown().await.map_err(Error::Speech)
+            })));
         }
     } else {
         let next = if enabled {
@@ -538,10 +650,12 @@ fn configure_audio(
             None
         };
         if let Some(previous) = core.replace_sound(next)? {
-            previous.shutdown_blocking().map_err(Error::Sound)?;
+            return Ok(Some(Box::pin(async move {
+                previous.shutdown().await.map_err(Error::Sound)
+            })));
         }
     }
-    Ok(())
+    Ok(None)
 }
 
 #[cfg(test)]

@@ -31,8 +31,10 @@ combat worker. Native calls borrow Rust buffers only for each call; no task keep
 a native pointer across a yield. No async ABI or arbitrary closure executor is
 public. Futures need an executor but do not require a Tokio runtime.
 
-One optional operation enum represents import or archive; these states cannot
-coexist. Shutdown rejects queued requests before draining the active operation.
+One optional operation enum represents import, archive or audio retirement; these
+states cannot coexist. Audio cleanup futures are polled between owner pump requests,
+and shutdown retires audio before disposing the managed owner context. Shutdown
+rejects queued requests before draining the active operation.
 Audio backend objects cannot capture a parent HostHandle: their factories run in
 the child. A stuck factory, playback worker or destructor is covered by the same
 process shutdown deadline as a stuck plugin callback.
@@ -47,6 +49,10 @@ are 30/5 seconds. Shutdown expiry returns ShutdownTimeout after reaping; request
 blocked on IPC then fail and a new Host can start. Cancellation of startup and
 dropping a Host also request supervised cleanup. A child-held OS file lock prevents
 two workers from writing the same state directory; killing the child releases it.
+Before plugin execution, Linux workers install a parent-death kill signal and
+check for the parent-exit race. On Windows a non-inherited kill-on-close Job Object
+is assigned before the child receives its launch configuration. Parent process
+exit therefore cannot leave a stuck plugin worker holding that state lock.
 Session identities are random across process restarts. No command or plugin
 initialization is automatically replayed, and in-memory state can be lost on kill.
 
