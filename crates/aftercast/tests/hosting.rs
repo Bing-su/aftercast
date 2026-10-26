@@ -5,6 +5,7 @@ use camino::Utf8Path;
 
 fn config(root: &Utf8Path, bridge: &Utf8Path) -> HostConfig {
     HostConfig::builder()
+        .worker_executable(env!("CARGO_BIN_EXE_aftercast-worker"))
         .dotnet_root(root)
         .data_directory(bridge.join("state"))
         .bridge_directory(bridge)
@@ -85,7 +86,7 @@ async fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
     )
     .expect("write invalid runtime configuration");
     match Host::start(config(root, &invalid_bridge)).await {
-        Err(Error::Hosting(_)) => (),
+        Err(Error::WorkerFailed(_)) => (),
         _ => panic!("invalid runtime configuration must report a hosting failure"),
     }
 
@@ -93,6 +94,7 @@ async fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
     std::fs::write(&blocked_state, b"preserve existing state path")
         .expect("create blocked state fixture");
     let blocked = HostConfig::builder()
+        .worker_executable(env!("CARGO_BIN_EXE_aftercast-worker"))
         .dotnet_root(root)
         .bridge_directory(&bridge)
         .data_directory(&blocked_state)
@@ -109,25 +111,10 @@ async fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
     let first = host.session_id().await.expect("managed call succeeds");
     assert_ne!(first, 0);
     match Host::start(config(root, &bridge)).await {
-        Err(Error::AlreadyActive) => (),
-        _ => panic!("second active host must be rejected"),
+        Err(Error::StateInUse(_)) => (),
+        _ => panic!("a second worker must not share an active state directory"),
     }
     host.shutdown().await.expect("explicit shutdown succeeds");
-
-    // A loaded CLR cannot move to another installation merely because the ACT session stopped.
-    let alternate = temporary_path.join("alternate-runtime");
-    let alternate_fxr = alternate.join("host/fxr/10.0.0");
-    std::fs::create_dir_all(&alternate_fxr).expect("create alternate runtime fixture");
-    let name = if cfg!(windows) {
-        "hostfxr.dll"
-    } else {
-        "libhostfxr.so"
-    };
-    std::fs::write(alternate_fxr.join(name), []).expect("mark an alternate hostfxr candidate");
-    match Host::start(config(&alternate, &bridge)).await {
-        Err(Error::RuntimeAlreadyLoaded { .. }) => (),
-        _ => panic!("switching installations must fail before trying to load another hostfxr"),
-    }
 
     let restarted = Host::start(config(root, &bridge))
         .await

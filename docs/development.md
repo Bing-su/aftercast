@@ -29,6 +29,21 @@ not make them package contents.
 
 ## Async follow-up review — 2026-10-26
 
+The process-isolation follow-up supersedes the earlier in-process lifetime and
+audio-injection contract below. Linux checks now launch the packaged worker;
+prior Windows runtime/native-audio evidence does not establish the new process path.
+
+| Process regression                                                                             | Required outcome                                                                                           |
+| ---------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------- |
+| InitPlugin, posted owner callback, raw import hook, action callback, DeInitPlugin never return | Graceful deadline expires, child is killed/reaped, accepted requests settle, same state directory restarts |
+| Concurrent workers use the same state directory                                                | OS lock rejects the second owner with StateInUse; exit releases ownership                                  |
+| Audio output and injected backend failures                                                     | Factory, playback and disposal execute in a custom child; errors cross IPC                                 |
+| Startup future is dropped                                                                      | Shutdown request still reaches the independent supervisor; state becomes reusable                          |
+
+Build/deploy `aftercast-worker` with the same crate version and desired audio
+features. Set `AFTERCAST_WORKER` to its absolute path for Rust examples. The test
+harness uses Cargo's built binary path; no global executable installation is used.
+
 | Regression / cleanup                                        | Verification                                                                                                                                                        |
 | ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Audio retirement calls host diagnostics from its destructor | Reproduced the owner/worker join deadlock; replacement and clear now complete while owner dispatch remains available                                                |

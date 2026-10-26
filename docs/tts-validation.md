@@ -20,7 +20,9 @@ adds effects and spell-timer cues; notification windows remain unsupported.
 | ACT compatibility          | Exact `void TTS(string)` member; diagnostics for invalid/disabled/full requests; no engine-specific logic |
 | Rust host                  | Explicit backend injection, automatic delivery, async error reception and shutdown                        |
 
-Add `aftercast-tts` directly to your application's dependencies, choosing features:
+For standalone playback, add `aftercast-tts` directly to your application's dependencies.
+ACT host playback runs inside `aftercast-worker`; build that executable with `--features audio`.
+Custom worker executables call `run_worker_with_audio` to construct their own backends.
 
 ```toml
 [dependencies]
@@ -31,7 +33,7 @@ aftercast-tts = { path = "../aftercast/crates/aftercast-tts", default-features =
 
 ```rust,ignore
 // Configure before plugin construction/initialization; no backend is enabled implicitly.
-host.set_tts(aftercast_tts::Speaker::system_async().await?).await?;
+host.set_tts(true).await?;
 // The library drives playback; receive errors alongside application work when audio is enabled.
 if let Some(error) = host.next_audio_error().await { eprintln!("{error}"); }
 host.clear_tts().await?;

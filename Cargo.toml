@@ -12,7 +12,7 @@ aftercast-tts = { path = "crates/aftercast-tts", version = "0.1.0" }
 aftercast-winforms = { path = "crates/aftercast-winforms", version = "0.1.0" }
 bon = "3"
 bytes = "1"
-camino = "1"
+camino = { version = "1", features = ["serde1"] }
 netcorehost = { version = "0.22", default-features = false, features = ["net10_0"] }
 rstest = { version = "0.28", default-features = false }
 scopeguard = "1"

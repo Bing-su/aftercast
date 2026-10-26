@@ -1,9 +1,6 @@
-use std::future::Future;
 use std::ops::Deref;
-use std::pin::Pin;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU32, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
-use std::task::{Context, Poll, Waker};
 use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
 
@@ -25,18 +22,33 @@ type Reply<T> = oneshot::Sender<Result<T, Error>>;
 pub(crate) enum Command {
     Request(Request, BytesMut, Reply<(i32, BytesMut)>),
     EndCombat(Reply<()>),
-    Tts(Option<Speaker>, Reply<()>),
-    Sound(Option<SoundPlayer>, Reply<()>),
+    Tts(bool, Reply<()>),
+    Sound(bool, Reply<()>),
     Import(Utf8PathBuf, PendingImport, Reply<()>),
     Canonicalize(Utf8PathBuf, Reply<Utf8PathBuf>),
 }
 
 pub(crate) struct Control {
-    stopping: AtomicBool,
+    pub(crate) stopping: AtomicBool,
+    pub(crate) process_id: AtomicU32,
+    shutdown_at: Mutex<Option<Instant>>,
     failure: Mutex<Option<String>>,
 }
 
 impl Control {
+    fn request_shutdown(&self) {
+        if let Ok(mut at) = self.shutdown_at.lock() {
+            at.get_or_insert_with(Instant::now);
+        }
+        self.stopping.store(true, Ordering::Release);
+    }
+    pub(crate) fn shutdown_started(&self) -> Instant {
+        self.shutdown_at
+            .lock()
+            .ok()
+            .and_then(|at| *at)
+            .unwrap_or_else(Instant::now)
+    }
     pub(crate) fn error(&self) -> Error {
         match self.failure.lock() {
             Ok(failure) => failure
@@ -89,6 +101,8 @@ impl Host {
         let (audio_errors, errors) = tokio::sync::mpsc::channel(32);
         let control = Arc::new(Control {
             stopping: AtomicBool::new(false),
+            process_id: AtomicU32::new(0),
+            shutdown_at: Mutex::new(None),
             failure: Mutex::new(None),
         });
         let worker_control = control.clone();
@@ -108,6 +122,9 @@ impl Host {
         let thread = worker.thread().clone();
         // The completion channel owns joining semantics; dropping the OS handle never blocks the caller.
         drop(worker);
+        // Dropping startup must also wake the independent process supervisor.
+        let startup_guard =
+            scopeguard::guard(control.clone(), |control| control.request_shutdown());
         let session = match initialized.await {
             Ok(session) => session,
             Err(_) => {
@@ -117,6 +134,7 @@ impl Host {
                 };
             }
         };
+        drop(scopeguard::ScopeGuard::into_inner(startup_guard));
         Ok(Self {
             handle: HostHandle {
                 session,
@@ -140,7 +158,7 @@ impl Host {
     }
 
     /// Stops admission, finishes cleanup on the owner thread, and reports its outcome.
-    /// A plugin callback that never returns can prevent completion.
+    /// Exceeding HostConfig's deadline kills and reaps the worker, returning ShutdownTimeout.
     pub async fn shutdown(mut self) -> Result<(), Error> {
         self.request_shutdown();
         match self.finished.take() {
@@ -152,7 +170,7 @@ impl Host {
     }
 
     fn request_shutdown(&self) {
-        self.handle.control.stopping.store(true, Ordering::Release);
+        self.handle.control.request_shutdown();
         self.handle.thread.unpark();
     }
 }
@@ -164,6 +182,10 @@ impl Drop for Host {
 }
 
 impl HostHandle {
+    /// OS process identifier for diagnostics; a new Host owns a new process.
+    pub fn process_id(&self) -> u32 {
+        self.control.process_id.load(Ordering::Acquire)
+    }
     pub(crate) async fn canonicalize(&self, path: &Utf8Path) -> Result<Utf8PathBuf, Error> {
         let path = path.to_owned();
         self.execute(|reply| Command::Canonicalize(path, reply))
@@ -228,19 +250,18 @@ impl HostHandle {
         self.execute(Command::EndCombat).await
     }
 
-    pub async fn set_tts(&self, speaker: Speaker) -> Result<(), Error> {
-        self.execute(|reply| Command::Tts(Some(speaker), reply))
-            .await
+    /// Enables the worker's local system TTS backend (requires its audio feature).
+    pub async fn set_tts(&self, enabled: bool) -> Result<(), Error> {
+        self.execute(|reply| Command::Tts(enabled, reply)).await
     }
     pub async fn clear_tts(&self) -> Result<(), Error> {
-        self.execute(|reply| Command::Tts(None, reply)).await
+        self.set_tts(false).await
     }
-    pub async fn set_sound_player(&self, player: SoundPlayer) -> Result<(), Error> {
-        self.execute(|reply| Command::Sound(Some(player), reply))
-            .await
+    pub async fn set_sound_player(&self, enabled: bool) -> Result<(), Error> {
+        self.execute(|reply| Command::Sound(enabled, reply)).await
     }
     pub async fn clear_sound_player(&self) -> Result<(), Error> {
-        self.execute(|reply| Command::Sound(None, reply)).await
+        self.set_sound_player(false).await
     }
 }
 
@@ -253,8 +274,7 @@ fn worker_main(
     audio_errors: tokio::sync::mpsc::Sender<Error>,
 ) {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let _apartment = Apartment::new()?;
-        let core = CoreHost::start(config)?;
+        let core = CoreHost::start(config, control.clone())?;
         if ready.send(core.session.id()).is_err() {
             return core.stop();
         }
@@ -269,10 +289,6 @@ fn worker_main(
 enum Operation {
     Import(PendingImport),
     Archive(Reply<(i32, BytesMut)>),
-    Audio(
-        Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>,
-        Reply<()>,
-    ),
 }
 
 impl Operation {
@@ -304,19 +320,6 @@ impl Operation {
                 drop(reply.send(result.map(|status| (status, packet))));
                 None
             }
-            Self::Audio(mut cleanup, reply) => {
-                // The host's bounded tick polls cleanup; no extra runtime or task executor is needed.
-                match cleanup
-                    .as_mut()
-                    .poll(&mut Context::from_waker(Waker::noop()))
-                {
-                    Poll::Pending => Some(Self::Audio(cleanup, reply)),
-                    Poll::Ready(result) => {
-                        drop(reply.send(result));
-                        None
-                    }
-                }
-            }
         }
     }
 }
@@ -340,7 +343,7 @@ fn run(
     .unwrap_or_else(|_| Err(Error::WorkerFailed("host command panicked".into())));
     // Publish terminal failure before dropping response senders so waiting callers retain its cause.
     control.record(&outcome);
-    control.stopping.store(true, Ordering::Release);
+    control.request_shutdown();
     drop(receiver);
     while let Some(operation) = operations.take() {
         operations = operation.advance(&core.session, true);
@@ -348,6 +351,9 @@ fn run(
         thread::park_timeout(PUMP_INTERVAL);
     }
     let stopped = core.stop();
+    if matches!(stopped, Err(Error::ShutdownTimeout(_))) {
+        return stopped;
+    }
     outcome.and(stopped)
 }
 
@@ -364,10 +370,8 @@ fn run_loop(
             return Ok(());
         }
         let callbacks = core.session.call(4)?.runtime_major;
-        for result in [core.pump_speech(), core.pump_sounds()] {
-            if let Err(error) = result {
-                audio_errors.try_send(error).map_err(audio_overflow)?;
-            }
+        while let Some(error) = core.session.audio_error() {
+            audio_errors.try_send(error).map_err(audio_overflow)?;
         }
         let before = operations.as_ref().and_then(Operation::import_progress);
         *operations = operations
@@ -437,30 +441,14 @@ fn dispatch(core: &mut CoreHost, command: Command, operations: &mut Option<Opera
                 drop(reply.send(Err(Error::Busy)));
                 return;
             }
-            match core.replace_tts(speaker) {
-                Ok(Some(previous)) => {
-                    *operations = Some(Operation::Audio(
-                        Box::pin(async move { previous.shutdown().await.map_err(Error::Speech) }),
-                        reply,
-                    ))
-                }
-                result => drop(reply.send(result.map(|_| ()))),
-            }
+            drop(reply.send(core.session.configure_audio(100, speaker)));
         }
         Command::Sound(player, reply) => {
             if operations.is_some() {
                 drop(reply.send(Err(Error::Busy)));
                 return;
             }
-            match core.replace_sound(player) {
-                Ok(Some(previous)) => {
-                    *operations = Some(Operation::Audio(
-                        Box::pin(async move { previous.shutdown().await.map_err(Error::Sound) }),
-                        reply,
-                    ))
-                }
-                result => drop(reply.send(result.map(|_| ()))),
-            }
+            drop(reply.send(core.session.configure_audio(101, player)));
         }
         Command::Import(path, pending, reply) => {
             let result = if operations.is_some() {
@@ -483,8 +471,8 @@ pub(crate) struct CoreHost {
 }
 
 impl CoreHost {
-    pub(crate) fn start(config: HostConfig) -> Result<Self, Error> {
-        ManagedSession::start(config).map(|session| Self {
+    pub(crate) fn start(config: HostConfig, control: Arc<Control>) -> Result<Self, Error> {
+        ManagedSession::start(config, control).map(|session| Self {
             session,
             speech: None,
             sounds: None,
@@ -511,9 +499,9 @@ impl CoreHost {
     }
 }
 
-struct Apartment;
+pub(crate) struct Apartment;
 impl Apartment {
-    fn new() -> Result<Self, Error> {
+    pub(crate) fn new() -> Result<Self, Error> {
         #[cfg(windows)]
         {
             use windows_sys::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
@@ -558,6 +546,8 @@ mod tests {
         let (sender, receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
         let control = Arc::new(Control {
             stopping: AtomicBool::new(false),
+            process_id: AtomicU32::new(0),
+            shutdown_at: Mutex::new(None),
             failure: Mutex::new(None),
         });
         let handle = HostHandle {

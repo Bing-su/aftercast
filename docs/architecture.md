@@ -1,8 +1,8 @@
 # Architecture
 
-Rust handles deployment, CLR hosting and owned output. Managed code runs plugins
-and maintains the mutable ACT combat graph. `Host` owns a session on a dedicated
-library thread; `HostHandle` sends bounded commands and awaits owned responses.
+Rust handles deployment, supervision and owned output. A dedicated child owns CLR,
+plugins, audio and the mutable ACT combat graph. `HostHandle` sends bounded commands
+to a library IPC thread and awaits owned responses.
 Windows STA and native/managed pumping are internal. Domain terms are in the
 [glossary](../GLOSSARY.md).
 
@@ -21,9 +21,9 @@ asynchronous library, not current GUI support.
 | Live timers       | Use the saved live monotonic clock throughout imports, independently of imported timestamps                                                                                      |
 | Archives          | Host captures/applies graph state; worker tasks perform disk I/O, hashing and compression; owner-context continuations commit results                                            |
 | Conflicts         | Imports/archives exclude lifecycle changes and other mutations; diagnostics and graph/log queries can run between steps                                                          |
-| Audio             | Separate speech/effect workers; async construction, completion and shutdown; a bounded playback-error receiver belongs to Host                                                   |
+| Audio             | Separate child-owned speech/effect workers; factories run inside the process boundary; bounded playback-error receiver belongs to parent Host                                    |
 | Failure           | Publish terminal failure before releasing queued response senders; pump failure closes admission and runs cleanup                                                                |
-| Drop              | Requests shutdown without joining; explicit shutdown waits for managed and native disposal and reports errors                                                                    |
+| Drop              | Requests shutdown without joining; independent supervision enforces the same graceful deadline as explicit shutdown                                                              |
 
 No scheduling budget preempts an executing callback, graph serialization or native
 call. The compatibility layer retains synchronous ACT events and its sequential
@@ -31,11 +31,24 @@ combat worker. Native calls borrow Rust buffers only for each call; no task keep
 a native pointer across a yield. No async ABI or arbitrary closure executor is
 public. Futures need an executor but do not require a Tokio runtime.
 
-One optional operation enum represents import, archive or audio retirement;
-these states cannot coexist. Retiring audio is polled while owner callbacks and
-read requests keep running, so a backend destructor can query host state without
-a host-to-audio join cycle. Conflicting mutations return Busy until disposal
-finishes. Shutdown rejects queued requests before draining the active operation.
+One optional operation enum represents import or archive; these states cannot
+coexist. Shutdown rejects queued requests before draining the active operation.
+Audio backend objects cannot capture a parent HostHandle: their factories run in
+the child. A stuck factory, playback worker or destructor is covered by the same
+process shutdown deadline as a stuck plugin callback.
+
+The worker authenticates a loopback TCP connection using a fresh 256-bit token
+delivered over its inherited stdin pipe. JSON control metadata and binary ACT
+packets use separate length-prefixed frames capped at 128 MiB; stdout/stderr remain
+independent plugin output. The parent never loads CLR or executes plugin callbacks.
+A supervisor owns the Child handle, checks deadlines independently of IPC and
+always waits for process exit after killing. Default startup/shutdown deadlines
+are 30/5 seconds. Shutdown expiry returns ShutdownTimeout after reaping; requests
+blocked on IPC then fail and a new Host can start. Cancellation of startup and
+dropping a Host also request supervised cleanup. A child-held OS file lock prevents
+two workers from writing the same state directory; killing the child releases it.
+Session identities are random across process restarts. No command or plugin
+initialization is automatically replayed, and in-memory state can be lost on kill.
 
 The owner parks only when no command, callback or import progress occurred in a
 turn. Active input does not pay a fixed delay per batch. Import records that
@@ -69,7 +82,9 @@ drain reuses one request packet for up to 32 submissions.
 | Location                                                                                                                                                                                       | Responsibility                                                                                                                                            |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Host](../crates/aftercast/src/host.rs)                                                                                                                                                        | Public lifecycle operations                                                                                                                               |
-| [ManagedSession](../crates/aftercast/src/runtime.rs)                                                                                                                                           | Native delegates, loader handles, process hostfxr, active-session lease and managed error retrieval                                                       |
+| [ManagedSession](../crates/aftercast/src/runtime.rs)                                                                                                                                           | Process configuration and private local/remote session boundary                                                                                           |
+| [Process](../crates/aftercast/src/process.rs)                                                                                                                                                  | Authenticated IPC, process supervision, deadlines, kill/reap and worker entry points                                                                      |
+| [Local runtime](../crates/aftercast/src/local_runtime.rs)                                                                                                                                      | Child-only native delegates, loader handles, CLR lifetime and state lock                                                                                  |
 | [Plugins](../crates/aftercast/src/plugins.rs)                                                                                                                                                  | Plugin configuration, session-scoped IDs and lifecycle requests                                                                                           |
 | [Import](../crates/aftercast/src/import.rs), [logs](../crates/aftercast/src/logs.rs), [snapshots](../crates/aftercast/src/snapshots.rs), [diagnostics](../crates/aftercast/src/diagnostics.rs) | Host methods, request validation, decoding and owned result types for each feature                                                                        |
 | [Payload extraction](../crates/aftercast/src/bridge.rs)                                                                                                                                        | Platform asset selection and rollback on extraction failure                                                                                               |
@@ -109,7 +124,7 @@ the live clock baseline. The host owns and disposes its timer form.
 | Transition                | Ordering                                                                                                              |
 | ------------------------- | --------------------------------------------------------------------------------------------------------------------- |
 | Host startup failure      | Release the active lease; close an admitted managed session before dropping loader handles                            |
-| Host stop / Drop          | Attempt managed shutdown once; retain process CLR/hostfxr for restart                                                 |
+| Host stop / Drop          | Request managed shutdown; kill/reap after deadline; subsequent Host starts a fresh process                            |
 | Log selection             | Open and identify one handle; scan that image; apply zone before activating live delivery                             |
 | Same-path log replacement | Drain the old complete tail, then read the new identity from its beginning                                            |
 | Initial partial record    | Its continuation is discarded before new live records are delivered                                                   |

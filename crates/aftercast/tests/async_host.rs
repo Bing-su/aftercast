@@ -18,7 +18,7 @@ fn handles_are_send_and_sync() {
 async fn imports_cancel_restore_and_shutdown_without_caller_pumping(deployment: Deployment) {
     let host = Host::start(deployment.config()).await.expect("start");
     let handle = host.handle();
-    audio_cleanup_can_query_the_host(&host).await;
+
     let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
     let plugin = handle
@@ -108,100 +108,6 @@ async fn complete_buffered_import(host: &HostHandle, input: &Utf8Path) {
     );
 }
 
-struct ReentrantAudio {
-    host: HostHandle,
-    disposed: Option<tokio::sync::oneshot::Sender<Result<(), String>>>,
-}
-
-impl aftercast_tts::Backend for ReentrantAudio {
-    fn speak(
-        &mut self,
-        _: &aftercast_tts::Utterance,
-        cancellation: &aftercast_tts::Cancellation,
-    ) -> Result<(), aftercast_tts::Error> {
-        cancellation.check()
-    }
-}
-
-impl aftercast_tts::SoundBackend for ReentrantAudio {
-    fn play(
-        &mut self,
-        _: &aftercast_tts::SoundRequest,
-        cancellation: &aftercast_tts::Cancellation,
-    ) -> Result<(), aftercast_tts::Error> {
-        cancellation.check()
-    }
-}
-
-impl Drop for ReentrantAudio {
-    fn drop(&mut self) {
-        // A backend may consult host state while releasing resources; the owner must keep dispatching.
-        let result = tokio::runtime::Builder::new_current_thread()
-            .build()
-            .map_err(|error| error.to_string())
-            .and_then(|runtime| {
-                runtime
-                    .block_on(self.host.diagnostics())
-                    .map(|_| ())
-                    .map_err(|error| error.to_string())
-            });
-        if let Some(disposed) = self.disposed.take() {
-            drop(disposed.send(result));
-        }
-    }
-}
-
-async fn audio_cleanup_can_query_the_host(host: &Host) {
-    let handle = host.handle();
-    let (disposed, completion) = tokio::sync::oneshot::channel();
-    let speaker = aftercast_tts::Speaker::new_async(move || {
-        Ok(ReentrantAudio {
-            host: handle,
-            disposed: Some(disposed),
-        })
-    })
-    .await
-    .expect("reentrant backend");
-    host.set_tts(speaker).await.expect("install backend");
-    let handle = host.handle();
-    let replacement = aftercast_tts::Speaker::new_async(move || {
-        Ok(ReentrantAudio {
-            host: handle,
-            disposed: None,
-        })
-    })
-    .await
-    .expect("replacement backend");
-    tokio::time::timeout(Duration::from_secs(2), host.set_tts(replacement))
-        .await
-        .expect("replacement blocked owner dispatch")
-        .expect("replace backend");
-    tokio::time::timeout(Duration::from_secs(2), host.clear_tts())
-        .await
-        .expect("audio cleanup deadlocked with a host query")
-        .expect("clear backend");
-    completion
-        .await
-        .expect("backend disposal finished")
-        .expect("host query completed before cleanup returned");
-    let handle = host.handle();
-    let sounds = aftercast_tts::SoundPlayer::new_async(move || {
-        Ok(ReentrantAudio {
-            host: handle,
-            disposed: None,
-        })
-    })
-    .await
-    .expect("effect backend");
-    host.set_sound_player(sounds)
-        .await
-        .expect("install effect backend");
-    tokio::time::timeout(Duration::from_secs(2), host.clear_sound_player())
-        .await
-        .expect("effect cleanup blocked owner dispatch")
-        .expect("clear effects");
-}
-
 async fn canceled_startup_releases_its_session(deployment: &Deployment) -> Result<(), Error> {
     use std::future::Future;
     use std::task::Poll;
@@ -230,7 +136,7 @@ async fn canceled_startup_releases_its_session(deployment: &Deployment) -> Resul
                     .expect("cleanup after canceled startup");
                 break;
             }
-            Err(Error::AlreadyActive) => {
+            Err(Error::StateInUse(_)) => {
                 assert!(
                     std::time::Instant::now() < deadline,
                     "canceled startup leaked the session"

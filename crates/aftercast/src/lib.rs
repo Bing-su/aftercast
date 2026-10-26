@@ -1,8 +1,9 @@
-//! In-process ACT-compatible hosting.
+//! Process-isolated ACT-compatible hosting.
 //!
 //! Provides asynchronous host/plugin lifecycles, cancellable imports, log batches and owned combat results.
 //! Call [`extract_bridge`] once to deploy the bundled, prebuilt C# component, then use
-//! [`Host::start`] with a trusted .NET 10 installation. No SDK or download is used at runtime.
+//! [`Host::start`] with a matching worker executable and a trusted .NET 10 installation.
+//! No SDK or download is used at runtime.
 
 mod archives;
 mod bridge;
@@ -11,9 +12,13 @@ mod combat;
 mod diagnostics;
 mod host;
 mod import;
+mod local_runtime;
 mod logs;
 mod plugins;
+mod process;
 mod runtime;
+/// Entry point for the separately deployed worker executable.
+pub use process::{run_worker, run_worker_with_audio};
 mod snapshots;
 mod speech;
 pub use speech::AudioSettings;
@@ -45,6 +50,10 @@ pub enum Error {
     Closed,
     #[error("host worker failed: {0}")]
     WorkerFailed(String),
+    #[error(
+        "host process exceeded its graceful shutdown deadline of {0:?}; it was killed and reaped"
+    )]
+    ShutdownTimeout(std::time::Duration),
     #[error("invalid archive request: {0}")]
     InvalidArchiveRequest(String),
     #[error("invalid archive response: {0}")]
@@ -97,6 +106,8 @@ pub enum Error {
     EntryPoint(#[from] netcorehost::hostfxr::GetManagedFunctionError),
     #[error("an ACT host is already active in this process")]
     AlreadyActive,
+    #[error("the ACT state directory is already owned by another worker: {0}")]
+    StateInUse(Utf8PathBuf),
     #[error("managed bridge command {command} failed with status {status}: {message}")]
     Managed {
         command: u32,

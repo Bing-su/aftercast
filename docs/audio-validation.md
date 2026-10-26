@@ -1,5 +1,11 @@
 # ACT sound and timer audio validation
 
+The 2026-10-26 process-isolation change moves backend construction into the worker.
+Use `set_tts(true)` / `set_sound_player(true)` and build that executable with audio
+features; custom outputs belong in `run_worker_with_audio` factories. Current Linux
+fixture checks exercise recorded child outputs and IPC failures. Native playback
+results below describe the earlier host and require rerunning for the process path.
+
 Validated on 2026-10-21. Effects and speech have separate bounded workers; either
 can play while the other is active. No remote audio fallback is selected.
 

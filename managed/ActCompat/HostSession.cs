@@ -1,8 +1,8 @@
 namespace Aftercast.ActCompat;
 
-// Keep session identities monotonic across stop/restart in the same CLR.
+// A fresh process must reject results from an older worker, e.g. a saved CombatRevision.
 public sealed class HostSession
 {
-    private static long nextId;
-    public ulong Id { get; } = unchecked((ulong)Interlocked.Increment(ref nextId));
+    public ulong Id { get; } = unchecked((ulong)System.Security.Cryptography.RandomNumberGenerator.GetInt32(1, int.MaxValue)) << 32
+        | unchecked((uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(1, int.MaxValue));
 }

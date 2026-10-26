@@ -1,0 +1,567 @@
+use std::collections::VecDeque;
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
+use std::process::{Child, Command, Stdio};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread::{self, JoinHandle};
+use std::time::{Duration, Instant};
+
+use bytes::BytesMut;
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+
+use crate::host::{Apartment, Control, CoreHost};
+use crate::runtime::{HostConfig, ManagedSession, Packet, Request};
+use crate::{Error, io_error};
+
+const MAX_FRAME: usize = 128 * 1024 * 1024;
+const TICK: Duration = Duration::from_millis(5);
+
+#[derive(Serialize, Deserialize)]
+struct Launch {
+    token: [u8; 32],
+    config: HostConfig,
+}
+#[derive(Serialize, Deserialize)]
+struct Message {
+    request: Option<Request>,
+    command: u32,
+}
+#[derive(Serialize, Deserialize)]
+enum WireError {
+    Managed {
+        command: u32,
+        status: i32,
+        message: String,
+    },
+    Io {
+        path: camino::Utf8PathBuf,
+        message: String,
+    },
+    Speech(String),
+    Sound(String),
+    Other(String),
+    StateInUse(camino::Utf8PathBuf),
+}
+impl From<Error> for WireError {
+    fn from(error: Error) -> Self {
+        match error {
+            Error::Managed {
+                command,
+                status,
+                message,
+            } => Self::Managed {
+                command,
+                status,
+                message,
+            },
+            Error::Io { path, source } => Self::Io {
+                path,
+                message: source.to_string(),
+            },
+            Error::Speech(error) => Self::Speech(error.to_string()),
+            Error::Sound(error) => Self::Sound(error.to_string()),
+            Error::StateInUse(path) => Self::StateInUse(path),
+            error => Self::Other(error.to_string()),
+        }
+    }
+}
+impl From<WireError> for Error {
+    fn from(error: WireError) -> Self {
+        match error {
+            WireError::Managed {
+                command,
+                status,
+                message,
+            } => Self::Managed {
+                command,
+                status,
+                message,
+            },
+            WireError::Io { path, message } => io_error(path, std::io::Error::other(message)),
+            WireError::Speech(message) => Self::Speech(aftercast_tts::Error::Backend(message)),
+            WireError::Sound(message) => Self::Sound(aftercast_tts::Error::Backend(message)),
+            WireError::Other(message) => Self::WorkerFailed(message),
+            WireError::StateInUse(path) => Self::StateInUse(path),
+        }
+    }
+}
+#[derive(Serialize, Deserialize)]
+struct Response {
+    status: i32,
+    lifecycle: Option<Packet>,
+    error: Option<WireError>,
+    audio: Vec<WireError>,
+}
+impl Response {
+    fn result(result: Result<i32, Error>) -> Self {
+        match result {
+            Ok(status) => Self {
+                status,
+                lifecycle: None,
+                error: None,
+                audio: vec![],
+            },
+            Err(error) => Self {
+                status: 0,
+                lifecycle: None,
+                error: Some(error.into()),
+                audio: vec![],
+            },
+        }
+    }
+}
+fn transport(error: impl std::fmt::Display) -> Error {
+    Error::WorkerFailed(format!("worker IPC: {error}"))
+}
+
+// Metadata and binary payload have separate bounded frames; plugin stdout never carries IPC.
+fn write_frame(stream: &mut impl Write, bytes: &[u8]) -> Result<(), Error> {
+    if bytes.len() > MAX_FRAME {
+        return Err(transport("frame exceeds 128 MiB"));
+    }
+    stream
+        .write_all(&(bytes.len() as u32).to_le_bytes())
+        .map_err(transport)?;
+    stream.write_all(bytes).map_err(transport)
+}
+fn read_frame(stream: &mut impl Read) -> Result<Vec<u8>, Error> {
+    let mut length = [0; 4];
+    stream.read_exact(&mut length).map_err(transport)?;
+    let length = u32::from_le_bytes(length) as usize;
+    if length > MAX_FRAME {
+        return Err(transport("frame exceeds 128 MiB"));
+    }
+    let mut bytes = vec![0; length];
+    stream.read_exact(&mut bytes).map_err(transport)?;
+    Ok(bytes)
+}
+fn write_json(stream: &mut impl Write, value: &impl Serialize) -> Result<(), Error> {
+    write_frame(stream, &serde_json::to_vec(value).map_err(transport)?)
+}
+fn read_json<T: DeserializeOwned>(stream: &mut impl Read) -> Result<T, Error> {
+    serde_json::from_slice(&read_frame(stream)?).map_err(transport)
+}
+
+struct Supervisor {
+    abort: Arc<AtomicBool>,
+    exited: Arc<AtomicBool>,
+    thread: Option<JoinHandle<Result<(), Error>>>,
+}
+
+fn watch_child(
+    child: &mut Child,
+    control: &Control,
+    ready: &AtomicBool,
+    abort: &AtomicBool,
+    startup_timeout: Duration,
+    shutdown_timeout: Duration,
+) -> Result<(), Error> {
+    let started = Instant::now();
+    let mut stopping = None;
+    loop {
+        if let Some(status) = child.try_wait().map_err(transport)? {
+            return if status.success() {
+                Ok(())
+            } else {
+                Err(transport(format!("worker exited: {status}")))
+            };
+        }
+        if control.stopping.load(Ordering::Acquire) {
+            stopping.get_or_insert_with(|| control.shutdown_started());
+        }
+        let timed_out = stopping.is_some_and(|at: Instant| at.elapsed() >= shutdown_timeout);
+        let startup_expired =
+            !ready.load(Ordering::Acquire) && started.elapsed() >= startup_timeout;
+        if !timed_out && !startup_expired && !abort.load(Ordering::Acquire) {
+            thread::sleep(TICK);
+            continue;
+        }
+        // Reap before reporting completion so the same state directory can be reused immediately.
+        let killed = child.kill();
+        let status = child.wait().map_err(transport)?;
+        if let Err(error) = killed
+            && !status.success()
+        {
+            return Err(transport(error));
+        }
+        if timed_out {
+            return Err(Error::ShutdownTimeout(shutdown_timeout));
+        }
+        return Err(transport(if startup_expired {
+            "startup deadline exceeded"
+        } else {
+            "worker abandoned"
+        }));
+    }
+}
+
+impl Supervisor {
+    fn start(
+        child: Child,
+        control: Arc<Control>,
+        config: &HostConfig,
+        ready: Arc<AtomicBool>,
+    ) -> Result<Self, Error> {
+        let abort = Arc::new(AtomicBool::new(false));
+        let exited = Arc::new(AtomicBool::new(false));
+        let abort_worker = abort.clone();
+        let exited_worker = exited.clone();
+        let startup_timeout = config.startup_timeout;
+        let shutdown_timeout = config.shutdown_timeout;
+        // Also cover thread-spawn failure and panics: dropping Child alone would leave an orphan.
+        let mut child = scopeguard::guard(child, |mut child| {
+            drop(child.kill());
+            drop(child.wait());
+        });
+        // This thread never calls managed code and can kill a worker stuck anywhere in a callback.
+        let thread = thread::Builder::new()
+            .name("aftercast-supervisor".into())
+            .spawn(move || {
+                let result = watch_child(
+                    &mut child,
+                    &control,
+                    &ready,
+                    &abort_worker,
+                    startup_timeout,
+                    shutdown_timeout,
+                );
+                exited_worker.store(true, Ordering::Release);
+                result
+            })
+            .map_err(transport)?;
+        Ok(Self {
+            abort,
+            exited,
+            thread: Some(thread),
+        })
+    }
+    fn finish(&mut self) -> Result<(), Error> {
+        match self.thread.take() {
+            Some(thread) => thread
+                .join()
+                .map_err(|_panic| transport("supervisor panicked"))?,
+            None => Ok(()),
+        }
+    }
+}
+impl Drop for Supervisor {
+    fn drop(&mut self) {
+        self.abort.store(true, Ordering::Release);
+        drop(self.finish());
+    }
+}
+
+fn accept_worker(
+    listener: &TcpListener,
+    token: &[u8; 32],
+    supervisor: &mut Supervisor,
+    timeout: Duration,
+) -> Result<TcpStream, Error> {
+    let started = Instant::now();
+    loop {
+        match listener.accept() {
+            Ok((mut stream, _)) => {
+                stream
+                    .set_read_timeout(Some(Duration::from_millis(100)))
+                    .map_err(transport)?;
+                let mut actual = [0; 32];
+                if stream.read_exact(&mut actual).is_ok() && actual == *token {
+                    return Ok(stream);
+                }
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
+            Err(error) => return Err(transport(error)),
+        }
+        if supervisor.exited.load(Ordering::Acquire) {
+            supervisor.finish()?;
+            return Err(transport("worker exited before authentication"));
+        }
+        if started.elapsed() >= timeout {
+            return Err(transport("authentication deadline exceeded"));
+        }
+        thread::sleep(TICK);
+    }
+}
+
+pub(crate) struct RemoteSession {
+    stream: TcpStream,
+    supervisor: Supervisor,
+    session: u64,
+    audio: VecDeque<Error>,
+}
+impl RemoteSession {
+    pub(crate) fn start(mut config: HostConfig, control: Arc<Control>) -> Result<Self, Error> {
+        if config.startup_timeout.is_zero() || config.shutdown_timeout.is_zero() {
+            return Err(transport("lifetime deadlines must be positive"));
+        }
+        config.dotnet_root = crate::runtime::canonicalize(&config.dotnet_root)?;
+        config.bridge_directory = crate::runtime::canonicalize(&config.bridge_directory)?;
+        config.worker_executable = crate::runtime::canonicalize(&config.worker_executable)?;
+        let listener = TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, 0)).map_err(transport)?;
+        listener.set_nonblocking(true).map_err(transport)?;
+        let mut token = [0; 32];
+        getrandom::fill(&mut token).map_err(transport)?;
+        let mut child = Command::new(&config.worker_executable)
+            .env(
+                "AFTERCAST_WORKER_ENDPOINT",
+                listener.local_addr().map_err(transport)?.to_string(),
+            )
+            .stdin(Stdio::piped())
+            .stdout(Stdio::inherit())
+            .stderr(Stdio::inherit())
+            .spawn()
+            .map_err(|error| io_error(&config.worker_executable, error))?;
+        control.process_id.store(child.id(), Ordering::Release);
+        let mut input = child
+            .stdin
+            .take()
+            .ok_or_else(|| transport("missing worker stdin"))?;
+        let ready = Arc::new(AtomicBool::new(false));
+        let mut supervisor = Supervisor::start(child, control, &config, ready.clone())?;
+        write_json(
+            &mut input,
+            &Launch {
+                token,
+                config: config.clone(),
+            },
+        )?;
+        drop(input);
+        let stream = accept_worker(&listener, &token, &mut supervisor, config.startup_timeout)?;
+        stream.set_nodelay(true).map_err(transport)?;
+        stream.set_read_timeout(None).map_err(transport)?;
+        let mut session = Self {
+            stream,
+            supervisor,
+            session: 0,
+            audio: VecDeque::new(),
+        };
+        let (response, _) = session.receive()?;
+        session.session = response
+            .lifecycle
+            .ok_or_else(|| transport("missing startup session"))?
+            .session;
+        ready.store(true, Ordering::Release);
+        Ok(session)
+    }
+    pub(crate) fn id(&self) -> u64 {
+        self.session
+    }
+    fn receive(&mut self) -> Result<(Response, BytesMut), Error> {
+        let mut response: Response = read_json(&mut self.stream)?;
+        let packet = BytesMut::from(read_frame(&mut self.stream)?.as_slice());
+        self.audio.extend(response.audio.drain(..).map(Error::from));
+        if let Some(error) = response.error.take() {
+            return Err(error.into());
+        }
+        Ok((response, packet))
+    }
+    fn exchange(&mut self, message: Message, packet: &[u8]) -> Result<(Response, BytesMut), Error> {
+        write_json(&mut self.stream, &message)?;
+        write_frame(&mut self.stream, packet)?;
+        self.receive()
+    }
+    pub(crate) fn request(
+        &mut self,
+        request: Request,
+        packet: &mut BytesMut,
+    ) -> Result<i32, Error> {
+        let (response, output) = self.exchange(
+            Message {
+                request: Some(request),
+                command: 0,
+            },
+            packet,
+        )?;
+        *packet = output;
+        Ok(response.status)
+    }
+    pub(crate) fn call(&mut self, command: u32) -> Result<Packet, Error> {
+        self.exchange(
+            Message {
+                request: None,
+                command,
+            },
+            &[],
+        )?
+        .0
+        .lifecycle
+        .ok_or_else(|| transport("missing lifecycle response"))
+    }
+    pub(crate) fn audio(&mut self, command: u32, enabled: bool) -> Result<(), Error> {
+        self.exchange(
+            Message {
+                request: None,
+                command,
+            },
+            &[u8::from(enabled)],
+        )
+        .map(|_| ())
+    }
+    pub(crate) fn audio_error(&mut self) -> Option<Error> {
+        self.audio.pop_front()
+    }
+    pub(crate) fn stop(mut self) -> Result<(), Error> {
+        let result = self
+            .exchange(
+                Message {
+                    request: None,
+                    command: 3,
+                },
+                &[],
+            )
+            .map(|_| ());
+        let reaped = self.supervisor.finish();
+        if matches!(reaped, Err(Error::ShutdownTimeout(_))) {
+            return reaped;
+        }
+        result.and(reaped)
+    }
+}
+
+/// Runs the private authenticated IPC worker. Use the matching `aftercast-worker` executable.
+/// Custom audio backends belong in a custom worker, never in the parent application's address space.
+pub fn run_worker() -> Result<(), Error> {
+    run_worker_with_audio(
+        |_| aftercast_tts::Speaker::system(),
+        |_| {
+            #[cfg(feature = "audio")]
+            {
+                aftercast_tts::SoundPlayer::system()
+            }
+            #[cfg(not(feature = "audio"))]
+            {
+                Err(aftercast_tts::Error::Backend(
+                    "worker requires the audio feature".into(),
+                ))
+            }
+        },
+    )
+}
+
+/// Custom workers can construct their own backends, e.g. an application-specific synthesizer.
+/// Factories execute in the worker and receive its private state directory.
+pub fn run_worker_with_audio(
+    tts: fn(&camino::Utf8Path) -> Result<aftercast_tts::Speaker, aftercast_tts::Error>,
+    sound: fn(&camino::Utf8Path) -> Result<aftercast_tts::SoundPlayer, aftercast_tts::Error>,
+) -> Result<(), Error> {
+    let address = std::env::var("AFTERCAST_WORKER_ENDPOINT").map_err(transport)?;
+    let launch: Launch = read_json(&mut std::io::stdin().lock())?;
+    let mut stream = TcpStream::connect(address).map_err(transport)?;
+    stream.set_nodelay(true).map_err(transport)?;
+    stream.write_all(&launch.token).map_err(transport)?;
+    let _apartment = Apartment::new()?;
+    let state = launch.config.data_directory.clone();
+    let core = crate::local_runtime::ManagedSession::start(launch.config).map(|session| CoreHost {
+        session: ManagedSession::Local(Box::new(session)),
+        speech: None,
+        sounds: None,
+    });
+    let mut startup = Response::result(Ok(0));
+    let mut core = match core {
+        Ok(core) => {
+            startup.lifecycle = Some(Packet {
+                size: 24,
+                version: 1,
+                command: 1,
+                runtime_major: 10,
+                session: core.session.id(),
+            });
+            core
+        }
+        Err(error) => {
+            write_json(&mut stream, &Response::result(Err(error)))?;
+            write_frame(&mut stream, &[])?;
+            return Ok(());
+        }
+    };
+    write_json(&mut stream, &startup)?;
+    write_frame(&mut stream, &[])?;
+    loop {
+        let message: Message = read_json(&mut stream)?;
+        let mut packet = BytesMut::from(read_frame(&mut stream)?.as_slice());
+        if message.request.is_none() && message.command == 3 {
+            let result = core.stop();
+            write_json(&mut stream, &Response::result(result.map(|_| 0)))?;
+            write_frame(&mut stream, &[])?;
+            return Ok(());
+        }
+        let mut response = match message.request {
+            Some(request) => Response::result(core.session.request(request, &mut packet)),
+            None if message.command == 100 || message.command == 101 => Response::result(
+                configure_audio(&mut core, message.command, &packet, &state, tts, sound).map(|_| 0),
+            ),
+            None => {
+                let mut response = Response::result(Ok(0));
+                match core.session.call(message.command) {
+                    Ok(lifecycle) => response.lifecycle = Some(lifecycle),
+                    Err(error) => response.error = Some(error.into()),
+                }
+                response
+            }
+        };
+        if message.request.is_none() && message.command == 4 {
+            response.audio.extend(
+                [core.pump_speech(), core.pump_sounds()]
+                    .into_iter()
+                    .filter_map(Result::err)
+                    .map(WireError::from),
+            );
+        }
+        write_json(&mut stream, &response)?;
+        write_frame(&mut stream, &packet)?;
+    }
+}
+
+fn configure_audio(
+    core: &mut CoreHost,
+    command: u32,
+    packet: &[u8],
+    state: &camino::Utf8Path,
+    tts: fn(&camino::Utf8Path) -> Result<aftercast_tts::Speaker, aftercast_tts::Error>,
+    sound: fn(&camino::Utf8Path) -> Result<aftercast_tts::SoundPlayer, aftercast_tts::Error>,
+) -> Result<(), Error> {
+    let enabled = match packet {
+        [0] => false,
+        [1] => true,
+        _ => return Err(transport("invalid audio command")),
+    };
+    if command == 100 {
+        let next = if enabled { Some(tts(state)?) } else { None };
+        if let Some(previous) = core.replace_tts(next)? {
+            previous.shutdown_blocking()?;
+        }
+    } else {
+        let next = if enabled {
+            Some(sound(state).map_err(Error::Sound)?)
+        } else {
+            None
+        };
+        if let Some(previous) = core.replace_sound(next)? {
+            previous.shutdown_blocking().map_err(Error::Sound)?;
+        }
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn ipc_frames_reject_oversize_and_incomplete_input() {
+        let mut bytes = Vec::new();
+        write_frame(&mut bytes, b"payload").expect("frame");
+        for length in 0..bytes.len() {
+            assert!(
+                read_frame(&mut &bytes[..length]).is_err(),
+                "truncated frame accepted"
+            );
+        }
+        assert_eq!(
+            read_frame(&mut bytes.as_slice()).expect("complete frame"),
+            b"payload"
+        );
+        let oversized = ((MAX_FRAME + 1) as u32).to_le_bytes();
+        read_frame(&mut oversized.as_slice()).expect_err("reject before allocating payload");
+    }
+}

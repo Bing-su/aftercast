@@ -1,7 +1,7 @@
 # Usage and current support
 
 The Rust interface owns execution and exposes futures. A trusted .NET 10 runtime
-and plugins run in-process; the library supplies its own host thread and message
+and plugins run in a supervised child process; the library supplies its own host thread and message
 loop. See the [glossary](../GLOSSARY.md) for domain terms.
 
 ## Deployment and host lifetime
@@ -14,6 +14,7 @@ async fn run() -> Result<(), aftercast::Error> {
     extract_bridge("/private/app-data/bridge-0.1.0")?;
     let host = Host::start(HostConfig::builder()
         .dotnet_root("/usr/lib/dotnet")
+        .worker_executable("/private/app-bin/aftercast-worker")
         .bridge_directory("/private/app-data/bridge-0.1.0")
         .data_directory("/private/app-data/state")
         .build()).await?;
@@ -22,23 +23,33 @@ async fn run() -> Result<(), aftercast::Error> {
 }
 ```
 
-| Concern        | Contract                                                                                                              |
-| -------------- | --------------------------------------------------------------------------------------------------------------------- |
-| Runtime        | Supply an installed trusted .NET 10 root; Windows needs the Desktop Runtime for native WinForms                       |
-| Paths          | UTF-8 camino paths; extraction is a synchronous deployment operation; command path resolution runs on the host thread |
-| State          | Private writable directory, separate from deployed binaries; existing contents are preserved                          |
-| Ownership      | `Host` owns the session lifetime; cloneable `HostHandle` is Send + Sync; the library owns Windows STA                 |
-| Scheduling     | Automatic bounded command processing, callbacks, native messages, timers and audio; no public `pump()`                |
-| Admission      | 32 queued commands; full queues and conflicting active operations return `Error::Busy`                                |
-| Response loss  | Dropping an admitted command's future does not undo or cancel its mutation                                            |
-| Shutdown       | `shutdown().await` reports cleanup completion/errors; Drop requests shutdown without waiting                          |
-| Restart        | Await shutdown before immediately restarting; old IDs and handles cannot access a new session                         |
-| Runtime switch | CLR/assemblies remain loaded; switching the loaded hostfxr installation needs a new process                           |
+| Concern        | Contract                                                                                                                                          |
+| -------------- | ------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime        | Supply an installed trusted .NET 10 root; Windows needs the Desktop Runtime for native WinForms                                                   |
+| Paths          | UTF-8 camino paths; extraction is a synchronous deployment operation; command path resolution runs on the host thread                             |
+| State          | Private writable directory, separate from deployed binaries; existing contents are preserved                                                      |
+| Ownership      | `Host` owns the session lifetime; cloneable `HostHandle` is Send + Sync; the library owns Windows STA                                             |
+| Scheduling     | Automatic bounded command processing, callbacks, native messages, timers and audio; no public `pump()`                                            |
+| Admission      | 32 queued commands; full queues and conflicting active operations return `Error::Busy`                                                            |
+| Response loss  | Dropping an admitted command's future does not undo or cancel its mutation                                                                        |
+| Shutdown       | Default 5 s graceful deadline; expiry kills/reaps the child and returns `Error::ShutdownTimeout`; Drop requests the same shutdown without waiting |
+| Restart        | Await shutdown before immediately restarting; old IDs and handles cannot access a new session                                                     |
+| Runtime switch | Each Host has a fresh worker, so subsequent hosts can select another runtime deployment                                                           |
 
 The futures do not require a Tokio runtime: the library uses synchronization
 primitives, while its host thread drives native work. Examples use a Tokio
-executor. Plugin callbacks can still block that thread; cancellation and shutdown
-cannot preempt arbitrary plugin or operating-system calls.
+executor. Plugin callbacks can still block the child thread; an independent parent
+supervisor enforces shutdown without calling plugin code. `startup_timeout` defaults
+to 30 s and `shutdown_timeout` to 5 s. Both must be positive. Explicit shutdown
+returns only after the direct child has exited and been reaped. Forced termination
+does not guarantee settings flush, accepted-operation completion or import restoration.
+Await shutdown (including a ShutdownTimeout result) before restarting with the same
+state directory; concurrent owners receive `Error::StateInUse`. Recreate plugins
+explicitly in the new Host. The worker is a trusted process, not a security sandbox.
+
+Build `aftercast-worker` from the same version (`cargo build -p aftercast --bin aftercast-worker`),
+deploy it alongside the application and pass its explicit path. No PATH search or
+runtime compilation is performed. Set `AFTERCAST_WORKER` for the supplied examples.
 
 ## Plugins and owner callbacks
 
@@ -56,7 +67,7 @@ OverlayPlugin and cactbot in dependency order. Constructed instances keep
 Creating another instance reopens that startup state. Native controls remain on
 the internal STA thread; they cannot be accessed directly from a GUI executor.
 
-Constructors and callbacks are trusted in-process code. Initialization cannot be
+Constructors and callbacks are trusted code inside the worker. Initialization cannot be
 retried on a failed instance, and arbitrary side effects cannot be rolled back.
 External plugins are left unchanged; local source/fixture plugins and versioned
 local compatibility transformations remain repository-owned.
@@ -70,10 +81,11 @@ is the convenience operation without an exposed job. A dropped job keeps running
 Imports and archives exclude conflicting mutations; diagnostic and owned graph/log
 queries remain available between processing steps.
 
-Audio is opt-in and speech/effects have independent workers. Initialize without
-blocking an executor using `Speaker::system_async().await` or
-`SoundPlayer::system_async().await`, then await `set_tts`, `set_sound_player` and
-`set_audio_settings`. Consume asynchronous playback failures through the owning
+Audio is opt-in and speech/effects have independent workers inside the child.
+Build the worker with `--features audio`, then await `set_tts(true)`,
+`set_sound_player(true)` and `set_audio_settings`. Custom worker executables can
+call `run_worker_with_audio` to supply their own backend factories; live backend
+objects are never transferred from the parent. Consume playback failures through the owning
 `Host::next_audio_error().await`; command acceptance does not establish playback
 success. Its error queue holds 32 entries; overflow fails the host visibly.
 Replacing or clearing a route cancels and disposes its prior worker before the

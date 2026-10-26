@@ -5,13 +5,13 @@ ownership, bounded command admission, Windows STA, message pumping, import jobs
 and shutdown now belong to the library; the GUI must not add another host thread
 or duplicate its command queue.
 
-| Owner                | Responsibility                                                               |
-| -------------------- | ---------------------------------------------------------------------------- |
-| Dioxus executor      | Components, selection, filters, pending state and visible errors             |
-| `Host`               | Session lifetime, playback error receiver and explicit shutdown completion   |
-| `HostHandle`         | Cloneable Send + Sync access to typed asynchronous operations                |
-| Internal host thread | CLR/plugin lifecycle, native messages, ACT callbacks, timers and graph state |
-| UI state             | Owned encounter summaries/details/pages, session and selection generations   |
+| Owner           | Responsibility                                                                      |
+| --------------- | ----------------------------------------------------------------------------------- |
+| Dioxus executor | Components, selection, filters, pending state and visible errors                    |
+| `Host`          | Session lifetime, playback error receiver and explicit shutdown completion          |
+| `HostHandle`    | Cloneable Send + Sync access to typed asynchronous operations                       |
+| Worker process  | CLR/plugin lifecycle, native messages, ACT callbacks, timers, audio and graph state |
+| UI state        | Owned encounter summaries/details/pages, session and selection generations          |
 
 Normal flow: UI action → await HostHandle method → owned result → Dioxus state.
 Create the complete plugin batch before initialization so automatic startup
@@ -24,8 +24,8 @@ completion cannot precede construction of addons.
 | Refresh           | At most one automatic refresh in flight; suppress conflicting work and display Busy errors         |
 | Stale responses   | Discard responses belonging to an obsolete session or selection                                    |
 | Playback failures | Consume Host::next_audio_error and display failures without pretending speech succeeded            |
-| Shutdown          | Await Host::shutdown; close the window after cleanup or present an explicit waiting state          |
-| Blocked plugin    | A callback can delay cancellation/shutdown indefinitely; no forced in-process termination          |
+| Shutdown          | Await Host::shutdown; report ShutdownTimeout as a forced exit with potentially lost unsaved state  |
+| Blocked plugin    | Independent supervisor kills/reaps the child after the graceful deadline; a new Host can restart   |
 | Native UI         | Plugin controls remain on the library-owned STA; Dioxus does not convert WinForms controls         |
 
 | Stage                 | Delivery                                                                                                    | Evidence required                                                                                                                            |

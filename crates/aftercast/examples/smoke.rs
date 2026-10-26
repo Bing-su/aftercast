@@ -14,6 +14,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     )?;
     extract_bridge(&directory)?;
     let config = HostConfig::builder()
+        .worker_executable(std::env::var("AFTERCAST_WORKER")?)
         .dotnet_root(root)
         .data_directory(directory.join("state"))
         .bridge_directory(&directory)
