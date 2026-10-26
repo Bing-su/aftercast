@@ -6,8 +6,8 @@ library thread; `HostHandle` sends bounded commands and awaits owned responses.
 Windows STA and native/managed pumping are internal. Domain terms are in the
 [glossary](../GLOSSARY.md).
 
-The [Dioxus desktop plan](gui-plan.md) describes the proposed GUI consumer and
-consumer of the asynchronous library. It is a future GUI plan, not current GUI support.
+The [Dioxus desktop plan](gui-plan.md) describes a future GUI consumer of the
+asynchronous library, not current GUI support.
 
 ## Execution and cancellation
 
@@ -30,6 +30,18 @@ call. The compatibility layer retains synchronous ACT events and its sequential
 combat worker. Native calls borrow Rust buffers only for each call; no task keeps
 a native pointer across a yield. No async ABI or arbitrary closure executor is
 public. Futures need an executor but do not require a Tokio runtime.
+
+One optional operation enum represents import, archive or audio retirement;
+these states cannot coexist. Retiring audio is polled while owner callbacks and
+read requests keep running, so a backend destructor can query host state without
+a host-to-audio join cycle. Conflicting mutations return Busy until disposal
+finishes. Shutdown rejects queued requests before draining the active operation.
+
+The owner parks only when no command, callback or import progress occurred in a
+turn. Active input does not pay a fixed delay per batch. Import records that
+cross an idle combat boundary remain pending until prior actions settle; their
+timestamps are parsed once and input order is preserved. The synchronous managed
+adapter retains pumping but uses a bounded wait only when no progress occurred.
 
 Archive continuations use a private owner-context queue independent of the
 256-entry plugin callback admission limit. Only one archive operation runs at a

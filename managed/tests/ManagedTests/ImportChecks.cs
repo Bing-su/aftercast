@@ -28,9 +28,9 @@ internal static class ImportChecks
         internal readonly FormActMain Root;
         internal readonly ZoneData LiveZone;
         internal string Path => System.IO.Path.Combine(Directory.FullName, "import.log");
-        internal Fixture()
+        internal Fixture(Action? pump = null)
         {
-            Host = new(Directory.FullName);
+            Host = new(Directory.FullName, pump);
             Root = ActGlobals.oFormActMain!;
             CombatFixture.ConfigureCategories();
             Root.LastKnownTime = Epoch.AddDays(1);
@@ -68,7 +68,52 @@ internal static class ImportChecks
         HostLifetimeChecks.RunBounded(IdleSegmentation);
         HostLifetimeChecks.RunBounded(LiveReaderResume);
         HostLifetimeChecks.RunBounded(CooperativePreparation);
+        HostLifetimeChecks.RunBounded(CooperativeIdleBoundary);
         Console.WriteLine("Root import dispatch, aggregation, exclusivity and restoration passed.");
+    }
+
+    private static void CooperativeIdleBoundary()
+    {
+        using var context = new Aftercast.Bridge.OwnerContext(error => throw new Exception("Idle boundary dispatch failed", error));
+        using var fixture = new Fixture(() => context.Pump());
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        var root = fixture.Root;
+        root.GetDateTimeFromLog = line => line == "first" ? Epoch : Epoch.AddSeconds(8);
+        root.AfterCombatAction += (_, info) =>
+        {
+            if (info.damage.Number != 100) return;
+            entered.Set();
+            if (!release.Wait(TimeSpan.FromSeconds(5))) throw new Exception("Idle boundary blocked owner progress");
+        };
+        root.OnLogLineRead += (_, info) =>
+        {
+            AddDamage(root, info);
+            if (info.originalLogLine != "first") return;
+            Check(entered.Wait(TimeSpan.FromSeconds(5)));
+            // A synchronous drain pumps this release itself; a cooperative step returns before it runs.
+            context.Post(_ => release.Set(), null);
+        };
+        File.WriteAllText(fixture.Path, "first\nsecond\n");
+        fixture.Host.BeginImport(fixture.Path);
+        ImportResult? result = null;
+        try
+        {
+            do
+            {
+                result = fixture.Host.AdvanceImport(false);
+                if (result is not null) break;
+                if (fixture.Host.ImportProgress.RecordsDispatched == 0) Thread.Sleep(1);
+            } while (fixture.Host.ImportProgress.RecordsDispatched == 0);
+            Check(result is null && fixture.Host.ImportProgress.RecordsDispatched == 1 && !release.IsSet);
+        }
+        finally
+        {
+            release.Set(); context.Pump();
+            while (result is null) { result = fixture.Host.AdvanceImport(false); if (result is null) Thread.Sleep(1); }
+        }
+        Check(result is { Encounters: 2, Damage: 400 });
+        fixture.CheckRestored();
     }
 
     private static void CooperativePreparation()

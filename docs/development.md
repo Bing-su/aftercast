@@ -27,6 +27,16 @@ retested for this refactor. Linux audio builds need the development headers and
 linker library listed below; extracting them under `target/` for validation does
 not make them package contents.
 
+## Async follow-up review — 2026-10-26
+
+| Regression / cleanup                                        | Verification                                                                                                                                                        |
+| ----------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Audio retirement calls host diagnostics from its destructor | Reproduced the owner/worker join deadlock; replacement and clear now complete while owner dispatch remains available                                                |
+| Idle combat boundary with an outstanding action callback    | Reproduced the intermediate synchronous drain; the next record now stays pending until actions settle                                                               |
+| Cold history operation before plugin creation               | Reproduced a control capturing the private continuation context; root Invoke now uses the normal plugin context                                                     |
+| Buffered import scheduling                                  | Same local 16,384-record fixture: approximately 1.43 s before and 0.10 s after removing unconditional per-turn parking; not an end-to-end gameplay throughput claim |
+| Archive work                                                | Compression, SHA-256 naming and immutable file persistence share one worker task; unused file-reader helper removed                                                 |
+
 ## Requirements
 
 | Role                 | Requirements                                                                                                                                                                                                                     |

@@ -95,10 +95,11 @@ namespace Advanced_Combat_Tracker
             BeginImport(path);
             while (true)
             {
+                var before = CurrentImportProgress;
                 if (AdvanceImport(false) is { } result) return result;
                 PumpOwnerCallbacks();
-                // The legacy synchronous entry point still services callbacks while input is pending.
-                Thread.Yield();
+                // The synchronous adapter pumps while waiting, but does not busy-spin on slow input or callbacks.
+                if (CurrentImportProgress == before) Thread.Sleep(1);
             }
         }
 
@@ -119,6 +120,7 @@ namespace Advanced_Combat_Tracker
             private readonly Channel<string[]> input = Channel.CreateBounded<string[]>(new BoundedChannelOptions(4) {
                 SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait });
             private readonly Queue<string> buffered = new();
+            private (string Line, DateTime Time)? nextLine;
             private Task? reading;
             private readonly List<Exception> failures = new();
             internal ImportProgress Progress => new(lines, dispatched, Interlocked.Read(ref bytesRead), Interlocked.Read(ref totalBytes));
@@ -222,12 +224,17 @@ namespace Advanced_Combat_Tracker
                     {
                         for (var count = 0; count < 64 && Stopwatch.GetElapsedTime(started) < TimeSpan.FromMilliseconds(5); count++)
                         {
-                            if (buffered.Count == 0 && input.Reader.TryRead(out var batch))
-                                foreach (var record in batch) buffered.Enqueue(record);
-                            if (!buffered.TryDequeue(out var line)) break;
-                            Dispatch(line);
+                            if (nextLine is null)
+                            {
+                                if (buffered.Count == 0 && input.Reader.TryRead(out var batch))
+                                    foreach (var record in batch) buffered.Enqueue(record);
+                                if (!buffered.TryDequeue(out var line)) break;
+                                nextLine = (line, line.Length == 0 ? DateTime.MinValue : root.GetDateTimeFromLog(line));
+                            }
+                            if (!TryDispatch(nextLine.Value.Line, nextLine.Value.Time)) break;
+                            nextLine = null;
                         }
-                        if (buffered.Count == 0 && input.Reader.Completion.IsCompleted)
+                        if (nextLine is null && buffered.Count == 0 && input.Reader.Completion.IsCompleted)
                         {
                             input.Reader.Completion.GetAwaiter().GetResult();
                             ending = true;
@@ -239,24 +246,28 @@ namespace Advanced_Combat_Tracker
                 // Unblock a producer waiting on the bounded channel before waiting for its resource disposal.
                 while (input.Reader.TryRead(out _)) { }
                 buffered.Clear();
+                nextLine = null;
                 if (reading is { IsCompleted: false }) return null;
                 // Keep diagnostics responsive while an already accepted action callback is finishing.
                 if (!root.actionsIdle.IsSet || !root.combatTransitionsIdle.IsSet) return null;
                 return Finish();
             }
 
-            private void Dispatch(string line)
+            private bool TryDispatch(string line, DateTime detectedTime)
             {
-                lines++;
-                if (line.Length == 0) return;
-                var detectedTime = root.GetDateTimeFromLog(line);
+                if (line.Length == 0) { lines++; return true; }
                 int sorter;
                 lock (root.CombatGate)
                 {
+                    var time = detectedTime == DateTime.MinValue ? root.lastKnownTime : detectedTime;
+                    // Keep this record pending until the previous encounter can end without a synchronous action drain.
+                    if (root.inCombat && time - root.lastHostileTime > TimeSpan.FromSeconds(6) &&
+                        (!root.actionsIdle.IsSet || !root.combatTransitionsIdle.IsSet)) return false;
                     root.LastKnownTime = detectedTime;
                     sorter = ++root.GlobalTimeSorter;
                     root.UpdateRawZone(line);
                 }
+                lines++;
                 root.CheckIdleEndCombat();
                 var info = new LogLineEventArgs(line, 0, detectedTime, root.CurrentZone, root.InCombat);
                 dispatched++;
@@ -264,6 +275,7 @@ namespace Advanced_Combat_Tracker
                 root.InvokeLogHandlers(root.BeforeLogLineRead, true, info);
                 root.LastLogLine = info.logLine;
                 root.InvokeLogHandlers(root.OnLogLineRead, true, info);
+                return true;
             }
 
             private ImportResult Finish()

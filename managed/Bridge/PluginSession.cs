@@ -82,7 +82,9 @@ internal sealed class PluginSession
         if (archive is not null) throw new InvalidOperationException("Archive operation is already active");
         if (command is 1 or 4 && !plugins.Values.Any(plugin => plugin.State == PluginState.Initialized))
             throw new InvalidOperationException("Archive reconstruction requires an initialized plugin");
-        archive = context!.RunOperation(() => Host().ArchiveOperationAsync(command, text, id, compressed));
+        // Construct controls under the normal plugin context, never the private continuation context.
+        var host = Host();
+        archive = context!.RunOperation(() => host.ArchiveOperationAsync(command, text, id, compressed));
         return 0;
     });
     internal int? AdvanceArchive()

@@ -96,43 +96,37 @@ fn packet(session: u64, command: u32, argument: u32, capacity: usize) -> BytesMu
 }
 
 impl CoreHost {
-    /// Route PlaySound and timer effects to an independent worker, e.g. `SoundPlayer::system()?`.
-    pub fn set_sound_player(&mut self, player: SoundPlayer) -> Result<(), Error> {
-        self.session
-            .request(Request::Speech, &mut packet(self.session.id(), 3, 1, 32))?;
-        if let Some(previous) = self.sounds.replace(AudioOutput::new(player)) {
-            previous.backend.shutdown_blocking().map_err(Error::Sound)?;
+    // Return the retired worker to the host loop, e.g. its destructor may itself query the host.
+    pub(crate) fn replace_sound(
+        &mut self,
+        player: Option<SoundPlayer>,
+    ) -> Result<Option<SoundPlayer>, Error> {
+        self.session.request(
+            Request::Speech,
+            &mut packet(self.session.id(), 3, u32::from(player.is_some()), 32),
+        )?;
+        let previous = self.sounds.take().map(|output| output.backend);
+        if let Some(previous) = &previous {
+            previous.cancel_all();
         }
-        Ok(())
-    }
-    pub fn clear_sound_player(&mut self) -> Result<(), Error> {
-        self.session
-            .request(Request::Speech, &mut packet(self.session.id(), 3, 0, 32))?;
-        if let Some(previous) = self.sounds.take() {
-            previous.backend.shutdown_blocking().map_err(Error::Sound)?;
-        }
-        Ok(())
-    }
-    /// Route ACT TTS requests to an explicitly initialized backend before loading plugins.
-    /// For example: `host.set_tts(aftercast_tts::Speaker::system()?)?`.
-    /// Replacing the backend cancels its active and queued speech. No online fallback is selected.
-    pub fn set_tts(&mut self, speaker: Speaker) -> Result<(), Error> {
-        self.session
-            .request(Request::Speech, &mut packet(self.session.id(), 1, 1, 32))?;
-        if let Some(previous) = self.speech.replace(AudioOutput::new(speaker)) {
-            previous.backend.shutdown_blocking()?;
-        }
-        Ok(())
+        self.sounds = player.map(AudioOutput::new);
+        Ok(previous)
     }
 
-    /// Disable ACT speech and cancel active/queued playback, clearing both sides of the bridge.
-    pub fn clear_tts(&mut self) -> Result<(), Error> {
-        self.session
-            .request(Request::Speech, &mut packet(self.session.id(), 1, 0, 32))?;
-        if let Some(previous) = self.speech.take() {
-            previous.backend.shutdown_blocking()?;
+    pub(crate) fn replace_tts(
+        &mut self,
+        speaker: Option<Speaker>,
+    ) -> Result<Option<Speaker>, Error> {
+        self.session.request(
+            Request::Speech,
+            &mut packet(self.session.id(), 1, u32::from(speaker.is_some()), 32),
+        )?;
+        let previous = self.speech.take().map(|output| output.backend);
+        if let Some(previous) = &previous {
+            previous.cancel_all();
         }
-        Ok(())
+        self.speech = speaker.map(AudioOutput::new);
+        Ok(previous)
     }
 
     pub(crate) fn pump_speech(&mut self) -> Result<(), Error> {

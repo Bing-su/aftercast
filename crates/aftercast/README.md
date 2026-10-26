@@ -26,7 +26,7 @@ async fn run() -> Result<(), aftercast::Error> {
 | Execution    | The library starts, uses and stops the CLR session on its dedicated thread; Windows STA and message pumping are internal                        |
 | Calls        | `HostHandle` is cloneable, Send + Sync; operations return owned results through futures                                                         |
 | Runtime      | Futures use Tokio synchronization primitives but need no library-owned or caller-provided Tokio runtime; examples use Tokio                     |
-| Admission    | At most 32 queued commands; excess work and conflicts with active imports/archives return `Error::Busy`                                         |
+| Admission    | At most 32 queued commands; excess work and conflicts with active imports/archives/audio retirement return `Error::Busy`                        |
 | Cancellation | `start_import(path).await?` returns an `ImportJob` with `progress()`, `cancel()` and `wait().await`; partial history remains after cancellation |
 | Shutdown     | `shutdown().await` closes admission, cancels imports, finishes accepted archive I/O and waits for managed/native disposal                       |
 | Drop         | Requests shutdown without blocking; use explicit shutdown before removing deployment/state files or immediately restarting                      |

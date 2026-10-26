@@ -14,7 +14,29 @@ internal static class OwnerContextChecks
         CapacityAndPumpBounds();
         ShutdownReleasesSend();
         OperationContinuesUnderSaturation();
+        ColdArchiveKeepsControlsOnPluginContext();
         Console.WriteLine("Owner context dispatch, exception identity, bounded queue/pump and shutdown checks passed.");
+    }
+
+    private static void ColdArchiveKeepsControlsOnPluginContext()
+    {
+        if (!OperatingSystem.IsLinux()) return;
+        var directory = Directory.CreateTempSubdirectory("aftercast-cold-archive-");
+        var session = new PluginSession();
+        session.Configure(directory.FullName);
+        try
+        {
+            session.BeginArchive(3, "", 0, false);
+            int? count = null;
+            Check(SpinWait.SpinUntil(() => { session.Pump(); count = session.AdvanceArchive(); return count is not null; }, TimeSpan.FromSeconds(5)), "cold archive did not complete");
+            Check(count == 0, "empty checkpoint contains encounters");
+            var root = Advanced_Combat_Tracker.ActGlobals.oFormActMain!;
+            var expected = session.OnOwner(() => SynchronizationContext.Current);
+            var invoked = Task.Run(() => root.Invoke(new Func<SynchronizationContext?>(() => SynchronizationContext.Current)));
+            Check(SpinWait.SpinUntil(() => { session.Pump(); return invoked.IsCompleted; }, TimeSpan.FromSeconds(5)), "root Invoke did not complete");
+            Check(ReferenceEquals(invoked.GetAwaiter().GetResult(), expected), "control captured the private archive continuation context");
+        }
+        finally { session.Stop(); directory.Delete(true); }
     }
 
     private static void OperationContinuesUnderSaturation()

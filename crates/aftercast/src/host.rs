@@ -1,6 +1,9 @@
+use std::future::Future;
 use std::ops::Deref;
+use std::pin::Pin;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
+use std::task::{Context, Poll, Waker};
 use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
 
@@ -263,36 +266,56 @@ fn worker_main(
     drop(finished.send(result));
 }
 
-#[derive(Default)]
-struct Operations {
-    import: Option<PendingImport>,
-    archive: Option<Reply<(i32, BytesMut)>>,
+enum Operation {
+    Import(PendingImport),
+    Archive(Reply<(i32, BytesMut)>),
+    Audio(
+        Pin<Box<dyn Future<Output = Result<(), Error>> + Send>>,
+        Reply<()>,
+    ),
 }
 
-impl Operations {
-    fn busy(&self) -> bool {
-        self.import.is_some() || self.archive.is_some()
-    }
-
-    fn advance(&mut self, session: &ManagedSession, stopping: bool) {
-        if let Some(import) = &mut self.import
-            && let Some(result) = import.advance(session, stopping)
-            && let Some(import) = self.import.take()
-        {
-            drop(import.complete.send(result));
+impl Operation {
+    fn import_progress(&self) -> Option<ImportProgress> {
+        match self {
+            Self::Import(import) => Some(*import.progress.borrow()),
+            _ => None,
         }
-        if self.archive.is_some() {
-            let mut packet = BytesMut::with_capacity(64);
-            packet.put_u32_le(64);
-            packet.put_u32_le(1);
-            packet.put_u64_le(session.id());
-            packet.resize(64, 0);
-            let result = session.request(Request::Archive, &mut packet);
-            if matches!(result, Ok(1)) {
-                return;
-            }
-            if let Some(reply) = self.archive.take() {
+    }
+    fn advance(self, session: &ManagedSession, stopping: bool) -> Option<Self> {
+        match self {
+            Self::Import(mut import) => match import.advance(session, stopping) {
+                None => Some(Self::Import(import)),
+                Some(result) => {
+                    drop(import.complete.send(result));
+                    None
+                }
+            },
+            Self::Archive(reply) => {
+                let mut packet = BytesMut::with_capacity(64);
+                packet.put_u32_le(64);
+                packet.put_u32_le(1);
+                packet.put_u64_le(session.id());
+                packet.resize(64, 0);
+                let result = session.request(Request::Archive, &mut packet);
+                if matches!(result, Ok(1)) {
+                    return Some(Self::Archive(reply));
+                }
                 drop(reply.send(result.map(|status| (status, packet))));
+                None
+            }
+            Self::Audio(mut cleanup, reply) => {
+                // The host's bounded tick polls cleanup; no extra runtime or task executor is needed.
+                match cleanup
+                    .as_mut()
+                    .poll(&mut Context::from_waker(Waker::noop()))
+                {
+                    Poll::Pending => Some(Self::Audio(cleanup, reply)),
+                    Poll::Ready(result) => {
+                        drop(reply.send(result));
+                        None
+                    }
+                }
             }
         }
     }
@@ -304,7 +327,7 @@ fn run(
     control: &Control,
     audio_errors: tokio::sync::mpsc::Sender<Error>,
 ) -> Result<(), Error> {
-    let mut operations = Operations::default();
+    let mut operations = None;
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         run_loop(
             &mut core,
@@ -319,8 +342,8 @@ fn run(
     control.record(&outcome);
     control.stopping.store(true, Ordering::Release);
     drop(receiver);
-    while operations.busy() {
-        operations.advance(&core.session, true);
+    while let Some(operation) = operations.take() {
+        operations = operation.advance(&core.session, true);
         drop(core.session.call(4));
         thread::park_timeout(PUMP_INTERVAL);
     }
@@ -333,32 +356,43 @@ fn run_loop(
     receiver: &mpsc::Receiver<Command>,
     control: &Control,
     audio_errors: &tokio::sync::mpsc::Sender<Error>,
-    operations: &mut Operations,
+    operations: &mut Option<Operation>,
 ) -> Result<(), Error> {
     loop {
         let stopping = control.stopping.load(Ordering::Acquire);
-        if stopping && !operations.busy() {
+        if stopping {
             return Ok(());
         }
-        core.session.call(4)?;
+        let callbacks = core.session.call(4)?.runtime_major;
         for result in [core.pump_speech(), core.pump_sounds()] {
             if let Err(error) = result {
                 audio_errors.try_send(error).map_err(audio_overflow)?;
             }
         }
-        operations.advance(&core.session, stopping);
+        let before = operations.as_ref().and_then(Operation::import_progress);
+        *operations = operations
+            .take()
+            .and_then(|operation| operation.advance(&core.session, false));
+        let progressed = before != operations.as_ref().and_then(Operation::import_progress);
         let started = Instant::now();
+        let mut commands = 0;
         for _ in 0..8 {
             if control.stopping.load(Ordering::Acquire) || started.elapsed() >= PUMP_INTERVAL {
                 break;
             }
             match receiver.try_recv() {
-                Ok(command) => dispatch(core, command, operations),
+                Ok(command) => {
+                    dispatch(core, command, operations);
+                    commands += 1;
+                }
                 Err(mpsc::TryRecvError::Empty) => break,
                 Err(mpsc::TryRecvError::Disconnected) => return Ok(()),
             }
         }
-        thread::park_timeout(PUMP_INTERVAL);
+        // Budgets already provide fairness; only idle/pending work needs a timed wait.
+        if commands == 0 && callbacks == 0 && !progressed {
+            thread::park_timeout(PUMP_INTERVAL);
+        }
     }
 }
 
@@ -366,13 +400,13 @@ fn audio_overflow(_error: tokio::sync::mpsc::error::TrySendError<Error>) -> Erro
     Error::WorkerFailed("audio error queue is full or closed".into())
 }
 
-fn dispatch(core: &mut CoreHost, command: Command, operations: &mut Operations) {
+fn dispatch(core: &mut CoreHost, command: Command, operations: &mut Option<Operation>) {
     match command {
         Command::Canonicalize(path, reply) => {
             drop(reply.send(crate::runtime::canonicalize(&path)));
         }
         Command::Request(request, mut packet, reply) => {
-            if operations.busy()
+            if operations.is_some()
                 && !matches!(
                     request,
                     Request::Diagnostics | Request::Snapshot | Request::Combat | Request::Logs
@@ -386,48 +420,56 @@ fn dispatch(core: &mut CoreHost, command: Command, operations: &mut Operations) 
                 .request(request, &mut packet)
                 .map(|status| (status, packet));
             if matches!(request, Request::Archive) && matches!(result, Ok((1, _))) {
-                operations.archive = Some(reply);
+                *operations = Some(Operation::Archive(reply));
                 return;
             }
             drop(reply.send(result));
         }
         Command::EndCombat(reply) => {
-            drop(reply.send(if operations.busy() {
+            drop(reply.send(if operations.is_some() {
                 Err(Error::Busy)
             } else {
                 core.end_combat()
             }));
         }
         Command::Tts(speaker, reply) => {
-            if operations.busy() {
+            if operations.is_some() {
                 drop(reply.send(Err(Error::Busy)));
                 return;
             }
-            let result = match speaker {
-                Some(speaker) => core.set_tts(speaker),
-                None => core.clear_tts(),
-            };
-            drop(reply.send(result));
+            match core.replace_tts(speaker) {
+                Ok(Some(previous)) => {
+                    *operations = Some(Operation::Audio(
+                        Box::pin(async move { previous.shutdown().await.map_err(Error::Speech) }),
+                        reply,
+                    ))
+                }
+                result => drop(reply.send(result.map(|_| ()))),
+            }
         }
         Command::Sound(player, reply) => {
-            if operations.busy() {
+            if operations.is_some() {
                 drop(reply.send(Err(Error::Busy)));
                 return;
             }
-            let result = match player {
-                Some(player) => core.set_sound_player(player),
-                None => core.clear_sound_player(),
-            };
-            drop(reply.send(result));
+            match core.replace_sound(player) {
+                Ok(Some(previous)) => {
+                    *operations = Some(Operation::Audio(
+                        Box::pin(async move { previous.shutdown().await.map_err(Error::Sound) }),
+                        reply,
+                    ))
+                }
+                result => drop(reply.send(result.map(|_| ()))),
+            }
         }
         Command::Import(path, pending, reply) => {
-            let result = if operations.busy() {
+            let result = if operations.is_some() {
                 Err(Error::Busy)
             } else {
                 pending.begin(&core.session, &path)
             };
             if result.is_ok() {
-                operations.import = Some(pending);
+                *operations = Some(Operation::Import(pending));
             }
             drop(reply.send(result));
         }

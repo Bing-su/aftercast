@@ -163,7 +163,6 @@ public partial class FormActMain
         stream.ReadExactly(result);
         return result;
     }
-    private List<EncounterData> ReadEncounterFile(string path) => DecodeEncounterFile(ReadBoundedFile(path));
     private List<EncounterData> DecodeEncounterFile(byte[] bytes)
     {
         var xml = ExpandEncounterFile(bytes);
@@ -191,13 +190,14 @@ public partial class FormActMain
                 throw new InvalidOperationException("Encounter has no outgoing swings to archive; its manual graph cannot be reconstructed");
             ArraySegment<byte> xml;
             lock (CombatGate) xml = EncodeEncounter(encounter, history: true);
-            var bytes = await ArchiveIo(asynchronous, () => CompressArchive(xml.AsSpan()));
-            var file = Convert.ToHexStringLower(SHA256.HashData(bytes)) + ".act";
-            var path = Path.Combine(HistoryDirectory, file);
-            await ArchiveIo(asynchronous, () => {
+            // Compress, name and persist owned bytes together; hashing a large archive must not stall owner dispatch.
+            var file = await ArchiveIo(asynchronous, () => {
+                var bytes = CompressArchive(xml.AsSpan());
+                var file = Convert.ToHexStringLower(SHA256.HashData(bytes)) + ".act";
+                var path = Path.Combine(HistoryDirectory, file);
                 if (!File.Exists(path)) WriteAtomic(path, stream => stream.Write(bytes), overwrite: false);
                 else if (!ReadBoundedFile(path).SequenceEqual(bytes)) throw new InvalidDataException("Existing history payload is corrupt");
-                return 0;
+                return file;
             });
             if (archivedEncounters.TryGetValue(encounter, out var previous)) next.RemoveAll(item => item.File == previous.File);
             var record = new HistoryRecord(1, encounter.StartTime, encounter.EndTime, encounter.Title, encounter.CharName,
