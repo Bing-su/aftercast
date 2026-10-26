@@ -4,14 +4,13 @@ use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
 
-use aftercast_tts::{SoundPlayer, Speaker};
 use bytes::{BufMut, BytesMut};
 use camino::{Utf8Path, Utf8PathBuf};
 use tokio::sync::{oneshot, watch};
 
 use crate::import::{ImportJob, ImportProgress, PendingImport};
-use crate::runtime::{ManagedSession, Request};
-use crate::speech::AudioOutput;
+use crate::process::RemoteSession;
+use crate::runtime::Request;
 use crate::{Error, HostConfig};
 
 const QUEUE_CAPACITY: usize = 32;
@@ -93,7 +92,7 @@ impl Deref for Host {
 }
 
 impl Host {
-    /// Starts the CLR and host on a library-owned thread (STA on Windows).
+    /// Starts the application's child process; its main thread owns CLR and Windows STA.
     pub async fn start(config: HostConfig) -> Result<Self, Error> {
         let (sender, receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
         let (ready, initialized) = oneshot::channel::<u64>();
@@ -274,11 +273,11 @@ fn worker_main(
     audio_errors: tokio::sync::mpsc::Sender<Error>,
 ) {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-        let core = CoreHost::start(config, control.clone())?;
-        if ready.send(core.session.id()).is_err() {
-            return core.stop();
+        let session = RemoteSession::start(config, control.clone())?;
+        if ready.send(session.id()).is_err() {
+            return session.stop();
         }
-        run(core, receiver, &control, audio_errors)
+        run(session, receiver, &control, audio_errors)
     }))
     .unwrap_or_else(|_| Err(Error::WorkerFailed("host thread panicked".into())));
     control.record(&result);
@@ -299,7 +298,7 @@ impl Operation {
             _ => None,
         }
     }
-    fn advance(self, session: &ManagedSession, stopping: bool) -> Option<Self> {
+    fn advance(self, session: &mut RemoteSession, stopping: bool) -> Option<Self> {
         match self {
             Self::Import(mut import) => match import.advance(session, stopping) {
                 None => Some(Self::Import(import)),
@@ -322,7 +321,7 @@ impl Operation {
                 None
             }
             Self::Audio(reply) => {
-                let result = session.configure_audio(102, false);
+                let result = session.audio(102, false);
                 if matches!(result, Ok(1)) {
                     return Some(Self::Audio(reply));
                 }
@@ -334,7 +333,7 @@ impl Operation {
 }
 
 fn run(
-    mut core: CoreHost,
+    mut session: RemoteSession,
     receiver: mpsc::Receiver<Command>,
     control: &Control,
     audio_errors: tokio::sync::mpsc::Sender<Error>,
@@ -342,7 +341,7 @@ fn run(
     let mut operations = None;
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         run_loop(
-            &mut core,
+            &mut session,
             &receiver,
             control,
             &audio_errors,
@@ -355,11 +354,11 @@ fn run(
     control.request_shutdown();
     drop(receiver);
     while let Some(operation) = operations.take() {
-        operations = operation.advance(&core.session, true);
-        drop(core.session.call(4));
+        operations = operation.advance(&mut session, true);
+        drop(session.call(4));
         thread::park_timeout(PUMP_INTERVAL);
     }
-    let stopped = core.stop();
+    let stopped = session.stop();
     if matches!(stopped, Err(Error::ShutdownTimeout(_))) {
         return stopped;
     }
@@ -367,7 +366,7 @@ fn run(
 }
 
 fn run_loop(
-    core: &mut CoreHost,
+    session: &mut RemoteSession,
     receiver: &mpsc::Receiver<Command>,
     control: &Control,
     audio_errors: &tokio::sync::mpsc::Sender<Error>,
@@ -378,14 +377,14 @@ fn run_loop(
         if stopping {
             return Ok(());
         }
-        let callbacks = core.session.call(4)?.runtime_major;
-        while let Some(error) = core.session.audio_error() {
+        let callbacks = session.call(4)?.runtime_major;
+        while let Some(error) = session.audio_error() {
             audio_errors.try_send(error).map_err(audio_overflow)?;
         }
         let before = operations.as_ref().and_then(Operation::import_progress);
         *operations = operations
             .take()
-            .and_then(|operation| operation.advance(&core.session, false));
+            .and_then(|operation| operation.advance(session, false));
         let progressed = before != operations.as_ref().and_then(Operation::import_progress);
         let started = Instant::now();
         let mut commands = 0;
@@ -395,7 +394,7 @@ fn run_loop(
             }
             match receiver.try_recv() {
                 Ok(command) => {
-                    dispatch(core, command, operations);
+                    dispatch(session, command, operations);
                     commands += 1;
                 }
                 Err(mpsc::TryRecvError::Empty) => break,
@@ -413,7 +412,7 @@ fn audio_overflow(_error: tokio::sync::mpsc::error::TrySendError<Error>) -> Erro
     Error::WorkerFailed("audio error queue is full or closed".into())
 }
 
-fn dispatch(core: &mut CoreHost, command: Command, operations: &mut Option<Operation>) {
+fn dispatch(session: &mut RemoteSession, command: Command, operations: &mut Option<Operation>) {
     match command {
         Command::Canonicalize(path, reply) => {
             drop(reply.send(crate::runtime::canonicalize(&path)));
@@ -428,8 +427,7 @@ fn dispatch(core: &mut CoreHost, command: Command, operations: &mut Option<Opera
                 drop(reply.send(Err(Error::Busy)));
                 return;
             }
-            let result = core
-                .session
+            let result = session
                 .request(request, &mut packet)
                 .map(|status| (status, packet));
             if matches!(request, Request::Archive) && matches!(result, Ok((1, _))) {
@@ -442,7 +440,7 @@ fn dispatch(core: &mut CoreHost, command: Command, operations: &mut Option<Opera
             drop(reply.send(if operations.is_some() {
                 Err(Error::Busy)
             } else {
-                core.end_combat()
+                session.call(5).map(|_| ())
             }));
         }
         Command::Tts(speaker, reply) => {
@@ -450,7 +448,7 @@ fn dispatch(core: &mut CoreHost, command: Command, operations: &mut Option<Opera
                 drop(reply.send(Err(Error::Busy)));
                 return;
             }
-            match core.session.configure_audio(100, speaker) {
+            match session.audio(100, speaker) {
                 Ok(1) => *operations = Some(Operation::Audio(reply)),
                 result => drop(reply.send(result.map(|_| ()))),
             }
@@ -460,7 +458,7 @@ fn dispatch(core: &mut CoreHost, command: Command, operations: &mut Option<Opera
                 drop(reply.send(Err(Error::Busy)));
                 return;
             }
-            match core.session.configure_audio(101, player) {
+            match session.audio(101, player) {
                 Ok(1) => *operations = Some(Operation::Audio(reply)),
                 result => drop(reply.send(result.map(|_| ()))),
             }
@@ -469,76 +467,13 @@ fn dispatch(core: &mut CoreHost, command: Command, operations: &mut Option<Opera
             let result = if operations.is_some() {
                 Err(Error::Busy)
             } else {
-                pending.begin(&core.session, &path)
+                pending.begin(session, &path)
             };
             if result.is_ok() {
                 *operations = Some(Operation::Import(pending));
             }
             drop(reply.send(result));
         }
-    }
-}
-
-pub(crate) struct CoreHost {
-    pub(crate) session: ManagedSession,
-    pub(crate) speech: Option<AudioOutput<Speaker>>,
-    pub(crate) sounds: Option<AudioOutput<SoundPlayer>>,
-}
-
-impl CoreHost {
-    pub(crate) fn start(config: HostConfig, control: Arc<Control>) -> Result<Self, Error> {
-        ManagedSession::start(config, control).map(|session| Self {
-            session,
-            speech: None,
-            sounds: None,
-        })
-    }
-    pub(crate) fn end_combat(&mut self) -> Result<(), Error> {
-        self.session.call(5).map(|_| ())
-    }
-    pub(crate) fn stop(mut self) -> Result<(), Error> {
-        let stopped = self.session.stop();
-        let speech = self
-            .speech
-            .take()
-            .map(|output| output.backend.shutdown_blocking())
-            .transpose()
-            .map_err(Error::Speech);
-        let sound = self
-            .sounds
-            .take()
-            .map(|output| output.backend.shutdown_blocking())
-            .transpose()
-            .map_err(Error::Sound);
-        speech.and(sound).and(stopped)
-    }
-}
-
-pub(crate) struct Apartment;
-impl Apartment {
-    pub(crate) fn new() -> Result<Self, Error> {
-        #[cfg(windows)]
-        {
-            use windows_sys::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
-            // SAFETY: This fresh library-owned thread initializes COM once and balances it below.
-            let status =
-                unsafe { CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32) };
-            if status < 0 {
-                return Err(Error::WorkerFailed(format!(
-                    "STA initialization failed: {status:#x}"
-                )));
-            }
-        }
-        Ok(Self)
-    }
-}
-impl Drop for Apartment {
-    fn drop(&mut self) {
-        #[cfg(windows)]
-        // SAFETY: Apartment is scoped to the same thread as its successful initialization.
-        unsafe {
-            windows_sys::Win32::System::Com::CoUninitialize()
-        };
     }
 }
 

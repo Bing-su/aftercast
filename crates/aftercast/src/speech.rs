@@ -3,8 +3,9 @@ use std::collections::VecDeque;
 use aftercast_tts::{SoundPlayer, SoundRequest, Speaker, Speech, Utterance};
 use bytes::{BufMut, BytesMut};
 
-use crate::host::CoreHost;
-use crate::runtime::{ManagedSession, Request};
+use crate::local_runtime::ManagedSession;
+use crate::process::ChildHost;
+use crate::runtime::Request;
 use crate::{Error, HostHandle};
 
 pub(crate) struct AudioOutput<T> {
@@ -95,7 +96,7 @@ fn packet(session: u64, command: u32, argument: u32, capacity: usize) -> BytesMu
     packet
 }
 
-impl CoreHost {
+impl ChildHost {
     // Return the retired worker to the host loop, e.g. its destructor may itself query the host.
     pub(crate) fn replace_sound(
         &mut self,

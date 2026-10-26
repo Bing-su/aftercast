@@ -1,15 +1,10 @@
-use std::cell::RefCell;
-use std::sync::Arc;
 use std::time::Duration;
 
 use bon::Builder;
-use bytes::BytesMut;
 use camino::Utf8PathBuf;
 use serde::{Deserialize, Serialize};
 
-use crate::host::Control;
 pub(crate) use crate::local_runtime::canonicalize;
-use crate::{Error, process};
 
 /// Trusted deployment paths and process lifetime limits. No executable is searched on PATH.
 #[derive(Debug, Clone, Builder, Serialize, Deserialize)]
@@ -54,54 +49,4 @@ pub(crate) enum Request {
     Diagnostics,
     Speech,
     Archive,
-}
-
-// The local variant is constructed only in child mode; library clients always use IPC.
-pub(crate) enum ManagedSession {
-    Local(Box<crate::local_runtime::ManagedSession>),
-    Remote(RefCell<process::RemoteSession>),
-}
-impl ManagedSession {
-    pub(crate) fn start(config: HostConfig, control: Arc<Control>) -> Result<Self, Error> {
-        process::RemoteSession::start(config, control)
-            .map(|session| Self::Remote(RefCell::new(session)))
-    }
-    pub(crate) fn id(&self) -> u64 {
-        match self {
-            Self::Local(s) => s.id(),
-            Self::Remote(s) => s.borrow().id(),
-        }
-    }
-    pub(crate) fn request(&self, request: Request, packet: &mut BytesMut) -> Result<i32, Error> {
-        match self {
-            Self::Local(s) => s.request(request, packet),
-            Self::Remote(s) => s.borrow_mut().request(request, packet),
-        }
-    }
-    pub(crate) fn call(&self, command: u32) -> Result<Packet, Error> {
-        match self {
-            Self::Local(s) => s.call(command),
-            Self::Remote(s) => s.borrow_mut().call(command),
-        }
-    }
-    pub(crate) fn configure_audio(&self, command: u32, enabled: bool) -> Result<i32, Error> {
-        match self {
-            Self::Remote(s) => s.borrow_mut().audio(command, enabled),
-            Self::Local(_) => Err(Error::WorkerFailed(
-                "audio control requires the process boundary".into(),
-            )),
-        }
-    }
-    pub(crate) fn audio_error(&self) -> Option<Error> {
-        match self {
-            Self::Remote(s) => s.borrow_mut().audio_error(),
-            Self::Local(_) => None,
-        }
-    }
-    pub(crate) fn stop(self) -> Result<(), Error> {
-        match self {
-            Self::Local(s) => s.stop(),
-            Self::Remote(s) => s.into_inner().stop(),
-        }
-    }
 }

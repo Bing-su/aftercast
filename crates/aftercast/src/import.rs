@@ -5,7 +5,8 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::Thread;
 use tokio::sync::{oneshot, watch};
 
-use crate::runtime::{ManagedSession, Request, canonicalize};
+use crate::process::RemoteSession;
+use crate::runtime::{Request, canonicalize};
 use crate::{Error, HostHandle};
 
 /// Latest input progress; read-ahead bytes can lead parsed records by the bounded input buffer.
@@ -47,7 +48,7 @@ pub(crate) struct PendingImport {
 }
 
 impl PendingImport {
-    pub(crate) fn begin(&self, session: &ManagedSession, path: &Utf8Path) -> Result<(), Error> {
+    pub(crate) fn begin(&self, session: &mut RemoteSession, path: &Utf8Path) -> Result<(), Error> {
         let path = canonicalize(path)?;
         let mut packet = import_packet(session.id(), path.as_str())?;
         packet
@@ -60,7 +61,7 @@ impl PendingImport {
 
     pub(crate) fn advance(
         &mut self,
-        session: &ManagedSession,
+        session: &mut RemoteSession,
         stopping: bool,
     ) -> Option<Result<ImportReport, Error>> {
         let result = (|| {

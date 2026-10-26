@@ -45,7 +45,9 @@ No separate worker binary or executable-path setting is required. Call
 `run_child_if_requested()` first in main, before UI/executor initialization. Build
 the app with `aftercast/audio` for system audio. `application_executable` is an
 optional override for embedding harnesses/launchers; ordinary UI apps omit it.
-Startup has a separate 30-second default deadline.
+Startup has a separate 30-second default deadline and returns `StartupTimeout`
+after reaping, including when initialization hangs after authentication. Missing
+the entry hook fails before child mode can recursively launch another process.
 After either graceful shutdown or `ShutdownTimeout`, call `Host::start` with the same
 configuration and explicitly recreate/initialize plugins. Restart never silently replays commands.
 Forced termination can discard in-memory encounters and interrupt plugin settings writes.

@@ -53,6 +53,68 @@ async fn application_relaunches_itself_without_a_worker_path(deployment: Deploym
     );
 }
 
+#[rstest::rstest]
+#[case("omit-hook", "run_child_if_requested")]
+#[case("after-auth", "StartupTimeout")]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and app fixture; run mise run test:plugins"]
+async fn broken_child_startup_is_bounded_and_reports_its_cause(
+    deployment: Deployment,
+    #[case] fault: &str,
+    #[case] message: &str,
+) {
+    let child = std::process::Command::new(common::application())
+        .arg(std::env::var("DOTNET_ROOT").expect("runtime"))
+        .arg(&deployment.bridge)
+        .arg(&deployment.state)
+        .env("AFTERCAST_TEST_CHILD_FAULT", fault)
+        .env("AFTERCAST_TEST_STARTUP_MS", "500")
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+        .expect("launch app fault");
+    let mut child = scopeguard::guard(child, |mut child| {
+        drop(child.kill());
+        drop(child.wait());
+    });
+    let deadline = Instant::now() + Duration::from_secs(3);
+    loop {
+        if let Some(status) = child.try_wait().expect("fault app status") {
+            assert!(!status.success());
+            break;
+        }
+        assert!(Instant::now() < deadline, "broken startup did not finish");
+        tokio::time::sleep(Duration::from_millis(5)).await;
+    }
+    let mut output = String::new();
+    std::io::Read::read_to_string(&mut child.stderr.take().expect("stderr"), &mut output)
+        .expect("startup diagnostic");
+    if fault == "omit-hook" {
+        let children = std::fs::read_to_string(deployment.state.join("omitted.children"))
+            .expect("entry evidence");
+        assert_eq!(
+            children.lines().count(),
+            1,
+            "missing hook must never create grandchildren: {output}"
+        );
+    }
+    #[cfg(target_os = "linux")]
+    if fault == "after-auth" {
+        let pid = std::fs::read_to_string(deployment.state.join("authenticated.pid"))
+            .expect("authenticated child evidence");
+        assert!(
+            !std::path::Path::new(&format!("/proc/{pid}")).exists(),
+            "startup timeout must reap before returning"
+        );
+    }
+    assert!(output.contains(message), "missing {message}: {output}");
+    Host::start(deployment.config())
+        .await
+        .expect("restart after broken startup")
+        .shutdown()
+        .await
+        .expect("cleanup");
+}
+
 #[test]
 #[ignore = "requires built app fixture; run mise run test:plugins"]
 fn unauthenticated_child_mode_does_not_fall_through_to_application_startup() {

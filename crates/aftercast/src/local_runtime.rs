@@ -127,8 +127,6 @@ impl ManagedSession {
         if packet.runtime_major != 10 {
             return Err(Error::RuntimeMismatch(packet.runtime_major));
         }
-        fs::create_dir_all(&config.data_directory)
-            .map_err(|error| io_error(&config.data_directory, error))?;
         let data_directory = canonicalize(&config.data_directory)?;
         let mut request = plugin_packet(host.session, data_directory.as_str(), None)?;
         host.request(Request::ConfigureHost, &mut request)?;

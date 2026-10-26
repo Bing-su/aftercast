@@ -13,13 +13,26 @@ use std::time::{Duration, Instant};
 use bytes::BytesMut;
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
-use crate::host::{Apartment, Control, CoreHost};
-use crate::runtime::{HostConfig, ManagedSession, Packet, Request};
+use crate::host::Control;
+use crate::local_runtime::ManagedSession;
+use crate::runtime::{HostConfig, Packet, Request};
+use crate::speech::AudioOutput;
 use crate::{Error, io_error};
 
 const MAX_FRAME: usize = 128 * 1024 * 1024;
 const TICK: Duration = Duration::from_millis(5);
 const CHILD_ARGUMENT: &str = "--aftercast-child";
+
+// Child-only ownership: the parent carries no native delegates, controls or audio workers.
+pub(crate) struct ChildHost {
+    pub(crate) session: ManagedSession,
+    pub(crate) speech: Option<AudioOutput<aftercast_tts::Speaker>>,
+    pub(crate) sounds: Option<AudioOutput<aftercast_tts::SoundPlayer>>,
+}
+
+fn child_requested() -> bool {
+    std::env::args_os().nth(1).as_deref() == Some(std::ffi::OsStr::new(CHILD_ARGUMENT))
+}
 
 fn bind_parent(parent: u32) -> Result<(), Error> {
     #[cfg(target_os = "linux")]
@@ -209,7 +222,6 @@ fn read_json<T: DeserializeOwned>(stream: &mut impl Read) -> Result<T, Error> {
 
 struct Supervisor {
     abort: Arc<AtomicBool>,
-    exited: Arc<AtomicBool>,
     thread: Option<JoinHandle<Result<(), Error>>>,
 }
 
@@ -252,11 +264,10 @@ fn watch_child(
         if timed_out {
             return Err(Error::ShutdownTimeout(shutdown_timeout));
         }
-        return Err(transport(if startup_expired {
-            "startup deadline exceeded"
-        } else {
-            "worker abandoned"
-        }));
+        if startup_expired {
+            return Err(Error::StartupTimeout(startup_timeout));
+        }
+        return Err(transport("worker abandoned"));
     }
 }
 
@@ -268,9 +279,7 @@ impl Supervisor {
         ready: Arc<AtomicBool>,
     ) -> Result<Self, Error> {
         let abort = Arc::new(AtomicBool::new(false));
-        let exited = Arc::new(AtomicBool::new(false));
         let abort_worker = abort.clone();
-        let exited_worker = exited.clone();
         let startup_timeout = config.startup_timeout;
         let shutdown_timeout = config.shutdown_timeout;
         // Also cover thread-spawn failure and panics: dropping Child alone would leave an orphan.
@@ -286,21 +295,18 @@ impl Supervisor {
             .spawn(move || {
                 #[cfg(windows)]
                 let _job = job;
-                let result = watch_child(
+                watch_child(
                     &mut child,
                     &control,
                     &ready,
                     &abort_worker,
                     startup_timeout,
                     shutdown_timeout,
-                );
-                exited_worker.store(true, Ordering::Release);
-                result
+                )
             })
             .map_err(transport)?;
         Ok(Self {
             abort,
-            exited,
             thread: Some(thread),
         })
     }
@@ -312,11 +318,17 @@ impl Supervisor {
             None => Ok(()),
         }
     }
+    fn is_finished(&self) -> bool {
+        self.thread.as_ref().is_none_or(JoinHandle::is_finished)
+    }
+    fn abort(&mut self) -> Result<(), Error> {
+        self.abort.store(true, Ordering::Release);
+        self.finish()
+    }
 }
 impl Drop for Supervisor {
     fn drop(&mut self) {
-        self.abort.store(true, Ordering::Release);
-        drop(self.finish());
+        drop(self.abort());
     }
 }
 
@@ -324,9 +336,7 @@ fn accept_worker(
     listener: &TcpListener,
     token: &[u8; 32],
     supervisor: &mut Supervisor,
-    timeout: Duration,
 ) -> Result<TcpStream, Error> {
-    let started = Instant::now();
     loop {
         match listener.accept() {
             Ok((mut stream, _)) => {
@@ -341,12 +351,9 @@ fn accept_worker(
             Err(error) if error.kind() == std::io::ErrorKind::WouldBlock => {}
             Err(error) => return Err(transport(error)),
         }
-        if supervisor.exited.load(Ordering::Acquire) {
+        if supervisor.is_finished() {
             supervisor.finish()?;
             return Err(transport("worker exited before authentication"));
-        }
-        if started.elapsed() >= timeout {
-            return Err(transport("authentication deadline exceeded"));
         }
         thread::sleep(TICK);
     }
@@ -360,6 +367,12 @@ pub(crate) struct RemoteSession {
 }
 impl RemoteSession {
     pub(crate) fn start(mut config: HostConfig, control: Arc<Control>) -> Result<Self, Error> {
+        // A missing application entry hook must fail before it can recursively spawn grandchildren.
+        if child_requested() {
+            return Err(transport(
+                "call run_child_if_requested before Host::start in child mode",
+            ));
+        }
         if config.startup_timeout.is_zero() || config.shutdown_timeout.is_zero() {
             return Err(transport("lifetime deadlines must be positive"));
         }
@@ -402,7 +415,7 @@ impl RemoteSession {
             },
         )?;
         drop(input);
-        let stream = accept_worker(&listener, &token, &mut supervisor, config.startup_timeout)?;
+        let stream = accept_worker(&listener, &token, &mut supervisor)?;
         stream.set_nodelay(true).map_err(transport)?;
         stream.set_read_timeout(None).map_err(transport)?;
         let mut session = Self {
@@ -411,7 +424,13 @@ impl RemoteSession {
             session: 0,
             audio: VecDeque::new(),
         };
-        let (response, _) = session.receive()?;
+        let (response, _) = session.receive().map_err(|error| {
+            // Socket EOF can be the effect of the supervisor deadline; keep the actual termination cause.
+            match session.supervisor.abort() {
+                Err(timeout @ (Error::StartupTimeout(_) | Error::ShutdownTimeout(_))) => timeout,
+                _ => error,
+            }
+        })?;
         session.session = response
             .lifecycle
             .ok_or_else(|| transport("missing startup session"))?
@@ -535,7 +554,7 @@ pub fn run_child_if_requested_with_audio(
     tts: fn(&camino::Utf8Path) -> Result<aftercast_tts::Speaker, aftercast_tts::Error>,
     sound: fn(&camino::Utf8Path) -> Result<aftercast_tts::SoundPlayer, aftercast_tts::Error>,
 ) -> Result<bool, Error> {
-    if std::env::args_os().nth(1).as_deref() != Some(std::ffi::OsStr::new(CHILD_ARGUMENT)) {
+    if !child_requested() {
         return Ok(false);
     }
     run_child(tts, sound)?;
@@ -554,8 +573,8 @@ fn run_child(
     stream.write_all(&launch.token).map_err(transport)?;
     let _apartment = Apartment::new()?;
     let state = launch.config.data_directory.clone();
-    let core = crate::local_runtime::ManagedSession::start(launch.config).map(|session| CoreHost {
-        session: ManagedSession::Local(Box::new(session)),
+    let core = ManagedSession::start(launch.config).map(|session| ChildHost {
+        session,
         speech: None,
         sounds: None,
     });
@@ -584,7 +603,8 @@ fn run_child(
         let message: Message = read_json(&mut stream)?;
         let mut packet = BytesMut::from(read_frame(&mut stream)?.as_slice());
         if message.request.is_none() && message.command == 3 {
-            let result = core.stop();
+            // The parent finishes audio retirement before requesting disposal of the managed owner context.
+            let result = core.session.stop();
             write_json(&mut stream, &Response::result(result.map(|_| 0)))?;
             write_frame(&mut stream, &[])?;
             return Ok(());
@@ -642,7 +662,7 @@ fn poll_audio(cleanup: &mut Option<AudioCleanup>) -> Result<i32, Error> {
 }
 
 fn configure_audio(
-    core: &mut CoreHost,
+    core: &mut ChildHost,
     command: u32,
     packet: &[u8],
     state: &camino::Utf8Path,
@@ -674,6 +694,36 @@ fn configure_audio(
         }
     }
     Ok(None)
+}
+
+struct Apartment;
+
+impl Apartment {
+    fn new() -> Result<Self, Error> {
+        #[cfg(windows)]
+        {
+            use windows_sys::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
+            // SAFETY: The fresh child main thread initializes COM once and balances it below.
+            let status =
+                unsafe { CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32) };
+            if status < 0 {
+                return Err(Error::WorkerFailed(format!(
+                    "STA initialization failed: {status:#x}"
+                )));
+            }
+        }
+        Ok(Self)
+    }
+}
+
+impl Drop for Apartment {
+    fn drop(&mut self) {
+        #[cfg(windows)]
+        // SAFETY: Apartment is scoped to the same thread as its successful initialization.
+        unsafe {
+            windows_sys::Win32::System::Com::CoUninitialize()
+        };
+    }
 }
 
 #[cfg(test)]

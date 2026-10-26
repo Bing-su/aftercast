@@ -45,6 +45,8 @@ before UI/runtime creation, returning on true or error; false enters normal star
 No dedicated worker executable is shipped. The optional application-executable
 override supports embedding test harnesses/launchers. Custom audio factories use
 `run_child_if_requested_with_audio` at the same entry point.
+Starting another Host from the reserved child mode is rejected before spawning,
+so a missing entry hook cannot create a chain of processes.
 
 The child authenticates a loopback TCP connection using a fresh 256-bit token
 delivered over its inherited stdin pipe. JSON control metadata and binary ACT
@@ -52,7 +54,10 @@ packets use separate length-prefixed frames capped at 128 MiB; stdout/stderr rem
 independent plugin output. The parent never loads CLR or executes plugin callbacks.
 A supervisor owns the Child handle, checks deadlines independently of IPC and
 always waits for process exit after killing. Default startup/shutdown deadlines
-are 30/5 seconds. Shutdown expiry returns ShutdownTimeout after reaping; requests
+are 30/5 seconds. Startup expiry returns StartupTimeout even after authentication;
+one supervisor clock covers authentication and CLR initialization. Its thread's
+completion also signals exit, without a separate exit flag. Shutdown expiry
+returns ShutdownTimeout after reaping; requests
 blocked on IPC then fail and a new Host can start. Cancellation of startup and
 dropping a Host also request supervised cleanup. A child-held OS file lock prevents
 two workers from writing the same state directory; killing the child releases it.
@@ -95,7 +100,7 @@ drain reuses one request packet for up to 32 submissions.
 | Location                                                                                                                                                                                       | Responsibility                                                                                                                                            |
 | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | [Host](../crates/aftercast/src/host.rs)                                                                                                                                                        | Public lifecycle operations                                                                                                                               |
-| [ManagedSession](../crates/aftercast/src/runtime.rs)                                                                                                                                           | Process configuration and private local/remote session boundary                                                                                           |
+| [Runtime types](../crates/aftercast/src/runtime.rs)                                                                                                                                            | Process configuration and IPC request/packet types                                                                                                        |
 | [Process](../crates/aftercast/src/process.rs)                                                                                                                                                  | Authenticated IPC, process supervision, deadlines, kill/reap and worker entry points                                                                      |
 | [Local runtime](../crates/aftercast/src/local_runtime.rs)                                                                                                                                      | Child-only native delegates, loader handles, CLR lifetime and state lock                                                                                  |
 | [Plugins](../crates/aftercast/src/plugins.rs)                                                                                                                                                  | Plugin configuration, session-scoped IDs and lifecycle requests                                                                                           |
@@ -109,9 +114,11 @@ drain reuses one request packet for up to 32 submissions.
 | [ImportOperation](../managed/ActCompat/RootImport.cs)                                                                                                                                          | Import admission, temporary parser context, restoration and partial failure                                                                               |
 | [Control](../crates/aftercast-winforms/managed/Control.cs)                                                                                                                                     | Headless control ownership, caller-context dispatch and disposal                                                                                          |
 
-Host feature methods pass owned request buffers to ManagedSession. Native calls
-borrow these buffers only for the duration of the call; delegates and loader
-handles remain private. Returned strings, records and snapshots own their data.
+Host feature methods pass owned request buffers directly to the parent RemoteSession.
+The child-only ChildHost owns its local ManagedSession and audio; there is no
+shared local/remote enum or parent audio state. Native calls borrow buffers only
+for the duration of the call; delegates and loader handles remain private.
+Returned strings, records and snapshots own their data.
 
 [Combat GUI queries](../crates/aftercast/src/combat.rs) read live and retained
 encounters through [the bridge encoder](../managed/Bridge/CombatQueries.cs) and

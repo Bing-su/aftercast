@@ -52,6 +52,8 @@ does not guarantee settings flush, accepted-operation completion or import resto
 Await shutdown (including a ShutdownTimeout result) before restarting with the same
 state directory; concurrent owners receive `Error::StateInUse`. Recreate plugins
 explicitly in the new Host. The worker is a trusted process, not a security sandbox.
+Startup expiry returns `Error::StartupTimeout` after child reaping, including
+when authentication succeeded but CLR initialization never completed.
 
 Host starts the current executable with `--aftercast-child`, without forwarding
 normal UI arguments. Call `run_child_if_requested()` first in main; true means
@@ -60,6 +62,8 @@ falling through to UI startup. An unauthenticated child launch fails visibly.
 No standalone worker executable, environment path setting, PATH search or runtime
 compilation is required. The optional `application_executable` override is for
 embedding harnesses/launchers; omit it in the normal UI application.
+If an application misses the entry hook, `Host::start` rejects the reserved child
+mode before it can recursively create more processes.
 
 ## Plugins and owner callbacks
 

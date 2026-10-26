@@ -54,6 +54,8 @@ pub enum Error {
         "host process exceeded its graceful shutdown deadline of {0:?}; it was killed and reaped"
     )]
     ShutdownTimeout(std::time::Duration),
+    #[error("host process exceeded its startup deadline of {0:?}; it was killed and reaped")]
+    StartupTimeout(std::time::Duration),
     #[error("invalid archive request: {0}")]
     InvalidArchiveRequest(String),
     #[error("invalid archive response: {0}")]

@@ -41,6 +41,8 @@ prior Windows runtime/native-audio evidence does not establish the new process p
 | Startup future is dropped                                                                      | Shutdown request still reaches the independent supervisor; state becomes reusable                          |
 | Parent exits without Rust destructors                                                          | Linux parent-death signal / Windows job kills the stuck worker; state can be reopened                      |
 | Audio destructor waits for owner-dispatched work                                               | Replacement and shutdown continue owner pumping until the backend releases                                 |
+| Application omits child entry hook                                                             | Reject Host startup in child mode before creating any grandchildren                                        |
+| Child authenticates but never reports readiness                                                | Return StartupTimeout after kill/reap and permit a fresh startup                                           |
 
 The application calls `run_child_if_requested` before initializing its UI/runtime;
 Host relaunches that same executable with `--aftercast-child`. No standalone worker
