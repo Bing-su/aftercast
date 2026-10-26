@@ -210,7 +210,6 @@ async fn completed_snapshots_are_owned_versioned_and_recover_from_partial_import
 }
 
 async fn check_live_completion(host: &mut Host, directory: &Utf8Path, plugin_path: &Utf8Path) {
-    use std::io::Write;
     let plugin = host
         .create_plugin(
             PluginConfig::builder()
@@ -230,78 +229,93 @@ async fn check_live_completion(host: &mut Host, directory: &Utf8Path, plugin_pat
         ("4|50\n", "4|50", 50, false),
         ("\u{feff}6|75\n", "6|75", 75, true),
     ] {
-        if replace {
-            // A rotated file already contains its first record; reopening at the tail would lose this encounter.
-            std::fs::rename(&path, path.with_extension("previous.log"))
-                .expect("rotate the followed file");
-            std::fs::write(&path, lines).expect("create replacement with its first live record");
-        } else {
-            std::fs::OpenOptions::new()
-                .append(true)
-                .open(&path)
-                .expect("open followed file")
-                .write_all(lines.as_bytes())
-                .expect("append live records");
-        }
-        // Wait for fixture action admission; observing a raw log batch alone precedes the mutable parsing hooks.
-        let started = std::time::Instant::now();
-        while !std::fs::read_to_string(&marker).is_ok_and(|text| text == last) {
-            host.session_id()
-                .await
-                .expect("service live parser callbacks");
-            assert!(
-                started.elapsed() < std::time::Duration::from_secs(5),
-                "live records were not admitted"
-            );
-            std::thread::sleep(std::time::Duration::from_millis(1));
-        }
-        assert!(matches!(
-            host.import_log(&path).await,
-            Err(Error::Managed { command: 8, .. })
-        ));
-        let live = wait_for_live_totals(host, damage, started).await;
-        assert_eq!(live.summary.status, EncounterStatus::Active);
-        assert!(!live.summary.is_import);
-        assert_eq!(live.combatants.len(), 2);
-        host.end_combat()
-            .await
-            .expect("finish live combat without another log record");
-        let result = host
-            .combat_snapshot(None)
-            .await
-            .expect("read live result")
-            .expect("ended live result");
-        assert!(!result.is_import);
-        assert_eq!(result.status, CombatSnapshotStatus::Ended);
-        assert_eq!(result.damage, damage);
-        assert!(
-            host.live_combat()
-                .await
-                .expect("idle after combat")
-                .is_none()
-        );
-        let ended = host
-            .encounter_detail(live.summary.id)
-            .await
-            .expect("same live ID after end")
-            .expect("ended combat");
-        assert_eq!(ended.summary.status, EncounterStatus::Ended);
-        assert_eq!(ended.summary.damage, damage);
-        assert_eq!(live.summary.status, EncounterStatus::Active);
-        host.end_combat()
-            .await
-            .expect("idle completion is harmless");
-        assert!(
-            host.combat_snapshot(Some(result.revision))
-                .await
-                .expect("unchanged live poll")
-                .is_none()
-        );
+        check_live_round(host, &path, &marker, (lines, last, damage, replace)).await;
     }
     assert_eq!(host.diagnostics().await.expect("live diagnostics").total, 0);
     host.deinitialize_plugin(plugin)
         .await
         .expect("deinitialize live parser");
+}
+
+async fn check_live_round(
+    host: &mut Host,
+    path: &Utf8Path,
+    marker: &Utf8Path,
+    round: (&str, &str, i64, bool),
+) {
+    use std::io::Write;
+    let (lines, last, damage, replace) = round;
+    if replace {
+        // A rotated file already contains its first record; reopening at the tail would lose this encounter.
+        std::fs::rename(path, path.with_extension("previous.log"))
+            .expect("rotate the followed file");
+        std::fs::write(path, lines).expect("create replacement with its first live record");
+    } else {
+        std::fs::OpenOptions::new()
+            .append(true)
+            .open(path)
+            .expect("open followed file")
+            .write_all(lines.as_bytes())
+            .expect("append live records");
+    }
+    // Wait for fixture action admission; observing a raw log batch alone precedes the mutable parsing hooks.
+    let started = std::time::Instant::now();
+    while !std::fs::read_to_string(marker).is_ok_and(|text| text == last) {
+        host.session_id()
+            .await
+            .expect("service live parser callbacks");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "live records were not admitted"
+        );
+        std::thread::sleep(std::time::Duration::from_millis(1));
+    }
+    assert!(matches!(
+        host.import_log(&path).await,
+        Err(Error::Managed { command: 8, .. })
+    ));
+    let live = wait_for_live_totals(host, damage, started).await;
+    assert_eq!(live.summary.status, EncounterStatus::Active);
+    assert!(!live.summary.is_import);
+    assert_eq!(live.combatants.len(), 2);
+    check_ended_live(host, live, damage).await;
+}
+
+async fn check_ended_live(host: &mut Host, live: aftercast::EncounterDetail, damage: i64) {
+    host.end_combat()
+        .await
+        .expect("finish live combat without another log record");
+    let result = host
+        .combat_snapshot(None)
+        .await
+        .expect("read live result")
+        .expect("ended live result");
+    assert!(!result.is_import);
+    assert_eq!(result.status, CombatSnapshotStatus::Ended);
+    assert_eq!(result.damage, damage);
+    assert!(
+        host.live_combat()
+            .await
+            .expect("idle after combat")
+            .is_none()
+    );
+    let ended = host
+        .encounter_detail(live.summary.id)
+        .await
+        .expect("same live ID after end")
+        .expect("ended combat");
+    assert_eq!(ended.summary.status, EncounterStatus::Ended);
+    assert_eq!(ended.summary.damage, damage);
+    assert_eq!(live.summary.status, EncounterStatus::Active);
+    host.end_combat()
+        .await
+        .expect("idle completion is harmless");
+    assert!(
+        host.combat_snapshot(Some(result.revision))
+            .await
+            .expect("unchanged live poll")
+            .is_none()
+    );
 }
 
 async fn wait_for_live_totals(

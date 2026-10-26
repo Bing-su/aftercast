@@ -30,7 +30,8 @@ public partial class FormActMain
             lock (logGate) { lastKnownTime = value; lastKnownStamp = Stopwatch.GetTimestamp(); }
         }
     }
-    public DateTime LastEstimatedTime { get { lock (logGate) return lastKnownTime + Stopwatch.GetElapsedTime(lastKnownStamp); } }
+    // Live timers keep aging on their monotonic baseline while an import changes parser timestamps.
+    public DateTime LastEstimatedTime { get { lock (logGate) return activeImport?.LiveEstimatedTime ?? lastKnownTime + Stopwatch.GetElapsedTime(lastKnownStamp); } }
     public string CurrentZone { get { lock (logGate) return currentZone; } set { lock (logGate) currentZone = value; } }
     public event LogLineEventDelegate? OnLogLineRead;
 

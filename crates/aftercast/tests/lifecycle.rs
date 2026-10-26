@@ -63,6 +63,10 @@ async fn failed_initializations(host: &mut Host, assembly: &Utf8Path, state: &Ut
         assert_eq!(lines(state, &format!("{mode}.disposed")), 2);
         assert!(!state.join(format!("{mode}.deinit")).exists());
     }
+    background_diagnostics(host, assembly).await;
+}
+
+async fn background_diagnostics(host: &mut Host, assembly: &Utf8Path) {
     let background = construct(host, assembly, "BackgroundLogPlugin").await;
     assert_eq!(
         host.initialize_plugin(background)

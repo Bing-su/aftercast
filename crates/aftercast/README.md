@@ -1,69 +1,55 @@
 # aftercast
 
-An in-process ACT-compatible host for Rust. Implements the .NET 10/C# bridge
-lifecycle, initial ACT contracts, and trusted plugin construction/initialization.
-Original FFXIV initializes and imports a synthetic 400-damage fixture on Linux.
-A recorded Zeromus corpus passes per-action consistency checks. Broader gameplay
-coverage, live capture and original-plugin execution on Windows remain unverified.
-Windows CLR lifecycle, fixture plugins, imports and owned output pass integration tests.
-
-Consumers need an installed .NET 10 runtime, but no .NET SDK. The prebuilt bridge
-is embedded in the crate. Runtime installation and downloads are never automatic.
+An asynchronous in-process ACT-compatible host for Rust. The crate embeds a
+prebuilt .NET 10/C# bridge; consumers supply a trusted .NET 10 installation and
+plugin deployment. No SDK, runtime download or plugin sandbox is provided.
 
 ```rust,no_run
 use aftercast::{extract_bridge, Host, HostConfig};
 
-# fn main() -> Result<(), aftercast::Error> {
-extract_bridge("/private/app-data/bridge-0.1.0")?;
-let host = Host::start(HostConfig::builder()
-    .dotnet_root("/usr/share/dotnet")
-    .data_directory("/private/app-data/state")
-    .bridge_directory("/private/app-data/bridge-0.1.0")
-    .build())?;
-assert_ne!(host.session_id()?, 0);
-host.stop()?;
-# Ok(())
-# }
+async fn run() -> Result<(), aftercast::Error> {
+    // Extraction is an explicit deployment step; a new directory preserves existing files.
+    extract_bridge("/private/app-data/bridge-0.1.0")?;
+    let host = Host::start(HostConfig::builder()
+        .dotnet_root("/usr/lib/dotnet")
+        .data_directory("/private/app-data/state")
+        .bridge_directory("/private/app-data/bridge-0.1.0")
+        .build()).await?;
+    let handle = host.handle();
+    assert_ne!(handle.session_id().await?, 0);
+    host.shutdown().await
+}
 ```
 
-Paths use camino UTF-8 types; strings work directly. Convert existing PathBuf values
-with `camino::Utf8PathBuf::try_from`. Use a new extraction directory with an existing,
-application-controlled parent.
-Keep deployed files while the process uses the CLR. Only one host is active at a
-time, and the host stays on its creation thread. Stopping it does not unload .NET.
-Use `Host::create_plugin(PluginConfig::builder().path(path).build())` to construct
-the only eligible plugin type, or select it with `type_name("Namespace.Plugin")`.
-Constructors execute in this process; instances are retained until the host stops.
-Call `initialize_plugin(id)` for bounded status text and `deinitialize_plugin(id)`
-for explicit cleanup; stop also cleans up initialized plugins. Linux supports
-headless status controls, with no rendering or native handles. Windows requires
-the .NET 10 Desktop Runtime and a caller-owned STA thread. Call `host.pump()` regularly
-to dispatch owner callbacks and native messages; no hidden UI thread is started.
+| Contract     | Behavior                                                                                                                                        |
+| ------------ | ----------------------------------------------------------------------------------------------------------------------------------------------- |
+| Execution    | The library starts, uses and stops the CLR session on its dedicated thread; Windows STA and message pumping are internal                        |
+| Calls        | `HostHandle` is cloneable, Send + Sync; operations return owned results through futures                                                         |
+| Runtime      | Futures use Tokio synchronization primitives but need no library-owned or caller-provided Tokio runtime; examples use Tokio                     |
+| Admission    | At most 32 queued commands; excess work and conflicts with active imports/archives return `Error::Busy`                                         |
+| Cancellation | `start_import(path).await?` returns an `ImportJob` with `progress()`, `cancel()` and `wait().await`; partial history remains after cancellation |
+| Shutdown     | `shutdown().await` closes admission, cancels imports, finishes accepted archive I/O and waits for managed/native disposal                       |
+| Drop         | Requests shutdown without blocking; use explicit shutdown before removing deployment/state files or immediately restarting                      |
+| Failures     | Command errors return directly; consume playback failures with `next_audio_error().await`; 32 unconsumed audio errors cause host failure        |
+| Lifetime     | One active session per process; loaded CLR, hostfxr and assemblies remain process-owned after shutdown                                          |
 
-After initialization, `host.import_log(path)` reads a fixed UTF-8 file prefix and
-returns transport counts and actual allied combat totals after submitted actions
-drain. End live combat with `host.end_combat()` first. Failure restores live context and retains partial
-import history. Dispatch counts are not parsed counts, and EOF does not flush
-the plugin's private deferred events. Check host and plugin diagnostics.
+Create all plugins in a startup batch before initializing any of them, then
+initialize in dependency order. Automatic pumping marks startup complete after
+all constructed plugins have left the pending state. Initialization status is not
+proof that a plugin's private startup has completed.
 
-Use `subscribe_logs(LogSubscriptionConfig::builder().build())`, `drain_logs(id)`
-and `unsubscribe_logs(id)` for one bounded original-text subscription. Batches
-own their data; oldest-record overflow reports exact loss ranges and leaves core
-parsing running. This subscription is not a durable recording or upload log.
+`import_log(path).await` reads a fixed UTF-8 prefix through the parser and waits
+for accepted actions and state restoration. End live combat first. EOF does not
+flush a plugin's private deferred events. Query results and bounded original-log
+batches own their data; subscription overflow reports exact loss and does not
+interrupt aggregation. Subscriptions are observations, not durable recordings.
 
-Use `combat_snapshot(None)` for the latest ended encounter, then pass its revision
-to poll for changes. Results own their counters and combatant data after host stop.
-Check the status for partial imports; this API retains only the latest result.
-`end_combat()` also publishes the final live result without another log record.
+[Usage](../../docs/usage.md), [architecture](../../docs/architecture.md) and
+[development](../../docs/development.md) describe deployment, limits and checks.
+The async execution model has Linux fixture coverage and Windows cross-compilation;
+Windows runtime, native devices and live game collection require separate validation.
+Local pinned FFXIV corrections preserve original files and are version checked.
+No files outside this repository are rewritten.
 
-On Linux, the pinned FFXIV 3.0.3.3 build receives in-memory compatibility
-adjustments: its memory component reports Windows administrator status as false,
-its writer exits through disposal after post-flush cancellation, and its resource
-reader preserves Windows CRLF delimiter semantics. This does
-not drain the vendor's pending writer queue. Original files remain unchanged;
-other builds are not rewritten.
-
-The project license is undecided; publication is disabled.
-System.Security.Permissions and System.Windows.Extensions 10.0.13 provide legacy
-binding support; their MIT notice and upstream notices are bundled as
-`managed/Dotnet.Compatibility*.LICENSE`. These packages do not provide a sandbox.
+Publication is disabled and the project license is undecided. Bundled .NET
+compatibility notices are under `managed/Dotnet.Compatibility*.LICENSE`.

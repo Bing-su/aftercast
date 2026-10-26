@@ -1,12 +1,35 @@
 # Architecture
 
 Rust handles deployment, CLR hosting and owned output. Managed code runs plugins
-and maintains the mutable ACT combat graph. A Host represents one session on its
-creation thread. Domain terms are in the [glossary](../GLOSSARY.md).
+and maintains the mutable ACT combat graph. `Host` owns a session on a dedicated
+library thread; `HostHandle` sends bounded commands and awaits owned responses.
+Windows STA and native/managed pumping are internal. Domain terms are in the
+[glossary](../GLOSSARY.md).
 
 The [Dioxus desktop plan](gui-plan.md) describes the proposed GUI consumer and
-dedicated host-thread adapter. It is a future implementation plan, not current
-GUI support.
+consumer of the asynchronous library. It is a future GUI plan, not current GUI support.
+
+## Execution and cancellation
+
+| Area              | Implementation and contract                                                                                                                                                      |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Commands          | A 32-entry bounded queue; at most eight commands within a 5 ms scheduling budget per turn; overload returns Busy                                                                 |
+| Scheduling        | Host pumps callbacks/native messages, advances long operations and timers, and dispatches audio even without incoming commands                                                   |
+| Control           | Shutdown and import cancellation use atomic flags plus an unpark, independent of queue capacity                                                                                  |
+| Imports           | Async file reads feed four bounded batches (64 records or about 128 Ki UTF-16 characters plus one maximum record each); owner processing admits at most 64 records/5 ms per step |
+| Import completion | Input disposal and accepted actions settle before finalization; partial history survives failure/cancel and live parser context is restored                                      |
+| Live timers       | Use the saved live monotonic clock throughout imports, independently of imported timestamps                                                                                      |
+| Archives          | Host captures/applies graph state; worker tasks perform disk I/O, hashing and compression; owner-context continuations commit results                                            |
+| Conflicts         | Imports/archives exclude lifecycle changes and other mutations; diagnostics and graph/log queries can run between steps                                                          |
+| Audio             | Separate speech/effect workers; async construction, completion and shutdown; a bounded playback-error receiver belongs to Host                                                   |
+| Failure           | Publish terminal failure before releasing queued response senders; pump failure closes admission and runs cleanup                                                                |
+| Drop              | Requests shutdown without joining; explicit shutdown waits for managed and native disposal and reports errors                                                                    |
+
+No scheduling budget preempts an executing callback, graph serialization or native
+call. The compatibility layer retains synchronous ACT events and its sequential
+combat worker. Native calls borrow Rust buffers only for each call; no task keeps
+a native pointer across a yield. No async ABI or arbitrary closure executor is
+public. Futures need an executor but do not require a Tokio runtime.
 
 ## Module map
 

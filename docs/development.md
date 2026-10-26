@@ -4,6 +4,12 @@ Build and test commands are defined in [mise.toml](../mise.toml).
 Consumer behavior is described in [usage](usage.md), with source ownership in
 [architecture](architecture.md).
 
+The async host refactor changes the Rust interface and moves STA/message-loop
+ownership into the library. Current Linux checks include staged import cancellation,
+live timer clock isolation, bounded admission, response loss, startup cancellation,
+async audio disposal and archive round trips. Windows target cross-compilation is
+separate from native Windows execution; dated reports describe the earlier model.
+
 ## Requirements
 
 | Role                 | Requirements                                                                                                                                                                                                                     |

@@ -5,12 +5,27 @@ namespace Aftercast.Bridge;
 
 public static partial class EntryPoint
 {
-    public static int ArchiveCommand(nint buffer, int sizeBytes) => Run(() =>
+    public static int ArchiveCommand(nint buffer, int sizeBytes) => Run(() => ArchiveCore(buffer, sizeBytes, false));
+
+    public static int ArchiveOperation(nint buffer, int sizeBytes) => Run(() => ArchiveCore(buffer, sizeBytes, true));
+
+    // Async polling uses the same validated packet layout as the synchronous compatibility entry point.
+    private static int ArchiveCore(nint buffer, int sizeBytes, bool asynchronous)
     {
         if (buffer == 0 || sizeBytes is < 64 or > 65536) throw new ArgumentException("Archive command requires 64..65536 bytes");
         ValidateHeader(buffer, sizeBytes, "Archive ABI size/version mismatch");
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
         var command = Marshal.ReadInt32(buffer, 16);
+        if (asynchronous && command == 0)
+        {
+            if (sizeBytes != 64) throw new ArgumentException("Archive poll requires 64 bytes");
+            for (var offset = 20; offset < 64; offset += 4)
+                if (Marshal.ReadInt32(buffer, offset) != 0) throw new ArgumentException("Invalid archive poll fields");
+            var completed = plugins.Value.AdvanceArchive();
+            if (completed is null) return 1;
+            Marshal.WriteInt64(buffer, 48, completed.Value);
+            return 0;
+        }
         var flags = Marshal.ReadInt32(buffer, 20);
         var id = unchecked((ulong)Marshal.ReadInt64(buffer, 24));
         var length = Marshal.ReadInt32(buffer, 32);
@@ -24,8 +39,13 @@ public static partial class EntryPoint
             command == 3 && text.Length != 0 || command == 4 && text.Length > 4096)
             throw new ArgumentException("Invalid archive path or history filter");
         Marshal.WriteInt64(buffer, 48, 0);
+        if (asynchronous)
+        {
+            plugins.Value.BeginArchive(command, text, id, flags == 1);
+            return 1;
+        }
         var count = plugins.Value.ArchiveOperation(command, text, id, flags == 1);
         Marshal.WriteInt64(buffer, 48, count);
         return 0;
-    });
+    }
 }

@@ -4,6 +4,13 @@ An in-process ACT-compatible host for Rust applications. It reuses the existing
 FFXIV ACT plugin's parser and ships a prebuilt .NET 10/C# implementation.
 Consumers need an installed .NET 10 runtime; no SDK or automatic download is used.
 
+The Rust interface is asynchronous. `Host` owns a dedicated execution thread and
+message loop; clone its `HostHandle` to submit work from other threads. Imports
+support progress and cooperative cancellation. Call `shutdown().await` to observe
+cleanup; callers do not pump the host. The async refactor is verified on Linux;
+Windows has cross-compilation coverage, while the runtime reports below describe
+the earlier execution model.
+
 | Start here                                                              | Contents                                                                                                                                  |
 | ----------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------- |
 | [Usage and current support](docs/usage.md)                              | Host/plugin lifecycle, import, original logs, combat snapshots and platform limits                                                        |

@@ -10,6 +10,8 @@ internal static class ImportLogReaderChecks
     private sealed class ShortReadStream(byte[] bytes, int maximumRead) : MemoryStream(bytes)
     {
         public override int Read(byte[] buffer, int offset, int count) => base.Read(buffer, offset, Math.Min(count, maximumRead));
+        public override ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default) =>
+            base.ReadAsync(buffer[..Math.Min(buffer.Length, maximumRead)], cancellationToken);
     }
 
     private sealed class PrematureEndStream(byte[] bytes) : MemoryStream(bytes)
@@ -54,6 +56,14 @@ internal static class ImportLogReaderChecks
         return result.ToArray();
     }
 
+    private static async Task<string[]> ReadAllAsync(IDisposable reader, CancellationToken cancellation = default)
+    {
+        var result = new List<string>();
+        while (await Invoke(() => (ValueTask<string?>)ReaderType.GetMethod("ReadAsync", BindingFlags.Instance | BindingFlags.NonPublic)!.Invoke(reader, [cancellation])!) is { } line)
+            result.Add(line);
+        return result.ToArray();
+    }
+
     private static void Throws<T>(Action action) where T : Exception
     {
         try { action(); }
@@ -77,8 +87,16 @@ internal static class ImportLogReaderChecks
         var records = new[] { "first", "한글", "", new string('x', 4095), "🙂", "last" };
         var framed = Encoding.UTF8.GetBytes(string.Join('\n', records));
         foreach (var chunk in new[] { 1, 7, 4096 })
+        {
             using (var reader = Create(new ShortReadStream(framed, chunk)))
                 Check(ReadAll(reader).SequenceEqual(records), "buffered and direct decoding agree across record boundaries");
+            using (var reader = Create(new ShortReadStream(framed, chunk)))
+                Check(ReadAllAsync(reader).GetAwaiter().GetResult().SequenceEqual(records), "async framing agrees across short reads");
+            using (var reader = Create(new ShortReadStream(Encoding.UTF8.GetBytes(text), chunk)))
+                Check(ReadAllAsync(reader).GetAwaiter().GetResult().SequenceEqual(new[] { "a", "", "b", "c", "last" }), "async BOM and CRLF framing");
+        }
+        using (var reader = Create(new MemoryStream(framed)))
+            Throws<OperationCanceledException>(() => ReadAllAsync(reader, new CancellationToken(true)).GetAwaiter().GetResult());
         foreach (var bytes in new[] { new byte[] { 0xc3, 0x28, 10 }, new byte[] { 0xe2, 0x82 } })
             using (var reader = Create(new ShortReadStream(bytes, 1)))
                 Throws<InvalidDataException>(() => ReadAll(reader));

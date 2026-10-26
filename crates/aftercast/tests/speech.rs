@@ -1,7 +1,8 @@
 mod common;
 
-use std::sync::{Mutex, mpsc};
+use std::sync::mpsc;
 use std::time::{Duration, Instant};
+use tokio::sync::Mutex;
 
 use aftercast::{AudioSettings, Error, Host, PluginConfig};
 use aftercast_tts::{
@@ -11,7 +12,7 @@ use camino::Utf8Path;
 use common::{Deployment, deployment};
 
 // The CLR bridge allows one active host per process, even when Rust runs tests on multiple threads.
-static HOST_TEST: Mutex<()> = Mutex::new(());
+static HOST_TEST: Mutex<()> = Mutex::const_new(());
 
 struct Recorder(mpsc::Sender<String>);
 impl Backend for Recorder {
@@ -73,7 +74,7 @@ impl<B: SoundBackend> SoundBackend for NativeRecorder<B> {
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires local speech service, audio device, .NET 10 and built fixture"]
 async fn native_act_timer_speech_and_effects_finish_playback(deployment: Deployment) {
-    let _host_test = HOST_TEST.lock().expect("serialize CLR hosts");
+    let _host_test = HOST_TEST.lock().await;
     let mut host = Host::start(deployment.config()).await.expect("host");
     let (sent, completed) = mpsc::channel();
     let speech_sent = sent.clone();
@@ -141,7 +142,7 @@ impl SoundBackend for FailingSound {
 async fn act_sound_and_timer_cues_cross_the_bridge_with_independent_volumes(
     deployment: Deployment,
 ) {
-    let _host_test = HOST_TEST.lock().expect("serialize CLR hosts");
+    let _host_test = HOST_TEST.lock().await;
     let mut host = Host::start(deployment.config()).await.expect("host");
     let (tts_sent, tts) = mpsc::channel();
     let (sound_sent, sounds) = mpsc::channel();
@@ -218,7 +219,7 @@ async fn act_sound_and_timer_cues_cross_the_bridge_with_independent_volumes(
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires .NET 10 and built plugin fixture; run mise run test:plugins"]
 async fn act_tts_reaches_injected_backend_and_reports_playback_failures(deployment: Deployment) {
-    let _host_test = HOST_TEST.lock().expect("serialize CLR hosts");
+    let _host_test = HOST_TEST.lock().await;
     assert!(deployment.state.starts_with(deployment.directory()));
     let mut host = Host::start(deployment.config()).await.expect("start host");
     let (sender, received) = mpsc::channel();

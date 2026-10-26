@@ -29,12 +29,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         "InitPlugin returned status: {}",
         host.initialize_plugin(plugin).await?
     );
-    // Keep servicing owner-thread callbacks during worker startup; applications do this in their main loop.
-    let until = std::time::Instant::now() + std::time::Duration::from_millis(1500);
-    while std::time::Instant::now() < until {
-        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
-        std::thread::sleep(std::time::Duration::from_millis(10));
-    }
+    // Allow deferred plugin startup work while the library keeps pumping independently.
+    tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
     if let Some(path) = import {
         let subscription = host
             .subscribe_logs(LogSubscriptionConfig::builder().build())
@@ -44,20 +40,27 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
         if let Some(snapshot) = host.combat_snapshot(None).await? {
             println!("Latest combat result: {snapshot:?}");
         }
-        let mut delivered = 0;
-        let mut omitted = 0;
-        loop {
-            let batch = host.drain_logs(subscription).await?;
-            delivered += batch.records.len();
-            omitted += batch.dropped.map_or(0, |loss| loss.count);
-            if batch.records.is_empty() {
-                break;
-            }
-        }
+        let (delivered, omitted) = drain_logs(&host, subscription).await?;
         println!("Original dispatched records delivered: {delivered}; omitted: {omitted}");
         host.unsubscribe_logs(subscription).await?;
     }
     println!("Worker diagnostics: {:?}", host.diagnostics().await?);
     host.shutdown().await?;
     Ok(())
+}
+
+async fn drain_logs(
+    host: &aftercast::HostHandle,
+    subscription: aftercast::LogSubscription,
+) -> Result<(usize, u64), aftercast::Error> {
+    let mut delivered = 0;
+    let mut omitted = 0;
+    loop {
+        let batch = host.drain_logs(subscription).await?;
+        delivered += batch.records.len();
+        omitted += batch.dropped.map_or(0, |loss| loss.count);
+        if batch.records.is_empty() {
+            return Ok((delivered, omitted));
+        }
+    }
 }

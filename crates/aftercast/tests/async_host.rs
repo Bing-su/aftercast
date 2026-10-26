@@ -85,4 +85,48 @@ async fn imports_cancel_restore_and_shutdown_without_caller_pumping(deployment: 
         .await
         .expect("restart after joined cleanup");
     restarted.shutdown().await.expect("finish restarted host");
+    canceled_startup_releases_its_session(&deployment)
+        .await
+        .expect("startup cancellation");
+}
+
+async fn canceled_startup_releases_its_session(deployment: &Deployment) -> Result<(), Error> {
+    use std::future::Future;
+    use std::task::Poll;
+    let mut starting = Box::pin(Host::start(deployment.config()));
+    let completed = std::future::poll_fn(|cx| {
+        Poll::Ready(match starting.as_mut().poll(cx) {
+            Poll::Pending => None,
+            Poll::Ready(result) => Some(result),
+        })
+    })
+    .await;
+    drop(starting);
+    if let Some(result) = completed {
+        result
+            .expect("startup raced cancellation")
+            .shutdown()
+            .await
+            .expect("cleanup ready host");
+    }
+    let deadline = std::time::Instant::now() + Duration::from_secs(5);
+    loop {
+        match Host::start(deployment.config()).await {
+            Ok(host) => {
+                host.shutdown()
+                    .await
+                    .expect("cleanup after canceled startup");
+                break;
+            }
+            Err(Error::AlreadyActive) => {
+                assert!(
+                    std::time::Instant::now() < deadline,
+                    "canceled startup leaked the session"
+                );
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Ok(())
 }

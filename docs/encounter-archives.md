@@ -13,24 +13,28 @@ Raw log import remains a separate parser workflow.
 | `restore_history(filter)`               | Restore matching saved encounters and return the newly restored count; empty filter matches all |
 
 Initialize the same parser's category registrations before importing or restoring.
-Operations require the owner thread, outside dispatched callbacks, with live
-combat ended. They suspend file delivery and action admission while working.
+Await operations with live combat ended. The library suspends file delivery and
+action admission, captures/applies graph state on the owner thread, and performs
+disk I/O, hashing and compression on worker tasks. Diagnostic/read queries remain
+available between owner continuations; conflicting mutations return Busy.
+Accepted archive work completes during shutdown; dropping its future does not
+cancel a checkpoint. Graph encoding/reconstruction remains sequential owner work.
 Reconstruction reads saved swings directly: raw parser hooks, correction rules,
 live timers and audio are not replayed.
 
 ```rust,ignore
 // Initialize the parser first so saved swings have their original category definitions.
-host.import_act("encounter.act")?;
-let encounters = host.encounters(0, 16)?;
+host.import_act("encounter.act").await?;
+let encounters = host.encounters(0, 16).await?;
 if let Some(encounter) = encounters.items.first() {
-    host.export_act(encounter.id, "copy.act", aftercast::ActFormat::Gzip)?;
+    host.export_act(encounter.id, "copy.act", aftercast::ActFormat::Gzip).await?;
 }
-host.save_history()?;
-host.stop()?;
+host.save_history().await?;
+host.shutdown().await?;
 
 // After starting another Host with the same data directory and initializing its parser:
-let restored = restarted.restore_history("Zeromus")?;
-let page = restarted.encounters(0, 16)?;
+let restored = restarted.restore_history("Zeromus").await?;
+let page = restarted.encounters(0, 16).await?;
 ```
 
 ## Database ownership and recovery

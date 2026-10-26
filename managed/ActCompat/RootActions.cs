@@ -257,14 +257,25 @@ public partial class FormActMain
 
     internal void RunWithCombatActionsSuspended(Action action)
     {
+        using var suspension = SuspendCombatActions();
+        action();
+    }
+
+    private IDisposable SuspendCombatActions()
+    {
         lock (CombatGate)
         {
             EnsureCanWaitForCombatLifecycle();
             actionAdmissionPaused = true;
             actionPauseOwner = Environment.CurrentManagedThreadId;
         }
-        try { WaitForCombatTransitions(); WaitForCombatActions(); action(); }
-        finally { lock (CombatGate) { actionAdmissionPaused = false; actionPauseOwner = 0; } }
+        try { WaitForCombatTransitions(); WaitForCombatActions(); return new CombatSuspension(this); }
+        catch { lock (CombatGate) { actionAdmissionPaused = false; actionPauseOwner = 0; } throw; }
+    }
+
+    private sealed class CombatSuspension(FormActMain root) : IDisposable
+    {
+        public void Dispose() { lock (root.CombatGate) { root.actionAdmissionPaused = false; root.actionPauseOwner = 0; } }
     }
 
     internal void WaitForCombatActions()

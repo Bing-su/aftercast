@@ -1,88 +1,83 @@
 # Usage and current support
 
-The crate embeds the managed assemblies and hosts them in a supplied .NET 10
-installation. See the [glossary](../GLOSSARY.md) for domain terms.
+The Rust interface owns execution and exposes futures. A trusted .NET 10 runtime
+and plugins run in-process; the library supplies its own host thread and message
+loop. See the [glossary](../GLOSSARY.md) for domain terms.
 
 ## Deployment and host lifetime
 
 ```rust,no_run
 use aftercast::{Host, HostConfig, extract_bridge};
 
-fn main() -> Result<(), aftercast::Error> {
-    // Deploy to a new private directory so existing files are never overwritten.
+async fn run() -> Result<(), aftercast::Error> {
+    // Deploy before starting the host; existing destinations are never overwritten.
     extract_bridge("/private/app-data/bridge-0.1.0")?;
     let host = Host::start(HostConfig::builder()
         .dotnet_root("/usr/lib/dotnet")
         .bridge_directory("/private/app-data/bridge-0.1.0")
         .data_directory("/private/app-data/state")
-        .build())?;
-    assert_ne!(host.session_id()?, 0);
-    host.stop()?;
-    Ok(())
+        .build()).await?;
+    assert_ne!(host.session_id().await?, 0);
+    host.shutdown().await
 }
 ```
 
-| Concern        | Contract                                                                                                   |
-| -------------- | ---------------------------------------------------------------------------------------------------------- |
-| Runtime        | Supply a trusted installed .NET 10 root; the library does not select or download an unrelated installation |
-| Paths          | UTF-8 camino paths; string callers work directly, PathBuf callers convert explicitly                       |
-| Extraction     | Parent exists and is application-controlled; destination must be new; incomplete extraction rolls back     |
-| State          | A private writable directory separate from deployed binaries; existing contents are preserved              |
-| Lifetime       | One active Host per process; it is neither Send nor Sync and stays on its creation thread                  |
-| Shutdown       | Explicit stop reports cleanup failures; Drop attempts cleanup and logs failures                            |
-| Restart        | New ACT session identity; CLR, hostfxr and loaded assemblies remain process-owned                          |
-| Runtime switch | A different loaded hostfxr installation requires a new process                                             |
+| Concern        | Contract                                                                                                              |
+| -------------- | --------------------------------------------------------------------------------------------------------------------- |
+| Runtime        | Supply an installed trusted .NET 10 root; Windows needs the Desktop Runtime for native WinForms                       |
+| Paths          | UTF-8 camino paths; extraction is a synchronous deployment operation; command path resolution runs on the host thread |
+| State          | Private writable directory, separate from deployed binaries; existing contents are preserved                          |
+| Ownership      | `Host` owns the session lifetime; cloneable `HostHandle` is Send + Sync; the library owns Windows STA                 |
+| Scheduling     | Automatic bounded command processing, callbacks, native messages, timers and audio; no public `pump()`                |
+| Admission      | 32 queued commands; full queues and conflicting active operations return `Error::Busy`                                |
+| Response loss  | Dropping an admitted command's future does not undo or cancel its mutation                                            |
+| Shutdown       | `shutdown().await` reports cleanup completion/errors; Drop requests shutdown without waiting                          |
+| Restart        | Await shutdown before immediately restarting; old IDs and handles cannot access a new session                         |
+| Runtime switch | CLR/assemblies remain loaded; switching the loaded hostfxr installation needs a new process                           |
+
+The futures do not require a Tokio runtime: the library uses synchronization
+primitives, while its host thread drives native work. Examples use a Tokio
+executor. Plugin callbacks can still block that thread; cancellation and shutdown
+cannot preempt arbitrary plugin or operating-system calls.
 
 ## Plugins and owner callbacks
 
-| Operation                     | Meaning                                                                                                                                                                    |
-| ----------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `create_plugin(PluginConfig)` | Prepare ACT globals/settings directory, then construct a trusted IActPluginV1; Windows requires caller-owned STA; select type_name when more than one eligible type exists |
-| `initialize_plugin(id)`       | Attempt InitPlugin once; return bounded status text; callback return does not prove parser readiness                                                                       |
-| `pump()`                      | Run owner-thread callbacks and Windows native messages; call regularly from the application's loop                                                                         |
-| `diagnostics()`               | Read bounded host diagnostic history without consuming it; inspect total and omitted()                                                                                     |
-| `deinitialize_plugin(id)`     | DeInitPlugin at most once after successful initialization; unregister and dispose owned controls                                                                           |
-| `stop()`                      | Attempt cleanup of all initialized plugins before releasing the session                                                                                                    |
+| Operation                       | Meaning                                                                                           |
+| ------------------------------- | ------------------------------------------------------------------------------------------------- |
+| `create_plugin(config).await`   | Construct a trusted plugin on the host thread with ACT globals and settings ready                 |
+| `initialize_plugin(id).await`   | Attempt InitPlugin once and return bounded status text; no guarantee of private parser readiness  |
+| `deinitialize_plugin(id).await` | DeInitPlugin at most once, remove registrations and dispose controls                              |
+| `diagnostics().await`           | Copy bounded diagnostic history; compare total and omitted counts                                 |
+| `shutdown().await`              | Close admission, restore an active import, settle accepted archive work and dispose plugins/audio |
 
-Plugin constructors and callbacks execute trusted code in the consumer process.
-There is no sandbox or assembly unloading. Failed initialization cannot be retried
-on the same instance, and arbitrary plugin side effects cannot be rolled back.
-Session-scoped plugin IDs, subscriptions and revisions cannot be reused after restart.
-The [initialize example](../crates/aftercast/examples/initialize.rs) demonstrates
-pumping, import and owned output through the public interface.
+Create **all** plugins in a startup batch first, then initialize FFXIV,
+OverlayPlugin and cactbot in dependency order. Constructed instances keep
+`InitActDone` false until every pending instance has finished initialization.
+Creating another instance reopens that startup state. Native controls remain on
+the internal STA thread; they cannot be accessed directly from a GUI executor.
 
-| Deferred integration contract | Usage                                                                                                                                                                                                      |
-| ----------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `InitActDone`                 | Starts false. A pump marks startup ready after all created instances leave constructed/initializing state and a plugin has initialized. Creating another instance reopens the boundary; shutdown clears it |
-| Startup batch                 | Initialize FFXIV, OverlayPlugin and cactbot in that order before the first pump; then pump regularly until OverlayPlugin reports Initialised. This lets its deferred addon scan see the full batch         |
-| Plugin metadata               | ACT's active checkbox and title/status controls are available to registered plugins and remain owned by the host                                                                                           |
-| Shutdown                      | DeInit runs before owned controls and optional IDisposable cleanup. OverlayPlugin event sources are stopped before their container is disposed so addon timers/hooks do not outlive the embedded host      |
+Constructors and callbacks are trusted in-process code. Initialization cannot be
+retried on a failed instance, and arbitrary side effects cannot be rolled back.
+External plugins are left unchanged; local source/fixture plugins and versioned
+local compatibility transformations remain repository-owned.
 
 ## Input and owned output
 
-ACT TTS is opt-in: add the standalone `aftercast-tts` crate and call
-`host.set_tts(aftercast_tts::Speaker::system()?)?` before loading plugins. Regular
-`host.pump()` delivers requests and reports eventual playback failures;
-`host.clear_tts()` cancels speech and disables the route. No online fallback is
-automatic. See [TTS setup and limits](tts-validation.md).
+All host operations in the tables below are awaited. For cancellation/progress,
+use `start_import(path).await?`, inspect the returned job's `progress()`, request
+`cancel()`, and await `wait()` for restored live state. `import_log(path).await`
+is the convenience operation without an exposed job. A dropped job keeps running.
+Imports and archives exclude conflicting mutations; diagnostic and owned graph/log
+queries remain available between processing steps.
 
-Effects are opt-in independently. Enable `aftercast`'s `audio` feature (or select
-`system`/`playback` on your `aftercast-tts` dependency), then configure before loading plugins:
-
-```rust,ignore
-host.set_tts(aftercast_tts::Speaker::system()?)?;
-host.set_sound_player(aftercast_tts::SoundPlayer::system()?)?;
-host.set_audio_settings(&aftercast::AudioSettings {
-    sound_volume: 60,
-    tts_volume: 80,
-    timer_expire: "tts expired".into(),
-    ..Default::default()
-})?;
-```
-
-Pump regularly to dispatch queued requests and observe playback errors. Replacing
-or clearing an output cancels its active and queued work; settings last for one
-session. See [sound/timer contracts and platform validation](audio-validation.md).
+Audio is opt-in and speech/effects have independent workers. Initialize without
+blocking an executor using `Speaker::system_async().await` or
+`SoundPlayer::system_async().await`, then await `set_tts`, `set_sound_player` and
+`set_audio_settings`. Consume asynchronous playback failures through the owning
+`Host::next_audio_error().await`; command acceptance does not establish playback
+success. Its error queue holds 32 entries; overflow fails the host visibly.
+Replacing or clearing a route cancels and disposes its prior worker before the
+command completes. No online fallback is automatic.
 
 Remote cactbot browsers use their own HTMLAudio and Web Speech engines. They need
 an installed local voice matching cactbot's display language and an audio-unlock
@@ -183,7 +178,7 @@ history or a durable log recording.
 | Area                                                         | Linux                                                                                     | Windows                                                                                                                          |
 | ------------------------------------------------------------ | ----------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | CLR hosting and fixture plugins                              | Executed in integration tests                                                             | Executed in integration tests                                                                                                    |
-| Controls and charts                                          | Headless metadata, ownership and explicit event delivery                                  | Native controls require .NET 10 Desktop Runtime and caller-owned STA; charts are unverified                                      |
+| Controls and charts                                          | Headless metadata, ownership and explicit event delivery                                  | Native controls require .NET 10 Desktop Runtime; the library owns STA; charts are unverified                                     |
 | Rendering/native handles                                     | Explicitly unsupported                                                                    | Native handles and Invoke tested; visible rendering unverified                                                                   |
 | Live log following                                           | Append, split UTF-8, truncation, same-path replacement and initial partial records tested | Same file-following contracts and fixture live snapshots tested                                                                  |
 | Original FFXIV plugin                                        | Prior synthetic and recorded Zeromus observations                                         | 3.0.3.4 import/lifecycle results recorded in the [Windows report](windows-original-validation.md); full compatibility unverified |

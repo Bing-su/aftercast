@@ -79,19 +79,39 @@ impl<T: Send + 'static> Worker<T> {
         factory: impl FnOnce() -> Result<B, Error> + Send + 'static,
         perform: fn(&mut B, &T, &Cancellation) -> Result<(), Error>,
     ) -> Result<Self, Error> {
-        let (sender, receiver) = mpsc::sync_channel::<Work<T>>(32);
         let (ready, initialized) = mpsc::sync_channel(1);
+        let worker = Self::spawn(factory, perform, move |result| drop(ready.send(result)))?;
+        initialized.recv().map_err(|_closed| Error::Closed)??;
+        Ok(worker)
+    }
+
+    pub(crate) async fn new_async<B: 'static>(
+        factory: impl FnOnce() -> Result<B, Error> + Send + 'static,
+        perform: fn(&mut B, &T, &Cancellation) -> Result<(), Error>,
+    ) -> Result<Self, Error> {
+        let (ready, initialized) = oneshot::channel();
+        let worker = Self::spawn(factory, perform, move |result| drop(ready.send(result)))?;
+        initialized.await.map_err(|_closed| Error::Closed)??;
+        Ok(worker)
+    }
+
+    fn spawn<B: 'static>(
+        factory: impl FnOnce() -> Result<B, Error> + Send + 'static,
+        perform: fn(&mut B, &T, &Cancellation) -> Result<(), Error>,
+        ready: impl FnOnce(Result<(), Error>) + Send + 'static,
+    ) -> Result<Self, Error> {
+        let (sender, receiver) = mpsc::sync_channel::<Work<T>>(32);
         let (finished, completion) = oneshot::channel();
         let worker = thread::Builder::new()
             .name("aftercast-tts".into())
             .spawn(move || {
                 let mut backend = match factory() {
                     Ok(backend) => {
-                        drop(ready.send(Ok(())));
+                        ready(Ok(()));
                         backend
                     }
                     Err(error) => {
-                        drop(ready.send(Err(error)));
+                        ready(Err(error));
                         return;
                     }
                 };
@@ -109,14 +129,6 @@ impl<T: Send + 'static> Worker<T> {
                 let _receiver_dropped = finished.send(());
             })
             .map_err(|e| Error::Backend(e.to_string()))?;
-        if let Err(error) = initialized
-            .recv()
-            .map_err(|_disconnected| Error::Closed)
-            .and_then(|r| r)
-        {
-            drop(worker.join());
-            return Err(error);
-        }
         Ok(Self {
             sender: Some(sender),
             pending: Mutex::new(Vec::new()),

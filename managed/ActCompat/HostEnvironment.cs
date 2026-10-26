@@ -171,6 +171,7 @@ namespace Aftercast.ActCompat
         public ImportProgress ImportProgress => main.CurrentImportProgress;
         public ImportResult? AdvanceImport(bool cancel) => main.AdvanceImport(cancel);
         public int ArchiveOperation(int command, string text, ulong id, bool compressed) => main.ArchiveOperation(command, text, id, compressed);
+        public Task<int> ArchiveOperationAsync(int command, string text, ulong id, bool compressed) => main.ArchiveOperationAsync(command, text, id, compressed);
         public CombatSnapshotData? ReadCombatSnapshot(ulong afterRevision) => main.ReadCombatSnapshot(afterRevision);
         public CombatPage<EncounterSummaryData> ListEncounters(int offset, int limit) => main.ListEncounters(offset, limit);
         public EncounterDetailData? ReadEncounter(ulong id, bool live) => main.ReadEncounter(id, live);

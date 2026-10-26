@@ -20,13 +20,12 @@ actions.
 | Query failure                                 | Malformed ACT state or a result exceeding bounds fails visibly; core parsing continues                                           |
 
 ```rust,no_run
-fn read(host: &mut aftercast::Host) -> Result<(), aftercast::Error> {
-    if let Some(result) = host.combat_snapshot(None)? {
+async fn read(host: &aftercast::HostHandle) -> Result<(), aftercast::Error> {
+    if let Some(result) = host.combat_snapshot(None).await? {
         println!("{}: {} damage", result.title, result.damage);
         let revision = result.revision;
-        // Pump owner callbacks before checking whether a newer result has been published.
-        host.pump()?;
-        if let Some(next) = host.combat_snapshot(Some(revision))? {
+        // A later application refresh can query the revision; the library pumps independently.
+        if let Some(next) = host.combat_snapshot(Some(revision)).await? {
             println!("{}: {} damage", next.title, next.damage);
         }
     }
@@ -73,19 +72,18 @@ does not trim or rewrite territory names.
 | `encounter_attacks(id, offset, limit)` | Category/attack totals, direction, damage, duration, DPS, hits/criticals/misses/blocks | `None` if removed; otherwise possibly an empty page |
 
 ```rust,no_run
-fn refresh(host: &mut aftercast::Host) -> Result<(), aftercast::Error> {
-    // Service plugin callbacks before refreshing UI data, e.g. on an application timer.
-    host.pump()?;
-    if let Some(live) = host.live_combat()? {
+async fn refresh(host: &aftercast::HostHandle) -> Result<(), aftercast::Error> {
+    // Refresh at an application-selected rate; the library services callbacks independently.
+    if let Some(live) = host.live_combat().await? {
         println!("{}: {} damage", live.summary.title, live.summary.damage);
         for actor in live.combatants {
             println!("{}: {} DPS", actor.name, actor.enc_dps);
         }
     }
-    let page = host.encounters(0, 50)?;
+    let page = host.encounters(0, 50).await?;
     if let Some(row) = page.items.first() {
-        let detail = host.encounter_detail(row.id)?;
-        let attacks = host.encounter_attacks(row.id, 0, 100)?;
+        let detail = host.encounter_detail(row.id).await?;
+        let attacks = host.encounter_attacks(row.id, 0, 100).await?;
         println!("{detail:?} {attacks:?}");
     }
     Ok(())
@@ -95,7 +93,7 @@ fn refresh(host: &mut aftercast::Host) -> Result<(), aftercast::Error> {
 | Contract      | Meaning                                                                                                                                                        |
 | ------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Consistency   | Each call copies graph values under the ACT combat lock on the host owner thread; separate calls/pages can observe later state                                 |
-| Freshness     | Includes already-applied actions; does not drain producers or end combat. Pump regularly and poll at a modest rate, e.g. 5 Hz                                  |
+| Freshness     | Includes already-applied actions; does not drain producers or end combat. The library pumps automatically; poll at a modest rate, e.g. 5 Hz                    |
 | Duration      | Based on ACT combat records and segments, not elapsed UI wall time; rates retain ACT NaN/infinity behavior                                                     |
 | Identity      | Opaque `EncounterId`, stable through combat completion and later imports; another host session rejects it                                                      |
 | State         | `EncounterStatus`: `Active`, `Ended`, `Importing` or `PartialImport`; active live combat is distinct from completed combat                                     |

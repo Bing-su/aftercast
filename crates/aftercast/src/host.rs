@@ -5,7 +5,7 @@ use std::thread::{self, Thread};
 use std::time::{Duration, Instant};
 
 use aftercast_tts::{SoundPlayer, Speaker};
-use bytes::BytesMut;
+use bytes::{BufMut, BytesMut};
 use camino::{Utf8Path, Utf8PathBuf};
 use tokio::sync::{oneshot, watch};
 
@@ -25,20 +25,29 @@ pub(crate) enum Command {
     Tts(Option<Speaker>, Reply<()>),
     Sound(Option<SoundPlayer>, Reply<()>),
     Import(Utf8PathBuf, PendingImport, Reply<()>),
+    Canonicalize(Utf8PathBuf, Reply<Utf8PathBuf>),
 }
 
-struct Control {
+pub(crate) struct Control {
     stopping: AtomicBool,
     failure: Mutex<Option<String>>,
 }
 
 impl Control {
-    fn error(&self) -> Error {
+    pub(crate) fn error(&self) -> Error {
         match self.failure.lock() {
             Ok(failure) => failure
                 .as_ref()
                 .map_or(Error::Closed, |s| Error::WorkerFailed(s.clone())),
             Err(_) => Error::WorkerFailed("host failure state was poisoned".into()),
+        }
+    }
+    fn record(&self, result: &Result<(), Error>) {
+        if let Err(error) = result
+            && let Ok(mut failure) = self.failure.lock()
+            && failure.is_none()
+        {
+            *failure = Some(error.to_string());
         }
     }
 }
@@ -83,23 +92,14 @@ impl Host {
         let worker = thread::Builder::new()
             .name("aftercast-host".into())
             .spawn(move || {
-                let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
-                    let _apartment = Apartment::new()?;
-                    let core = CoreHost::start(config)?;
-                    let session = core.session.id();
-                    if ready.send(session).is_err() {
-                        return core.stop();
-                    }
-                    run(core, receiver, &worker_control, audio_errors)
-                }))
-                .unwrap_or_else(|_| Err(Error::WorkerFailed("host thread panicked".into())));
-                if let Err(error) = &result {
-                    if let Ok(mut failure) = worker_control.failure.lock() {
-                        *failure = Some(error.to_string());
-                    }
-                }
-                worker_control.stopping.store(true, Ordering::Release);
-                drop(finished.send(result));
+                worker_main(
+                    config,
+                    receiver,
+                    ready,
+                    finished,
+                    worker_control,
+                    audio_errors,
+                )
             })
             .map_err(|e| Error::WorkerFailed(e.to_string()))?;
         let thread = worker.thread().clone();
@@ -161,6 +161,11 @@ impl Drop for Host {
 }
 
 impl HostHandle {
+    pub(crate) async fn canonicalize(&self, path: &Utf8Path) -> Result<Utf8PathBuf, Error> {
+        let path = path.to_owned();
+        self.execute(|reply| Command::Canonicalize(path, reply))
+            .await
+    }
     /// Starts an import with explicit cancellation and coalesced progress.
     pub async fn start_import(&self, path: impl AsRef<Utf8Path>) -> Result<ImportJob, Error> {
         let cancellation = Arc::new(AtomicBool::new(false));
@@ -179,6 +184,7 @@ impl HostHandle {
             thread: self.thread.clone(),
             progress: updates,
             result,
+            control: self.control.clone(),
         })
     }
     pub async fn session_id(&self) -> Result<u64, Error> {
@@ -235,74 +241,138 @@ impl HostHandle {
     }
 }
 
+fn worker_main(
+    config: HostConfig,
+    receiver: mpsc::Receiver<Command>,
+    ready: oneshot::Sender<u64>,
+    finished: Reply<()>,
+    control: Arc<Control>,
+    audio_errors: tokio::sync::mpsc::Sender<Error>,
+) {
+    let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        let _apartment = Apartment::new()?;
+        let core = CoreHost::start(config)?;
+        if ready.send(core.session.id()).is_err() {
+            return core.stop();
+        }
+        run(core, receiver, &control, audio_errors)
+    }))
+    .unwrap_or_else(|_| Err(Error::WorkerFailed("host thread panicked".into())));
+    control.record(&result);
+    control.stopping.store(true, Ordering::Release);
+    drop(finished.send(result));
+}
+
+#[derive(Default)]
+struct Operations {
+    import: Option<PendingImport>,
+    archive: Option<Reply<(i32, BytesMut)>>,
+}
+
+impl Operations {
+    fn busy(&self) -> bool {
+        self.import.is_some() || self.archive.is_some()
+    }
+
+    fn advance(&mut self, session: &ManagedSession, stopping: bool) {
+        if let Some(import) = &mut self.import
+            && let Some(result) = import.advance(session, stopping)
+            && let Some(import) = self.import.take()
+        {
+            drop(import.complete.send(result));
+        }
+        if self.archive.is_some() {
+            let mut packet = BytesMut::with_capacity(64);
+            packet.put_u32_le(64);
+            packet.put_u32_le(1);
+            packet.put_u64_le(session.id());
+            packet.resize(64, 0);
+            let result = session.request(Request::Archive, &mut packet);
+            if matches!(result, Ok(1)) {
+                return;
+            }
+            if let Some(reply) = self.archive.take() {
+                drop(reply.send(result.map(|status| (status, packet))));
+            }
+        }
+    }
+}
+
 fn run(
     mut core: CoreHost,
     receiver: mpsc::Receiver<Command>,
     control: &Control,
     audio_errors: tokio::sync::mpsc::Sender<Error>,
 ) -> Result<(), Error> {
-    let mut importing: Option<PendingImport> = None;
-    let outcome = (|| {
-        loop {
-            let stopping = control.stopping.load(Ordering::Acquire);
-            if stopping && importing.is_none() {
-                break;
-            }
-            core.session.call(4)?;
-            for result in [core.pump_speech(), core.pump_sounds()] {
-                if let Err(error) = result {
-                    audio_errors.try_send(error).map_err(|_error| {
-                        Error::WorkerFailed("audio error queue is full or closed".into())
-                    })?;
-                }
-            }
-            if let Some(import) = &mut importing {
-                if let Some(result) = import.advance(&core.session, stopping) {
-                    if let Some(import) = importing.take() {
-                        drop(import.complete.send(result));
-                    }
-                }
-            }
-            let started = Instant::now();
-            for _ in 0..8 {
-                if control.stopping.load(Ordering::Acquire) || started.elapsed() >= PUMP_INTERVAL {
-                    break;
-                }
-                match receiver.try_recv() {
-                    Ok(command) => dispatch(&mut core, command, &mut importing),
-                    Err(mpsc::TryRecvError::Empty) => break,
-                    Err(mpsc::TryRecvError::Disconnected) => return Ok(()),
-                }
-            }
-            thread::park_timeout(PUMP_INTERVAL);
-        }
-        Ok(())
-    })();
+    let mut operations = Operations::default();
+    let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
+        run_loop(
+            &mut core,
+            &receiver,
+            control,
+            &audio_errors,
+            &mut operations,
+        )
+    }))
+    .unwrap_or_else(|_| Err(Error::WorkerFailed("host command panicked".into())));
+    // Publish terminal failure before dropping response senders so waiting callers retain its cause.
+    control.record(&outcome);
     control.stopping.store(true, Ordering::Release);
-    // Even a pump failure must restore import state before managed teardown.
-    while let Some(import) = &mut importing {
-        match import.advance(&core.session, true) {
-            Some(result) => {
-                if let Some(import) = importing.take() {
-                    drop(import.complete.send(result));
-                }
-            }
-            None => {
-                drop(core.session.call(4));
-                thread::park_timeout(PUMP_INTERVAL);
-            }
-        }
-    }
-    // Reject pending work before plugin teardown, e.g. a queued import must not start during shutdown.
     drop(receiver);
+    while operations.busy() {
+        operations.advance(&core.session, true);
+        drop(core.session.call(4));
+        thread::park_timeout(PUMP_INTERVAL);
+    }
     let stopped = core.stop();
     outcome.and(stopped)
 }
 
-fn dispatch(core: &mut CoreHost, command: Command, importing: &mut Option<PendingImport>) {
+fn run_loop(
+    core: &mut CoreHost,
+    receiver: &mpsc::Receiver<Command>,
+    control: &Control,
+    audio_errors: &tokio::sync::mpsc::Sender<Error>,
+    operations: &mut Operations,
+) -> Result<(), Error> {
+    loop {
+        let stopping = control.stopping.load(Ordering::Acquire);
+        if stopping && !operations.busy() {
+            return Ok(());
+        }
+        core.session.call(4)?;
+        for result in [core.pump_speech(), core.pump_sounds()] {
+            if let Err(error) = result {
+                audio_errors.try_send(error).map_err(audio_overflow)?;
+            }
+        }
+        operations.advance(&core.session, stopping);
+        let started = Instant::now();
+        for _ in 0..8 {
+            if control.stopping.load(Ordering::Acquire) || started.elapsed() >= PUMP_INTERVAL {
+                break;
+            }
+            match receiver.try_recv() {
+                Ok(command) => dispatch(core, command, operations),
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => return Ok(()),
+            }
+        }
+        thread::park_timeout(PUMP_INTERVAL);
+    }
+}
+
+fn audio_overflow(_error: tokio::sync::mpsc::error::TrySendError<Error>) -> Error {
+    Error::WorkerFailed("audio error queue is full or closed".into())
+}
+
+fn dispatch(core: &mut CoreHost, command: Command, operations: &mut Operations) {
     match command {
+        Command::Canonicalize(path, reply) => {
+            drop(reply.send(crate::runtime::canonicalize(&path)));
+        }
         Command::Request(request, mut packet, reply) => {
-            if importing.is_some()
+            if operations.busy()
                 && !matches!(
                     request,
                     Request::Diagnostics | Request::Snapshot | Request::Combat | Request::Logs
@@ -315,17 +385,21 @@ fn dispatch(core: &mut CoreHost, command: Command, importing: &mut Option<Pendin
                 .session
                 .request(request, &mut packet)
                 .map(|status| (status, packet));
+            if matches!(request, Request::Archive) && matches!(result, Ok((1, _))) {
+                operations.archive = Some(reply);
+                return;
+            }
             drop(reply.send(result));
         }
         Command::EndCombat(reply) => {
-            drop(reply.send(if importing.is_some() {
+            drop(reply.send(if operations.busy() {
                 Err(Error::Busy)
             } else {
                 core.end_combat()
             }));
         }
         Command::Tts(speaker, reply) => {
-            if importing.is_some() {
+            if operations.busy() {
                 drop(reply.send(Err(Error::Busy)));
                 return;
             }
@@ -336,7 +410,7 @@ fn dispatch(core: &mut CoreHost, command: Command, importing: &mut Option<Pendin
             drop(reply.send(result));
         }
         Command::Sound(player, reply) => {
-            if importing.is_some() {
+            if operations.busy() {
                 drop(reply.send(Err(Error::Busy)));
                 return;
             }
@@ -347,13 +421,13 @@ fn dispatch(core: &mut CoreHost, command: Command, importing: &mut Option<Pendin
             drop(reply.send(result));
         }
         Command::Import(path, pending, reply) => {
-            let result = if importing.is_some() {
+            let result = if operations.busy() {
                 Err(Error::Busy)
             } else {
                 pending.begin(&core.session, &path)
             };
             if result.is_ok() {
-                *importing = Some(pending);
+                operations.import = Some(pending);
             }
             drop(reply.send(result));
         }
@@ -378,6 +452,7 @@ impl CoreHost {
         self.session.call(5).map(|_| ())
     }
     pub(crate) fn stop(mut self) -> Result<(), Error> {
+        let stopped = self.session.stop();
         let speech = self
             .speech
             .take()
@@ -390,7 +465,6 @@ impl CoreHost {
             .map(|output| output.backend.shutdown_blocking())
             .transpose()
             .map_err(Error::Sound);
-        let stopped = self.session.stop();
         speech.and(sound).and(stopped)
     }
 }
@@ -420,5 +494,60 @@ impl Drop for Apartment {
         unsafe {
             windows_sys::Win32::System::Com::CoUninitialize()
         };
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::future::Future;
+    use std::task::Poll;
+
+    async fn assert_pending<F: Future>(mut future: std::pin::Pin<&mut F>) {
+        std::future::poll_fn(|cx| {
+            assert!(future.as_mut().poll(cx).is_pending());
+            Poll::Ready(())
+        })
+        .await;
+    }
+
+    #[tokio::test]
+    async fn bounded_admission_dropped_responses_and_shutdown_do_not_depend_on_a_worker() {
+        let (sender, receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
+        let control = Arc::new(Control {
+            stopping: AtomicBool::new(false),
+            failure: Mutex::new(None),
+        });
+        let handle = HostHandle {
+            session: 1,
+            sender,
+            thread: thread::current(),
+            control: control.clone(),
+        };
+        let unpolled = handle.end_combat();
+        assert!(matches!(
+            receiver.try_recv(),
+            Err(mpsc::TryRecvError::Empty)
+        ));
+        drop(unpolled);
+        let mut accepted = Vec::new();
+        for _ in 0..QUEUE_CAPACITY {
+            let mut future = Box::pin(handle.end_combat());
+            assert_pending(future.as_mut()).await;
+            accepted.push(future);
+        }
+        assert!(matches!(handle.end_combat().await, Err(Error::Busy)));
+        drop(accepted);
+        for _ in 0..QUEUE_CAPACITY {
+            assert!(
+                matches!(receiver.try_recv(), Ok(Command::EndCombat(reply)) if reply.is_closed())
+            );
+        }
+        control.stopping.store(true, Ordering::Release);
+        assert!(matches!(handle.end_combat().await, Err(Error::Closed)));
+        control.record(&Err(Error::WorkerFailed("fixture failure".into())));
+        assert!(
+            matches!(handle.end_combat().await, Err(Error::WorkerFailed(message)) if message.contains("fixture failure"))
+        );
     }
 }

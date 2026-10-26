@@ -3,7 +3,9 @@
 Standalone Rust TTS with a pluggable backend trait. Backends own their native
 resources on one worker thread; callers enqueue speech without waiting for
 playback. Applications can use it independently of ACT and without providing
-an async runtime.
+an async runtime. Async consumers can initialize with `Speaker::new_async` or
+`Speaker::system_async`, await `Speech::wait_async`, and await `Speaker::shutdown`.
+Effects expose matching async construction and shutdown methods.
 
 | Backend                                  | Platform       | Requirements                                                                                               | Network                                                             |
 | ---------------------------------------- | -------------- | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------- |
@@ -78,7 +80,8 @@ change; failures are returned without silently retrying or changing providers.
 | `Speech::cancel()`      | Cooperative cancellation of this request; queued cancelled requests never reach the backend                                           |
 | `Speaker::cancel_all()` | Cancels active and currently queued requests; later submissions are allowed                                                           |
 | Dropping `Speech`       | Does not cancel playback                                                                                                              |
-| Dropping `Speaker`      | Cancels its requests and joins its worker before returning                                                                            |
+| Dropping `Speaker`      | Requests cancellation without blocking; the worker disposes native resources on its owning thread                                     |
+| `shutdown().await`      | Cancels requests and waits for native resource disposal; `shutdown_blocking()` is available for synchronous owner threads             |
 | Built-in playback       | Polls cancellation at approximately 20 ms intervals and has a 300-second deadline; OS/library calls can add latency                   |
 
 Implement `Backend::speak(&mut self, &Utterance, &Cancellation)` to add an engine.

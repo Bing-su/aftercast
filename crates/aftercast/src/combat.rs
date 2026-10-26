@@ -76,7 +76,7 @@ pub struct AttackSummary {
 impl HostHandle {
     /// Reads current live combat without ending it. Returns None while idle or importing.
     ///
-    /// Call `pump()` regularly, then poll (e.g. at 5 Hz). Only already-applied actions are
+    /// Poll at a modest rate (e.g. 5 Hz). Only already-applied actions are
     /// included; this call does not wait for queued actions or plugin-private work.
     pub async fn live_combat(&self) -> Result<Option<EncounterDetail>, Error> {
         let payload = self.query_combat(1, None, 0, 1).await?;

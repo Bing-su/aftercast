@@ -1,11 +1,26 @@
-# Synchronous file import
+# Asynchronous file import
 
 For saved ACT encounter XML/gzip and persistent history, use the separate
 [archive APIs](encounter-archives.md).
 
-`Host::import_log(path)` returns an owned `ImportReport` after reading the captured
+`host.import_log(path).await` returns an owned `ImportReport` after reading the captured
 file prefix and draining submitted ACT
-actions. This is a synchronous owner-thread operation through initialized plugins.
+actions. Async disk input feeds bounded batches, while the internal owner thread
+dispatches parser hooks in order between callback/timer/command processing.
+
+| Operation                  | Contract                                                                                                      |
+| -------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `start_import(path).await` | Admit one operation and return an `ImportJob`; conflicting mutations return Busy                              |
+| `job.progress()`           | Coalesced read/dispatch counters and input byte range; read-ahead bytes can lead dispatched records           |
+| `job.cancel()`             | Request cooperative cancellation independently of normal command capacity                                     |
+| `job.wait().await`         | Wait for input cleanup, accepted actions and live-state restoration; canceled imports return Error::Cancelled |
+| Dropped job/future         | An admitted import keeps running; cancellation is explicit                                                    |
+| Host shutdown              | Cancel the active import and wait for restoration before plugin teardown                                      |
+
+Already processed history is retained on cancellation as a partial import. Live
+timers keep their original monotonic clock while imported timestamps change the
+parser clock. Plugin callbacks cannot be preempted; no fixed cancellation deadline
+is promised. The managed compatibility entry point remains synchronous.
 
 ## Input and ownership
 

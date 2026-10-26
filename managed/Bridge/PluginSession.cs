@@ -72,6 +72,22 @@ internal sealed class PluginSession
     });
     internal ImportResult? AdvanceImport(bool cancel) => OnOwner(() => Host().AdvanceImport(cancel));
     internal ImportProgress ImportProgress => OnOwner(() => Host().ImportProgress);
+    private Task<int>? archive;
+    internal void BeginArchive(int command, string text, ulong id, bool compressed) => OnOwner(() =>
+    {
+        if (archive is not null) throw new InvalidOperationException("Archive operation is already active");
+        if (command is 1 or 4 && !plugins.Values.Any(plugin => plugin.State == PluginState.Initialized))
+            throw new InvalidOperationException("Archive reconstruction requires an initialized plugin");
+        archive = Host().ArchiveOperationAsync(command, text, id, compressed);
+        return 0;
+    });
+    internal int? AdvanceArchive()
+    {
+        var operation = archive ?? throw new InvalidOperationException("No active archive operation");
+        if (!operation.IsCompleted) return null;
+        try { return operation.GetAwaiter().GetResult(); }
+        finally { archive = null; }
+    }
     private PluginRecord Find(long id) => plugins.TryGetValue(id, out var plugin)
         ? plugin : throw new ArgumentException("Unknown plugin instance", nameof(id));
     private HostEnvironment Host()

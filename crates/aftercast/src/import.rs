@@ -23,6 +23,7 @@ pub struct ImportJob {
     pub(crate) thread: Thread,
     pub(crate) progress: watch::Receiver<ImportProgress>,
     pub(crate) result: oneshot::Receiver<Result<ImportReport, Error>>,
+    pub(crate) control: Arc<crate::host::Control>,
 }
 
 impl ImportJob {
@@ -35,7 +36,7 @@ impl ImportJob {
     }
     /// Completes only after input cleanup, action draining and live-state restoration.
     pub async fn wait(self) -> Result<ImportReport, Error> {
-        self.result.await.map_err(|_error| Error::Closed)?
+        self.result.await.map_err(|_error| self.control.error())?
     }
 }
 
@@ -77,23 +78,7 @@ impl PendingImport {
                 0 => Ok(Some(decode_import(&packet))),
                 2 => Ok(Some(Err(Error::Cancelled))),
                 _ => {
-                    let mut fields = packet
-                        .get(24..56)
-                        .ok_or_else(|| Error::InvalidImportResponse("missing progress".into()))?;
-                    let progress = ImportProgress {
-                        lines_read: fields.get_u64_le(),
-                        records_dispatched: fields.get_u64_le(),
-                        bytes_read: fields.get_u64_le(),
-                        total_bytes: fields.get_u64_le(),
-                    };
-                    if progress.records_dispatched > progress.lines_read
-                        || progress.bytes_read > progress.total_bytes
-                        || progress.total_bytes > i64::MAX as u64
-                    {
-                        return Err(Error::InvalidImportResponse(
-                            "invalid progress counters".into(),
-                        ));
-                    }
+                    let progress = decode_progress(&packet)?;
                     self.progress.send_replace(progress);
                     Ok(None)
                 }
@@ -104,6 +89,27 @@ impl PendingImport {
             Err(error) => Some(Err(error)),
         }
     }
+}
+
+fn decode_progress(packet: &[u8]) -> Result<ImportProgress, Error> {
+    let mut fields = packet
+        .get(24..56)
+        .ok_or_else(|| Error::InvalidImportResponse("missing progress".into()))?;
+    let progress = ImportProgress {
+        lines_read: fields.get_u64_le(),
+        records_dispatched: fields.get_u64_le(),
+        bytes_read: fields.get_u64_le(),
+        total_bytes: fields.get_u64_le(),
+    };
+    if progress.records_dispatched > progress.lines_read
+        || progress.bytes_read > progress.total_bytes
+        || progress.total_bytes > i64::MAX as u64
+    {
+        return Err(Error::InvalidImportResponse(
+            "invalid progress counters".into(),
+        ));
+    }
+    Ok(progress)
 }
 
 /// An owned summary of one completed file import, after accepted actions have drained.
@@ -175,7 +181,7 @@ pub(crate) fn decode_import(packet: &[u8]) -> Result<ImportReport, Error> {
 impl HostHandle {
     /// Imports the initial contents of a UTF-8 file through initialized plugins and drains actions.
     ///
-    /// Call on the creation thread while live combat is idle. Live file delivery is paused and
+    /// Call while live combat is idle. Live file delivery is paused and
     /// restored, including after failure. Appends after opening are excluded; malformed UTF-8,
     /// records over 8 MiB and premature truncation fail visibly. Partial imported history remains
     /// after failure. Hook delivery alone does not establish that a plugin accepted the records.

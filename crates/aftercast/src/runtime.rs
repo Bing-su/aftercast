@@ -124,7 +124,7 @@ impl ManagedSession {
         let read_combat_snapshot = function(pdcstr!("ReadCombatSnapshot"))?;
         let query_combat = function(pdcstr!("QueryCombat"))?;
         let speech_command = function(pdcstr!("SpeechCommand"))?;
-        let archive_command = function(pdcstr!("ArchiveCommand"))?;
+        let archive_command = function(pdcstr!("ArchiveOperation"))?;
         let mut host = Self {
             entry,
             read_error,
@@ -185,7 +185,7 @@ impl ManagedSession {
         let failed = match request {
             Request::ImportOperation => !(0..=2).contains(&status),
             Request::Logs => status < 0,
-            Request::Snapshot | Request::Combat => status != 0 && status != 1,
+            Request::Snapshot | Request::Combat | Request::Archive => status != 0 && status != 1,
             _ => status != 0,
         };
         if failed {

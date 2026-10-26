@@ -119,3 +119,66 @@ fn validation_precedes_backend_work_and_initialization_failure_is_returned() {
         Err(Error::Backend(_))
     ));
 }
+
+#[tokio::test]
+async fn asynchronous_completion_and_shutdown_wait_for_backend_disposal() {
+    let caller = thread::current().id();
+    let (disposed, disposal) = tokio::sync::oneshot::channel();
+    let speaker = Speaker::new_async(|| Ok(OwnedBackend(Some(disposed))))
+        .await
+        .expect("owned backend");
+    speaker
+        .speak(Utterance::new("async"))
+        .expect("accepted")
+        .wait_async()
+        .await
+        .expect("completed");
+    speaker.shutdown().await.expect("native cleanup");
+    assert_ne!(
+        disposal
+            .await
+            .expect("backend was disposed before shutdown returned"),
+        caller
+    );
+}
+
+#[tokio::test]
+async fn dropping_speaker_does_not_wait_for_a_blocked_backend() {
+    let (release, blocked) = mpsc::channel();
+    let (started, active) = tokio::sync::oneshot::channel();
+    let speaker = Speaker::new(|| Ok(Blocked(blocked, Some(started)))).expect("blocked backend");
+    let job = speaker.speak(Utterance::new("blocked")).expect("accepted");
+    active.await.expect("backend entered");
+    // Releasing only after Drop proves it cannot join the backend thread.
+    drop(speaker);
+    release.send(()).expect("release backend");
+    assert!(matches!(job.wait_async().await, Err(Error::Cancelled)));
+}
+
+struct OwnedBackend(Option<tokio::sync::oneshot::Sender<thread::ThreadId>>);
+impl Backend for OwnedBackend {
+    fn speak(&mut self, _: &Utterance, _: &Cancellation) -> Result<(), Error> {
+        Ok(())
+    }
+}
+impl Drop for OwnedBackend {
+    fn drop(&mut self) {
+        if let Some(sender) = self.0.take() {
+            let _receiver_dropped = sender.send(thread::current().id());
+        }
+    }
+}
+
+struct Blocked(
+    std::sync::mpsc::Receiver<()>,
+    Option<tokio::sync::oneshot::Sender<()>>,
+);
+impl Backend for Blocked {
+    fn speak(&mut self, _: &Utterance, cancellation: &Cancellation) -> Result<(), Error> {
+        if let Some(sender) = self.1.take() {
+            let _receiver_dropped = sender.send(());
+        }
+        self.0.recv().map_err(|_closed| Error::Closed)?;
+        cancellation.check()
+    }
+}

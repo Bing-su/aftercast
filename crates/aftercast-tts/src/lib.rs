@@ -122,6 +122,29 @@ impl<T: Backend + ?Sized> Backend for Box<T> {
 pub struct Speaker(Worker<Utterance>);
 
 impl Speaker {
+    /// Initialize without blocking the caller; the factory still runs on the audio owner thread.
+    pub async fn new_async<B: Backend>(
+        factory: impl FnOnce() -> Result<B, Error> + Send + 'static,
+    ) -> Result<Self, Error> {
+        Worker::new_async(factory, B::speak).await.map(Self)
+    }
+
+    pub async fn system_async() -> Result<Self, Error> {
+        #[cfg(all(windows, feature = "system"))]
+        {
+            Self::new_async(Sapi::new).await
+        }
+        #[cfg(all(target_os = "linux", feature = "system"))]
+        {
+            Self::new_async(SpeechDispatcher::new).await
+        }
+        #[cfg(not(all(feature = "system", any(windows, target_os = "linux"))))]
+        {
+            Err(Error::Backend(
+                "enable the system feature for a local backend".into(),
+            ))
+        }
+    }
     /// Cancel accepted work and wait asynchronously for native backend disposal.
     pub async fn shutdown(self) -> Result<(), Error> {
         self.0.shutdown().await

@@ -18,7 +18,7 @@ adds effects and spell-timer cues; notification windows remain unsupported.
 | `SpeechDispatcher`         | Linux daemon connection, local voice selection and completion/cancel notifications                        |
 | `Edge`                     | Online synthesis via msedge-tts 0.4.1; MP3 playback via rodio 0.23                                        |
 | ACT compatibility          | Exact `void TTS(string)` member; diagnostics for invalid/disabled/full requests; no engine-specific logic |
-| Rust host                  | Explicit backend injection, regular Pump delivery, eventual errors and shutdown                           |
+| Rust host                  | Explicit backend injection, automatic delivery, async error reception and shutdown                        |
 
 Add `aftercast-tts` directly to your application's dependencies, choosing features:
 
@@ -31,19 +31,24 @@ aftercast-tts = { path = "../aftercast/crates/aftercast-tts", default-features =
 
 ```rust,ignore
 // Configure before plugin construction/initialization; no backend is enabled implicitly.
-host.set_tts(aftercast_tts::Speaker::system()?)?;
-// Existing owner loop: runs native UI callbacks, drains ACT speech, checks completed playback.
-host.pump()?;
-host.clear_tts()?;
+host.set_tts(aftercast_tts::Speaker::system_async().await?).await?;
+// The library drives playback; receive errors alongside application work when audio is enabled.
+if let Some(error) = host.next_audio_error().await { eprintln!("{error}"); }
+host.clear_tts().await?;
 ```
 
 `set_tts` cancels the previous backend and clears speech waiting in the managed
 queue. `clear_tts` disables ACT speech and cancels both queues. The bridge holds at
 most 32 waiting requests; the Rust host retains at most 32 accepted jobs. Errors
-from completed jobs return as `aftercast::Error::Speech` from a later Pump, one
-failure per call without consuming later failures. Pending speech is cancelled
-on host shutdown. Applications must continue pumping to observe asynchronous
-errors; direct Speaker users can wait/poll individual Speech handles.
+from completed jobs arrive as `aftercast::Error::Speech` through
+`Host::next_audio_error().await`. Consume that receiver when audio is enabled;
+32 unconsumed failures fill its queue and the next failure stops the host visibly.
+Pending speech is canceled on host shutdown. Direct Speaker users can await
+`Speech::wait_async`, or use the blocking wait/poll methods from synchronous code.
+
+The dated device results below predate the async host refactor. Current Linux
+fixtures cover async construction/completion/disposal and ACT playback error
+delivery; Windows runtime/device checks must be repeated for the new model.
 
 The host adapter currently uses the backend's default voice, normal rate and
 full volume. Standalone requests can override voice/rate/volume. ACT's global

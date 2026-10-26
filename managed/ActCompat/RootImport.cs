@@ -40,6 +40,7 @@ namespace Advanced_Combat_Tracker
             private readonly long clock = root.lastKnownStamp;
             private readonly (string Name, DateTime Start) zoneContext = root.zoneContext;
             private readonly bool readLock = root.ReadThreadLock, importing = root.importingLogs;
+            internal DateTime EstimatedTime => time + Stopwatch.GetElapsedTime(clock);
 
             internal void Restore()
             {
@@ -115,11 +116,13 @@ namespace Advanced_Combat_Tracker
             private ulong snapshotBefore;
             private long lines, dispatched, bytesRead, totalBytes;
             private readonly CancellationTokenSource cancellation = new();
-            private readonly Channel<string> input = Channel.CreateBounded<string>(new BoundedChannelOptions(4) {
+            private readonly Channel<string[]> input = Channel.CreateBounded<string[]>(new BoundedChannelOptions(4) {
                 SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait });
+            private readonly Queue<string> buffered = new();
             private Task? reading;
             private readonly List<Exception> failures = new();
             internal ImportProgress Progress => new(lines, dispatched, Interlocked.Read(ref bytesRead), Interlocked.Read(ref totalBytes));
+            internal DateTime? LiveEstimatedTime => live?.EstimatedTime;
 
             internal void Start()
             {
@@ -146,19 +149,39 @@ namespace Advanced_Combat_Tracker
                 root.NotifyImportFileChanged(true, path);
                 // Only the input task owns the reader; parsing and ACT callbacks stay on the owner thread.
                 reading = Task.Run(async () => {
+                    var batch = new List<string>();
                     try
                     {
                         using var reader = new ImportLogReader(path);
                         Interlocked.Exchange(ref totalBytes, reader.TotalBytes);
+                        var characters = 0;
                         while (await reader.ReadAsync(cancellation.Token).ConfigureAwait(false) is { } line)
                         {
                             cancellation.Token.ThrowIfCancellationRequested();
-                            await input.Writer.WriteAsync(line, cancellation.Token).ConfigureAwait(false);
+                            batch.Add(line);
+                            characters += line.Length;
+                            // Bound both scheduling overhead and read-ahead memory, including one maximum-size record.
+                            if (batch.Count == 64 || characters >= 128 * 1024)
+                            {
+                                await input.Writer.WriteAsync(batch.ToArray(), cancellation.Token).ConfigureAwait(false);
+                                batch.Clear(); characters = 0;
+                            }
                             Interlocked.Exchange(ref bytesRead, reader.BytesRead);
                         }
+                        if (batch.Count != 0) await input.Writer.WriteAsync(batch.ToArray(), cancellation.Token).ConfigureAwait(false);
                         input.Writer.TryComplete();
                     }
-                    catch (Exception error) { input.Writer.TryComplete(error); }
+                    catch (Exception error)
+                    {
+                        // Preserve complete records before a malformed suffix, e.g. valid damage followed by bad UTF-8.
+                        try
+                        {
+                            if (batch.Count != 0 && !cancellation.IsCancellationRequested)
+                                await input.Writer.WriteAsync(batch.ToArray(), cancellation.Token).ConfigureAwait(false);
+                        }
+                        catch (OperationCanceledException) { }
+                        input.Writer.TryComplete(error);
+                    }
                 });
             }
 
@@ -179,10 +202,12 @@ namespace Advanced_Combat_Tracker
                     {
                         for (var count = 0; count < 64 && Stopwatch.GetElapsedTime(started) < TimeSpan.FromMilliseconds(5); count++)
                         {
-                            if (!input.Reader.TryRead(out var line)) break;
+                            if (buffered.Count == 0 && input.Reader.TryRead(out var batch))
+                                foreach (var record in batch) buffered.Enqueue(record);
+                            if (!buffered.TryDequeue(out var line)) break;
                             Dispatch(line);
                         }
-                        if (input.Reader.Completion.IsCompleted)
+                        if (buffered.Count == 0 && input.Reader.Completion.IsCompleted)
                         {
                             input.Reader.Completion.GetAwaiter().GetResult();
                             ending = true;
@@ -193,7 +218,10 @@ namespace Advanced_Combat_Tracker
                 if (!ending) return null;
                 // Unblock a producer waiting on the bounded channel before waiting for its resource disposal.
                 while (input.Reader.TryRead(out _)) { }
+                buffered.Clear();
                 if (reading is { IsCompleted: false }) return null;
+                // Keep diagnostics responsive while an already accepted action callback is finishing.
+                if (!root.actionsIdle.IsSet || !root.combatTransitionsIdle.IsSet) return null;
                 return Finish();
             }
 

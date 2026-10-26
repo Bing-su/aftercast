@@ -2,7 +2,7 @@ use bon::Builder;
 use bytes::{BufMut, BytesMut};
 use camino::Utf8PathBuf;
 
-use crate::runtime::{Request, canonicalize};
+use crate::runtime::Request;
 use crate::{Error, HostHandle};
 
 /// Constructor-only loading of a trusted ACT plugin; no initialization or parsing occurs.
@@ -27,14 +27,14 @@ impl HostHandle {
     /// Constructs a trusted plugin and retains it until this host stops.
     ///
     /// Constructors execute arbitrary code in this process and may register global handlers.
-    /// ACT globals and the settings directory are available before construction. Windows requires
-    /// a caller-owned STA thread from this operation onward.
+    /// ACT globals and the settings directory are available before construction. The library owns
+    /// the plugin thread and its Windows STA/message loop.
     /// No sandbox or assembly unloading is provided. `InitPlugin` and `DeInitPlugin` are not
     /// called by this method. Linux provides only headless status controls, without rendering
     /// or native handles. For example, select a type with
     /// `PluginConfig::builder().path("plugin.dll").type_name("Example.Plugin").build()`.
     pub async fn create_plugin(&self, config: PluginConfig) -> Result<PluginId, Error> {
-        let path = canonicalize(&config.path)?;
+        let path = self.canonicalize(&config.path).await?;
         let mut packet = plugin_packet(self.session, path.as_str(), config.type_name.as_deref())?;
         self.request(Request::CreatePlugin, &mut packet).await?;
         let bytes: [u8; 8] = packet
@@ -55,7 +55,7 @@ impl HostHandle {
     ///
     /// Same-thread exceptions reported through ACT's `WriteExceptionLog` during the callback fail this
     /// attempt. Failed instances cannot be retried; construct another instance instead. Arbitrary
-    /// plugin side effects cannot be rolled back. Windows requires a caller-owned STA/UI loop.
+    /// plugin side effects cannot be rolled back. Create the whole plugin batch before initializing it.
     pub async fn initialize_plugin(&self, plugin: PluginId) -> Result<String, Error> {
         self.plugin_call(plugin, 1).await
     }

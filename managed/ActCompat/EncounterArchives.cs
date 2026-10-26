@@ -17,9 +17,14 @@ public partial class FormActMain
     internal void LoadHistoryIndex()
     {
         if (!File.Exists(HistoryIndex)) return;
+        ApplyHistoryIndex(ReadArchiveDocument(HistoryIndex, "Records"));
+    }
+
+    private void ApplyHistoryIndex(XmlDocument document)
+    {
         var loaded = new List<StoredEncounter>();
         var files = new HashSet<string>(StringComparer.Ordinal);
-        foreach (XmlElement element in ReadArchiveDocument(HistoryIndex, "Records").SelectNodes("/Records/Record")!)
+        foreach (XmlElement element in document.SelectNodes("/Records/Record")!)
         {
             var file = RequiredAttribute(element, "Archive");
             // Only content-addressed sibling files are allowed; a modified index cannot read e.g. ../../private.xml.
@@ -38,44 +43,62 @@ public partial class FormActMain
         foreach (var entry in loaded) EncDatabaseAdd(entry.Record);
     }
 
-    internal int ArchiveOperation(int command, string text, ulong id, bool compressed)
+    internal int ArchiveOperation(int command, string text, ulong id, bool compressed) =>
+        ArchiveOperationAsync(command, text, id, compressed, false).GetAwaiter().GetResult();
+
+    // The synchronous compatibility path uses already-completed tasks; the bridge path yields for disk I/O.
+    private static Task<T> ArchiveIo<T>(bool asynchronous, Func<T> operation) =>
+        asynchronous ? Task.Run(operation) : Task.FromResult(operation());
+
+    private async Task LoadHistoryIndexAsync(bool asynchronous)
+    {
+        var document = await ArchiveIo(asynchronous, () => File.Exists(HistoryIndex) ? ReadArchiveDocument(HistoryIndex, "Records") : null);
+        if (document is not null) lock (CombatGate) ApplyHistoryIndex(document);
+    }
+
+    internal async Task<int> ArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool asynchronous = true)
     {
         if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() == true)
             throw new InvalidOperationException("Archive operations require the owner thread outside dispatched callbacks");
         EnsureCanWaitForLogReader();
-        var count = 0;
-        RunWithLogReadingSuspended(() => RunWithCombatActionsSuspended(() =>
+        using var logs = SuspendLogReading(false);
+        using var combat = SuspendCombatActions();
+        lock (CombatGate)
         {
-            lock (CombatGate)
-            {
-                EnsureImportAdmission();
-                if (inCombat) throw new InvalidOperationException("End live combat before archive operations");
-                count = command switch
-                {
-                    1 => AttachArchives(ReadEncounterFile(text).Select(encounter => (encounter, (StoredEncounter?)null))),
-                    2 => ExportEncounter(text, id, compressed),
-                    3 => SaveEncounterHistory(),
-                    4 => RestoreEncounterHistory(text),
-                    _ => throw new ArgumentException("Unknown archive command")
-                };
-            }
-        }));
-        return count;
+            EnsureImportAdmission();
+            if (inCombat) throw new InvalidOperationException("End live combat before archive operations");
+        }
+        switch (command)
+        {
+            case 1:
+                var bytes = await ArchiveIo(asynchronous, () => ExpandEncounterFile(ReadBoundedFile(text)));
+                lock (CombatGate) return AttachArchives(DecodeEncounterFile(bytes).Select(encounter => (encounter, (StoredEncounter?)null)));
+            case 2: return await ExportEncounterAsync(text, id, compressed, asynchronous);
+            case 3: return await SaveEncounterHistoryAsync(asynchronous);
+            case 4: return await RestoreEncounterHistoryAsync(text, asynchronous);
+            default: throw new ArgumentException("Unknown archive command");
+        }
     }
 
-    private int ExportEncounter(string path, ulong id, bool compressed)
+    private async Task<int> ExportEncounterAsync(string path, ulong id, bool compressed, bool asynchronous)
     {
+        ArraySegment<byte> xml;
+        lock (CombatGate)
+        {
         var encounter = QueryEncounters().Select(item => item.Encounter).SingleOrDefault(item => Identity(item).Id == id)
             ?? throw new ArgumentException("Encounter does not belong to this session");
-        var xml = EncodeEncounter(encounter, history: false);
-        var payload = compressed ? CompressArchive(xml.AsSpan()).AsMemory() : xml.AsMemory();
-        WriteAtomic(path, stream => stream.Write(payload.Span), overwrite: false);
-        return 1;
+            xml = EncodeEncounter(encounter, history: false);
+        }
+        return await ArchiveIo(asynchronous, () => {
+            var payload = compressed ? CompressArchive(xml.AsSpan()).AsMemory() : xml.AsMemory();
+            WriteAtomic(path, stream => stream.Write(payload.Span), overwrite: false);
+            return 1;
+        });
     }
 
-    private int RestoreEncounterHistory(string filter)
+    private async Task<int> RestoreEncounterHistoryAsync(string filter, bool asynchronous)
     {
-        LoadHistoryIndex();
+        await LoadHistoryIndexAsync(asynchronous);
         var restored = new List<(EncounterData, StoredEncounter?)>();
         var existing = QueryEncounters().Select(item => archivedEncounters.TryGetValue(item.Encounter, out var identity) ? identity.File : null).ToHashSet();
         var sorter = GlobalTimeSorter;
@@ -85,16 +108,20 @@ public partial class FormActMain
             {
                 if (existing.Contains(entry.File) || !(entry.Record.Label.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
                     entry.Zone.Contains(filter, StringComparison.OrdinalIgnoreCase) || entry.Record.CharName.Contains(filter, StringComparison.OrdinalIgnoreCase))) continue;
-                var bytes = ReadBoundedFile(Path.Combine(HistoryDirectory, entry.File));
-                if (Convert.ToHexStringLower(SHA256.HashData(bytes)) + ".act" != entry.File) throw new InvalidDataException("History archive hash mismatch");
-                var items = DecodeEncounterFile(bytes);
+                var bytes = await ArchiveIo(asynchronous, () => {
+                    var payload = ReadBoundedFile(Path.Combine(HistoryDirectory, entry.File));
+                    if (Convert.ToHexStringLower(SHA256.HashData(payload)) + ".act" != entry.File) throw new InvalidDataException("History archive hash mismatch");
+                    return ExpandEncounterFile(payload);
+                });
+                List<EncounterData> items;
+                lock (CombatGate) items = DecodeEncounterFile(bytes);
                 if (items.Count != 1) throw new InvalidDataException("Expected one encounter per history archive");
                 restored.Add((items[0], entry));
             }
         }
         catch { GlobalTimeSorter = sorter; throw; }
         // Parse every selected payload before attaching any graph, e.g. a corrupt second archive publishes neither.
-        return AttachArchives(restored);
+        lock (CombatGate) return AttachArchives(restored);
     }
 
     private int AttachArchives(IEnumerable<(EncounterData Encounter, StoredEncounter? Stored)> encounters)
@@ -136,17 +163,22 @@ public partial class FormActMain
     private List<EncounterData> ReadEncounterFile(string path) => DecodeEncounterFile(ReadBoundedFile(path));
     private List<EncounterData> DecodeEncounterFile(byte[] bytes)
     {
-        var xml = bytes.Length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b ? MemDecompressGzip(bytes) : bytes;
+        var xml = ExpandEncounterFile(bytes);
         using var input = new MemoryStream(xml);
         return XmlToEncounters(input);
     }
 
-    private int SaveEncounterHistory()
+    private byte[] ExpandEncounterFile(byte[] bytes) =>
+        bytes.Length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b ? MemDecompressGzip(bytes) : bytes;
+
+    private async Task<int> SaveEncounterHistoryAsync(bool asynchronous)
     {
-        Directory.CreateDirectory(HistoryDirectory);
         // Coordinate checkpoints across processes sharing the state directory; merge the last committed index under this lease.
-        using var checkpoint = new FileStream(Path.Combine(HistoryDirectory, "checkpoint.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
-        LoadHistoryIndex();
+        using var checkpoint = await ArchiveIo(asynchronous, () => {
+            Directory.CreateDirectory(HistoryDirectory);
+            return new FileStream(Path.Combine(HistoryDirectory, "checkpoint.lock"), FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
+        });
+        await LoadHistoryIndexAsync(asynchronous);
         var next = new List<StoredEncounter>(storedEncounters);
         var identities = new List<(EncounterData Encounter, string File, DateTime ZoneStart)>();
         foreach (var (encounter, _) in QueryEncounters())
@@ -154,11 +186,16 @@ public partial class FormActMain
             if (encounter.Active || encounter.Items.Count == 0) continue;
             if (!encounter.Items.Values.Any(actor => actor.AllOut.TryGetValue("All", out var all) && all.Items.Count > 0))
                 throw new InvalidOperationException("Encounter has no outgoing swings to archive; its manual graph cannot be reconstructed");
-            var bytes = CompressArchive(EncodeEncounter(encounter, history: true).AsSpan());
+            ArraySegment<byte> xml;
+            lock (CombatGate) xml = EncodeEncounter(encounter, history: true);
+            var bytes = await ArchiveIo(asynchronous, () => CompressArchive(xml.AsSpan()));
             var file = Convert.ToHexStringLower(SHA256.HashData(bytes)) + ".act";
             var path = Path.Combine(HistoryDirectory, file);
-            if (!File.Exists(path)) WriteAtomic(path, stream => stream.Write(bytes), overwrite: false);
-            else if (!ReadBoundedFile(path).SequenceEqual(bytes)) throw new InvalidDataException("Existing history payload is corrupt");
+            await ArchiveIo(asynchronous, () => {
+                if (!File.Exists(path)) WriteAtomic(path, stream => stream.Write(bytes), overwrite: false);
+                else if (!ReadBoundedFile(path).SequenceEqual(bytes)) throw new InvalidDataException("Existing history payload is corrupt");
+                return 0;
+            });
             if (archivedEncounters.TryGetValue(encounter, out var previous)) next.RemoveAll(item => item.File == previous.File);
             var record = new HistoryRecord(1, encounter.StartTime, encounter.EndTime, encounter.Title, encounter.CharName,
                 encounter.HistoryRecord?.FolderHint ?? Path.GetDirectoryName(logFilePath) ?? "");
@@ -168,7 +205,7 @@ public partial class FormActMain
             identities.Add((encounter, file, zoneStart));
         }
         // Immutable payloads are written first; a failed checkpoint leaves the previous complete index readable.
-        WriteAtomic(HistoryIndex, stream =>
+        await ArchiveIo(asynchronous, () => { WriteAtomic(HistoryIndex, stream =>
         {
             using var writer = XmlWriter.Create(stream, new XmlWriterSettings { Indent = true, CloseOutput = false });
             writer.WriteStartElement("Records");
@@ -180,7 +217,7 @@ public partial class FormActMain
                 writer.WriteAttributeString("Partial", entry.Partial.ToString()); writer.WriteEndElement();
             }
             writer.WriteEndElement();
-        }, overwrite: true);
+        }, overwrite: true); return 0; });
         storedEncounters = next;
         // shortcut: superseded payloads remain on disk; add explicit retention before maintaining large archives.
         foreach (var (encounter, file, zoneStart) in identities)

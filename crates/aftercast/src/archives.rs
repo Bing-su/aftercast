@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut, BytesMut};
 use camino::Utf8Path;
 
-use crate::runtime::{Request, canonicalize};
+use crate::runtime::Request;
 use crate::{EncounterId, Error, HostHandle};
 
 /// ACT encounter interchange encoding. Both contain the same XML representation.
@@ -60,7 +60,7 @@ impl HostHandle {
     /// saved swings directly; raw parser hooks, correction rules and live audio are not replayed.
     /// A malformed file adds no encounters. Each file and its expanded XML are limited to 64 MiB.
     pub async fn import_act(&self, path: impl AsRef<Utf8Path>) -> Result<u32, Error> {
-        let path = canonicalize(path.as_ref())?;
+        let path = self.canonicalize(path.as_ref()).await?;
         self.archive_command(1, path.as_str(), 0, false).await
     }
 
@@ -87,7 +87,7 @@ impl HostHandle {
             .parent()
             .filter(|parent| !parent.as_str().is_empty())
             .unwrap_or(Utf8Path::new("."));
-        let destination = canonicalize(parent)?.join(name);
+        let destination = self.canonicalize(parent).await?.join(name);
         self.archive_command(2, destination.as_str(), id.value, format == ActFormat::Gzip)
             .await?;
         Ok(())

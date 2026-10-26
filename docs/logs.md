@@ -18,10 +18,10 @@ parser acceptance or provide a durable recording.
 | `LogBatch.dropped`                      | Exact count and contiguous sequence range omitted since the previous successful drain; inspect it even when no records remain              |
 | Host stop / restart                     | Discards unread data; old host/subscription identities are rejected, and a new subscription starts its sequence at one                     |
 
-Drain regularly, for example after pumping owner callbacks, until a batch has no
-records. Only the host's creation thread calls the native bridge; owned results
-can be retained or moved to consumer threads. There is no callback into Rust from
-the parser and no mandatory async executor.
+Await drains regularly until a batch has no records. Only the internal host
+thread calls the native bridge; owned results can be retained or moved to consumer
+threads. There is no callback into Rust from the parser. Host operations return
+futures; no caller-side pumping or Tokio runtime is required.
 Retaining one line slice can keep its entire Rust batch allocation alive; the
 managed queue limits do not bound data deliberately retained by the application.
 Borrow a source path with `record.source_path.as_ref()`. When independent mutable

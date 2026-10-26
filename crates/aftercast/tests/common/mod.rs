@@ -7,31 +7,6 @@ pub struct Deployment {
     root: Utf8PathBuf,
     pub bridge: Utf8PathBuf,
     pub state: Utf8PathBuf,
-    #[cfg(windows)]
-    _apartment: Apartment,
-}
-
-#[cfg(windows)]
-struct Apartment(std::marker::PhantomData<std::rc::Rc<()>>);
-
-#[cfg(windows)]
-impl Apartment {
-    fn new() -> Self {
-        use windows_sys::Win32::System::Com::{COINIT_APARTMENTTHREADED, CoInitializeEx};
-
-        // SAFETY: Initialize this test's owner thread; the guard balances success on the same thread.
-        let status = unsafe { CoInitializeEx(std::ptr::null(), COINIT_APARTMENTTHREADED as u32) };
-        assert!(status >= 0, "initialize Windows STA: {status:#x}");
-        Self(std::marker::PhantomData)
-    }
-}
-
-#[cfg(windows)]
-impl Drop for Apartment {
-    fn drop(&mut self) {
-        // SAFETY: The non-Send guard owns one successful COM initialization on this thread.
-        unsafe { windows_sys::Win32::System::Com::CoUninitialize() };
-    }
 }
 
 impl Deployment {
@@ -50,8 +25,6 @@ impl Deployment {
 
 #[fixture]
 pub fn deployment(#[default("state")] state_name: &str) -> Deployment {
-    #[cfg(windows)]
-    let apartment = Apartment::new();
     let root =
         std::env::var("DOTNET_ROOT").expect("set DOTNET_ROOT to a trusted .NET 10 installation");
     let temporary = tempfile::tempdir().expect("create isolated deployment");
@@ -65,7 +38,5 @@ pub fn deployment(#[default("state")] state_name: &str) -> Deployment {
         root: root.into(),
         bridge,
         state,
-        #[cfg(windows)]
-        _apartment: apartment,
     }
 }

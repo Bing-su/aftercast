@@ -73,6 +73,19 @@ internal static class SpellTimerChecks
             var frame = timers.GetTimerFrames().Single();
             if (frame.SpellTimers.Count != 3 || !frame.SpellTimers[0].MasterTimer || frame.SpellTimers[1].MasterTimer || !frame.SpellTimers[2].MasterTimer)
                 throw new Exception("Duplicate/nonmaster/master notification windows changed");
+            // A stepped import may pump live timers; historical/future parser timestamps must not move their clock.
+            root.GetDateTimeFromLog = _ => epoch.AddYears(30);
+            var liveEstimate = root.LastEstimatedTime;
+            var expired = events.Count;
+            host.BeginImport(path);
+            while (host.AdvanceImport(false) is null)
+            {
+                host.AdvanceTimers();
+                if (root.LastEstimatedTime < liveEstimate || root.LastEstimatedTime > liveEstimate.AddSeconds(5))
+                    throw new Exception("Import timestamps replaced the live timer clock");
+                Thread.Yield();
+            }
+            if (events.Count != expired) throw new Exception("Future-dated import expired a live timer");
             if (host.Diagnostics.Item1 != 0) throw new Exception("Spell timer contract produced diagnostics");
         }
         finally { directory.Delete(true); }

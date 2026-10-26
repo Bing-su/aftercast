@@ -1,6 +1,6 @@
 //! In-process ACT-compatible hosting.
 //!
-//! Provides host/plugin lifecycles, synchronous imports, log batches and owned combat results.
+//! Provides asynchronous host/plugin lifecycles, cancellable imports, log batches and owned combat results.
 //! Call [`extract_bridge`] once to deploy the bundled, prebuilt C# component, then use
 //! [`Host::start`] with a trusted .NET 10 installation. No SDK or download is used at runtime.
 

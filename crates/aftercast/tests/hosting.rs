@@ -133,7 +133,10 @@ async fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
         .await
         .expect("restart after shutdown");
     assert_ne!(restarted.session_id().await.expect("fresh session"), first);
-    drop(restarted);
+    restarted
+        .shutdown()
+        .await
+        .expect("joined cleanup before immediate restart");
     Host::start(config(root, &bridge))
         .await
         .expect("drop also releases the managed session")

@@ -291,7 +291,7 @@ impl HostHandle {
     /// Drains an owned batch without waiting for new records or borrowing managed memory.
     ///
     /// Capacity retries do not consume pending records or loss state. Read regularly, for example
-    /// after [`Self::pump`], and drain until `records` is empty. Cloned line bytes share only Rust
+    /// at regular intervals, and drain until `records` is empty. Cloned line bytes share only Rust
     /// memory. An oversized record discards the pending prefix and itself, preserving an exact
     /// missing range; inspect `dropped` even for an empty batch.
     pub async fn drain_logs(&self, subscription: LogSubscription) -> Result<LogBatch, Error> {

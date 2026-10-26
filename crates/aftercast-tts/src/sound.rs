@@ -46,6 +46,16 @@ impl<T: SoundBackend + ?Sized> SoundBackend for Box<T> {
 pub struct SoundPlayer(Worker<SoundRequest>);
 
 impl SoundPlayer {
+    /// Initialize the effect backend without blocking the caller.
+    pub async fn new_async<B: SoundBackend>(
+        factory: impl FnOnce() -> Result<B, Error> + Send + 'static,
+    ) -> Result<Self, Error> {
+        Worker::new_async(factory, B::play).await.map(Self)
+    }
+    #[cfg(feature = "playback")]
+    pub async fn system_async() -> Result<Self, Error> {
+        Self::new_async(|| Ok(crate::playback::FilePlayback)).await
+    }
     /// Cancel playback and wait asynchronously for native backend disposal.
     pub async fn shutdown(self) -> Result<(), Error> {
         self.0.shutdown().await
