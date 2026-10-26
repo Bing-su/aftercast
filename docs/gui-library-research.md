@@ -50,6 +50,7 @@
 | 파일 열기/저장 | [`rfd`](https://github.com/PolyMeilex/rfd) | native 파일 대화상자 후보. import/export에서 사용하며 부모 창·취소·파일 경로 전달을 확인한다 |
 | 클립보드 | [`arboard`](https://github.com/1Password/arboard) | native clipboard 후보. 전체/선택/검색 결과 등 복사 범위는 앱에서 명확하게 구분한다 |
 | 독립 보조 창 | Dioxus Desktop 다중 창 API | 로그·타임라인 창을 모달로 대체하지 않는다. 각 창이 originating encounter/session을 보유하고 종료 시 자원을 정리한다. 정확한 API는 고정한 Desktop 버전에서 확인한다 |
+| 플러그인 제공 UI | Windows child 소유 WinForms 설정 창과 기존 CEF 오버레이 | Dioxus는 설정 열기와 관리 진입점을 제공한다. 원본 UI를 재사용하고 STA·플러그인 소유권을 유지한다. 표시·선택 Host API와 실제 창 검증은 [구현 계획](gui-plan.md#plugin-provided-ui-implementation-plan)에 따른다 |
 
 테이블/차트의 추천은 기능 적합성에 대한 판단이다. 라이브러리 자체가
 aftercast의 세션 식별, 페이지 조회, 오래된 응답 폐기, 플러그인 정렬이나

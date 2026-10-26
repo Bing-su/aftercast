@@ -123,6 +123,46 @@ establish nonblocking behavior.
 | Blocked plugin    | Independent supervisor kills/reaps the child after the graceful deadline; a new Host can restart   |
 | Native UI         | Plugin controls remain on the library-owned STA; Dioxus does not convert WinForms controls         |
 
+## Plugin-provided UI implementation plan
+
+Confirmed direction (2026-10-26): on Windows, open original plugin configuration
+pages in a separate child-owned WinForms window and retain the plugin's existing
+CEF overlay windows. Dioxus provides management and entry points. Do not rewrite
+arbitrary plugin controls or embed native controls into the Dioxus WebView.
+
+| Surface | Current evidence | Implementation target |
+| --- | --- | --- |
+| .NET configuration | Plugin initialization receives real controls and registers its page in a child-owned `TabControl`; no public Rust show/select API exists | Show a nonmodal configuration window, select the requested plugin's available page, and focus an existing window on repeated requests |
+| Web-based overlay | Original CEF and external Edge rendering have been exercised by the [worker integration tests](overlay-cactbot-process-validation.md); the CEF test also captures hidden frames | Retain original plugin-owned CEF windows and settings. Add user-facing discovery, create/show/hide and configuration entry points through the plugin's supported operations; verify visible-window behavior separately |
+| Dioxus management | GUI is not implemented | List plugin status and available UI actions; provide Open Settings and overlay-management entry points, pending/error states and explicit unsupported/unavailable results |
+| Linux/native portability | The Linux WinForms compatibility layer is headless; Windows CEF/Edge evidence is not WebKitGTK evidence | Report unsupported native plugin UI explicitly. Track Linux plugin/browser support separately rather than showing an empty placeholder as working UI |
+
+### Ownership and API work
+
+| Boundary | Required work |
+| --- | --- |
+| Rust facade and IPC | Add typed asynchronous Host operations to discover UI availability and request show/select/focus or supported overlay actions. Validate session-scoped plugin identity and lifecycle state; native controls/handles do not cross into Dioxus |
+| Managed owner | Execute UI actions on the existing child STA and message pump. Keep page ownership/parent relationships used by plugins, including plugins that remove or replace their own settings tabs |
+| Configuration window | Host the existing tabs rather than rebuilding them. Closing the window hides the configuration surface for reopening; it must not deinitialize plugins or end the Host session |
+| Plugin lifetime | Disabling/removing a plugin must remove its UI availability and invalidate outstanding actions. Shutdown disposes owned windows/controls on their owner; a new session must not reuse old UI identities |
+| Overlay lifetime | Use existing plugin lifecycle and configuration contracts. Do not introduce a second CEF instance or a replacement browser solely to display an existing overlay. Identify supported vendor operations before defining each management action |
+| JS policy | Original plugin/browser JavaScript remains plugin-owned. These entry points use Rust/managed operations; no application-owned JS bridge is added to Dioxus |
+| Persistence | Plugin configuration remains in the plugin's existing format and executable-relative deployment/data layout; `config.toml` owns aftercast settings only |
+
+### Delivery and acceptance
+
+| Step | Required evidence |
+| --- | --- |
+| 1 — Native configuration access | From Dioxus, open a real plugin's page in the child-owned window; exercise controls and nested tabs, keyboard/IME input, focus, scaling, close/reopen and repeated Open Settings. Verify unavailable/self-hidden pages return an explicit result |
+| 2 — Native lifecycle | Run imports/queries while the configuration window is open and after it is hidden. Disable/re-enable or restart according to plugin lifecycle policy; stale requests must not reopen disposed UI. Verify graceful/timeout shutdown cleanup |
+| 3 — Overlay management | Discover supported overlay state, create/show/hide/configure an original CEF overlay and verify visible rendered content plus any required input/lock behavior. Recheck cactbot data/audio routing and plugin shutdown/restart; a hidden bitmap alone is insufficient |
+| 4 — Repeatable validation | Extend disposable native tests where OS automation is reliable and document manual steps otherwise. Playwright covers Dioxus entry points, while native settings/CEF windows require their own evidence |
+
+This is planned work, not a claim that existing public APIs expose plugin UI.
+The current source boundaries are [plugin registration](../managed/ActCompat/HostEnvironment.cs),
+[plugin lifecycle](../managed/Bridge/PluginSession.cs) and the
+[Rust plugin facade](../crates/aftercast/src/plugins.rs).
+
 ## GUI test plan
 
 Recorded 2026-10-26. This is a planned test strategy, not evidence that a GUI,
@@ -171,6 +211,7 @@ feasibility and execution evidence; Chromium CDP results do not establish it.
 | Rapid A-to-B selection or session restart | A deliberately late response for A/the previous session cannot replace the current details |
 | Hierarchy and log linkage | Tree selection and row activation reach the same context; parent navigation works; same-timestamp actions open the correct source log entry |
 | Two secondary windows | Windows retain their own encounter context after main selection changes; closing one during a request does not update a dead view or break the other |
+| Plugin-provided UI | Open/select/focus a native settings page, interact and close/reopen without stopping the plugin; test disabled/stale UI requests. Separately verify original CEF show/hide and visible rendering, not only hidden screenshots |
 | Change locale/theme and restart | Both rendered UI and persisted `config.toml` reflect the change; comments and unrelated entries survive saving |
 | Invalid/unsupported or unwritable settings | Visible actionable error, original file preserved, and no silent fallback to OS-standard ACT storage |
 | Different working directory | Executable-adjacent `config.toml` and ACT relative paths are still used; parent and child resolve the same intended state |
@@ -402,7 +443,7 @@ An aggregate-only preview can still precede them.
 | --- | --- | --- |
 | P0 — Retained encounter logs | ACT records encounter logs when recording is enabled and combat is active, choosing original or processed text. The current live/import dispatch paths publish original records and invoke parser callbacks, but do not themselves append encounter logs. `EncounterData.LogLines` and XML support alone do not provide recording | Define encounter association, original/processed text policy and bounded retention before adding historical queries. Import a known encounter and open an action's source after the live subscription has advanced; show unavailable/omitted data explicitly |
 | P0 — Action/source identity through restore | Current XML writes a swing's `TimeSorter`, but writes log entries without their `GlobalTimeSorter`; reading assigns new sequential log sorters. The private archive uses this encounter serialization too. Restored text does not establish preserved action-to-log identity | Preserve or explicitly reconstruct a validated relation in the appropriate format, with a policy for older archives lacking that relation. Two source lines with the same timestamp must remain distinguishable; never silently select a different entry |
-| P0 — Plugin configuration access | Windows registration already attaches native plugin pages to a child-owned `TabControl`; this is more than a status label. Rust lifecycle calls do not expose a GUI operation to show/select those pages. Configuration is plugin-owned | Provide a deliberate route to the native configuration surface while retaining child/STA ownership. Verify a real plugin's controls, nested pages, focus and close/reopen behavior; do not duplicate arbitrary plugin settings in Dioxus |
+| P0 — Plugin configuration access | Windows registration already attaches native plugin pages to a child-owned `TabControl`; this is more than a status label. Rust lifecycle calls do not expose a GUI operation to show/select those pages. Configuration is plugin-owned | Implement the [plugin-provided UI plan](#plugin-provided-ui-implementation-plan): a separate child-owned WinForms settings window, typed Host show/select operations, and original CEF overlay windows. Verify native input, focus, close/reopen and lifecycle behavior |
 | P0 — Plugin enable/retry lifecycle | A current instance can initialize only from `Constructed`; failure and deinitialization leave terminal `Failed`/`Stopped` states. Re-enabling cannot call initialize on the old `PluginId`. Creating a replacement does not unload the old assembly or undo arbitrary plugin effects | Model configured plugin entries separately from runtime instances. State the fresh-instance/restart policy, dependency ordering and failure outcome. Check disable → enable and failed initialization → retry using disposable plugin state |
 | P1 — Trigger editing and saving | Managed trigger registration, execution and startup/shutdown persistence exist, but the Rust facade has no trigger-management operations. The key contains category and regex; editing those requires removal of the old key. Changing `ShortRegexString` alone does not recompile `RegEx` | Validate/compile a replacement before publishing an edit; define collision/delete behavior and when edits become durable. An invalid regex leaves the previous trigger usable; a category/regex rename leaves exactly one trigger after restart |
 | P1 — Trigger result records | ACT can process triggers during import when enabled, append tabbed results, then skip import audio/timer side effects. Current import dispatch does not process custom triggers, and live execution has no result-record output; a `Tabbed` property is not a results implementation | Separate matching/result collection from live effects. Expose bounded timestamped results and source context for GUI display. Importing a matching fixture may populate results when enabled but must not play sound or start live timers |
