@@ -122,17 +122,16 @@ fn child_fault(fault: &str) -> Result<(), Box<dyn std::error::Error>> {
     }
     let mut bytes = vec![0; length];
     input.read_exact(&mut bytes)?;
-    let launch: serde_json::Value = serde_json::from_slice(&bytes)?;
-    let config: HostConfig =
-        serde_json::from_value(launch.get("config").ok_or("launch config")?.clone())?;
-    let state = launch
-        .get("config")
-        .and_then(|config| config.get("data_directory"))
-        .and_then(serde_json::Value::as_str)
-        .ok_or("state directory")?;
-    std::fs::create_dir_all(state)?;
+    // Match the private launch field order without exposing test-only access to the host config.
+    let ((token, config, _parent), remaining): (([u8; 32], HostConfig, u32), _) =
+        postcard::take_from_bytes(&bytes)?;
+    if !remaining.is_empty() {
+        return Err("trailing launch bytes".into());
+    }
+    let state = std::env::var("AFTERCAST_TEST_STATE")?;
+    std::fs::create_dir_all(&state)?;
     if fault == "omit-hook" {
-        let marker = std::path::Path::new(state).join("omitted.children");
+        let marker = std::path::Path::new(&state).join("omitted.children");
         writeln!(
             std::fs::OpenOptions::new()
                 .create(true)
@@ -154,12 +153,10 @@ fn child_fault(fault: &str) -> Result<(), Box<dyn std::error::Error>> {
             });
     }
     if fault == "after-auth" {
-        let token: [u8; 32] =
-            serde_json::from_value(launch.get("token").ok_or("launch token")?.clone())?;
         let mut stream = std::net::TcpStream::connect(std::env::var("AFTERCAST_WORKER_ENDPOINT")?)?;
         stream.write_all(&token)?;
         std::fs::write(
-            std::path::Path::new(state).join("authenticated.pid"),
+            std::path::Path::new(&state).join("authenticated.pid"),
             std::process::id().to_string(),
         )?;
         loop {

@@ -9,7 +9,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use tokio::sync::{oneshot, watch};
 
 use crate::import::{ImportJob, ImportProgress, PendingImport};
-use crate::process::RemoteSession;
+use crate::process::{AudioKind, RemoteSession};
 use crate::runtime::Request;
 use crate::{Error, HostConfig};
 
@@ -21,8 +21,7 @@ type Reply<T> = oneshot::Sender<Result<T, Error>>;
 pub(crate) enum Command {
     Request(Request, BytesMut, Reply<(i32, BytesMut)>),
     EndCombat(Reply<()>),
-    Tts(bool, Reply<()>),
-    Sound(bool, Reply<()>),
+    Audio(AudioKind, bool, Reply<()>),
     Import(Utf8PathBuf, PendingImport, Reply<()>),
     Canonicalize(Utf8PathBuf, Reply<Utf8PathBuf>),
 }
@@ -251,13 +250,15 @@ impl HostHandle {
 
     /// Enables the worker's local system TTS backend (requires its audio feature).
     pub async fn set_tts(&self, enabled: bool) -> Result<(), Error> {
-        self.execute(|reply| Command::Tts(enabled, reply)).await
+        self.execute(|reply| Command::Audio(AudioKind::Tts, enabled, reply))
+            .await
     }
     pub async fn clear_tts(&self) -> Result<(), Error> {
         self.set_tts(false).await
     }
     pub async fn set_sound_player(&self, enabled: bool) -> Result<(), Error> {
-        self.execute(|reply| Command::Sound(enabled, reply)).await
+        self.execute(|reply| Command::Audio(AudioKind::Sound, enabled, reply))
+            .await
     }
     pub async fn clear_sound_player(&self) -> Result<(), Error> {
         self.set_sound_player(false).await
@@ -321,7 +322,7 @@ impl Operation {
                 None
             }
             Self::Audio(reply) => {
-                let result = session.audio(102, false);
+                let result = session.poll_audio();
                 if matches!(result, Ok(1)) {
                     return Some(Self::Audio(reply));
                 }
@@ -443,22 +444,12 @@ fn dispatch(session: &mut RemoteSession, command: Command, operations: &mut Opti
                 session.call(5).map(|_| ())
             }));
         }
-        Command::Tts(speaker, reply) => {
+        Command::Audio(kind, enabled, reply) => {
             if operations.is_some() {
                 drop(reply.send(Err(Error::Busy)));
                 return;
             }
-            match session.audio(100, speaker) {
-                Ok(1) => *operations = Some(Operation::Audio(reply)),
-                result => drop(reply.send(result.map(|_| ()))),
-            }
-        }
-        Command::Sound(player, reply) => {
-            if operations.is_some() {
-                drop(reply.send(Err(Error::Busy)));
-                return;
-            }
-            match session.audio(101, player) {
+            match session.audio(kind, enabled) {
                 Ok(1) => *operations = Some(Operation::Audio(reply)),
                 result => drop(reply.send(result.map(|_| ()))),
             }

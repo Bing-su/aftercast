@@ -99,10 +99,18 @@ struct Launch {
     config: HostConfig,
     parent: u32,
 }
-#[derive(Serialize, Deserialize)]
-struct Message {
-    request: Option<Request>,
-    command: u32,
+#[derive(Clone, Copy, Serialize, Deserialize)]
+pub(crate) enum AudioKind {
+    Tts,
+    Sound,
+}
+
+#[derive(Clone, Copy, Serialize, Deserialize)]
+enum Message {
+    Request(Request),
+    Lifecycle(u32),
+    ConfigureAudio(AudioKind, bool),
+    PollAudio,
 }
 #[derive(Serialize, Deserialize)]
 enum WireError {
@@ -136,8 +144,11 @@ impl From<Error> for WireError {
                 path,
                 message: source.to_string(),
             },
+            Error::Speech(aftercast_tts::Error::Backend(message)) => Self::Speech(message),
             Error::Speech(error) => Self::Speech(error.to_string()),
+            Error::Sound(aftercast_tts::Error::Backend(message)) => Self::Sound(message),
             Error::Sound(error) => Self::Sound(error.to_string()),
+            Error::WorkerFailed(message) => Self::Other(message),
             Error::StateInUse(path) => Self::StateInUse(path),
             error => Self::Other(error.to_string()),
         }
@@ -213,11 +224,17 @@ fn read_frame(stream: &mut impl Read) -> Result<Vec<u8>, Error> {
     stream.read_exact(&mut bytes).map_err(transport)?;
     Ok(bytes)
 }
-fn write_json(stream: &mut impl Write, value: &impl Serialize) -> Result<(), Error> {
-    write_frame(stream, &serde_json::to_vec(value).map_err(transport)?)
+fn write_metadata(stream: &mut impl Write, value: &impl Serialize) -> Result<(), Error> {
+    write_frame(stream, &postcard::to_allocvec(value).map_err(transport)?)
 }
-fn read_json<T: DeserializeOwned>(stream: &mut impl Read) -> Result<T, Error> {
-    serde_json::from_slice(&read_frame(stream)?).map_err(transport)
+fn read_metadata<T: DeserializeOwned>(stream: &mut impl Read) -> Result<T, Error> {
+    let bytes = read_frame(stream)?;
+    let (value, remaining) = postcard::take_from_bytes(&bytes).map_err(transport)?;
+    // Each frame carries exactly one value; reject appended data, e.g. a second command.
+    if !remaining.is_empty() {
+        return Err(transport("trailing metadata bytes"));
+    }
+    Ok(value)
 }
 
 struct Supervisor {
@@ -406,7 +423,7 @@ impl RemoteSession {
             .ok_or_else(|| transport("missing worker stdin"))?;
         let ready = Arc::new(AtomicBool::new(false));
         let mut supervisor = Supervisor::start(child, control, &config, ready.clone())?;
-        write_json(
+        write_metadata(
             &mut input,
             &Launch {
                 token,
@@ -442,7 +459,7 @@ impl RemoteSession {
         self.session
     }
     fn receive(&mut self) -> Result<(Response, BytesMut), Error> {
-        let mut response: Response = read_json(&mut self.stream)?;
+        let mut response: Response = read_metadata(&mut self.stream)?;
         let packet = BytesMut::from(read_frame(&mut self.stream)?.as_slice());
         self.audio.extend(response.audio.drain(..).map(Error::from));
         if let Some(error) = response.error.take() {
@@ -451,7 +468,7 @@ impl RemoteSession {
         Ok((response, packet))
     }
     fn exchange(&mut self, message: Message, packet: &[u8]) -> Result<(Response, BytesMut), Error> {
-        write_json(&mut self.stream, &message)?;
+        write_metadata(&mut self.stream, &message)?;
         write_frame(&mut self.stream, packet)?;
         self.receive()
     }
@@ -460,37 +477,23 @@ impl RemoteSession {
         request: Request,
         packet: &mut BytesMut,
     ) -> Result<i32, Error> {
-        let (response, output) = self.exchange(
-            Message {
-                request: Some(request),
-                command: 0,
-            },
-            packet,
-        )?;
+        let (response, output) = self.exchange(Message::Request(request), packet)?;
         *packet = output;
         Ok(response.status)
     }
     pub(crate) fn call(&mut self, command: u32) -> Result<Packet, Error> {
-        self.exchange(
-            Message {
-                request: None,
-                command,
-            },
-            &[],
-        )?
-        .0
-        .lifecycle
-        .ok_or_else(|| transport("missing lifecycle response"))
+        self.exchange(Message::Lifecycle(command), &[])?
+            .0
+            .lifecycle
+            .ok_or_else(|| transport("missing lifecycle response"))
     }
-    pub(crate) fn audio(&mut self, command: u32, enabled: bool) -> Result<i32, Error> {
-        self.exchange(
-            Message {
-                request: None,
-                command,
-            },
-            &[u8::from(enabled)],
-        )
-        .map(|(response, _)| response.status)
+    pub(crate) fn audio(&mut self, kind: AudioKind, enabled: bool) -> Result<i32, Error> {
+        self.exchange(Message::ConfigureAudio(kind, enabled), &[])
+            .map(|(response, _)| response.status)
+    }
+    pub(crate) fn poll_audio(&mut self) -> Result<i32, Error> {
+        self.exchange(Message::PollAudio, &[])
+            .map(|(response, _)| response.status)
     }
     pub(crate) fn audio_error(&mut self) -> Option<Error> {
         self.audio.pop_front()
@@ -498,30 +501,22 @@ impl RemoteSession {
     pub(crate) fn stop(mut self) -> Result<(), Error> {
         // Retire backends while the managed owner context still exists, including native STA cleanup.
         let mut audio = Ok(());
-        for command in [100, 101] {
-            let result = self.retire_audio(command);
+        for kind in [AudioKind::Tts, AudioKind::Sound] {
+            let result = self.retire_audio(kind);
             audio = audio.and(result);
         }
-        let result = self
-            .exchange(
-                Message {
-                    request: None,
-                    command: 3,
-                },
-                &[],
-            )
-            .map(|_| ());
+        let result = self.exchange(Message::Lifecycle(3), &[]).map(|_| ());
         let reaped = self.supervisor.finish();
         if matches!(reaped, Err(Error::ShutdownTimeout(_))) {
             return reaped;
         }
         result.and(reaped).and(audio)
     }
-    fn retire_audio(&mut self, command: u32) -> Result<(), Error> {
-        let mut status = self.audio(command, false)?;
+    fn retire_audio(&mut self, kind: AudioKind) -> Result<(), Error> {
+        let mut status = self.audio(kind, false)?;
         while status == 1 {
             self.call(4)?;
-            status = self.audio(102, false)?;
+            status = self.poll_audio()?;
             thread::sleep(TICK);
         }
         Ok(())
@@ -566,7 +561,7 @@ fn run_child(
     sound: fn(&camino::Utf8Path) -> Result<aftercast_tts::SoundPlayer, aftercast_tts::Error>,
 ) -> Result<(), Error> {
     let address = std::env::var("AFTERCAST_WORKER_ENDPOINT").map_err(transport)?;
-    let launch: Launch = read_json(&mut std::io::stdin().lock())?;
+    let launch: Launch = read_metadata(&mut std::io::stdin().lock())?;
     bind_parent(launch.parent)?;
     let mut stream = TcpStream::connect(address).map_err(transport)?;
     stream.set_nodelay(true).map_err(transport)?;
@@ -591,45 +586,46 @@ fn run_child(
             core
         }
         Err(error) => {
-            write_json(&mut stream, &Response::result(Err(error)))?;
+            write_metadata(&mut stream, &Response::result(Err(error)))?;
             write_frame(&mut stream, &[])?;
             return Ok(());
         }
     };
-    write_json(&mut stream, &startup)?;
+    write_metadata(&mut stream, &startup)?;
     write_frame(&mut stream, &[])?;
     let mut audio_cleanup = None;
     loop {
-        let message: Message = read_json(&mut stream)?;
+        let message: Message = read_metadata(&mut stream)?;
         let mut packet = BytesMut::from(read_frame(&mut stream)?.as_slice());
-        if message.request.is_none() && message.command == 3 {
+        if matches!(message, Message::Lifecycle(3)) {
             // The parent finishes audio retirement before requesting disposal of the managed owner context.
             let result = core.session.stop();
-            write_json(&mut stream, &Response::result(result.map(|_| 0)))?;
+            write_metadata(&mut stream, &Response::result(result.map(|_| 0)))?;
             write_frame(&mut stream, &[])?;
             return Ok(());
         }
-        let mut response = match message.request {
-            Some(request) => Response::result(core.session.request(request, &mut packet)),
-            None if message.command == 100 || message.command == 101 => {
-                let result =
-                    configure_audio(&mut core, message.command, &packet, &state, tts, sound);
+        let mut response = match message {
+            Message::Request(request) => {
+                Response::result(core.session.request(request, &mut packet))
+            }
+            Message::ConfigureAudio(kind, enabled) => {
+                let result = configure_audio(&mut core, kind, enabled, &state, tts, sound);
                 Response::result(result.and_then(|cleanup| {
                     audio_cleanup = cleanup;
                     poll_audio(&mut audio_cleanup)
                 }))
             }
-            None if message.command == 102 => Response::result(poll_audio(&mut audio_cleanup)),
-            None => {
+            Message::PollAudio => Response::result(poll_audio(&mut audio_cleanup)),
+            Message::Lifecycle(command) => {
                 let mut response = Response::result(Ok(0));
-                match core.session.call(message.command) {
+                match core.session.call(command) {
                     Ok(lifecycle) => response.lifecycle = Some(lifecycle),
                     Err(error) => response.error = Some(error.into()),
                 }
                 response
             }
         };
-        if message.request.is_none() && message.command == 4 {
+        if matches!(message, Message::Lifecycle(4)) {
             response.audio.extend(
                 [core.pump_speech(), core.pump_sounds()]
                     .into_iter()
@@ -637,7 +633,7 @@ fn run_child(
                     .map(WireError::from),
             );
         }
-        write_json(&mut stream, &response)?;
+        write_metadata(&mut stream, &response)?;
         write_frame(&mut stream, &packet)?;
     }
 }
@@ -663,34 +659,32 @@ fn poll_audio(cleanup: &mut Option<AudioCleanup>) -> Result<i32, Error> {
 
 fn configure_audio(
     core: &mut ChildHost,
-    command: u32,
-    packet: &[u8],
+    kind: AudioKind,
+    enabled: bool,
     state: &camino::Utf8Path,
     tts: fn(&camino::Utf8Path) -> Result<aftercast_tts::Speaker, aftercast_tts::Error>,
     sound: fn(&camino::Utf8Path) -> Result<aftercast_tts::SoundPlayer, aftercast_tts::Error>,
 ) -> Result<Option<AudioCleanup>, Error> {
-    let enabled = match packet {
-        [0] => false,
-        [1] => true,
-        _ => return Err(transport("invalid audio command")),
-    };
-    if command == 100 {
-        let next = if enabled { Some(tts(state)?) } else { None };
-        if let Some(previous) = core.replace_tts(next)? {
-            return Ok(Some(Box::pin(async move {
-                previous.shutdown().await.map_err(Error::Speech)
-            })));
+    match kind {
+        AudioKind::Tts => {
+            let next = if enabled { Some(tts(state)?) } else { None };
+            if let Some(previous) = core.replace_tts(next)? {
+                return Ok(Some(Box::pin(async move {
+                    previous.shutdown().await.map_err(Error::Speech)
+                })));
+            }
         }
-    } else {
-        let next = if enabled {
-            Some(sound(state).map_err(Error::Sound)?)
-        } else {
-            None
-        };
-        if let Some(previous) = core.replace_sound(next)? {
-            return Ok(Some(Box::pin(async move {
-                previous.shutdown().await.map_err(Error::Sound)
-            })));
+        AudioKind::Sound => {
+            let next = if enabled {
+                Some(sound(state).map_err(Error::Sound)?)
+            } else {
+                None
+            };
+            if let Some(previous) = core.replace_sound(next)? {
+                return Ok(Some(Box::pin(async move {
+                    previous.shutdown().await.map_err(Error::Sound)
+                })));
+            }
         }
     }
     Ok(None)
@@ -729,6 +723,86 @@ impl Drop for Apartment {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn error_responses_preserve_error_kinds_and_diagnostics() {
+        let path = camino::Utf8PathBuf::from("/state 한글/plugin.dll");
+        for error in [
+            Error::Managed {
+                command: u32::MAX,
+                status: i32::MIN,
+                message: "plugin 오류\0detail".into(),
+            },
+            io_error(&path, std::io::Error::other("파일 오류")),
+            Error::Speech(aftercast_tts::Error::Backend("음성 오류".into())),
+            Error::Sound(aftercast_tts::Error::Backend("효과음 오류".into())),
+            Error::WorkerFailed("worker 오류".into()),
+            Error::StateInUse(path),
+        ] {
+            let kind = std::mem::discriminant(&error);
+            let diagnostic = error.to_string();
+            let mut bytes = Vec::new();
+            write_metadata(&mut bytes, &Response::result(Err(error))).expect("error response");
+            let mut input = bytes.as_slice();
+            let response: Response = read_metadata(&mut input).expect("decode error response");
+            let error = Error::from(response.error.expect("remote error"));
+            assert_eq!(std::mem::discriminant(&error), kind);
+            assert_eq!(error.to_string(), diagnostic);
+            assert!(input.is_empty());
+        }
+    }
+
+    #[test]
+    fn audio_commands_validate_kind_and_enablement_before_dispatch() {
+        let mut bytes = Vec::new();
+        write_metadata(
+            &mut bytes,
+            &Message::ConfigureAudio(AudioKind::Sound, false),
+        )
+        .expect("audio metadata");
+        write_frame(&mut bytes, &[]).expect("empty payload");
+        let mut input = bytes.as_slice();
+        assert!(matches!(
+            read_metadata::<Message>(&mut input).expect("typed audio command"),
+            Message::ConfigureAudio(AudioKind::Sound, false)
+        ));
+        assert!(read_frame(&mut input).expect("payload frame").is_empty());
+        assert!(input.is_empty());
+
+        for invalid in [
+            &[2, 2, 1][..], // Unknown audio kind must not select a backend.
+            &[2, 0, 2],     // Invalid boolean must not enable audio.
+            &[2, 0],        // A truncated command must not reach dispatch.
+            &[4],           // Unknown message variant must not reach dispatch.
+            &[3, 0],        // A second value must not hide behind PollAudio.
+        ] {
+            bytes.clear();
+            write_frame(&mut bytes, invalid).expect("invalid metadata frame");
+            assert!(read_metadata::<Message>(&mut bytes.as_slice()).is_err());
+        }
+    }
+
+    #[test]
+    fn audio_cleanup_keeps_pending_work_and_reports_failure_once() {
+        let mut polls = 0;
+        let mut cleanup: Option<AudioCleanup> = Some(Box::pin(std::future::poll_fn(move |_| {
+            polls += 1;
+            if polls == 1 {
+                Poll::Pending
+            } else {
+                Poll::Ready(Err(transport("cleanup failed")))
+            }
+        })));
+        assert_eq!(poll_audio(&mut cleanup).expect("pending cleanup"), 1);
+        assert!(cleanup.is_some());
+        assert!(matches!(
+            poll_audio(&mut cleanup),
+            Err(Error::WorkerFailed(message)) if message.contains("cleanup failed")
+        ));
+        assert!(cleanup.is_none());
+        assert_eq!(poll_audio(&mut cleanup).expect("retired cleanup"), 0);
+    }
+
     #[test]
     fn ipc_frames_reject_oversize_and_incomplete_input() {
         let mut bytes = Vec::new();

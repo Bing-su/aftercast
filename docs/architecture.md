@@ -14,6 +14,7 @@ asynchronous library, not current GUI support.
 | Area              | Implementation and contract                                                                                                                                                      |
 | ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | Commands          | A 32-entry bounded queue; at most eight commands within a 5 ms scheduling budget per turn; overload returns Busy                                                                 |
+| IPC metadata      | A tagged enum distinguishes managed requests, lifecycle calls, audio configuration and cleanup polling; audio configuration carries a typed kind and boolean                     |
 | Scheduling        | Host pumps callbacks/native messages, advances long operations and timers, and dispatches audio even without incoming commands                                                   |
 | Control           | Shutdown and import cancellation use atomic flags plus an unpark, independent of queue capacity                                                                                  |
 | Imports           | Async file reads feed four bounded batches (64 records or about 128 Ki UTF-16 characters plus one maximum record each); owner processing admits at most 64 records/5 ms per step |
@@ -49,9 +50,12 @@ Starting another Host from the reserved child mode is rejected before spawning,
 so a missing entry hook cannot create a chain of processes.
 
 The child authenticates a loopback TCP connection using a fresh 256-bit token
-delivered over its inherited stdin pipe. JSON control metadata and binary ACT
+delivered over its inherited stdin pipe. Postcard control metadata and binary ACT
 packets use separate length-prefixed frames capped at 128 MiB; stdout/stderr remain
 independent plugin output. The parent never loads CLR or executes plugin callbacks.
+Each metadata frame contains exactly one value; malformed or trailing bytes are
+rejected. Both processes share the same Rust types and postcard format; field and
+enum ordering are part of the private protocol, with no cross-version compatibility.
 A supervisor owns the Child handle, checks deadlines independently of IPC and
 always waits for process exit after killing. Default startup/shutdown deadlines
 are 30/5 seconds. Startup expiry returns StartupTimeout even after authentication;

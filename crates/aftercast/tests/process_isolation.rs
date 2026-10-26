@@ -68,6 +68,7 @@ async fn broken_child_startup_is_bounded_and_reports_its_cause(
         .arg(&deployment.bridge)
         .arg(&deployment.state)
         .env("AFTERCAST_TEST_CHILD_FAULT", fault)
+        .env("AFTERCAST_TEST_STATE", &deployment.state)
         .env("AFTERCAST_TEST_STARTUP_MS", "500")
         .stderr(std::process::Stdio::piped())
         .spawn()
