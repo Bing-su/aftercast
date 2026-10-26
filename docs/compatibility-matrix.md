@@ -72,6 +72,22 @@ different version.
 | Plugin control/chart infrastructure                             | Partial                                                                                            | Reference: selected [control probes](../managed/tests/LegacyReference/ControlModelProbe.cs); Contract: [UI checks](../managed/tests/ManagedTests/UiChecks.cs)                                                                                                                           | Linux is headless without layout/rendering or automatic Timer ticks; Windows uses native WinForms, but visible rendering is unverified                                                           |
 | Application settings, backup/restore, startup/tray and restart  | Partial: private state directory and plugin settings support                                       | [Host environment](../managed/ActCompat/HostEnvironment.cs), [usage](usage.md)                                                                                                                                                                                                          | Full ACT configuration lifecycle and application shell; embedded `RestartACT` explicitly throws and automatic updates are disabled                                                               |
 
+The [GUI analysis workflow target](gui-plan.md#act-analysis-workflow-target)
+records the 2026-10-26 ACT investigation: tree/table drill-down, individual-action
+activation into nonmodal encounter-log windows, contextual reports and the
+missing action/log query prerequisites. These are implementation and acceptance
+goals, not completed runtime comparisons or a change to the verification status
+above. Existing aggregate queries support a partial GUI, not this full workflow.
+The [other-tab inventory](gui-plan.md#other-act-tabs--investigation-and-implementation-targets)
+also records Options, Custom Triggers, Plugins, Import/Export, History Database,
+Notifications and About from installed control/event implementations, followed by
+user-assisted visual inspection of all seven entry screens. Deeper page and
+operation comparisons remain pending; this does not promote verification status.
+The [core capability gap assessment](gui-plan.md#core-capability-gaps-found-in-source-comparison)
+separates existing managed behavior from missing GUI-facing APIs, including
+encounter-log recording/linkage through restore, native plugin configuration,
+trigger results and editing, timer-definition persistence and actionable notifications.
+
 ## Platform and artifact evidence
 
 | Target                   | Recorded evidence                                                                                                                                                                                                                                                                                                                            | Limit                                                                                                                                                                   |
