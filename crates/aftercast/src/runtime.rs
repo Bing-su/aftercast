@@ -65,7 +65,7 @@ pub(crate) struct ManagedSession {
     configure_host: ManagedFunctionWithDefaultSignature,
     create_plugin: ManagedFunctionWithDefaultSignature,
     plugin_command: ManagedFunctionWithDefaultSignature,
-    import_log: ManagedFunctionWithDefaultSignature,
+    import_operation: ManagedFunctionWithDefaultSignature,
     log_command: ManagedFunctionWithDefaultSignature,
     read_combat_snapshot: ManagedFunctionWithDefaultSignature,
     query_combat: ManagedFunctionWithDefaultSignature,
@@ -85,7 +85,7 @@ pub(crate) enum Request {
     ConfigureHost,
     CreatePlugin,
     PluginCommand,
-    Import,
+    ImportOperation,
     Logs,
     Snapshot,
     Combat,
@@ -119,7 +119,7 @@ impl ManagedSession {
         let read_diagnostics = function(pdcstr!("ReadDiagnostics"))?;
         let configure_host = function(pdcstr!("ConfigureHost"))?;
         let plugin_command = function(pdcstr!("PluginCommand"))?;
-        let import_log = function(pdcstr!("ImportLog"))?;
+        let import_operation = function(pdcstr!("ImportOperation"))?;
         let log_command = function(pdcstr!("LogCommand"))?;
         let read_combat_snapshot = function(pdcstr!("ReadCombatSnapshot"))?;
         let query_combat = function(pdcstr!("QueryCombat"))?;
@@ -132,7 +132,7 @@ impl ManagedSession {
             configure_host,
             create_plugin,
             plugin_command,
-            import_log,
+            import_operation,
             log_command,
             read_combat_snapshot,
             query_combat,
@@ -170,7 +170,7 @@ impl ManagedSession {
             Request::CreatePlugin => (&self.create_plugin, 4),
             Request::PluginCommand => (&self.plugin_command, 6),
             Request::Diagnostics => (&self.read_diagnostics, 7),
-            Request::Import => (&self.import_log, 8),
+            Request::ImportOperation => (&self.import_operation, 8),
             Request::Logs => (&self.log_command, 9),
             Request::Snapshot => (&self.read_combat_snapshot, 10),
             Request::Combat => (&self.query_combat, 12),
@@ -183,6 +183,7 @@ impl ManagedSession {
         // range, write within capacity and retain no pointer; this session owns all loader handles.
         let status = unsafe { function(packet.as_mut_ptr().cast(), length) };
         let failed = match request {
+            Request::ImportOperation => !(0..=2).contains(&status),
             Request::Logs => status < 0,
             Request::Snapshot | Request::Combat => status != 0 && status != 1,
             _ => status != 0,
@@ -338,7 +339,7 @@ fn find_hostfxr(root: &Utf8Path) -> Result<Utf8PathBuf, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::Host;
+    use crate::host::CoreHost as Host;
 
     #[rstest::rstest]
     #[case::stable("10.0.13", Some([10, 0, 13]))]
@@ -446,7 +447,9 @@ mod tests {
             _ => panic!("unknown command must return its managed diagnostic"),
         }
         assert_ne!(
-            host.session_id()
+            host.session
+                .call(2)
+                .map(|packet| packet.session)
                 .expect("command failure must preserve the session"),
             0
         );

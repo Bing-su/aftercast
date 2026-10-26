@@ -1,7 +1,8 @@
 use aftercast::{Host, HostConfig, PluginConfig, extract_bridge};
 use camino::Utf8PathBuf;
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args_os().skip(1);
     let root = Utf8PathBuf::try_from(args.next().ok_or("provide a .NET 10 installation root")?)?;
     let directory = Utf8PathBuf::try_from(args.next().ok_or("provide a new bridge directory")?)?;
@@ -17,20 +18,23 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         })
         .transpose()?;
     extract_bridge(&directory)?;
-    let mut host = Host::start(
+    let host = Host::start(
         HostConfig::builder()
             .dotnet_root(root)
             .data_directory(directory.join("state"))
             .bridge_directory(directory)
             .build(),
-    )?;
-    let id = host.create_plugin(
-        PluginConfig::builder()
-            .path(path)
-            .maybe_type_name(type_name)
-            .build(),
-    )?;
+    )
+    .await?;
+    let id = host
+        .create_plugin(
+            PluginConfig::builder()
+                .path(path)
+                .maybe_type_name(type_name)
+                .build(),
+        )
+        .await?;
     println!("Constructed {id:?}; InitPlugin was not called");
-    host.stop()?;
+    host.shutdown().await?;
     Ok(())
 }

@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut, BytesMut};
 
 use crate::runtime::Request;
-use crate::{Error, Host, LogTimeKind, LogTimestamp};
+use crate::{Error, HostHandle, LogTimeKind, LogTimestamp};
 
 pub(crate) const SNAPSHOT_HEADER: usize = 64;
 const MAX_BYTES: usize = 64 * 1024 * 1024;
@@ -329,17 +329,17 @@ pub(crate) fn decode_result(payload: &[u8], count: usize) -> Result<DecodedResul
     })
 }
 
-impl Host {
+impl HostHandle {
     /// Copies the latest ended encounter, or returns None when no result is newer than `after`.
     ///
     /// Pass None for the latest result, then its revision to poll for changes. Intermediate state
     /// versions coalesce; this is not an encounter archive. Results own their strings and counters
     /// after host stop. Imports can retain partial results after failure; inspect `status`.
-    pub fn combat_snapshot(
-        &mut self,
+    pub async fn combat_snapshot(
+        &self,
         after: Option<CombatRevision>,
     ) -> Result<Option<CombatSnapshot>, Error> {
-        if after.is_some_and(|revision| revision.session != self.session.id()) {
+        if after.is_some_and(|revision| revision.session != self.session) {
             return Err(Error::InvalidSnapshotRequest(
                 "revision belongs to another host session".to_owned(),
             ));
@@ -347,9 +347,9 @@ impl Host {
         let after = after.map_or(0, |revision| revision.sequence);
         let mut capacity = 64 * 1024;
         loop {
-            let mut packet = snapshot_packet(self.session.id(), after, capacity);
-            if self.session.request(Request::Snapshot, &mut packet)? == 0 {
-                return decode_snapshot(&packet, self.session.id(), after);
+            let mut packet = snapshot_packet(self.session, after, capacity);
+            if self.request(Request::Snapshot, &mut packet).await? == 0 {
+                return decode_snapshot(&packet, self.session, after);
             }
             capacity = larger_snapshot_capacity(&packet)?;
         }

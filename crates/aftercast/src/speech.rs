@@ -3,11 +3,12 @@ use std::collections::VecDeque;
 use aftercast_tts::{SoundPlayer, SoundRequest, Speaker, Speech, Utterance};
 use bytes::{BufMut, BytesMut};
 
+use crate::host::CoreHost;
 use crate::runtime::{ManagedSession, Request};
-use crate::{Error, Host};
+use crate::{Error, HostHandle};
 
 pub(crate) struct AudioOutput<T> {
-    backend: T,
+    pub(crate) backend: T,
     pending: VecDeque<Speech>,
 }
 
@@ -94,47 +95,22 @@ fn packet(session: u64, command: u32, argument: u32, capacity: usize) -> BytesMu
     packet
 }
 
-impl Host {
+impl CoreHost {
     /// Route PlaySound and timer effects to an independent worker, e.g. `SoundPlayer::system()?`.
     pub fn set_sound_player(&mut self, player: SoundPlayer) -> Result<(), Error> {
         self.session
             .request(Request::Speech, &mut packet(self.session.id(), 3, 1, 32))?;
-        self.sounds = Some(AudioOutput::new(player));
+        if let Some(previous) = self.sounds.replace(AudioOutput::new(player)) {
+            previous.backend.shutdown_blocking().map_err(Error::Sound)?;
+        }
         Ok(())
     }
     pub fn clear_sound_player(&mut self) -> Result<(), Error> {
         self.session
             .request(Request::Speech, &mut packet(self.session.id(), 3, 0, 32))?;
-        self.sounds = None;
-        Ok(())
-    }
-    /// Configure before loading plugins; settings are session-local and reset on stop.
-    pub fn set_audio_settings(&mut self, settings: &AudioSettings) -> Result<(), Error> {
-        let cues = [
-            &settings.timer_start,
-            &settings.timer_warning,
-            &settings.timer_expire,
-        ];
-        if settings.sound_volume > 100
-            || settings.tts_volume > 100
-            || cues.iter().any(|cue| cue.chars().any(char::is_control))
-        {
-            return Err(aftercast_tts::Error::InvalidRequest("invalid audio settings").into());
+        if let Some(previous) = self.sounds.take() {
+            previous.backend.shutdown_blocking().map_err(Error::Sound)?;
         }
-        let text = cues.map(|cue| cue.as_str()).join("\0");
-        if text.len() > 4096 {
-            return Err(
-                aftercast_tts::Error::InvalidRequest("timer settings exceed 4096 bytes").into(),
-            );
-        }
-        let mut request = packet(self.session.id(), 5, text.len() as u32, 4128);
-        let mut payload = request
-            .get_mut(24..)
-            .ok_or_else(|| Error::InvalidSpeechResponse("missing settings payload".into()))?;
-        payload.put_u32_le(u32::from(settings.sound_volume));
-        payload.put_u32_le(u32::from(settings.tts_volume));
-        payload.put_slice(text.as_bytes());
-        self.session.request(Request::Speech, &mut request)?;
         Ok(())
     }
     /// Route ACT TTS requests to an explicitly initialized backend before loading plugins.
@@ -143,7 +119,9 @@ impl Host {
     pub fn set_tts(&mut self, speaker: Speaker) -> Result<(), Error> {
         self.session
             .request(Request::Speech, &mut packet(self.session.id(), 1, 1, 32))?;
-        self.speech = Some(AudioOutput::new(speaker));
+        if let Some(previous) = self.speech.replace(AudioOutput::new(speaker)) {
+            previous.backend.shutdown_blocking()?;
+        }
         Ok(())
     }
 
@@ -151,7 +129,9 @@ impl Host {
     pub fn clear_tts(&mut self) -> Result<(), Error> {
         self.session
             .request(Request::Speech, &mut packet(self.session.id(), 1, 0, 32))?;
-        self.speech = None;
+        if let Some(previous) = self.speech.take() {
+            previous.backend.shutdown_blocking()?;
+        }
         Ok(())
     }
 
@@ -211,6 +191,37 @@ fn volume(request: &[u8]) -> Result<u8, Error> {
         .and_then(|value| u8::try_from(value).ok())
         .filter(|value| *value <= 100)
         .ok_or_else(|| Error::InvalidSpeechResponse("invalid audio volume".into()))
+}
+
+impl HostHandle {
+    pub async fn set_audio_settings(&self, settings: &AudioSettings) -> Result<(), Error> {
+        let cues = [
+            &settings.timer_start,
+            &settings.timer_warning,
+            &settings.timer_expire,
+        ];
+        if settings.sound_volume > 100
+            || settings.tts_volume > 100
+            || cues.iter().any(|cue| cue.chars().any(char::is_control))
+        {
+            return Err(aftercast_tts::Error::InvalidRequest("invalid audio settings").into());
+        }
+        let text = cues.map(|cue| cue.as_str()).join("\0");
+        if text.len() > 4096 {
+            return Err(
+                aftercast_tts::Error::InvalidRequest("timer settings exceed 4096 bytes").into(),
+            );
+        }
+        let mut request = packet(self.session, 5, text.len() as u32, 4128);
+        let mut payload = request
+            .get_mut(24..)
+            .ok_or_else(|| Error::InvalidSpeechResponse("missing settings payload".into()))?;
+        payload.put_u32_le(u32::from(settings.sound_volume));
+        payload.put_u32_le(u32::from(settings.tts_volume));
+        payload.put_slice(text.as_bytes());
+        self.request(Request::Speech, &mut request).await?;
+        Ok(())
+    }
 }
 
 #[cfg(test)]

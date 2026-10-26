@@ -46,6 +46,14 @@ impl<T: SoundBackend + ?Sized> SoundBackend for Box<T> {
 pub struct SoundPlayer(Worker<SoundRequest>);
 
 impl SoundPlayer {
+    /// Cancel playback and wait asynchronously for native backend disposal.
+    pub async fn shutdown(self) -> Result<(), Error> {
+        self.0.shutdown().await
+    }
+    /// Explicit blocking cleanup for a dedicated owner thread.
+    pub fn shutdown_blocking(self) -> Result<(), Error> {
+        self.0.shutdown_blocking()
+    }
     pub fn new<B: SoundBackend>(
         factory: impl FnOnce() -> Result<B, Error> + Send + 'static,
     ) -> Result<Self, Error> {

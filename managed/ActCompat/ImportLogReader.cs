@@ -14,9 +14,11 @@ internal sealed class ImportLogReader : IDisposable
     private long bytesRead;
     private int offset, count;
     private bool prefixChecked, skipLf, disposed;
+    internal long TotalBytes => initialLength;
+    internal long BytesRead => bytesRead;
 
     internal ImportLogReader(string path) : this(new FileStream(path, FileMode.Open, FileAccess.Read,
-        FileShare.ReadWrite | FileShare.Delete)) { }
+        FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.Asynchronous | FileOptions.SequentialScan)) { }
 
     // The deterministic stream seam has the same ownership and byte-zero contract as a newly opened file.
     internal ImportLogReader(Stream stream)
@@ -44,6 +46,48 @@ internal sealed class ImportLogReader : IDisposable
                 line = DecodeRecord(pending.GetBuffer().AsSpan(0, (int)pending.Length));
                 return true;
             }
+            if (TryDecodeBuffered(out line)) return true;
+        }
+    }
+
+    // Both entry points share framing, e.g. CRLF split across reads must have identical results.
+    internal async ValueTask<string?> ReadAsync(CancellationToken cancellation)
+    {
+        ObjectDisposedException.ThrowIf(disposed, this);
+        if (!prefixChecked)
+        {
+            var prefixLength = (int)Math.Min(3, initialLength);
+            while (count < prefixLength)
+            {
+                ValidateLength();
+                var read = await stream.ReadAsync(buffer.AsMemory(count, prefixLength - count), cancellation).ConfigureAwait(false);
+                if (read == 0) throw new EndOfStreamException("The import file ended before its captured length.");
+                count += read; bytesRead += read;
+            }
+            SkipBom();
+        }
+        while (true)
+        {
+            cancellation.ThrowIfCancellationRequested();
+            if (offset == count)
+            {
+                ValidateLength();
+                if (bytesRead == initialLength)
+                    return pending.Length == 0 ? null : DecodeRecord(pending.GetBuffer().AsSpan(0, (int)pending.Length));
+                count = await stream.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, initialLength - bytesRead)), cancellation).ConfigureAwait(false);
+                offset = 0;
+                if (count == 0) throw new EndOfStreamException("The import file ended before its captured length.");
+                bytesRead += count;
+            }
+            if (TryDecodeBuffered(out var line)) return line;
+        }
+    }
+
+    private bool TryDecodeBuffered(out string line)
+    {
+        line = "";
+        while (offset < count)
+        {
             var remaining = buffer.AsSpan(offset, count - offset);
             if (skipLf)
             {
@@ -70,6 +114,7 @@ internal sealed class ImportLogReader : IDisposable
             }
             return true;
         }
+        return false;
     }
 
     private void CheckPrefix()
@@ -85,6 +130,12 @@ internal sealed class ImportLogReader : IDisposable
             count += read;
             bytesRead += read;
         }
+        SkipBom();
+    }
+
+    private void SkipBom()
+    {
+        prefixChecked = true;
         // A BOM is framing only at byte zero; later U+FEFF characters belong to the original record.
         if (count == 3 && buffer[0] == 0xef && buffer[1] == 0xbb && buffer[2] == 0xbf) offset = count;
     }

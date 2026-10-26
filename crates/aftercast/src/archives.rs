@@ -2,7 +2,7 @@ use bytes::{Buf, BufMut, BytesMut};
 use camino::Utf8Path;
 
 use crate::runtime::{Request, canonicalize};
-use crate::{EncounterId, Error, Host};
+use crate::{EncounterId, Error, HostHandle};
 
 /// ACT encounter interchange encoding. Both contain the same XML representation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -37,16 +37,16 @@ fn packet(
     Ok(bytes)
 }
 
-impl Host {
-    fn archive_command(
-        &mut self,
+impl HostHandle {
+    async fn archive_command(
+        &self,
         command: u32,
         text: &str,
         id: u64,
         compressed: bool,
     ) -> Result<u32, Error> {
-        let mut bytes = packet(self.session.id(), command, text, id, compressed)?;
-        self.session.request(Request::Archive, &mut bytes)?;
+        let mut bytes = packet(self.session, command, text, id, compressed)?;
+        self.request(Request::Archive, &mut bytes).await?;
         let mut result = bytes
             .get(48..56)
             .ok_or_else(|| Error::InvalidArchiveResponse("missing count".into()))?;
@@ -59,22 +59,22 @@ impl Host {
     /// Initialize the parser's category registrations first and end live combat. This reconstructs
     /// saved swings directly; raw parser hooks, correction rules and live audio are not replayed.
     /// A malformed file adds no encounters. Each file and its expanded XML are limited to 64 MiB.
-    pub fn import_act(&mut self, path: impl AsRef<Utf8Path>) -> Result<u32, Error> {
+    pub async fn import_act(&self, path: impl AsRef<Utf8Path>) -> Result<u32, Error> {
         let path = canonicalize(path.as_ref())?;
-        self.archive_command(1, path.as_str(), 0, false)
+        self.archive_command(1, path.as_str(), 0, false).await
     }
 
     /// Exports one retained encounter to a new file; refuses to overwrite an existing destination.
     ///
     /// End live combat first. ACT interchange uses second-resolution timestamps and display damage;
     /// use [`Self::save_history`] for the private database's precise numeric and timestamp values.
-    pub fn export_act(
-        &mut self,
+    pub async fn export_act(
+        &self,
         id: EncounterId,
         path: impl AsRef<Utf8Path>,
         format: ActFormat,
     ) -> Result<(), Error> {
-        if id.session != self.session.id() || id.value == 0 {
+        if id.session != self.session || id.value == 0 {
             return Err(Error::InvalidArchiveRequest(
                 "encounter belongs to another session".into(),
             ));
@@ -88,7 +88,8 @@ impl Host {
             .filter(|parent| !parent.as_str().is_empty())
             .unwrap_or(Utf8Path::new("."));
         let destination = canonicalize(parent)?.join(name);
-        self.archive_command(2, destination.as_str(), id.value, format == ActFormat::Gzip)?;
+        self.archive_command(2, destination.as_str(), id.value, format == ActFormat::Gzip)
+            .await?;
         Ok(())
     }
 
@@ -97,8 +98,8 @@ impl Host {
     /// Returns the total stored count. Call while live combat is idle. Payloads are immutable;
     /// the index is replaced atomically after every payload is flushed. Shutdown does not implicitly
     /// checkpoint, so crash/restart recovery reaches the last successful call.
-    pub fn save_history(&mut self) -> Result<u32, Error> {
-        self.archive_command(3, "", 0, false)
+    pub async fn save_history(&self) -> Result<u32, Error> {
+        self.archive_command(3, "", 0, false).await
     }
 
     /// Restores saved encounters matching title, zone or character, ignoring case.
@@ -107,8 +108,8 @@ impl Host {
     /// already restored archives. Initialize the same parser categories before reconstruction,
     /// then inspect results with [`Self::encounters`] and [`Self::encounter_detail`]. IDs are new
     /// session IDs. A corrupt selected archive publishes no encounters from that call.
-    pub fn restore_history(&mut self, filter: &str) -> Result<u32, Error> {
-        self.archive_command(4, filter, 0, false)
+    pub async fn restore_history(&self, filter: &str) -> Result<u32, Error> {
+        self.archive_command(4, filter, 0, false).await
     }
 }
 

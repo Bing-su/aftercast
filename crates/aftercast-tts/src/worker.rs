@@ -1,6 +1,7 @@
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, Weak, mpsc};
 use std::thread::{self, JoinHandle};
+use tokio::sync::{oneshot, watch};
 
 use crate::Error;
 
@@ -29,6 +30,7 @@ impl Cancellation {
 pub struct Speech {
     result: mpsc::Receiver<Result<(), Error>>,
     cancellation: Cancellation,
+    completed: watch::Receiver<bool>,
 }
 
 impl Speech {
@@ -37,6 +39,16 @@ impl Speech {
     }
     pub fn wait(self) -> Result<(), Error> {
         self.result.recv().map_err(|_disconnected| Error::Closed)?
+    }
+    /// Wait without occupying the caller thread, e.g. from a GUI event handler.
+    pub async fn wait_async(mut self) -> Result<(), Error> {
+        while !*self.completed.borrow_and_update() {
+            self.completed
+                .changed()
+                .await
+                .map_err(|_error| Error::Closed)?;
+        }
+        self.wait()
     }
     /// Consume a ready result once; subsequent calls report Closed.
     pub fn try_wait(&self) -> Result<Option<()>, Error> {
@@ -52,12 +64,14 @@ struct Work<T> {
     request: T,
     result: mpsc::SyncSender<Result<(), Error>>,
     cancellation: Cancellation,
+    completed: watch::Sender<bool>,
 }
 
 pub(crate) struct Worker<T> {
     sender: Option<mpsc::SyncSender<Work<T>>>,
     pending: Mutex<Vec<Weak<AtomicBool>>>,
     worker: Option<JoinHandle<()>>,
+    finished: Option<oneshot::Receiver<()>>,
 }
 
 impl<T: Send + 'static> Worker<T> {
@@ -67,6 +81,7 @@ impl<T: Send + 'static> Worker<T> {
     ) -> Result<Self, Error> {
         let (sender, receiver) = mpsc::sync_channel::<Work<T>>(32);
         let (ready, initialized) = mpsc::sync_channel(1);
+        let (finished, completion) = oneshot::channel();
         let worker = thread::Builder::new()
             .name("aftercast-tts".into())
             .spawn(move || {
@@ -87,7 +102,11 @@ impl<T: Send + 'static> Worker<T> {
                         .and_then(|()| perform(&mut backend, &work.request, &work.cancellation));
                     work.cancellation.0.store(true, Ordering::Release);
                     drop(work.result.send(result));
+                    work.completed.send_replace(true);
                 }
+                // Report completion only after native resources have been released on their owning thread.
+                drop(backend);
+                let _receiver_dropped = finished.send(());
             })
             .map_err(|e| Error::Backend(e.to_string()))?;
         if let Err(error) = initialized
@@ -102,12 +121,14 @@ impl<T: Send + 'static> Worker<T> {
             sender: Some(sender),
             pending: Mutex::new(Vec::new()),
             worker: Some(worker),
+            finished: Some(completion),
         })
     }
 
     pub(crate) fn submit(&self, request: T) -> Result<Speech, Error> {
         let cancellation = Cancellation(Arc::new(AtomicBool::new(false)));
         let (result, receiver) = mpsc::sync_channel(1);
+        let (completed, completion) = watch::channel(false);
         let mut pending = self.pending.lock().map_err(|_poisoned| Error::Closed)?;
         // Serialize admission with cancel_all so an accepted request cannot escape a concurrent cancellation.
         self.sender
@@ -117,6 +138,7 @@ impl<T: Send + 'static> Worker<T> {
                 request,
                 result,
                 cancellation: cancellation.clone(),
+                completed,
             })
             .map_err(|error| match error {
                 mpsc::TrySendError::Full(_) => Error::QueueFull,
@@ -130,11 +152,29 @@ impl<T: Send + 'static> Worker<T> {
         Ok(Speech {
             result: receiver,
             cancellation,
+            completed: completion,
         })
     }
 }
 
 impl<T> Worker<T> {
+    pub(crate) async fn shutdown(mut self) -> Result<(), Error> {
+        self.cancel_all();
+        self.sender.take();
+        if let Some(finished) = self.finished.take() {
+            finished.await.map_err(|_error| Error::Closed)?;
+        }
+        Ok(())
+    }
+
+    pub(crate) fn shutdown_blocking(mut self) -> Result<(), Error> {
+        self.cancel_all();
+        self.sender.take();
+        if let Some(worker) = self.worker.take() {
+            worker.join().map_err(|_error| Error::Closed)?;
+        }
+        Ok(())
+    }
     pub(crate) fn cancel_all(&self) {
         if let Ok(mut pending) = self.pending.lock() {
             for flag in pending.drain(..).filter_map(|flag| flag.upgrade()) {
@@ -148,9 +188,7 @@ impl<T> Drop for Worker<T> {
     fn drop(&mut self) {
         self.cancel_all();
         self.sender.take();
-        // Built-in backends poll cancellation; join also guarantees their native resources stay on the owning thread.
-        if let Some(worker) = self.worker.take() {
-            drop(worker.join());
-        }
+        // Dropping a UI-owned handle must not join; explicit shutdown observes native cleanup.
+        self.worker.take();
     }
 }

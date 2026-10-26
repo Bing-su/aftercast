@@ -7,60 +7,74 @@ use camino::Utf8Path;
 use common::{Deployment, deployment};
 
 #[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
 #[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
-fn bounded_subscribers_report_loss_without_interrupting_combat_or_owning_clr_memory(
+async fn bounded_subscribers_report_loss_without_interrupting_combat_or_owning_clr_memory(
     deployment: Deployment,
 ) {
     let directory = deployment.directory();
     let config = || deployment.config();
-    let mut host = Host::start(config()).expect("start subscription host");
+    let mut host = Host::start(config())
+        .await
+        .expect("start subscription host");
     let subscription = host
         .subscribe_logs(LogSubscriptionConfig::builder().max_records(1).build())
+        .await
         .expect("subscribe before plugin initialization");
     assert!(matches!(
-        host.subscribe_logs(LogSubscriptionConfig::builder().build()),
+        host.subscribe_logs(LogSubscriptionConfig::builder().build())
+            .await,
         Err(Error::Managed { command: 9, .. })
     ));
     let plugin = host.create_plugin(PluginConfig::builder()
         .path(Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll"))
-        .type_name("Aftercast.PluginFixture.ImportPlugin").build()).expect("construct parser fixture");
+        .type_name("Aftercast.PluginFixture.ImportPlugin").build()).await.expect("construct parser fixture");
     host.initialize_plugin(plugin)
+        .await
         .expect("initialize parser fixture");
     let path = directory.join("input 한글.log");
-    check_count_overflow(&mut host, &path, subscription);
-    let (retained, large_line) = check_large_record(&mut host, &path);
-    let subscription = check_oversized_record(&mut host, &path);
-    host.stop().expect("stop with active subscription");
+    check_count_overflow(&mut host, &path, subscription).await;
+    let (retained, large_line) = check_large_record(&mut host, &path).await;
+    let subscription = check_oversized_record(&mut host, &path).await;
+    host.shutdown()
+        .await
+        .expect("stop with active subscription");
 
-    let mut restarted = Host::start(config()).expect("restart process-owned managed session");
+    let restarted = Host::start(config())
+        .await
+        .expect("restart process-owned managed session");
     let next = restarted
         .subscribe_logs(LogSubscriptionConfig::builder().build())
+        .await
         .expect("clear permits subscription after restart");
     assert!(matches!(
-        restarted.drain_logs(subscription),
+        restarted.drain_logs(subscription).await,
         Err(Error::InvalidLogRequest(_))
     ));
     assert!(
         restarted
             .drain_logs(next)
+            .await
             .expect("new subscription is empty")
             .records
             .is_empty()
     );
     assert_eq!(retained.as_ref(), large_line.as_bytes());
-    restarted.stop().expect("stop restarted session");
+    restarted.shutdown().await.expect("stop restarted session");
 }
 
-fn check_count_overflow(host: &mut Host, path: &Utf8Path, subscription: LogSubscription) {
+async fn check_count_overflow(host: &mut Host, path: &Utf8Path, subscription: LogSubscription) {
     std::fs::write(path, "0|100\n2|300\n").expect("write two source records");
     assert_eq!(
         host.import_log(path)
+            .await
             .expect("core continues through overflow")
             .damage,
         400
     );
     let batch = host
         .drain_logs(subscription)
+        .await
         .expect("drain retained record and loss");
     assert_eq!(
         batch.dropped,
@@ -86,29 +100,37 @@ fn check_count_overflow(host: &mut Host, path: &Utf8Path, subscription: LogSubsc
     assert_eq!(record.timestamp.utc_ticks, Some(record.timestamp.ticks));
     assert!(
         host.drain_logs(subscription)
+            .await
             .expect("empty subsequent drain")
             .records
             .is_empty()
     );
-    host.unsubscribe_logs(subscription).expect("unsubscribe");
+    host.unsubscribe_logs(subscription)
+        .await
+        .expect("unsubscribe");
     assert!(matches!(
-        host.drain_logs(subscription),
+        host.drain_logs(subscription).await,
         Err(Error::Managed { command: 9, .. })
     ));
 }
 
-fn check_large_record(host: &mut Host, path: &Utf8Path) -> (bytes::Bytes, String) {
+async fn check_large_record(host: &mut Host, path: &Utf8Path) -> (bytes::Bytes, String) {
     let subscription = host
         .subscribe_logs(LogSubscriptionConfig::builder().max_bytes(200_000).build())
+        .await
         .expect("subscribe for larger records");
     let large_line = format!("0|100|{}", "한".repeat(30_000));
     std::fs::write(path, &large_line).expect("write record larger than the initial native batch");
     assert_eq!(
-        host.import_log(path).expect("import large source").damage,
+        host.import_log(path)
+            .await
+            .expect("import large source")
+            .damage,
         100
     );
     let batch = host
         .drain_logs(subscription)
+        .await
         .expect("capacity retry consumes exactly once");
     assert_eq!(batch.records.len(), 1);
     assert_eq!(batch.dropped, None);
@@ -121,29 +143,34 @@ fn check_large_record(host: &mut Host, path: &Utf8Path) -> (bytes::Bytes, String
     assert_eq!(retained.as_ref(), large_line.as_bytes());
     assert!(
         host.drain_logs(subscription)
+            .await
             .expect("large record was consumed once")
             .records
             .is_empty()
     );
     host.unsubscribe_logs(subscription)
+        .await
         .expect("retire large-record subscription");
     (retained, large_line)
 }
 
-fn check_oversized_record(host: &mut Host, path: &Utf8Path) -> LogSubscription {
+async fn check_oversized_record(host: &mut Host, path: &Utf8Path) -> LogSubscription {
     let subscription = host
         .subscribe_logs(LogSubscriptionConfig::builder().max_bytes(256).build())
+        .await
         .expect("subscribe with tight byte bound");
     std::fs::write(path, format!("0|100\n2|300|{}\n4|50\n", "x".repeat(500)))
         .expect("write oversized middle record");
     assert_eq!(
         host.import_log(path)
+            .await
             .expect("oversized subscriber record does not stop aggregation")
             .damage,
         450
     );
     let batch = host
         .drain_logs(subscription)
+        .await
         .expect("drain exact missing prefix");
     assert_eq!(
         batch.dropped,

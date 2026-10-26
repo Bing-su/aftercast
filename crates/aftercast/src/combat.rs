@@ -2,7 +2,7 @@ use bytes::{Buf, BufMut, BytesMut};
 
 use crate::runtime::Request;
 use crate::snapshots::{decode_result, graph_time};
-use crate::{CombatantSnapshot, Error, Host, LogTimestamp};
+use crate::{CombatantSnapshot, Error, HostHandle, LogTimestamp};
 
 const HEADER: usize = 48;
 const MAX_BYTES: usize = 64 * 1024 * 1024;
@@ -73,37 +73,40 @@ pub struct AttackSummary {
     pub blocked: i32,
 }
 
-impl Host {
+impl HostHandle {
     /// Reads current live combat without ending it. Returns None while idle or importing.
     ///
     /// Call `pump()` regularly, then poll (e.g. at 5 Hz). Only already-applied actions are
     /// included; this call does not wait for queued actions or plugin-private work.
-    pub fn live_combat(&mut self) -> Result<Option<EncounterDetail>, Error> {
-        let payload = self.query_combat(1, None, 0, 1)?;
-        decode_detail(&payload, self.session.id())
+    pub async fn live_combat(&self) -> Result<Option<EncounterDetail>, Error> {
+        let payload = self.query_combat(1, None, 0, 1).await?;
+        decode_detail(&payload, self.session)
     }
 
     /// Lists retained individual encounters, including imports and active combat; excludes zone All.
     ///
     /// `limit` must be 1..=256. Ordering follows ACT zone/encounter order, with imports first.
     /// Graph changes between calls can move offsets; IDs remain stable while an encounter exists.
-    pub fn encounters(
-        &mut self,
+    pub async fn encounters(
+        &self,
         offset: u32,
         limit: u32,
     ) -> Result<EncounterPage<EncounterSummary>, Error> {
-        let payload = self.query_combat(2, None, offset, limit)?;
+        let payload = self.query_combat(2, None, offset, limit).await?;
         let mut reader = Reader(&payload);
-        let page = reader.page(limit, offset, |reader| reader.summary(self.session.id()))?;
+        let page = reader.page(limit, offset, |reader| reader.summary(self.session))?;
         reader.finish()?;
         Ok(page)
     }
 
     /// Reads a retained encounter and its participants. None means the graph no longer contains it.
     /// Results own their data after later actions, imports and shutdown; they are fresh graph reads.
-    pub fn encounter_detail(&mut self, id: EncounterId) -> Result<Option<EncounterDetail>, Error> {
-        let payload = self.query_combat(3, Some(id), 0, 1)?;
-        let detail = decode_detail(&payload, self.session.id())?;
+    pub async fn encounter_detail(
+        &self,
+        id: EncounterId,
+    ) -> Result<Option<EncounterDetail>, Error> {
+        let payload = self.query_combat(3, Some(id), 0, 1).await?;
+        let detail = decode_detail(&payload, self.session)?;
         if detail
             .as_ref()
             .is_some_and(|detail| detail.summary.id != id)
@@ -117,13 +120,13 @@ impl Host {
     ///
     /// `limit` must be 1..=256. None means the encounter was removed. Empty pages are valid.
     /// Preserve category/direction when displaying rows; summing every row double-counts actions.
-    pub fn encounter_attacks(
-        &mut self,
+    pub async fn encounter_attacks(
+        &self,
         id: EncounterId,
         offset: u32,
         limit: u32,
     ) -> Result<Option<EncounterPage<AttackSummary>>, Error> {
-        let payload = self.query_combat(4, Some(id), offset, limit)?;
+        let payload = self.query_combat(4, Some(id), offset, limit).await?;
         let mut reader = Reader(&payload);
         let page = if reader.present()? {
             Some(reader.page(limit, offset, Reader::attack)?)
@@ -134,7 +137,7 @@ impl Host {
         Ok(page)
     }
 
-    fn query_combat(
+    async fn query_combat(
         &self,
         mode: u32,
         id: Option<EncounterId>,
@@ -143,7 +146,7 @@ impl Host {
     ) -> Result<BytesMut, Error> {
         if !(1..=256).contains(&limit)
             || offset > i32::MAX as u32
-            || id.is_some_and(|id| id.session != self.session.id())
+            || id.is_some_and(|id| id.session != self.session)
         {
             return Err(Error::InvalidCombatRequest(
                 "invalid page or encounter belongs to another session".into(),
@@ -154,13 +157,13 @@ impl Host {
             let mut packet = BytesMut::with_capacity(capacity);
             packet.put_u32_le(capacity as u32);
             packet.put_u32_le(1);
-            packet.put_u64_le(self.session.id());
+            packet.put_u64_le(self.session);
             packet.put_u32_le(mode);
             packet.put_u32_le(offset);
             packet.put_u64_le(id.map_or(0, |id| id.value));
             packet.put_u32_le(limit);
             packet.resize(capacity, 0);
-            let status = self.session.request(Request::Combat, &mut packet)?;
+            let status = self.request(Request::Combat, &mut packet).await?;
             let mut fields = Reader(
                 packet
                     .get(36..HEADER)

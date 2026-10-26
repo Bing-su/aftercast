@@ -70,10 +70,11 @@ impl<B: SoundBackend> SoundBackend for NativeRecorder<B> {
 
 #[cfg(all(feature = "audio", any(windows, target_os = "linux")))]
 #[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
 #[ignore = "requires local speech service, audio device, .NET 10 and built fixture"]
-fn native_act_timer_speech_and_effects_finish_playback(deployment: Deployment) {
+async fn native_act_timer_speech_and_effects_finish_playback(deployment: Deployment) {
     let _host_test = HOST_TEST.lock().expect("serialize CLR hosts");
-    let mut host = Host::start(deployment.config()).expect("host");
+    let mut host = Host::start(deployment.config()).await.expect("host");
     let (sent, completed) = mpsc::channel();
     let speech_sent = sent.clone();
     let speaker = Speaker::new(move || {
@@ -84,25 +85,29 @@ fn native_act_timer_speech_and_effects_finish_playback(deployment: Deployment) {
         Ok(NativeRecorder(backend, speech_sent))
     })
     .expect("native speech backend");
-    host.set_tts(speaker).expect("speech route");
+    host.set_tts(speaker).await.expect("speech route");
     host.set_sound_player(
         SoundPlayer::new(|| Ok(NativeRecorder(aftercast_tts::FilePlayback, sent)))
             .expect("native file player"),
     )
+    .await
     .expect("sound route");
     host.set_audio_settings(&AudioSettings {
         timer_expire: "tts expired".into(),
         ..AudioSettings::default()
     })
+    .await
     .expect("settings");
     let plugin = host.create_plugin(PluginConfig::builder()
         .path(Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll").canonicalize_utf8().expect("fixture path"))
-        .type_name("Aftercast.PluginFixture.SoundPlugin").build()).expect("plugin");
-    host.initialize_plugin(plugin).expect("init");
+        .type_name("Aftercast.PluginFixture.SoundPlugin").build()).await.expect("plugin");
+    host.initialize_plugin(plugin).await.expect("init");
     let deadline = Instant::now() + Duration::from_secs(20);
     let mut count = 0;
     while count < 4 {
-        host.pump().expect("native playback or timer failure");
+        host.session_id()
+            .await
+            .expect("native playback or timer failure");
         count += completed.try_iter().count();
         assert!(
             Instant::now() < deadline,
@@ -110,7 +115,7 @@ fn native_act_timer_speech_and_effects_finish_playback(deployment: Deployment) {
         );
         std::thread::sleep(Duration::from_millis(10));
     }
-    host.stop().expect("stop native playback");
+    host.shutdown().await.expect("stop native playback");
 }
 impl SoundBackend for AudioRecorder {
     fn play(&mut self, sound: &SoundRequest, _: &Cancellation) -> Result<(), aftercast_tts::Error> {
@@ -131,15 +136,20 @@ impl SoundBackend for FailingSound {
 }
 
 #[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
 #[ignore = "requires .NET 10 and built fixture; run mise run test:plugins on Windows or Linux"]
-fn act_sound_and_timer_cues_cross_the_bridge_with_independent_volumes(deployment: Deployment) {
+async fn act_sound_and_timer_cues_cross_the_bridge_with_independent_volumes(
+    deployment: Deployment,
+) {
     let _host_test = HOST_TEST.lock().expect("serialize CLR hosts");
-    let mut host = Host::start(deployment.config()).expect("host");
+    let mut host = Host::start(deployment.config()).await.expect("host");
     let (tts_sent, tts) = mpsc::channel();
     let (sound_sent, sounds) = mpsc::channel();
     host.set_tts(Speaker::new(|| Ok(AudioRecorder(tts_sent))).expect("speaker"))
+        .await
         .expect("TTS route");
     host.set_sound_player(SoundPlayer::new(|| Ok(AudioRecorder(sound_sent))).expect("player"))
+        .await
         .expect("sound route");
     host.set_audio_settings(&AudioSettings {
         sound_volume: 61,
@@ -147,13 +157,16 @@ fn act_sound_and_timer_cues_cross_the_bridge_with_independent_volumes(deployment
         timer_expire: "tts expired".into(),
         ..AudioSettings::default()
     })
+    .await
     .expect("settings");
     let plugin = host.create_plugin(PluginConfig::builder()
         .path(Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll").canonicalize_utf8().expect("fixture path"))
-        .type_name("Aftercast.PluginFixture.SoundPlugin").build()).expect("plugin");
-    host.initialize_plugin(plugin).expect("init sound caller");
-    host.pump().expect("warning");
-    host.pump().expect("expiry");
+        .type_name("Aftercast.PluginFixture.SoundPlugin").build()).await.expect("plugin");
+    host.initialize_plugin(plugin)
+        .await
+        .expect("init sound caller");
+    host.session_id().await.expect("warning");
+    host.session_id().await.expect("expiry");
     let timeout = Duration::from_secs(2);
     assert_eq!(
         tts.recv_timeout(timeout).expect("start"),
@@ -171,39 +184,46 @@ fn act_sound_and_timer_cues_cross_the_bridge_with_independent_volumes(deployment
         ("beep".into(), 61)
     );
     host.set_sound_player(SoundPlayer::new(|| Ok(FailingSound)).expect("failing player"))
+        .await
         .expect("replace sound route");
     for _ in 0..2 {
         let plugin = host.create_plugin(PluginConfig::builder()
             .path(Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll").canonicalize_utf8().expect("fixture path"))
-            .type_name("Aftercast.PluginFixture.SoundPlugin").build()).expect("repeat sound caller");
-        host.initialize_plugin(plugin).expect("sound acceptance");
+            .type_name("Aftercast.PluginFixture.SoundPlugin").build()).await.expect("repeat sound caller");
+        host.initialize_plugin(plugin)
+            .await
+            .expect("sound acceptance");
     }
-    let deadline = Instant::now() + timeout;
+    let _deadline = Instant::now() + timeout;
     let mut failures = 0;
     while failures < 2 {
-        match host.pump() {
-            Err(Error::Sound(aftercast_tts::Error::Backend(message))) => {
+        match tokio::time::timeout(timeout, host.next_audio_error())
+            .await
+            .expect("effect error deadline")
+        {
+            Some(Error::Sound(aftercast_tts::Error::Backend(message))) => {
                 assert_eq!(message, "fixture sound failure");
                 failures += 1;
             }
-            Ok(_) => assert!(Instant::now() < deadline, "lost an effect failure"),
             other => panic!("unexpected effect result: {other:?}"),
         }
         std::thread::sleep(Duration::from_millis(1));
     }
-    host.clear_sound_player().expect("clear sound");
-    host.clear_tts().expect("clear speech");
-    host.stop().expect("stop");
+    host.clear_sound_player().await.expect("clear sound");
+    host.clear_tts().await.expect("clear speech");
+    host.shutdown().await.expect("stop");
 }
 
 #[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
 #[ignore = "requires .NET 10 and built plugin fixture; run mise run test:plugins"]
-fn act_tts_reaches_injected_backend_and_reports_playback_failures(deployment: Deployment) {
+async fn act_tts_reaches_injected_backend_and_reports_playback_failures(deployment: Deployment) {
     let _host_test = HOST_TEST.lock().expect("serialize CLR hosts");
     assert!(deployment.state.starts_with(deployment.directory()));
-    let mut host = Host::start(deployment.config()).expect("start host");
+    let mut host = Host::start(deployment.config()).await.expect("start host");
     let (sender, received) = mpsc::channel();
     host.set_tts(Speaker::new(|| Ok(Recorder(sender))).expect("create backend"))
+        .await
         .expect("configure TTS");
     let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
         .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll")
@@ -216,9 +236,12 @@ fn act_tts_reaches_injected_backend_and_reports_playback_failures(deployment: De
                 .type_name("Aftercast.PluginFixture.SpeechPlugin")
                 .build(),
         )
+        .await
         .expect("create plugin");
-    host.initialize_plugin(good).expect("initialize plugin");
-    host.pump().expect("dispatch TTS");
+    host.initialize_plugin(good)
+        .await
+        .expect("initialize plugin");
+    host.session_id().await.expect("dispatch TTS");
     assert_eq!(
         received
             .recv_timeout(Duration::from_secs(2))
@@ -232,8 +255,10 @@ fn act_tts_reaches_injected_backend_and_reports_playback_failures(deployment: De
                 .type_name("Aftercast.PluginFixture.FailingSpeechPlugin")
                 .build(),
         )
+        .await
         .expect("create failure fixture");
     host.initialize_plugin(failed)
+        .await
         .expect("queue acceptance succeeds");
     let failed_again = host
         .create_plugin(
@@ -242,27 +267,33 @@ fn act_tts_reaches_injected_backend_and_reports_playback_failures(deployment: De
                 .type_name("Aftercast.PluginFixture.FailingSpeechPlugin")
                 .build(),
         )
+        .await
         .expect("create second failure fixture");
     host.initialize_plugin(failed_again)
+        .await
         .expect("second queue acceptance");
-    let until = Instant::now() + Duration::from_secs(2);
+    let _until = Instant::now() + Duration::from_secs(2);
     let mut failures = 0;
     loop {
-        match host.pump() {
-            Err(Error::Speech(aftercast_tts::Error::Backend(message))) => {
+        match tokio::time::timeout(Duration::from_secs(2), host.next_audio_error())
+            .await
+            .expect("speech error deadline")
+        {
+            Some(Error::Speech(aftercast_tts::Error::Backend(message))) => {
                 assert_eq!(message, "fixture speech failure");
                 failures += 1;
                 if failures == 2 {
                     break;
                 }
             }
-            Ok(_) if Instant::now() < until => std::thread::sleep(Duration::from_millis(1)),
             other => panic!("expected eventual TTS failure, received {other:?}"),
         }
     }
-    host.clear_tts().expect("disable TTS");
-    host.stop().expect("stop host");
-    let mut restarted = Host::start(deployment.config()).expect("restart host");
+    host.clear_tts().await.expect("disable TTS");
+    host.shutdown().await.expect("stop host");
+    let restarted = Host::start(deployment.config())
+        .await
+        .expect("restart host");
     let plugin = restarted
         .create_plugin(
             PluginConfig::builder()
@@ -270,10 +301,11 @@ fn act_tts_reaches_injected_backend_and_reports_playback_failures(deployment: De
                 .type_name("Aftercast.PluginFixture.SpeechPlugin")
                 .build(),
         )
+        .await
         .expect("create after restart");
     assert!(
-        restarted.initialize_plugin(plugin).is_err(),
+        restarted.initialize_plugin(plugin).await.is_err(),
         "restart must not retain an old speech route"
     );
-    restarted.stop().expect("stop restarted host");
+    restarted.shutdown().await.expect("stop restarted host");
 }

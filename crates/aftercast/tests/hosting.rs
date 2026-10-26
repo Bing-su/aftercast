@@ -60,8 +60,9 @@ fn extraction_preserves_existing_directories() {
 }
 
 #[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
 #[ignore = "requires a .NET 10 installation; set DOTNET_ROOT and run mise run test:hosting"]
-fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
+async fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
     let root =
         env::var("DOTNET_ROOT").expect("set a UTF-8 DOTNET_ROOT to a trusted .NET 10 installation");
     let root = Utf8Path::new(&root);
@@ -71,7 +72,7 @@ fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
     extract_bridge(&bridge).expect("extract prebuilt managed component");
 
     let missing_root = temporary_path.join("missing-runtime");
-    match Host::start(config(&missing_root, &bridge)) {
+    match Host::start(config(&missing_root, &bridge)).await {
         Err(Error::Io { .. }) => (),
         _ => panic!("missing runtime must fail before acquiring a managed session"),
     }
@@ -83,7 +84,7 @@ fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
         "not JSON",
     )
     .expect("write invalid runtime configuration");
-    match Host::start(config(root, &invalid_bridge)) {
+    match Host::start(config(root, &invalid_bridge)).await {
         Err(Error::Hosting(_)) => (),
         _ => panic!("invalid runtime configuration must report a hosting failure"),
     }
@@ -96,21 +97,22 @@ fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
         .bridge_directory(&bridge)
         .data_directory(&blocked_state)
         .build();
-    assert!(matches!(Host::start(blocked), Err(Error::Io { .. })));
+    assert!(matches!(Host::start(blocked).await, Err(Error::Io { .. })));
     assert_eq!(
         std::fs::read(&blocked_state).expect("existing state path remains"),
         b"preserve existing state path"
     );
 
     let host = Host::start(config(root, &bridge))
+        .await
         .expect("state setup failure closes the session and releases the host lease");
-    let first = host.session_id().expect("managed call succeeds");
+    let first = host.session_id().await.expect("managed call succeeds");
     assert_ne!(first, 0);
-    match Host::start(config(root, &bridge)) {
+    match Host::start(config(root, &bridge)).await {
         Err(Error::AlreadyActive) => (),
         _ => panic!("second active host must be rejected"),
     }
-    host.stop().expect("explicit shutdown succeeds");
+    host.shutdown().await.expect("explicit shutdown succeeds");
 
     // A loaded CLR cannot move to another installation merely because the ACT session stopped.
     let alternate = temporary_path.join("alternate-runtime");
@@ -122,16 +124,20 @@ fn managed_lifecycle_releases_ownership_after_errors_stop_and_drop() {
         "libhostfxr.so"
     };
     std::fs::write(alternate_fxr.join(name), []).expect("mark an alternate hostfxr candidate");
-    match Host::start(config(&alternate, &bridge)) {
+    match Host::start(config(&alternate, &bridge)).await {
         Err(Error::RuntimeAlreadyLoaded { .. }) => (),
         _ => panic!("switching installations must fail before trying to load another hostfxr"),
     }
 
-    let restarted = Host::start(config(root, &bridge)).expect("restart after shutdown");
-    assert_ne!(restarted.session_id().expect("fresh session"), first);
+    let restarted = Host::start(config(root, &bridge))
+        .await
+        .expect("restart after shutdown");
+    assert_ne!(restarted.session_id().await.expect("fresh session"), first);
     drop(restarted);
     Host::start(config(root, &bridge))
+        .await
         .expect("drop also releases the managed session")
-        .stop()
+        .shutdown()
+        .await
         .expect("final shutdown");
 }

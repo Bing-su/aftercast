@@ -63,6 +63,15 @@ internal sealed class PluginSession
             throw new InvalidOperationException("File import requires an initialized plugin");
         return Host().ImportLog(path);
     });
+    internal void BeginImport(string path) => OnOwner(() =>
+    {
+        if (!plugins.Values.Any(plugin => plugin.State == PluginState.Initialized))
+            throw new InvalidOperationException("File import requires an initialized plugin");
+        Host().BeginImport(path);
+        return 0;
+    });
+    internal ImportResult? AdvanceImport(bool cancel) => OnOwner(() => Host().AdvanceImport(cancel));
+    internal ImportProgress ImportProgress => OnOwner(() => Host().ImportProgress);
     private PluginRecord Find(long id) => plugins.TryGetValue(id, out var plugin)
         ? plugin : throw new ArgumentException("Unknown plugin instance", nameof(id));
     private HostEnvironment Host()

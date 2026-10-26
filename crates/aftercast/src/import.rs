@@ -1,8 +1,110 @@
 use bytes::{Buf, BufMut, BytesMut};
 use camino::Utf8Path;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread::Thread;
+use tokio::sync::{oneshot, watch};
 
-use crate::runtime::{Request, canonicalize};
-use crate::{Error, Host};
+use crate::runtime::{ManagedSession, Request, canonicalize};
+use crate::{Error, HostHandle};
+
+/// Latest input progress; read-ahead bytes can lead parsed records by the bounded input buffer.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+pub struct ImportProgress {
+    pub lines_read: u64,
+    pub records_dispatched: u64,
+    pub bytes_read: u64,
+    pub total_bytes: u64,
+}
+
+/// One admitted import. Dropping this handle does not cancel it; cancellation is explicit.
+pub struct ImportJob {
+    pub(crate) cancellation: Arc<AtomicBool>,
+    pub(crate) thread: Thread,
+    pub(crate) progress: watch::Receiver<ImportProgress>,
+    pub(crate) result: oneshot::Receiver<Result<ImportReport, Error>>,
+}
+
+impl ImportJob {
+    pub fn cancel(&self) {
+        self.cancellation.store(true, Ordering::Release);
+        self.thread.unpark();
+    }
+    pub fn progress(&self) -> ImportProgress {
+        *self.progress.borrow()
+    }
+    /// Completes only after input cleanup, action draining and live-state restoration.
+    pub async fn wait(self) -> Result<ImportReport, Error> {
+        self.result.await.map_err(|_error| Error::Closed)?
+    }
+}
+
+pub(crate) struct PendingImport {
+    pub(crate) cancellation: Arc<AtomicBool>,
+    pub(crate) progress: watch::Sender<ImportProgress>,
+    pub(crate) complete: oneshot::Sender<Result<ImportReport, Error>>,
+}
+
+impl PendingImport {
+    pub(crate) fn begin(&self, session: &ManagedSession, path: &Utf8Path) -> Result<(), Error> {
+        let path = canonicalize(path)?;
+        let mut packet = import_packet(session.id(), path.as_str())?;
+        packet
+            .get_mut(56..60)
+            .ok_or(Error::Closed)?
+            .copy_from_slice(&1_u32.to_le_bytes());
+        session.request(Request::ImportOperation, &mut packet)?;
+        Ok(())
+    }
+
+    pub(crate) fn advance(
+        &mut self,
+        session: &ManagedSession,
+        stopping: bool,
+    ) -> Option<Result<ImportReport, Error>> {
+        let result = (|| {
+            let mut packet = import_packet(session.id(), "")?;
+            let command: u32 = if stopping || self.cancellation.load(Ordering::Acquire) {
+                3
+            } else {
+                2
+            };
+            packet
+                .get_mut(56..60)
+                .ok_or(Error::Closed)?
+                .copy_from_slice(&command.to_le_bytes());
+            match session.request(Request::ImportOperation, &mut packet)? {
+                0 => Ok(Some(decode_import(&packet))),
+                2 => Ok(Some(Err(Error::Cancelled))),
+                _ => {
+                    let mut fields = packet
+                        .get(24..56)
+                        .ok_or_else(|| Error::InvalidImportResponse("missing progress".into()))?;
+                    let progress = ImportProgress {
+                        lines_read: fields.get_u64_le(),
+                        records_dispatched: fields.get_u64_le(),
+                        bytes_read: fields.get_u64_le(),
+                        total_bytes: fields.get_u64_le(),
+                    };
+                    if progress.records_dispatched > progress.lines_read
+                        || progress.bytes_read > progress.total_bytes
+                        || progress.total_bytes > i64::MAX as u64
+                    {
+                        return Err(Error::InvalidImportResponse(
+                            "invalid progress counters".into(),
+                        ));
+                    }
+                    self.progress.send_replace(progress);
+                    Ok(None)
+                }
+            }
+        })();
+        match result {
+            Ok(result) => result,
+            Err(error) => Some(Err(error)),
+        }
+    }
+}
 
 /// An owned summary of one completed file import, after accepted actions have drained.
 ///
@@ -70,18 +172,15 @@ pub(crate) fn decode_import(packet: &[u8]) -> Result<ImportReport, Error> {
     })
 }
 
-impl Host {
+impl HostHandle {
     /// Imports the initial contents of a UTF-8 file through initialized plugins and drains actions.
     ///
     /// Call on the creation thread while live combat is idle. Live file delivery is paused and
     /// restored, including after failure. Appends after opening are excluded; malformed UTF-8,
     /// records over 8 MiB and premature truncation fail visibly. Partial imported history remains
     /// after failure. Hook delivery alone does not establish that a plugin accepted the records.
-    pub fn import_log(&mut self, path: impl AsRef<Utf8Path>) -> Result<ImportReport, Error> {
-        let path = canonicalize(path.as_ref())?;
-        let mut packet = import_packet(self.session.id(), path.as_str())?;
-        self.session.request(Request::Import, &mut packet)?;
-        decode_import(&packet)
+    pub async fn import_log(&self, path: impl AsRef<Utf8Path>) -> Result<ImportReport, Error> {
+        self.start_import(path).await?.wait().await
     }
 }
 

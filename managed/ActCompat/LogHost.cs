@@ -147,6 +147,13 @@ public partial class FormActMain
     internal void RunWithLogReadingSuspended(Action action, bool importOperation = false)
     {
         ArgumentNullException.ThrowIfNull(action);
+        using var suspension = SuspendLogReading(importOperation);
+        action();
+    }
+
+    // Hold suspension across import steps, e.g. while disk input is pending between host ticks.
+    private IDisposable SuspendLogReading(bool importOperation)
+    {
         // Import has already performed lifecycle preflight before reserving its exclusive scope.
         if (!importOperation) EnsureCanWaitForLogReader();
         LogFollower[] readers;
@@ -164,12 +171,22 @@ public partial class FormActMain
                 reader.Suspend(PumpOwnerCallbacks);
                 suspended.Add(reader);
             }
-            action();
+            return new LogSuspension(this, suspended);
         }
-        finally
+        catch
         {
             foreach (var reader in suspended) reader.Resume();
             lock (logGate) logPauseDepth--;
+            throw;
+        }
+    }
+
+    private sealed class LogSuspension(FormActMain root, List<LogFollower> readers) : IDisposable
+    {
+        public void Dispose()
+        {
+            foreach (var reader in readers) reader.Resume();
+            lock (root.logGate) root.logPauseDepth--;
         }
     }
 

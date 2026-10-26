@@ -22,16 +22,24 @@ camino.workspace = true
 netcorehost.workspace = true
 scopeguard.workspace = true
 thiserror.workspace = true
+tokio = { version = "1", features = ["sync"] }
 tracing.workspace = true
 
 [dev-dependencies]
 rstest.workspace = true
 tempfile = "3"
 
+[dev-dependencies.tokio]
+version = "1"
+features = ["macros", "rt", "time"]
+
 [target.'cfg(target_os = "linux")'.dependencies]
 aftercast-winforms.workspace = true
 
 [target."cfg(windows)".dev-dependencies]
+windows-sys = { version = "0.61", features = ["Win32_System_Com"] }
+
+[target."cfg(windows)".dependencies]
 windows-sys = { version = "0.61", features = ["Win32_System_Com"] }
 
 [features]

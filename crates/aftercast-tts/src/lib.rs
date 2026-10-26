@@ -122,6 +122,14 @@ impl<T: Backend + ?Sized> Backend for Box<T> {
 pub struct Speaker(Worker<Utterance>);
 
 impl Speaker {
+    /// Cancel accepted work and wait asynchronously for native backend disposal.
+    pub async fn shutdown(self) -> Result<(), Error> {
+        self.0.shutdown().await
+    }
+    /// Explicit blocking cleanup for a dedicated owner thread.
+    pub fn shutdown_blocking(self) -> Result<(), Error> {
+        self.0.shutdown_blocking()
+    }
     /// Initialize a backend on its owning worker, reporting initialization errors before returning.
     pub fn new<B: Backend>(
         factory: impl FnOnce() -> Result<B, Error> + Send + 'static,

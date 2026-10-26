@@ -4,7 +4,7 @@ use bytes::{Buf, BufMut, Bytes, BytesMut};
 use camino::Utf8Path;
 
 use crate::runtime::Request;
-use crate::{Error, Host};
+use crate::{Error, HostHandle};
 
 pub(crate) const LOG_HEADER: usize = 64;
 pub(crate) const MAX_LOG_BYTES: usize = 64 * 1024 * 1024;
@@ -269,23 +269,23 @@ pub(crate) fn decode_logs(packet: Bytes) -> Result<LogBatch, Error> {
     })
 }
 
-impl Host {
+impl HostHandle {
     /// Starts this host's single bounded subscription to nonempty original text selected for ACT hooks.
     ///
     /// Slow consumers lose oldest pending records, with exact loss ranges returned by
     /// [`Self::drain_logs`]. Core parsing continues. This is not a durable recording or a parsed
     /// record count. Unsubscribe before configuring another subscription.
-    pub fn subscribe_logs(
-        &mut self,
+    pub async fn subscribe_logs(
+        &self,
         config: LogSubscriptionConfig,
     ) -> Result<LogSubscription, Error> {
-        let mut packet = subscribe_packet(self.session.id(), config)?;
-        if self.session.request(Request::Logs, &mut packet)? != 0 {
+        let mut packet = subscribe_packet(self.session, config)?;
+        if self.request(Request::Logs, &mut packet).await? != 0 {
             return Err(Error::InvalidLogResponse(
                 "unexpected subscription status".to_owned(),
             ));
         }
-        subscription_result(&packet, self.session.id())
+        subscription_result(&packet, self.session)
     }
 
     /// Drains an owned batch without waiting for new records or borrowing managed memory.
@@ -294,12 +294,12 @@ impl Host {
     /// after [`Self::pump`], and drain until `records` is empty. Cloned line bytes share only Rust
     /// memory. An oversized record discards the pending prefix and itself, preserving an exact
     /// missing range; inspect `dropped` even for an empty batch.
-    pub fn drain_logs(&mut self, subscription: LogSubscription) -> Result<LogBatch, Error> {
-        self.check_log_subscription(subscription)?;
+    pub async fn drain_logs(&self, subscription: LogSubscription) -> Result<LogBatch, Error> {
+        self.check_log_subscription(subscription).await?;
         let mut capacity = 64 * 1024;
         loop {
-            let mut packet = log_packet(self.session.id(), subscription.instance, 2, capacity);
-            match self.session.request(Request::Logs, &mut packet)? {
+            let mut packet = log_packet(self.session, subscription.instance, 2, capacity);
+            match self.request(Request::Logs, &mut packet).await? {
                 0 => return decode_logs(packet.freeze()),
                 1 => capacity = larger_log_capacity(&packet)?,
                 _ => {
@@ -313,10 +313,10 @@ impl Host {
 
     /// Ends a subscription and explicitly discards its unread records and loss state.
     /// Host stop also discards unread subscription data.
-    pub fn unsubscribe_logs(&mut self, subscription: LogSubscription) -> Result<(), Error> {
-        self.check_log_subscription(subscription)?;
-        let mut packet = log_packet(self.session.id(), subscription.instance, 3, LOG_HEADER);
-        if self.session.request(Request::Logs, &mut packet)? != 0 {
+    pub async fn unsubscribe_logs(&self, subscription: LogSubscription) -> Result<(), Error> {
+        self.check_log_subscription(subscription).await?;
+        let mut packet = log_packet(self.session, subscription.instance, 3, LOG_HEADER);
+        if self.request(Request::Logs, &mut packet).await? != 0 {
             return Err(Error::InvalidLogResponse(
                 "unexpected unsubscribe status".to_owned(),
             ));
@@ -324,8 +324,8 @@ impl Host {
         Ok(())
     }
 
-    fn check_log_subscription(&self, subscription: LogSubscription) -> Result<(), Error> {
-        if subscription.session != self.session.id() {
+    async fn check_log_subscription(&self, subscription: LogSubscription) -> Result<(), Error> {
+        if subscription.session != self.session {
             return Err(Error::InvalidLogRequest(
                 "subscription belongs to another host session".to_owned(),
             ));

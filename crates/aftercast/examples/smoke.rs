@@ -1,6 +1,7 @@
 use aftercast::{Host, HostConfig, extract_bridge};
 
-fn main() -> Result<(), Box<dyn std::error::Error>> {
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let mut args = std::env::args_os().skip(1);
     let root = camino::Utf8PathBuf::try_from(
         args.next()
@@ -17,8 +18,8 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .data_directory(directory.join("state"))
         .bridge_directory(&directory)
         .build();
-    let host = Host::start(config)?;
-    println!("Managed session {} is ready", host.session_id()?);
-    host.stop()?;
+    let host = Host::start(config).await?;
+    println!("Managed session {} is ready", host.session_id().await?);
+    host.shutdown().await?;
     Ok(())
 }

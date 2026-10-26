@@ -3,7 +3,7 @@ use bytes::{BufMut, BytesMut};
 use camino::Utf8PathBuf;
 
 use crate::runtime::{Request, canonicalize};
-use crate::{Error, Host};
+use crate::{Error, HostHandle};
 
 /// Constructor-only loading of a trusted ACT plugin; no initialization or parsing occurs.
 #[derive(Debug, Builder)]
@@ -23,7 +23,7 @@ pub struct PluginId {
     instance: u64,
 }
 
-impl Host {
+impl HostHandle {
     /// Constructs a trusted plugin and retains it until this host stops.
     ///
     /// Constructors execute arbitrary code in this process and may register global handlers.
@@ -33,14 +33,10 @@ impl Host {
     /// called by this method. Linux provides only headless status controls, without rendering
     /// or native handles. For example, select a type with
     /// `PluginConfig::builder().path("plugin.dll").type_name("Example.Plugin").build()`.
-    pub fn create_plugin(&mut self, config: PluginConfig) -> Result<PluginId, Error> {
+    pub async fn create_plugin(&self, config: PluginConfig) -> Result<PluginId, Error> {
         let path = canonicalize(&config.path)?;
-        let mut packet = plugin_packet(
-            self.session.id(),
-            path.as_str(),
-            config.type_name.as_deref(),
-        )?;
-        self.session.request(Request::CreatePlugin, &mut packet)?;
+        let mut packet = plugin_packet(self.session, path.as_str(), config.type_name.as_deref())?;
+        self.request(Request::CreatePlugin, &mut packet).await?;
         let bytes: [u8; 8] = packet
             .get(32..40)
             .and_then(|bytes| bytes.try_into().ok())
@@ -50,7 +46,7 @@ impl Host {
             return Err(Error::InvalidPluginRequest("zero plugin result".to_owned()));
         }
         Ok(PluginId {
-            session: self.session.id(),
+            session: self.session,
             instance,
         })
     }
@@ -60,18 +56,18 @@ impl Host {
     /// Same-thread exceptions reported through ACT's `WriteExceptionLog` during the callback fail this
     /// attempt. Failed instances cannot be retried; construct another instance instead. Arbitrary
     /// plugin side effects cannot be rolled back. Windows requires a caller-owned STA/UI loop.
-    pub fn initialize_plugin(&mut self, plugin: PluginId) -> Result<String, Error> {
-        self.plugin_call(plugin, 1)
+    pub async fn initialize_plugin(&self, plugin: PluginId) -> Result<String, Error> {
+        self.plugin_call(plugin, 1).await
     }
 
     /// Calls `DeInitPlugin` at most once, removes its registration and disposes host-owned controls.
     /// The host does not retry a failing callback during shutdown.
-    pub fn deinitialize_plugin(&mut self, plugin: PluginId) -> Result<(), Error> {
-        self.plugin_call(plugin, 2).map(|_status| ())
+    pub async fn deinitialize_plugin(&self, plugin: PluginId) -> Result<(), Error> {
+        self.plugin_call(plugin, 2).await.map(|_status| ())
     }
 
-    fn plugin_call(&mut self, plugin: PluginId, command: u32) -> Result<String, Error> {
-        if plugin.session != self.session.id() {
+    async fn plugin_call(&self, plugin: PluginId, command: u32) -> Result<String, Error> {
+        if plugin.session != self.session {
             return Err(Error::InvalidPluginRequest(
                 "plugin belongs to another host session".to_owned(),
             ));
@@ -79,12 +75,12 @@ impl Host {
         let mut request = BytesMut::with_capacity(8224);
         request.put_u32_le(8224);
         request.put_u32_le(1);
-        request.put_u64_le(self.session.id());
+        request.put_u64_le(self.session);
         request.put_u64_le(plugin.instance);
         request.put_u32_le(command);
         request.put_u32_le(0);
         request.resize(8224, 0);
-        self.session.request(Request::PluginCommand, &mut request)?;
+        self.request(Request::PluginCommand, &mut request).await?;
         let length: [u8; 4] = request
             .get(28..32)
             .and_then(|bytes| bytes.try_into().ok())

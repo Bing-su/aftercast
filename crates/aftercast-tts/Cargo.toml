@@ -9,8 +9,11 @@ publish.workspace = true
 msedge-tts = { version = "0.4", default-features = false, features = ["tokio-runtime"], optional = true }
 rodio = { version = "0.23", default-features = false, features = ["flac", "mp3", "playback", "vorbis", "wav"], optional = true }
 thiserror.workspace = true
-tokio = { version = "1", features = ["macros", "net", "rt", "time"], optional = true }
+tokio = { version = "1", features = ["sync"] }
 url = { version = "2", optional = true }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["macros", "rt", "time"] }
 
 [target.'cfg(target_os = "linux")'.dependencies]
 speech-dispatcher = { version = "0.16", optional = true }
@@ -20,7 +23,7 @@ windows = { version = "0.62", features = ["Win32_Media_Speech", "Win32_System_Co
 
 [features]
 default = ["edge", "system"]
-edge = ["dep:msedge-tts", "dep:tokio", "playback"]
+edge = ["dep:msedge-tts", "playback", "tokio/macros", "tokio/net", "tokio/rt", "tokio/time"]
 playback = ["dep:rodio", "dep:url"]
 system = ["dep:speech-dispatcher", "dep:windows"]
 

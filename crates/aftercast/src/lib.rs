@@ -24,8 +24,8 @@ pub use combat::{
     AttackSummary, EncounterDetail, EncounterId, EncounterPage, EncounterStatus, EncounterSummary,
 };
 pub use diagnostics::HostDiagnostics;
-pub use host::Host;
-pub use import::ImportReport;
+pub use host::{Host, HostHandle};
+pub use import::{ImportJob, ImportProgress, ImportReport};
 pub use logs::{
     LogBatch, LogLoss, LogRecord, LogSubscription, LogSubscriptionConfig, LogTimeKind, LogTimestamp,
 };
@@ -37,6 +37,14 @@ pub use snapshots::{CombatRevision, CombatSnapshot, CombatSnapshotStatus, Combat
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("the host command queue is full or a conflicting operation is active")]
+    Busy,
+    #[error("import canceled after retaining partial history and restoring live state")]
+    Cancelled,
+    #[error("the host is closed")]
+    Closed,
+    #[error("host worker failed: {0}")]
+    WorkerFailed(String),
     #[error("invalid archive request: {0}")]
     InvalidArchiveRequest(String),
     #[error("invalid archive response: {0}")]

@@ -1,7 +1,7 @@
 use bytes::{Buf, BufMut, BytesMut};
 
 use crate::runtime::Request;
-use crate::{Error, Host};
+use crate::{Error, HostHandle};
 
 pub(crate) const DIAGNOSTIC_CAPACITY: usize = 32 + 1024 * 1024;
 
@@ -59,18 +59,18 @@ pub(crate) fn decode_diagnostics(packet: &[u8]) -> Result<HostDiagnostics, Error
     Ok(HostDiagnostics { total, recent })
 }
 
-impl Host {
+impl HostHandle {
     /// Reads bounded host-error and backlog-warning history without consuming it or requiring a pump.
     ///
     /// Compare `total` between calls, and inspect `omitted()` to detect older errors outside the
     /// retained history. This reports host diagnostics, not errors caught privately by a plugin.
-    pub fn diagnostics(&self) -> Result<HostDiagnostics, Error> {
+    pub async fn diagnostics(&self) -> Result<HostDiagnostics, Error> {
         let mut packet = BytesMut::with_capacity(DIAGNOSTIC_CAPACITY);
         packet.put_u32_le(DIAGNOSTIC_CAPACITY as u32);
         packet.put_u32_le(1);
-        packet.put_u64_le(self.session.id());
+        packet.put_u64_le(self.session);
         packet.resize(DIAGNOSTIC_CAPACITY, 0);
-        self.session.request(Request::Diagnostics, &mut packet)?;
+        self.request(Request::Diagnostics, &mut packet).await?;
         decode_diagnostics(&packet)
     }
 }
