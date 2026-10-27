@@ -63,7 +63,7 @@ revision/identity binding remains required before exposing automatic proposals.
 | Names/identity | Raw events carry companionLogName; immutable managed OriginalLogRecord captures actual source Path and CompanionLogName. Each dispatched record obtains its own global sorter, retaining distinct action/log identity across equal timestamps and private archive restart. Rust transport of companion metadata is pending C3. |
 | Bounds         | One ready record per source, one response in transit, at most one outstanding request per source; reject aggregate ready text above 64 MiB UTF-16. Record framing remains bounded to 8 MiB source bytes. Large decoder buffers are released after each record rather than retained per admitted reader.                        |
 | EOF            | Main retains its existing unterminated final-record support. Companion input follows ACT's complete-record requirement: an incomplete EOF suffix is excluded and reported as a warning, including a partial malformed character.                                                                                               |
-| Range          | Apply inclusive bounds per source and retire each at its first later timestamp. Other sources continue to their own bound. Out-of-range main prefix may supply zone context; companion prefixes do not override it.                                                                                                            |
+| Range          | Apply inclusive bounds per source and retire each at its first later timestamp. Companion sources also stop at the terminal main watermark; they cannot drain future dated suffixes after main completion. Out-of-range main prefix may supply zone context; companion prefixes do not override it.                            |
 | Failure/cancel | Keep admitted partial history, report errors, cancel input, dispose all readers and drain accepted actions before restoring live context. A low-level Host Stop still rejects active import; cancel/drain before disposal, as existing lifecycle requires.                                                                     |
 
 Synthetic managed Host tests cover mixed UTF-8/949/BOM UTF-16 input, mutated hook
@@ -75,16 +75,47 @@ head limits and exclusive file opens after cleanup. The native ACT companion
 thread itself has not been executed. Bridge/Rust/GUI selection and **live companion
 following (C2b)** are still unconnected; no completion claim covers those paths.
 
-### Remaining C2a EOF/watermark parity
+### C2a main EOF/watermark contract
 
-The inspected ACT import locks companion readers when its main loop completes
-and sets their abort flags in finally. Companion dispatch waits on the main
-LastEstimatedTime. C2a currently drains each explicitly selected source to its
-own captured EOF/range endpoint, including dated records after main EOF. Thus it
-can admit later companion records that ACT's clock/termination gates may leave
-undispatched. This is distinct from deterministic same-time ordering and is not
-covered by the genuine pure-path/StreamReader probes. Native timing has not been
-executed. Main-watermark/end-of-main admission and cancellation/partial-result
-regressions must be reconciled in the next C2 step before claiming companion
-import parity or completing C2. C2b live following and C3 transport/UI also remain
-pending.
+The inspected ACT CompanionLogFile.ThreadCompanionLog waits for LastEstimatedTime
+for dated records, skips that time gate for MinValue, and only advances the shared
+clock. ImportFile observes main timestamps before its range comparison, locks
+companions when the main loop finishes, then aborts them in finally. The genuine
+CompanionPathProbe now also binds LastKnownTime/LastEstimatedTime: MinValue does
+not replace known time; ordinary main assignments can move backward. These are
+actual property contracts, not execution of the native companion thread.
+
+Offline replay uses the main file's current head as timestamp look-ahead and the
+last observed non-MinValue main timestamp as its terminal watermark. It does not
+advance an import watermark with elapsed wall time. This removes the former
+unbounded post-main drain and makes the following rules deterministic:
+
+| Boundary                  | Companion inclusion/exclusion                                                                                                                                                                                                                                                            |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Normal main EOF           | Drain complete companion records no later than the terminal main timestamp; include equal-time rows. Retire a companion at its first later head and never search past that head for older records.                                                                                       |
+| Empty or blank-only main  | Validate/open requested files, but do not decode or dispatch companion records. Empty input supplies no main clock or meaningful replay context.                                                                                                                                         |
+| Undated-only main         | Undated complete companions may dispatch; dated heads cannot pass the unset main watermark. A later undated main record does not erase a previously known timestamp.                                                                                                                     |
+| Main clock moves backward | Terminal watermark follows the last observed dated main record, not the maximum ever observed. Already admitted records stay retained.                                                                                                                                                   |
+| Inclusive range end       | The first main timestamp beyond End is an observed termination boundary even though it is not dispatched; companions still require the requested inclusive range. Out-of-range/future heads retire their source without reading later suffix records.                                    |
+| Cancellation/error        | Admit no more raw callbacks after cancellation is processed or an input error is observed. Dispose input and drain already accepted actions, retain partial history and restore live context. Do not use EOF filtering to hide an error needed to obtain the next candidate's timestamp. |
+
+Main blank records are consumed before opening the companion read gate. All
+handles are still admitted together; missing/aliased/invalid selected sources
+remain admission errors even when the main file is empty. A known rejected
+future head prevents decoding its later suffix, so malformed bytes behind that
+head cannot turn excluded data into an import error. Malformed bytes in a needed
+head remain an explicit error because no trustworthy timestamp can be inferred.
+
+Managed ImportProgress/ImportResult expose CompanionHeadsExcluded: the number of
+already framed future heads rejected by the main terminal watermark, at most one
+per retired companion. This is not the unknown number of unread suffix records.
+LinesRead includes those framed heads; RecordsDispatched excludes them. C3 must
+carry this metadata through Bridge/Rust/UI; the existing transport still has no
+companion selection or exclusion field.
+
+These are deliberate offline scheduling rules derived from ACT's main-clock and
+termination gates. Equal-time records use main then name order; empty/undated
+races and wall-clock drift are not reproduced. **They are not a claim of native
+ACT thread timing parity.** The genuine path/clock/StreamReader probes run, while
+native companion threads and history dialogs remain unexecuted. C2b live following
+and C3 transport/UI remain pending.

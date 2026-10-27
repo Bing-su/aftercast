@@ -10,7 +10,7 @@ namespace Aftercast.ActCompat
 
 namespace Advanced_Combat_Tracker
 {
-    internal readonly record struct ImportSourceRecord(string Line, DateTime Time, string Path, string Name, int Source);
+    internal readonly record struct ImportSourceRecord(string Line, DateTime Time, string Path, string Name, int Source, bool BeyondMain = false);
 
     // One record per source is exposed to the owner. Timestamp callbacks never run on the disk task.
     internal sealed class ImportSourceInput(string path, Encoding encoding, bool detectBom, ImportCompanion[] selected, Action<string> warning)
@@ -28,6 +28,8 @@ namespace Advanced_Combat_Tracker
         // At most one command per source can be outstanding; heads must return before another consume.
         private readonly Channel<int> requests = Channel.CreateBounded<int>(selected.Length + 1);
         private long totalBytes, bytesRead, headCharacters;
+        private bool hasMainRecord, companionsStarted;
+        private DateTime mainWatermark = DateTime.MinValue;
         internal long TotalBytes => Interlocked.Read(ref totalBytes);
         internal long BytesRead => Interlocked.Read(ref bytesRead);
         internal Exception? Failure { get; private set; }
@@ -94,7 +96,8 @@ namespace Advanced_Combat_Tracker
                     }
                     await responses.Writer.WriteAsync((index, line, incomplete), cancellation).ConfigureAwait(false);
                 }
-                for (var index = 0; index < sources.Length; index++) await Read(index).ConfigureAwait(false);
+                // Do not decode companions for an empty/blank main source. The owner opens their gate after a meaningful main head.
+                await Read(0).ConfigureAwait(false);
                 while (remaining != 0 && await requests.Reader.WaitToReadAsync(cancellation).ConfigureAwait(false))
                     while (requests.Reader.TryRead(out var command))
                     {
@@ -140,8 +143,34 @@ namespace Advanced_Combat_Tracker
                     headCharacters = checked(headCharacters + response.Line.Length);
                     if (headCharacters > 32 * 1024 * 1024) throw new InvalidDataException("Companion import heads exceed 64 MiB of UTF-16 text");
                     source.Head = new(response.Line, time, source.Path, source.Name, response.Source);
+                    if (response.Source == 0 && response.Line.Length != 0)
+                    {
+                        hasMainRecord = true;
+                        if (time != DateTime.MinValue) mainWatermark = time;
+                    }
                 }
             }
+            // Blank main records cannot authorize companion time; consume them until a real main head or EOF is known.
+            if (sources[0].Head is { Line.Length: 0 } blank)
+            {
+                record = blank;
+                return true;
+            }
+            if (!companionsStarted && hasMainRecord)
+            {
+                companionsStarted = true;
+                for (var index = 1; index < sources.Length; index++)
+                {
+                    Request(index);
+                }
+            }
+            if (sources[0].Ended && !companionsStarted)
+                for (var index = 1; index < sources.Length; index++)
+                    if (!sources[index].Ended)
+                    {
+                        sources[index].Ended = true;
+                        Request(-index - 1);
+                    }
             if (sources.Any(source => !source.Ended && source.Head is null))
             {
                 if (responses.Reader.Completion.IsCompleted) responses.Reader.Completion.GetAwaiter().GetResult();
@@ -152,6 +181,8 @@ namespace Advanced_Combat_Tracker
             foreach (var source in sources)
                 if (source.Head is { } head && (best is null || head.Time < best.Value.Time)) best = head;
             record = best.GetValueOrDefault();
+            if (best is not null && record.Source != 0 && sources[0].Ended && record.Time != DateTime.MinValue && record.Time > mainWatermark)
+                record = record with { BeyondMain = true };
             return best is not null;
         }
 
@@ -161,7 +192,12 @@ namespace Advanced_Combat_Tracker
             headCharacters -= source.Head!.Value.Line.Length;
             source.Head = null;
             if (retire) source.Ended = true;
-            if (!requests.Writer.TryWrite(retire ? -index - 1 : index)) throw new InvalidOperationException("Companion read request bound was exceeded");
+            Request(retire ? -index - 1 : index);
         }
+        private void Request(int command)
+        {
+            if (!requests.Writer.TryWrite(command)) throw new InvalidOperationException("Companion read request bound was exceeded");
+        }
+
     }
 }

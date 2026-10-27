@@ -1,4 +1,6 @@
 using System.Runtime.CompilerServices;
+using System.Diagnostics;
+using System.Reflection;
 using Advanced_Combat_Tracker;
 
 namespace Aftercast.LegacyReference;
@@ -20,6 +22,16 @@ public static class CompanionPathProbe
             try { root.GetCompanionFilePath("main.log", name); throw new Exception("Invalid ACT companion name accepted"); }
             catch (ArgumentException) { }
         }
+        // Bind actual clock properties used by the inspected companion gate, without executing its UI-dependent thread.
+        var fields = BindingFlags.Instance | BindingFlags.NonPublic;
+        typeof(FormActMain).GetField("estimatedTimer", fields)?.SetValue(root, new Stopwatch());
+        typeof(FormActMain).GetField("logGate", fields)?.SetValue(root, new object());
+        var epoch = DateTime.UnixEpoch;
+        root.LastKnownTime = epoch;
+        root.LastKnownTime = DateTime.MinValue;
+        if (root.LastKnownTime != epoch || root.LastEstimatedTime < epoch) throw new Exception("ACT undated clock contract changed");
+        root.LastKnownTime = epoch.AddSeconds(-1);
+        if (root.LastKnownTime != epoch.AddSeconds(-1)) throw new Exception("ACT main clock assignment cannot move backward");
         return "Companion paths";
     }
 }

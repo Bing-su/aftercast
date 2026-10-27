@@ -39,6 +39,7 @@ internal static class CompanionImportChecks
         HostLifetimeChecks.RunBounded(MergeAndOwnership);
         HostLifetimeChecks.RunBounded(RangeAndIncomplete);
         HostLifetimeChecks.RunBounded(ClockAndOutOfOrder);
+        HostLifetimeChecks.RunBounded(MainWatermarkBoundaries);
         HostLifetimeChecks.RunBounded(FailureAndCancel);
         HostLifetimeChecks.RunBounded(TruncationAndShutdown);
         HostLifetimeChecks.RunBounded(AliasAndMemoryBounds);
@@ -101,10 +102,10 @@ internal static class CompanionImportChecks
         var result = fixture.Host.ImportLog(fixture.Main, new(Epoch.AddSeconds(1), Epoch.AddSeconds(2)), companions: [new("side")]);
         Check(result.RecordsDispatched == 3 && seen.SequenceEqual([":1|start", "side:1|same", "side:2|end"]), "inclusive per-source boundaries");
         seen.Clear();
-        File.WriteAllText(fixture.Main, "0|main-final", new UTF8Encoding(false));
+        File.WriteAllText(fixture.Main, "2|main-final", new UTF8Encoding(false));
         File.WriteAllBytes(fixture.Companion("side"), Encoding.UTF8.GetBytes("1|complete\n2|pending").Concat(new byte[] { 0xff }).ToArray());
         result = fixture.Host.ImportLog(fixture.Main, companions: [new("side")]);
-        Check(result.RecordsDispatched == 2 && seen.SequenceEqual([":0|main-final", "side:1|complete"]), "companion incomplete EOF dispatch");
+        Check(result.RecordsDispatched == 2 && seen.SequenceEqual(["side:1|complete", ":2|main-final"]), "companion incomplete EOF dispatch");
         Check(fixture.Host.RecentDiagnostics.Any(text => text.Contains("incomplete EOF", StringComparison.Ordinal)), "excluded companion tail was hidden");
         seen.Clear();
         File.WriteAllBytes(fixture.Companion("side"), Encoding.UTF8.GetBytes("1|").Concat(new byte[] { 0xff, 10 }).ToArray());
@@ -113,14 +114,54 @@ internal static class CompanionImportChecks
     private static void ClockAndOutOfOrder()
     {
         using var fixture = new Fixture();
-        File.WriteAllText(fixture.Main, "2|main\n");
+        File.WriteAllText(fixture.Main, "4|main\n");
         File.WriteAllText(fixture.Companion("side"), "3|forward\n1|backward\nundated\n");
         var clocks = new List<DateTime>();
         var lines = new List<string>();
         fixture.Root.OnLogLineRead += (_, info) => { clocks.Add(fixture.Root.LastKnownTime); lines.Add(info.originalLogLine); };
         Check(fixture.Host.ImportLog(fixture.Main, companions: [new("side")]).RecordsDispatched == 4, "out-of-order count");
-        Check(lines.SequenceEqual(["2|main", "3|forward", "1|backward", "undated"]), "physical companion order was resorted");
-        Check(clocks.SequenceEqual(new[] { Epoch.AddSeconds(2), Epoch.AddSeconds(3), Epoch.AddSeconds(3), Epoch.AddSeconds(3) }), "companion rewound main clock");
+        Check(lines.SequenceEqual(["3|forward", "1|backward", "undated", "4|main"]), "physical companion order was resorted");
+        Check(clocks.SequenceEqual(new[] { Epoch.AddSeconds(3), Epoch.AddSeconds(3), Epoch.AddSeconds(3), Epoch.AddSeconds(4) }), "companion rewound main clock");
+    }
+    private static void MainWatermarkBoundaries()
+    {
+        void Case(string main, string side, string[] expected, long excluded, ImportRange? range = null)
+        {
+            using var fixture = new Fixture();
+            File.WriteAllText(fixture.Main, main, new UTF8Encoding(false));
+            File.WriteAllText(fixture.Companion("side"), side, new UTF8Encoding(false));
+            var seen = new List<string>();
+            fixture.Root.OnLogLineRead += (_, info) => seen.Add(info.companionLogName + ":" + info.originalLogLine);
+            var result = fixture.Host.ImportLog(fixture.Main, range, companions: [new("side")]);
+            Check(seen.SequenceEqual(expected) && result.CompanionHeadsExcluded == excluded, "main watermark boundary: " + main.Replace("\n", "/"));
+            Check(fixture.Root.LogFilePath == "live.log", "watermark live restoration");
+        }
+        Case("", "undated-side\n1|future\n", [], 0);
+        Case("\n\r\n", "1|future\n", [], 0);
+        Case("1|main\n", "0|older\n1|tie-a\n1|tie-b\n2|future\n0|never\n",
+            ["side:0|older", ":1|main", "side:1|tie-a", "side:1|tie-b"], 1);
+        Case("undated-main\n", "undated-side\n1|future\n", [":undated-main", "side:undated-side"], 1);
+        Case("0|prefix\n3|boundary\n1|never\n", "1|start\n2|end\n3|outside\n1|never\n",
+            ["side:1|start", "side:2|end"], 0, new(Epoch.AddSeconds(1), Epoch.AddSeconds(2)));
+        Case("1|end\n", "1|tie\n2|in-range-but-beyond-main\n", [":1|end", "side:1|tie"], 1,
+            new(Epoch.AddSeconds(1), Epoch.AddSeconds(3)));
+        Case("2|gate\n1|last\n", "3|future\n1|never\n", [":2|gate", ":1|last"], 1);
+        Case("2|gate\nundated-last\n", "2|tie\n3|future\n", [":2|gate", ":undated-last", "side:2|tie"], 1);
+        using var empty = new Fixture();
+        File.WriteAllText(empty.Main, "");
+        File.WriteAllBytes(empty.Companion("side"), [0xff, 10]);
+        Check(empty.Host.ImportLog(empty.Main, companions: [new("side")]).RecordsDispatched == 0, "empty main decoded a companion");
+        File.WriteAllText(empty.Main, "1|main\n", new UTF8Encoding(false));
+        File.WriteAllBytes(empty.Companion("side"), Encoding.UTF8.GetBytes("2|future\n").Concat(new byte[] { 0xff, 10 }).ToArray());
+        var bounded = empty.Host.ImportLog(empty.Main, companions: [new("side")]);
+        Check(bounded.RecordsDispatched == 1 && bounded.CompanionHeadsExcluded == 1, "decoder crossed a rejected future head");
+        var seenFailure = new List<string>();
+        empty.Root.OnLogLineRead += (_, info) => seenFailure.Add(info.originalLogLine);
+        File.WriteAllBytes(empty.Main, Encoding.UTF8.GetBytes("1|accepted\n").Concat(new byte[] { 0xff, 10 }).ToArray());
+        File.WriteAllText(empty.Companion("side"), "2|future\n");
+        try { empty.Host.ImportLog(empty.Main, companions: [new("side")]); throw new Exception("Main decode error accepted"); }
+        catch (InvalidDataException) { }
+        Check(seenFailure.SequenceEqual(["1|accepted"]) && empty.Root.LogFilePath == "live.log", "main error released a future companion");
     }
     private static void FailureAndCancel()
     {
@@ -147,9 +188,10 @@ internal static class CompanionImportChecks
             Check(fixture.Host.AdvanceImport(false) is null, "import ended before cancel");
             Thread.Sleep(1);
         }
+        var beforeCancel = seen.Count;
         try { while (fixture.Host.AdvanceImport(true) is null) Thread.Sleep(1); throw new Exception("Cancel accepted as success"); }
         catch (OperationCanceledException) { }
-        Check(fixture.Root.LogFilePath == "live.log", "cancel restoration");
+        Check(seen.Count == beforeCancel && fixture.Root.LogFilePath == "live.log", "cancel admitted another companion or lost restoration");
         File.WriteAllText(fixture.Companion("side"), "1|reused\n");
         Check(fixture.Host.ImportLog(fixture.Main, companions: [new("side")]).RecordsDispatched == 3, "admission not reusable");
         try { fixture.Host.ImportLog(fixture.Main, companions: [new("missing")]); throw new Exception("Missing selection accepted"); }
@@ -161,7 +203,7 @@ internal static class CompanionImportChecks
     private static void TruncationAndShutdown()
     {
         using var fixture = new Fixture();
-        File.WriteAllText(fixture.Main, "0|main\n");
+        File.WriteAllText(fixture.Main, "0|main\n2|last\n");
         File.WriteAllText(fixture.Companion("side"), string.Concat(Enumerable.Repeat("1|body\n", 5000)));
         LogLineEventDelegate truncate = (_, info) =>
         {

@@ -8,8 +8,8 @@ namespace Aftercast.ActCompat
 {
     // Counts describe raw hook dispatch, e.g. a parser can ignore a delivered line.
     public sealed record ImportResult(long LinesRead, long RecordsDispatched, int Encounters,
-        int Combatants, long Damage, long Healed);
-    public sealed record ImportProgress(long LinesRead, long RecordsDispatched, long BytesRead, long TotalBytes);
+        int Combatants, long Damage, long Healed, long CompanionHeadsExcluded = 0);
+    public sealed record ImportProgress(long LinesRead, long RecordsDispatched, long BytesRead, long TotalBytes, long CompanionHeadsExcluded = 0);
 }
 
 namespace Advanced_Combat_Tracker
@@ -130,7 +130,7 @@ namespace Advanced_Combat_Tracker
             private ZoneData? importZone;
             private int firstEncounter;
             private ulong snapshotBefore;
-            private long lines, dispatched, bytesRead, totalBytes;
+            private long lines, dispatched, bytesRead, totalBytes, companionHeadsExcluded;
             private readonly CancellationTokenSource cancellation = new();
             private readonly Channel<string[]> input = Channel.CreateBounded<string[]>(new BoundedChannelOptions(4)
             {
@@ -143,7 +143,7 @@ namespace Advanced_Combat_Tracker
             private ImportSourceInput? sourceInput;
             private Task? reading;
             private readonly List<Exception> failures = new();
-            internal ImportProgress Progress => new(lines, dispatched, sourceInput?.BytesRead ?? Interlocked.Read(ref bytesRead), sourceInput?.TotalBytes ?? Interlocked.Read(ref totalBytes));
+            internal ImportProgress Progress => new(lines, dispatched, sourceInput?.BytesRead ?? Interlocked.Read(ref bytesRead), sourceInput?.TotalBytes ?? Interlocked.Read(ref totalBytes), companionHeadsExcluded);
             internal DateTime? LiveEstimatedTime => live?.EstimatedTime;
 
             internal void Start()
@@ -266,9 +266,16 @@ namespace Advanced_Combat_Tracker
                                 }
                             }
                             var next = nextLine.Value;
-                            var skipped = SkipOutsideRange(next.Line, next.Time, next.Source == 0);
+                            bool skipped;
+                            if (next.BeyondMain)
+                            {
+                                lines++;
+                                companionHeadsExcluded++;
+                                skipped = true;
+                            }
+                            else skipped = SkipOutsideRange(next.Line, next.Time, next.Source == 0);
                             if (!skipped && !TryDispatch(next)) break;
-                            sourceInput?.Consume(next.Source, range is not null && next.Line.Length != 0 && next.Time > range.End);
+                            sourceInput?.Consume(next.Source, next.BeyondMain || range is not null && next.Line.Length != 0 && next.Time > range.End);
                             nextLine = null;
                         }
                         if (!ending && nextLine is null && (sourceInput?.Completed ?? (buffered.Count == 0 && input.Reader.Completion.IsCompleted)))
@@ -343,7 +350,7 @@ namespace Advanced_Combat_Tracker
 
             private ImportResult Finish()
             {
-                ImportResult result = new(lines, dispatched, 0, 0, 0, 0);
+                ImportResult result = new(lines, dispatched, 0, 0, 0, 0, companionHeadsExcluded);
                 try
                 {
                     try { root.EndCombat(false); root.WaitForCombatActions(); }
@@ -361,7 +368,7 @@ namespace Advanced_Combat_Tracker
                                 damage = checked(damage + encounter.Damage);
                                 healed = checked(healed + encounter.Healed);
                             }
-                            result = new(lines, dispatched, encounters, combatants, damage, healed);
+                            result = new(lines, dispatched, encounters, combatants, damage, healed, companionHeadsExcluded);
                         }
                     }
                     catch (Exception error) { failures.Add(error); }
