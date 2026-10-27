@@ -1,0 +1,48 @@
+# Checkpoint discovery and explicit selection
+
+The managed history service provides metadata browsing and explicit checkpoint
+selection, reusing private archive restoration and action/source identities.
+Bridge/Rust transport and the History GUI are not yet connected. This is distinct
+from ACT's `ThreadHistoryImport`, which locates source logs and reparses a time range.
+
+| Managed operation                  | Contract                                                                                                                                                                                                                                                                                                                                            |
+| ---------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ReadHistory` / `ReadHistoryAsync` | Owned metadata pages of 1..16 rows. Query title, zone, character or their combined fields with a case-insensitive substring. Character scope is an aftercast extension.                                                                                                                                                                             |
+| Date search                        | Encounter **start** is within `[StartTicks, EndTicks)`, matching ACT's date/time search. This is not overlap search. Values are DateTime ticks after existing binary DateTime interpretation; time kinds remain explicit and no UTC conversion is applied by this query.                                                                            |
+| Snapshot                           | SHA-256 of exactly the index bytes read from one descriptor. Parsing, sorting and IDs refer to those same bytes. Byte-identical index contents share a revision, including after replacement.                                                                                                                                                       |
+| Stable ordering                    | Start ticks descending, then archive filename ordinal. Equal-time encounters remain distinct. Offset/limit page this ordered snapshot.                                                                                                                                                                                                              |
+| Missing/empty/error                | A missing index is an empty snapshot with `IndexPresent=false`. A valid empty Records document is present with zero rows. Filters can yield zero results while IndexedCount remains positive. Malformed/unreadable existing indexes fail visibly.                                                                                                   |
+| Metadata effects                   | Query does not add public ACT history records, intern every queried string, restore graph data or rewrite files. AlreadyRestored describes the current graph snapshot.                                                                                                                                                                              |
+| Presence                           | PayloadPresent is a basic file-existence hint. It does not verify readability, payload integrity or availability of the original source logs. Integrity is checked during restoration of pending payloads.                                                                                                                                          |
+| Selection                          | Expected index revision and 1..64 distinct content-addressed sibling IDs. Copy the caller's array before asynchronous work. Unknown IDs, duplicates, traversal and stale revision fail before attachment.                                                                                                                                           |
+| Writer coordination                | Hold the existing checkpoint.lock lease from catalog validation through payload verification, decoding and graph attachment. Cooperating aftercast checkpoint writers cannot replace the catalog mid-restore. A final revision check detects observed out-of-band index changes; arbitrary external tools do not participate in the lease protocol. |
+| Atomic graph publication           | Hash every pending payload, expand once, count the same XML bytes decoded and prepare every selected encounter before attachment. Corrupt, missing or over-budget pending entries attach none from that call; preserve the live sorter on failure. Already restored payloads are skipped.                                                           |
+| Resource bounds                    | Index and individual compressed/expanded files remain at most 64 MiB; catalog at most 100,000 records. Selected restoration accepts at most 128 MiB **total expanded XML input**, not an exact managed-heap bound. Nested gzip is not XML and is rejected.                                                                                          |
+
+Read metadata without initializing parsers. Reconstruction still requires the same
+parser category registrations; Bridge must enforce its existing initialized-plugin
+admission. The managed async service uses the original owner continuation context,
+quiesces log/action processing for restoration and performs disk I/O off the owner.
+Shutdown must await accepted work through the existing host operation lifecycle;
+no cancellation contract is added by these managed methods.
+
+Private payloads retain precise values and encounter-scoped swing/log sorters.
+Selected restoration reuses the existing decoder and duplicate tracking; metadata
+selection does not reconstruct identity from timestamps. A removed index also clears
+the private candidate cache used by the legacy combined-filter restore path.
+The service does not delete checkpoints, locate raw log ranges or change automatic
+history-saving/retention policy.
+
+Synthetic temporary-data tests cover same-time records, scopes and date boundaries,
+missing/filtered results, read-only discovery, stale/corrupt indexes, missing/corrupt
+selected payloads, traversal/selection limits, writer lease, async caller ownership,
+repeat restore and private action/source identity. Regression tests reject nested
+gzip and use four 33 MiB ignored XML comments to exercise the actual aggregate
+128 MiB policy while retaining only tiny encounter graphs.
+
+Next: session-owned Rust revisions/IDs, shared Begin/Advance admission and shutdown,
+and existing Rust/UI query/selection controls. Preserve selection only within its
+snapshot, reject stale responses across worker/query generations, and reuse existing
+restore invalidation for Analysis and independent log windows. Native calendar/file
+dialog behavior and Windows clicks remain unverified; source-log reparse remains a
+separate ACT parity gap.

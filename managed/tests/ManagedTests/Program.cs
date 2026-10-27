@@ -517,6 +517,7 @@ internal static class Program
         NotificationChecks.Run();
         DataCorrectionChecks.Run();
         EncounterArchiveChecks.Run();
+        HistoryDiscoveryChecks.Run();
         EncounterLogChecks.Run();
         RootCombatStateChecks.Run();
         RootActionChecks.Run();

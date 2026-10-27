@@ -22,23 +22,7 @@ public partial class FormActMain
 
     private void ApplyHistoryIndex(XmlDocument document)
     {
-        var loaded = new List<StoredEncounter>();
-        var files = new HashSet<string>(StringComparer.Ordinal);
-        foreach (XmlElement element in document.SelectNodes("/Records/Record")!)
-        {
-            var file = RequiredAttribute(element, "Archive");
-            // Only content-addressed sibling files are allowed; a modified index cannot read e.g. ../../private.xml.
-            if (file.Length != 68 || !file.EndsWith(".act", StringComparison.Ordinal) ||
-                file.AsSpan(0, 64).ContainsAnyExcept("0123456789abcdefABCDEF"))
-                throw new XmlException("Invalid archive filename");
-            if (!files.Add(file)) throw new XmlException("Duplicate history archive");
-            var record = ReadHistoryRecord(element);
-            if (record.Type != 1) throw new XmlException("Expected encounter history record");
-            var zone = RequiredAttribute(element, "ZoneName");
-            var zoneStart = DateTime.FromBinary(long.Parse(RequiredAttribute(element, "ZoneStart"), CultureInfo.InvariantCulture));
-            var partial = bool.Parse(RequiredAttribute(element, "Partial"));
-            loaded.Add(new(file, zone, zoneStart, record, partial));
-        }
+        var loaded = ParseHistoryCatalog(document).Select(entry => entry.Stored()).ToList();
         storedEncounters = loaded;
         foreach (var entry in loaded) EncDatabaseAdd(entry.Record);
     }
@@ -53,10 +37,14 @@ public partial class FormActMain
     private async Task LoadHistoryIndexAsync(bool asynchronous)
     {
         var document = await ArchiveIo(asynchronous, () => File.Exists(HistoryIndex) ? ReadArchiveDocument(HistoryIndex, "Records") : null);
-        if (document is not null) lock (CombatGate) ApplyHistoryIndex(document);
+        lock (CombatGate)
+        {
+            if (document is not null) ApplyHistoryIndex(document);
+            else storedEncounters = []; // A removed index must not leave stale cached restore candidates.
+        }
     }
 
-    internal async Task<int> ArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool asynchronous = true)
+    internal async Task<int> ArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool asynchronous = true, Aftercast.ActCompat.HistorySelection? selection = null)
     {
         if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() == true)
             throw new InvalidOperationException("Archive operations require the owner thread outside dispatched callbacks");
@@ -75,10 +63,11 @@ public partial class FormActMain
         {
             case 1:
                 var bytes = await ArchiveIo(asynchronous, () => ExpandEncounterFile(ReadBoundedFile(text)));
-                lock (CombatGate) return AttachArchives(DecodeEncounterFile(bytes).Select(encounter => (encounter, (StoredEncounter?)null)));
+                lock (CombatGate) return AttachArchives(DecodeEncounterXml(bytes).Select(encounter => (encounter, (StoredEncounter?)null)));
             case 2: return await ExportEncounterAsync(text, id, compressed, asynchronous);
             case 3: return await SaveEncounterHistoryAsync(asynchronous);
             case 4: return await RestoreEncounterHistoryAsync(text, asynchronous);
+            case 5: return await RestoreSelectedEntriesAsync(selection ?? throw new ArgumentException("Missing history selection"),asynchronous);
             default: throw new ArgumentException("Unknown archive command");
         }
     }
@@ -102,25 +91,36 @@ public partial class FormActMain
     private async Task<int> RestoreEncounterHistoryAsync(string filter, bool asynchronous)
     {
         await LoadHistoryIndexAsync(asynchronous);
+        var selected = storedEncounters.Where(entry => entry.Record.Label.Contains(filter,StringComparison.OrdinalIgnoreCase) ||
+            entry.Zone.Contains(filter,StringComparison.OrdinalIgnoreCase) || entry.Record.CharName.Contains(filter,StringComparison.OrdinalIgnoreCase)).ToArray();
+        return await RestoreEntriesAsync(selected,asynchronous,long.MaxValue,null);
+    }
+
+    private async Task<int> RestoreEntriesAsync(IEnumerable<StoredEncounter> entries,bool asynchronous,long expandedLimit,string? indexRevision)
+    {
         var restored = new List<(EncounterData, StoredEncounter?)>();
+        long expanded = 0;
         var existing = QueryEncounters().Select(item => archivedEncounters.TryGetValue(item.Encounter, out var identity) ? identity.File : null).ToHashSet();
         var sorter = GlobalTimeSorter;
         try
         {
-            foreach (var entry in storedEncounters)
+            foreach (var entry in entries)
             {
-                if (existing.Contains(entry.File) || !(entry.Record.Label.Contains(filter, StringComparison.OrdinalIgnoreCase) ||
-                    entry.Zone.Contains(filter, StringComparison.OrdinalIgnoreCase) || entry.Record.CharName.Contains(filter, StringComparison.OrdinalIgnoreCase))) continue;
+                if (existing.Contains(entry.File)) continue;
                 var bytes = await ArchiveIo(asynchronous, () => {
                     var payload = ReadBoundedFile(Path.Combine(HistoryDirectory, entry.File));
                     if (Convert.ToHexStringLower(SHA256.HashData(payload)) + ".act" != entry.File) throw new InvalidDataException("History archive hash mismatch");
                     return ExpandEncounterFile(payload);
                 });
+                expanded += bytes.Length;
+                if (expanded > expandedLimit) throw new InvalidDataException("Selected history exceeds 128 MiB expanded XML budget");
                 List<EncounterData> items;
-                lock (CombatGate) items = DecodeEncounterFile(bytes, history: true);
+                lock (CombatGate) items = DecodeEncounterXml(bytes, history: true);
                 if (items.Count != 1) throw new InvalidDataException("Expected one encounter per history archive");
                 restored.Add((items[0], entry));
             }
+            if (indexRevision is not null && (await ArchiveIo(asynchronous,ReadHistoryCatalog)).Revision != indexRevision)
+                throw new InvalidOperationException("History index changed during restoration");
         }
         catch { GlobalTimeSorter = sorter; throw; }
         // Parse every selected payload before attaching any graph, e.g. a corrupt second archive publishes neither.
@@ -138,6 +138,7 @@ public partial class FormActMain
             {
                 encounter.ZoneName = stored.Zone;
                 encounter.HistoryRecord = stored.Record;
+                EncDatabaseAdd(stored.Record);
                 archivedEncounters.Add(encounter, new(stored.File, stored.ZoneStart));
                 if (stored.Partial) Identity(encounter).Status = Aftercast.ActCompat.CombatSnapshotStatus.PartialImport;
             }
@@ -163,9 +164,9 @@ public partial class FormActMain
         stream.ReadExactly(result);
         return result;
     }
-    private List<EncounterData> DecodeEncounterFile(byte[] bytes, bool history = false)
+    private List<EncounterData> DecodeEncounterXml(byte[] xml, bool history = false)
     {
-        var xml = ExpandEncounterFile(bytes);
+        // Expansion and its size budget belong to the I/O stage; never expand another layer here.
         using var input = new MemoryStream(xml);
         return ReadEncounterXml(input, history);
     }

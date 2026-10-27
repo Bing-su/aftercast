@@ -170,6 +170,10 @@ namespace Aftercast.ActCompat
         public void BeginImport(string path) => main.BeginImport(path);
         public ImportProgress ImportProgress => main.CurrentImportProgress;
         public ImportResult? AdvanceImport(bool cancel) => main.AdvanceImport(cancel);
+        public HistoryPage ReadHistory(HistoryQuery query) => main.ReadHistoryAsync(query,false).GetAwaiter().GetResult();
+        public Task<HistoryPage> ReadHistoryAsync(HistoryQuery query) => main.ReadHistoryAsync(query);
+        public int RestoreSelectedHistory(HistorySelection selection) => main.RestoreSelectedHistoryAsync(selection,false).GetAwaiter().GetResult();
+        public Task<int> RestoreSelectedHistoryAsync(HistorySelection selection) => main.RestoreSelectedHistoryAsync(selection);
         public int ArchiveOperation(int command, string text, ulong id, bool compressed) => main.ArchiveOperation(command, text, id, compressed);
         public Task<int> ArchiveOperationAsync(int command, string text, ulong id, bool compressed) => main.ArchiveOperationAsync(command, text, id, compressed);
         public CombatSnapshotData? ReadCombatSnapshot(ulong afterRevision) => main.ReadCombatSnapshot(afterRevision);
