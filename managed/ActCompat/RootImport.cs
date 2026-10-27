@@ -19,6 +19,7 @@ namespace Advanced_Combat_Tracker
 
         private void EnsureImportAdmission()
         {
+            if (activeTableQuery) throw new InvalidOperationException("Combat mutations are not permitted during plugin table callbacks");
             // Pumped plugin callbacks cannot mutate the graph owned by an import step.
             if (activeImport is { Exclusive: true } operation &&
                 (Environment.CurrentManagedThreadId != operation.OwnerThread || IsDispatchingCallback?.Invoke() == true))
