@@ -125,6 +125,7 @@ namespace Aftercast.ActCompat
                 main.OptionsTreeView.Nodes.Add("Data Correction");
                 if (OperatingSystem.IsWindows()) main.InitializeNativePluginTabs();
                 timers = new();
+                timers.LoadSpellTimers(Path.Combine(directory,"SpellTimers.xml"));
                 encounterLogs = new(false);
             }
             catch { timers?.Dispose(); main.Dispose(); throw; }
@@ -231,6 +232,7 @@ namespace Aftercast.ActCompat
             {
                 try { StopProcessing(); } catch (Exception error) { errors.Add(error); }
                 try { main.SaveCustomTriggers(Path.Combine(main.AppDataFolder.FullName, "CustomTriggers.xml")); } catch (Exception error) { errors.Add(error); }
+                try { timers.SaveSpellTimers(Path.Combine(main.AppDataFolder.FullName,"SpellTimers.xml")); } catch (Exception error) { errors.Add(error); }
                 try { main.Dispose(); } catch (Exception error) { errors.Add(error); }
                 try { timers.Dispose(); } catch (Exception error) { errors.Add(error); }
                 try { encounterLogs.Dispose(); } catch (Exception error) { errors.Add(error); }

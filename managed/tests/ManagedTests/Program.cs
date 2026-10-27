@@ -500,6 +500,7 @@ internal static class Program
         SoundChecks.Run();
         TextExportChecks.Run();
         SpellTimerChecks.Run();
+        TimerManagementChecks.Run();
         Eq2HostChecks.Run();
         PluginMetadataChecks.Run();
         LogFollowerChecks.Run();

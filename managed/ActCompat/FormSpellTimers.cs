@@ -5,7 +5,7 @@ namespace Advanced_Combat_Tracker;
 
 public delegate void SpellTimerEventDelegate(TimerFrame timer);
 
-public class FormSpellTimers : Form
+public partial class FormSpellTimers : Form
 {
     private readonly Dictionary<string, TimerFrame> frames = new();
     private readonly object gate = new();
