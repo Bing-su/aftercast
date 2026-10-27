@@ -39,7 +39,7 @@ public static partial class EntryPoint
             var keys = new HashSet<string>(StringComparer.Ordinal);
             foreach (var property in value.EnumerateObject())
             {
-                if (!keys.Add(property.Name)) throw new ArgumentException("Duplicate companion JSON key");
+                if (!keys.Add(property.Name)) throw new ArgumentException("Duplicate JSON key");
                 Unique(property.Value);
             }
         }
