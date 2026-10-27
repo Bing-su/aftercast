@@ -197,9 +197,7 @@ pub(super) fn ImportPane() -> Element {
                 }
             }
             p { class: "text-sm text-muted-foreground", {tr("history-help")} }
-            p { class: "mt-8 border-t border-border pt-5 text-sm text-muted-foreground",
-                {tr("export-planned")}
-            }
+            super::interchange::Panel {}
         }
     }
 }

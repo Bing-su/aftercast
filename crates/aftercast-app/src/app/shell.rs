@@ -32,6 +32,7 @@ pub(super) fn Header() -> Element {
                         onclick: move |_| {
                             if state.read().screen != screen {
                                 super::history_sources::leave(state);
+                                state.write().interchange.leave();
                                 state.write().screen = screen;
                             }
                         },

@@ -22,3 +22,33 @@ source graph preservation, refusal to overwrite and exact destination bytes,
 missing parent failure and private-history restart restoration. Existing ACT
 archive/original comparisons remain required. Native file dialogs/clipboard and
 Windows input/focus are separate execution checks.
+
+## Application workflow
+
+Import/Export now contains an ACT interchange panel built with the existing local
+Rust/UI Button/Input/Label/Accordion adapters. Import accepts an explicit path or
+native file selection and a deliberate Import action. Export captures the selected
+encounter, destination, format and include-log policy for a separate confirmation.
+The format is not inferred from the filename. Drafts survive failure and Stop for
+the application session; they are not new persisted Options preferences.
+
+Picker cancellation and confirmation cancellation perform no archive operation.
+Every rendered action uses its session/generation token. Selection changes reject
+old export confirmations, and navigation/Stop/Quit invalidate picker reservations
+before a native dialog is created and before a late response is applied. Accepted
+I/O completes under application ownership after navigation and Host shutdown drains
+it; it has no misleading in-flight cancel/rollback button. Existing-file conflicts
+are visible, even when a native save dialog offered replacement.
+
+Four actual isolated-Host GUI-controller scenarios cover XML/gzip × log policy,
+empty/malformed XML/gzip, source graph preservation, absent selection, missing parent,
+a destination directory write failure with temporary-file cleanup, existing-file
+and post-confirmation conflict preservation, picker/confirmation cancel and stale
+responses, immutable admitted options, navigation and shutdown drain. Two pure UI
+state tests cover path/draft validation and pre-dialog lifecycle/render-token guards.
+A Windows WebView2 scenario is defined for selection/confirmation/cancel/import/
+non-overwrite, but is not executed on ser7. Native picker/focus/keyboard interaction
+and Windows execution remain unverified; Linux app startup is not click QA.
+
+This closes the Linux implementation of **L7a** only. Raw-log options L6a–d,
+text/HTML/table-XML reports L7b and real/synthetic ODBC work L7c remain separate.

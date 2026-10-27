@@ -4,6 +4,7 @@ mod encounter_context;
 mod history;
 mod history_sources;
 mod import_text;
+mod interchange;
 mod log_window;
 mod notifications;
 mod plugin_tables;
@@ -128,6 +129,7 @@ struct AppState {
     cancel_import: bool,
     import_path: String,
     import_text: import_text::State,
+    interchange: interchange::State,
     companions: companions::State,
     reparse: reparse::ReparseState,
     progress: ImportProgress,
@@ -203,6 +205,7 @@ impl AppState {
             cancel_import: false,
             import_path: String::new(),
             import_text: Default::default(),
+            interchange: Default::default(),
             companions: Default::default(),
             reparse: Default::default(),
             progress: ImportProgress::default(),
@@ -530,6 +533,7 @@ fn stop(mut state: Signal<AppState>) {
         state.plugin_tables.reset_session();
         state.reparse.reset_session();
         state.import_text.reset_session();
+        state.interchange.stop();
         state.companions.reset_session();
         state.notifications = Default::default();
         state.plugin_ui_pending = false;
