@@ -11,7 +11,11 @@ mod bridge;
 pub use archives::ActFormat;
 mod combat;
 mod diagnostics;
+mod history;
 mod host;
+pub use history::{
+    HistoryEntry, HistoryId, HistoryPage, HistoryQuery, HistoryRevision, HistorySearchScope,
+};
 mod import;
 mod local_runtime;
 mod logs;
@@ -53,6 +57,8 @@ pub use snapshots::{CombatRevision, CombatSnapshot, CombatSnapshotStatus, Combat
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("invalid history request or response: {0}")]
+    InvalidHistoryRequest(String),
     #[error("invalid timer request or response: {0}")]
     InvalidTimerRequest(String),
     #[error("invalid notification request or response: {0}")]

@@ -2,7 +2,7 @@
 
 The managed history service provides metadata browsing and explicit checkpoint
 selection, reusing private archive restoration and action/source identities.
-Bridge/Rust transport and the History GUI are not yet connected. This is distinct
+Bridge/Rust transport now uses the shared asynchronous host lifecycle; the History GUI is not yet connected. This is distinct
 from ACT's `ThreadHistoryImport`, which locates source logs and reparses a time range.
 
 | Managed operation                  | Contract                                                                                                                                                                                                                                                                                                                                            |
@@ -40,9 +40,37 @@ repeat restore and private action/source identity. Regression tests reject neste
 gzip and use four 33 MiB ignored XML comments to exercise the actual aggregate
 128 MiB policy while retaining only tiny encounter graphs.
 
-Next: session-owned Rust revisions/IDs, shared Begin/Advance admission and shutdown,
-and existing Rust/UI query/selection controls. Preserve selection only within its
+## Rust transport and lifecycle
+
+| API                                         | Result                                                                                                                                                                                                    |
+| ------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `query_history(&HistoryQuery)`              | An owned page; default query uses 16 rows. Revision and every ID belong to both the worker session and exact index snapshot. Time kinds are explicit.                                                     |
+| `restore_selected_history(&revision, &ids)` | Newly restored count. Reject mixed snapshots, old sessions, duplicate IDs and selection counts outside 1..64 before sending work. The managed service rechecks the actual catalog under its writer lease. |
+| Begin/Advance                               | Fixed-capacity packets are validated before admission. One pending history or archive operation occupies the host slot; diagnostics/combat reads remain available and conflicting mutations return Busy.  |
+| Shutdown                                    | Completion is consumed through the common poll/drain loop. Stop cannot dispose the managed session while a history response is pending. Dropping a future does not promise cancellation of accepted work. |
+
+Synthetic ABI and direct Begin/Advance tests cover cold discovery without plugins,
+shared admission, pending-response Stop rejection and parser-required restoration.
+Worker integration covers equal-time entries, pagination, scopes/date bounds,
+snapshot/session rejection and restored action/log identity. A FIFO diagnostics
+barrier confirms admission before abandoning a query future and shutting down;
+restart verifies release of the worker lease. This last case does not force a
+long-running restore at the moment of shutdown; exact pending Stop rejection is
+covered by the managed lifecycle test and shared operation implementation.
+
+Next: existing Rust/UI query/selection controls. Preserve selection only within its
 snapshot, reject stale responses across worker/query generations, and reuse existing
 restore invalidation for Analysis and independent log windows. Native calendar/file
-dialog behavior and Windows clicks remain unverified; source-log reparse remains a
-separate ACT parity gap.
+dialog behavior and Windows clicks remain unverified.
+
+## Source-log reparse follow-up
+
+This remaining ACT parity work is feasible on Linux using synthetic files and the
+existing parser/import progress/cancellation infrastructure. It needs an explicit
+source path, ACT-compatible range boundaries and source context, with no live timer
+or audio effects during import. ACT `ThreadHistoryImport` supplies each selected
+record's StartTime/EndTime to `ImportFile`; it does not restore saved aggregates.
+Folder/character hints alone do not prove which raw file is correct. Missing or
+ambiguous files should require an explicit source choice rather than silent guessing.
+Implement and test this as a separate unit after the discovery/selection GUI;
+no new native WinForms renderer is required for core range-import contracts.

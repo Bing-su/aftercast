@@ -48,6 +48,7 @@ pub(crate) struct ManagedSession {
     trigger_command: ManagedFunctionWithDefaultSignature,
     notification_command: ManagedFunctionWithDefaultSignature,
     timer_command: ManagedFunctionWithDefaultSignature,
+    history_operation: ManagedFunctionWithDefaultSignature,
     session: u64,
     running: bool,
     // Keep the native library and delegate loader alive for every managed function call.
@@ -106,6 +107,7 @@ impl ManagedSession {
         let trigger_command = function(pdcstr!("TriggerCommand"))?;
         let notification_command = function(pdcstr!("NotificationCommand"))?;
         let timer_command = function(pdcstr!("TimerCommand"))?;
+        let history_operation = function(pdcstr!("HistoryOperation"))?;
         let mut host = Self {
             entry,
             read_error,
@@ -122,6 +124,7 @@ impl ManagedSession {
             trigger_command,
             notification_command,
             timer_command,
+            history_operation,
             session: 0,
             running: false,
             _loader: loader,
@@ -168,6 +171,7 @@ impl ManagedSession {
             Request::Triggers => (&self.trigger_command, 14),
             Request::Notifications => (&self.notification_command, 15),
             Request::Timers => (&self.timer_command, 16),
+            Request::History => (&self.history_operation, 17),
         };
         let length = i32::try_from(packet.len())
             .map_err(|error| Error::InvalidPluginRequest(error.to_string()))?;
@@ -177,7 +181,9 @@ impl ManagedSession {
         let failed = match request {
             Request::ImportOperation => !(0..=2).contains(&status),
             Request::Logs => status < 0,
-            Request::Snapshot | Request::Combat | Request::Archive => status != 0 && status != 1,
+            Request::Snapshot | Request::Combat | Request::Archive | Request::History => {
+                status != 0 && status != 1
+            }
             _ => status != 0,
         };
         if failed {

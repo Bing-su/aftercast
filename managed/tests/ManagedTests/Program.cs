@@ -282,6 +282,7 @@ internal static class Program
             ArchiveAbiChecks.Run(session);
             TriggerAbiChecks.Run(session);
             TimerAbiChecks.Run(session);
+            HistoryAbiChecks.Run(session);
             NotificationAbiChecks.Run(session);
             LogAbiChecks.Run(session);
             CombatSnapshotAbiChecks.Run(session);
@@ -518,6 +519,7 @@ internal static class Program
         DataCorrectionChecks.Run();
         EncounterArchiveChecks.Run();
         HistoryDiscoveryChecks.Run();
+        HistoryLifecycleChecks.Run();
         EncounterLogChecks.Run();
         RootCombatStateChecks.Run();
         RootActionChecks.Run();

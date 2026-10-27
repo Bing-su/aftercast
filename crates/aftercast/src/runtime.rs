@@ -58,4 +58,5 @@ pub(crate) enum Request {
     Triggers,
     Notifications,
     Timers,
+    History,
 }

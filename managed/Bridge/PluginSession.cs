@@ -79,7 +79,7 @@ internal sealed class PluginSession
     });
     internal void EnsureCanStop()
     {
-        if (archive is not null) throw new InvalidOperationException("Complete the archive operation before stopping the session");
+        if (archive is not null || history is not null) throw new InvalidOperationException("Complete the archive/history operation before stopping the session");
         environment?.EnsureCanStop();
     }
     internal ulong SubscribeLogs(int maxRecords, int maxBytes) => OnOwner(() => logs.Subscribe(maxRecords, maxBytes));
@@ -109,7 +109,7 @@ internal sealed class PluginSession
     private Task<int>? archive;
     internal void BeginArchive(int command, string text, ulong id, bool compressed) => OnOwner(() =>
     {
-        if (archive is not null) throw new InvalidOperationException("Archive operation is already active");
+        if (archive is not null || history is not null) throw new InvalidOperationException("Archive/history operation is already active");
         if (command is 1 or 4 && !plugins.Values.Any(plugin => plugin.State == PluginState.Initialized))
             throw new InvalidOperationException("Archive reconstruction requires an initialized plugin");
         // Construct controls under the normal plugin context, never the private continuation context.
@@ -123,6 +123,25 @@ internal sealed class PluginSession
         if (!operation.IsCompleted) return null;
         try { return operation.GetAwaiter().GetResult(); }
         finally { archive = null; }
+    }
+    private Task<byte[]>? history;
+    internal void BeginHistory(int command,HistoryRequest request) => OnOwner(() =>
+    {
+        if (history is not null || archive is not null) throw new InvalidOperationException("Archive/history operation is already active");
+        if (command == 2 && !plugins.Values.Any(plugin => plugin.State == PluginState.Initialized))
+            throw new InvalidOperationException("History reconstruction requires an initialized plugin");
+        var host = Host(); // Construct controls in the normal owner context, before private continuations.
+        history = context!.RunOperation(async () => command == 1
+            ? HostJson.Encode(await host.ReadHistoryAsync(request.Query!))
+            : HostJson.Encode(await host.RestoreSelectedHistoryAsync(request.Selection!)));
+        return 0;
+    });
+    internal byte[]? AdvanceHistory()
+    {
+        var operation = history ?? throw new InvalidOperationException("No active history operation");
+        if (!operation.IsCompleted) return null;
+        try { return operation.GetAwaiter().GetResult(); }
+        finally { history = null; }
     }
     private PluginRecord Find(long id) => plugins.TryGetValue(id, out var plugin)
         ? plugin : throw new ArgumentException("Unknown plugin instance", nameof(id));

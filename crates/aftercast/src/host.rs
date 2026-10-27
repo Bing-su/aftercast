@@ -289,6 +289,7 @@ fn worker_main(
 enum Operation {
     Import(PendingImport),
     Archive(Reply<(i32, BytesMut)>),
+    History(Reply<(i32, BytesMut)>),
     Audio(Reply<()>),
 }
 
@@ -317,6 +318,15 @@ impl Operation {
                 let result = session.request(Request::Archive, &mut packet);
                 if matches!(result, Ok(1)) {
                     return Some(Self::Archive(reply));
+                }
+                drop(reply.send(result.map(|status| (status, packet))));
+                None
+            }
+            Self::History(reply) => {
+                let mut packet = crate::history::poll_packet(session.id());
+                let result = session.request(Request::History, &mut packet);
+                if matches!(result, Ok(1)) {
+                    return Some(Self::History(reply));
                 }
                 drop(reply.send(result.map(|status| (status, packet))));
                 None
@@ -433,6 +443,10 @@ fn dispatch(session: &mut RemoteSession, command: Command, operations: &mut Opti
                 .map(|status| (status, packet));
             if matches!(request, Request::Archive) && matches!(result, Ok((1, _))) {
                 *operations = Some(Operation::Archive(reply));
+                return;
+            }
+            if matches!(request, Request::History) && matches!(result, Ok((1, _))) {
+                *operations = Some(Operation::History(reply));
                 return;
             }
             drop(reply.send(result));
