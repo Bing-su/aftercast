@@ -100,6 +100,12 @@ impl Settings {
         {
             return Err(miette!("Runtime and plugin paths must not be empty"));
         }
+        let mut paths = std::collections::HashSet::new();
+        if self.host.plugins.iter().any(|path| !paths.insert(path)) {
+            return Err(miette!(
+                "Duplicate configured plugin path; each entry must have a unique path"
+            ));
+        }
         Ok(())
     }
 }
@@ -358,6 +364,7 @@ mod tests {
     #[case("[ui]\nlanguage = 'unknown'")]
     #[case("[ui]\ntheme = 'unknown'")]
     #[case("[ui]\ntheme = [")]
+    #[case("[host]\nplugins = ['same.dll', 'same.dll']")]
     fn rejects_invalid_configuration_without_rewriting(#[case] source: &str) {
         let temp = tempfile::tempdir().expect("temporary app");
         let root = Utf8Path::from_path(temp.path()).expect("UTF-8 fixture");

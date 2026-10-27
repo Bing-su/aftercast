@@ -235,3 +235,11 @@ undo arbitrary plugin side effects. The desktop uses a fresh Host process for
 startup retry and for applying saved enablement after an explicit stop; enabled
 plugins retain configured order. This is not automatic dependency resolution.
 Actual native display, input and focus require the pending Windows verification.
+
+The GUI currently requires an explicit stop/edit/start for enablement changes;
+ACT's in-place running-session toggle is not implemented in the desktop. The
+library can deinitialize a running instance with its existing quiescence contract,
+but callers must arrange safe dependency order before creating a replacement.
+The desktop chooses fresh workers to reset static/plugin process state while
+preserving constructor/initialization/cleanup ordering. Checkpoint encounters
+before an explicit stop when their in-memory results must survive.

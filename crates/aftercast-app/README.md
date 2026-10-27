@@ -123,12 +123,24 @@ bundles remain separate validation work.
 ## Plugin lifecycle and native settings
 
 Configured paths/order and `host.disabled_plugins` are separate from runtime IDs.
+Configured paths must be unique; duplicate entries are rejected without rewriting
+the user's config file.
 Enable/disable is editable only while stopped; save settings to persist it. Each
 start or startup retry launches a fresh worker and constructs enabled plugins in
 configured order. Failure stops and awaits cleanup of that worker; Retry never
 reinitializes an old Failed/Stopped ID. This avoids pretending a new instance
 unloads an assembly or reverses arbitrary plugin effects. Dependencies are not
 inferred; disabling a prerequisite can cause startup failure.
+
+ACT supports changing plugin enablement in a running process. The current desktop
+supports a narrower stop/edit/start workflow: it never automatically stops a
+running host when an enablement control is used. A fresh worker preserves the
+constructor → InitPlugin → DeInitPlugin lifetime and configured dependency order,
+while resetting process-scoped plugin state. This does not establish full ACT
+in-place enable/disable equivalence. The library's explicit deinitialize/new-instance
+operations remain available when callers can guarantee dependency and cleanup
+safety. Save an encounter history checkpoint before an explicit stop if the
+in-memory encounter graph must survive; restart is not an automatic checkpoint.
 
 The Plugins pane reads typed lifecycle/settings availability and refreshes it on
 request. Windows Open Settings reuses the existing child-owned TabControl in a
