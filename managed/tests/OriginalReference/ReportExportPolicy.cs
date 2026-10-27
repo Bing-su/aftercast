@@ -9,19 +9,21 @@ internal static class ReportExportPolicy
     internal static object Run(string path)
     {
         using var stream=File.OpenRead(path);using var pe=new PEReader(stream);var reader=pe.GetMetadataReader();
-        var type=reader.TypeDefinitions.Single(handle=>reader.GetString(reader.GetTypeDefinition(handle).Name)=="FormActMain");
-        byte[] Body(string name,params string[] parameters)
+        byte[] NamedBody(string typeName,string name,params string[] parameters)
         {
-            var method=reader.GetTypeDefinition(type).GetMethods().Select(reader.GetMethodDefinition).Single(method=>
+            var declaring=reader.TypeDefinitions.Single(handle=>reader.GetString(reader.GetTypeDefinition(handle).Name)==typeName);
+            var method=reader.GetTypeDefinition(declaring).GetMethods().Select(reader.GetMethodDefinition).Single(method=>
                 reader.GetString(method.Name)==name&&method.GetParameters().Select(parameter=>reader.GetString(reader.GetParameter(parameter).Name)).SequenceEqual(parameters));
             return pe.GetMethodBody(method.RelativeVirtualAddress).GetILBytes()!;
         }
+        byte[] Body(string name,params string[] parameters)=>NamedBody("FormActMain",name,parameters);
         string Name(byte[] body,int offset)
         {
             var token=MetadataTokens.EntityHandle(BitConverter.ToInt32(body,offset+1));
             return token.Kind switch {
                 HandleKind.MethodDefinition=>reader.GetString(reader.GetMethodDefinition((MethodDefinitionHandle)token).Name),
                 HandleKind.MemberReference=>reader.GetString(reader.GetMemberReference((MemberReferenceHandle)token).Name),
+                HandleKind.FieldDefinition=>reader.GetString(reader.GetFieldDefinition((FieldDefinitionHandle)token).Name),
                 _=>throw new InvalidDataException("Unexpected original report IL token")};
         }
         static void Check(bool value,string field){if(!value)throw new InvalidDataException("Original report policy changed: "+field);}
@@ -36,6 +38,29 @@ internal static class ReportExportPolicy
         Check(core[0x06ee]==OpCodes.Ldc_I4_S.Value&&core[0x06ef]==10,"LF delimiter");Call(core,0x06f1,"Split");
         var table=Body("cmiEDExportXML_Click","sender","e");
         Check(table[0x0097]==OpCodes.Ldstr.Value&&reader.GetUserString(MetadataTokens.UserStringHandle(BitConverter.ToInt32(table,0x0098)&0xffffff))=="EncounterTable","table XML is distinct from encounter interchange XML");
-        return new {text=new{unaligned=true,descendingSort=true,defaultLines=256,unknownActorExcluded=true,selectiveIgnoreEnemies="all actors",lfFraming=true},tableXmlRoot="EncounterTable",nativeUiExecuted=false,clipboardAccessExecuted=false,exportFileExecuted=false};
+        string Literal(byte[] body,int offset)
+        {
+            Check(body[offset]==OpCodes.Ldstr.Value,"literal opcode");
+            return reader.GetUserString(MetadataTokens.UserStringHandle(BitConverter.ToInt32(body,offset+1)&0xffffff));
+        }
+        var roots=new[]{("cmiEDExportXML_Click","EncounterTable"),("cmiCDExportXML_Click","CombatantTable"),("cmiMDExportXML_Click","DamageTypeTable"),("cmiATExportXML_Click","AttackTypeTable")};
+        foreach(var (method,root) in roots)
+        {
+            var body=Body(method,"sender","e");Check(Literal(body,0x0097)==root,"current table root");
+            Check(body[0x0022]==OpCodes.Ldc_I4_1.Value&&body[0x0023]==OpCodes.Ble_S.Value,"zero/one selection keeps full table");
+            Call(body,0x007f,"set_Indentation");Check(body[0x007e]==OpCodes.Ldc_I4_4.Value,"four-space XML indentation");
+            Call(body,0x00f9,"get_ColHeaderCollection");Call(body,0x010e,"get_ColCollection");
+        }
+        foreach(var rowType in new[]{"CombatantData","DamageTypeData","AttackType","MasterSwing"})
+        {
+            var headers=NamedBody(rowType,"get_ColHeaderCollection");Call(headers,0x0030,"get_SqlDataName");
+            var cells=NamedBody(rowType,"get_ColCollection");
+            Check(cells[0x0030]==OpCodes.Ldfld.Value&&Name(cells,0x0030)=="GetSqlData","XML SQL callback rather than display callback");
+        }
+        var html=Body("ExportTBodyHTML","atItems","BrowseNavCustomSort","BrowseNavJsArgs");
+        Check(Literal(html,0x00ab)=="<th>{0}</th>"&&Literal(html,0x0132)=="<td>{0}</td>","HTML table structure");
+        Call(html,0x0155,"GetColumnByName");Call(html,0x015a,"AppendFormat");
+        var full=Body("ThreadExportHTML");Check(Literal(full,0x10b2).Contains("actHtml.js",StringComparison.Ordinal),"native report JavaScript resource");
+        return new {text=new{unaligned=true,descendingSort=true,defaultLines=256,unknownActorExcluded=true,selectiveIgnoreEnemies="all actors",lfFraming=true},tableXmlRoots=roots.Select(value=>value.Item2).ToArray(),xmlValues="SQL names and callbacks",xmlSelection="more than one filters",htmlNativeResources=true,nativeUiExecuted=false,clipboardAccessExecuted=false,exportFileExecuted=false};
     }
 }

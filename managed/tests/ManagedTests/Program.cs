@@ -48,6 +48,7 @@ internal static class Program
             case "contracts": Contracts(); break;
             case "clipboard-import": Platform.Prepare(); ClipboardImportChecks.Run(); break;
             case "live-companions": Platform.Prepare(); LiveCompanionChecks.Run(); break;
+            case "table-reports": Platform.Prepare(); TableReportChecks.Run(); break;
             case "text-reports": Platform.Prepare(); TextReportChecks.Run(); break;
             case "import-character": Platform.Prepare(); ImportCharacterChecks.Run(); break;
             case "import-boundaries": Platform.Prepare(); ImportBoundaryChecks.Run(); break;

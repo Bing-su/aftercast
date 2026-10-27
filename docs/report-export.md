@@ -81,9 +81,12 @@ probe are separate evidence, not a claim of native UI execution on Linux.
    draft/preview ownership and new-file export. Synthetic temporary-path tests
    cover byte encoding, no-overwrite, failure/cancel boundaries and late replies.
    Native clicks and Windows execution remain pending. No clipboard route is added.
-3. Implement the existing L7b HTML/table-XML scopes and depth options in separate
-   bounded slices; compare synthetic output against original contracts. Graph
-   image/native differences and unsupported choices must be explicit before I/O.
+3. The first managed [current-table XML/static HTML slice](table-reports.md) now
+   captures original rows/parents and registered columns, uses SQL names/values for
+   the four ACT table-XML roots, and escaped cell values for static HTML. Its
+   Bridge/Rust/GUI/save integration remains separate. Full HTML hierarchy/depth,
+   checked encounter sets and graph/image dimensions are still unfinished;
+   unsupported choices and security differences are explicit before I/O.
 4. L7c synthetic ODBC/schema/sink work and the shared L9d output preference audit
    remain separate. No external upload/service/real database has been accessed.
 
