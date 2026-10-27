@@ -4,7 +4,7 @@ using Aftercast.ActCompat;
 namespace Advanced_Combat_Tracker;
 
 // Read a bounded file prefix so a concurrently growing live log cannot make an import endless.
-internal sealed class ImportLogReader : IDisposable
+internal sealed class ImportLogReader : IImportRecordReader
 {
     private const int MaximumRecordLength = 8 * 1024 * 1024;
     private readonly Stream stream;
@@ -23,6 +23,10 @@ internal sealed class ImportLogReader : IDisposable
     internal bool DiscardedIncompleteTail { get; private set; }
     internal long TotalBytes => initialLength;
     internal long BytesRead => bytesRead;
+
+    long IImportRecordReader.TotalBytes => TotalBytes;
+    long IImportRecordReader.BytesRead => BytesRead;
+    ValueTask<string?> IImportRecordReader.ReadAsync(CancellationToken cancellation) => ReadAsync(cancellation);
 
     internal ImportLogReader(string path) : this(path, new ImportTextOptions().Resolve(), true) { }
     internal ImportLogReader(string path, Encoding encoding, bool detectBom = true) : this(new FileStream(path, FileMode.Open, FileAccess.Read,

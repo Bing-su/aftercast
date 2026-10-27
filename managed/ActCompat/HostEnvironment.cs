@@ -168,6 +168,8 @@ namespace Aftercast.ActCompat
         public Tuple<long, string[]> DiagnosticsSnapshot => main.DiagnosticsSnapshot;
         public ImportResult ImportLog(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null) => main.ImportLog(path, range, text, companions);
         public void BeginImport(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null) => main.BeginImport(path, range, text, companions);
+        // Explicit Unicode snapshot only; this API never reads the operating-system clipboard.
+        public void BeginClipboardImport(string content) => main.BeginClipboardImport(content);
         public void OpenLogWithCompanions(IReadOnlyList<ImportCompanion> companions, bool getCurrentZone = false, TimeSpan? maxClockWait = null, ImportTextOptions? mainText = null) => main.OpenLogWithCompanions(getCurrentZone, companions, maxClockWait, mainText);
         public long LiveLogGeneration => main.LiveLogGeneration;
         public long OpenLiveLog(string path, IReadOnlyList<ImportCompanion> companions, bool getCurrentZone, TimeSpan maxClockWait, ImportTextOptions? text)

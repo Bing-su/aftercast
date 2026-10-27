@@ -29,6 +29,7 @@ public partial class FormActMain
             {
                 Attribute("AftercastDroppedLogLines", encounter.DroppedLogLines);
                 Attribute("AftercastLogIdentityKnown", encounter.LogSourceIdentityKnown);
+                Attribute("AftercastClipboardImport", encounter.ClipboardImport);
             }
             if (encounter.ZoneName != "Import" && encounter.Parent is { } zone)
             {
@@ -96,6 +97,8 @@ public partial class FormActMain
             { Title = RequiredAttribute(element, "Name"),
                 // ACT interchange reconstructs log sorters; equal numbers alone cannot validate a source link.
                 LogSourceIdentityKnown = history && element.HasAttribute("AftercastLogIdentityKnown") && bool.Parse(element.GetAttribute("AftercastLogIdentityKnown")) };
+            if (history && element.HasAttribute("AftercastClipboardImport"))
+                encounter.ClipboardImport = bool.Parse(element.GetAttribute("AftercastClipboardImport"));
             if (history && element.HasAttribute("AftercastDroppedLogLines"))
             {
                 encounter.DroppedLogLines = long.Parse(element.GetAttribute("AftercastDroppedLogLines"), CultureInfo.InvariantCulture);

@@ -64,14 +64,24 @@ namespace Advanced_Combat_Tracker
 
         internal void BeginImport(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null,
             CapturedImportSource[]? captured = null, string? character = null)
+            => BeginImportCore(path, range, text, companions, captured, character, null);
+
+        internal void BeginClipboardImport(string content)
         {
-            ArgumentException.ThrowIfNullOrEmpty(path);
-            if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("An absolute import path is required", nameof(path));
+            _ = ImportTextReader.Validate(content);
+            BeginImportCore("", null, null, null, null, null, content);
+        }
+
+        private void BeginImportCore(string path, ImportRange? range, ImportTextOptions? text, IReadOnlyList<ImportCompanion>? companions,
+            CapturedImportSource[]? captured, string? character, string? snippet)
+        {
+            if (snippet is null) ArgumentException.ThrowIfNullOrEmpty(path);
+            if (snippet is null && !Path.IsPathFullyQualified(path)) throw new ArgumentException("An absolute import path is required", nameof(path));
             if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() == true)
                 throw new InvalidOperationException("Import must start outside a dispatched callback on the owner thread");
             if (captured is null) EnsureSourceCaptureIdle();
             if (Volatile.Read(ref sourceArchiveBusy) != 0) throw new InvalidOperationException("Archive operation is active");
-            var encoding = captured is { Length: > 0 } ? ImportTextOptions.Validate(captured[0].Encoding) : text?.Resolve() ?? ImportTextOptions.Validate(LogEncoding);
+            var encoding = snippet is not null ? new ImportTextOptions().Resolve() : captured is { Length: > 0 } ? ImportTextOptions.Validate(captured[0].Encoding) : text?.Resolve() ?? ImportTextOptions.Validate(LogEncoding);
             var companionSnapshot = companions?.ToArray() ?? [];
             if (companionSnapshot.Length > 64) throw new ArgumentException("At most 64 companions can be imported");
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -88,7 +98,7 @@ namespace Advanced_Combat_Tracker
             {
                 EnsureCombatOpen();
                 if (inCombat) throw new InvalidOperationException("End live combat before importing a log file");
-                activeImport = new ImportOperation(this, path, range, encoding, text?.DetectBom ?? true, companionSnapshot, captured, character);
+                activeImport = new ImportOperation(this, path, range, encoding, text?.DetectBom ?? true, companionSnapshot, captured, character, snippet);
             }
             try { activeImport.Start(); }
             catch
@@ -148,7 +158,7 @@ namespace Advanced_Combat_Tracker
             }
         }
 
-        private sealed class ImportOperation(FormActMain root, string path, ImportRange? range, Encoding encoding, bool detectBom, ImportCompanion[] companions, CapturedImportSource[]? captured, string? character)
+        private sealed class ImportOperation(FormActMain root, string path, ImportRange? range, Encoding encoding, bool detectBom, ImportCompanion[] companions, CapturedImportSource[]? captured, string? character, string? snippet)
         {
             internal int OwnerThread { get; } = Environment.CurrentManagedThreadId;
             internal bool Exclusive, Advancing;
@@ -198,7 +208,8 @@ namespace Advanced_Combat_Tracker
                     root.combatZone = importZone;
                     root.logFilePath = path;
                     root.currentZone = "Import Zone";
-                    root.lastKnownTime = DateTime.MinValue;
+                    // ACT ImportClip lets a leading undated row inherit the pre-import known time.
+                    if (snippet is null) root.lastKnownTime = DateTime.MinValue;
                     root.lastKnownStamp = Stopwatch.GetTimestamp();
                     if (!string.IsNullOrEmpty(character)) ActGlobals.charName = character;
                     root.importingLogs = true;
@@ -216,7 +227,8 @@ namespace Advanced_Combat_Tracker
                     var batch = new List<string>();
                     try
                     {
-                        using var reader = captured is null ? new ImportLogReader(path, encoding, detectBom)
+                        using IImportRecordReader reader = snippet is not null ? new ImportTextReader(snippet)
+                            : captured is null ? new ImportLogReader(path, encoding, detectBom)
                             : new ImportLogReader(captured[0].Image.OpenReader(), captured[0].Encoding, captured[0].DetectBom);
                         Interlocked.Exchange(ref totalBytes, reader.TotalBytes);
                         var characters = 0;
@@ -367,7 +379,7 @@ namespace Advanced_Combat_Tracker
             private bool TryDispatch(ImportSourceRecord record)
             {
                 var line = record.Line;
-                var detectedTime = record.Time;
+                var detectedTime = snippet is not null && record.Time == DateTime.MinValue ? root.lastKnownTime : record.Time;
                 if (line.Length == 0) { lines++; return true; }
                 int sorter;
                 lock (root.CombatGate)
@@ -407,6 +419,9 @@ namespace Advanced_Combat_Tracker
                     {
                         lock (root.CombatGate)
                         {
+                            // Stamp all retained clipboard encounters even if later aggregate arithmetic fails.
+                            if (snippet is not null)
+                                for (var index = firstEncounter; index < importZone!.Items.Count; index++) importZone.Items[index].ClipboardImport = true;
                             var encounters = 0; var combatants = 0; long damage = 0, healed = 0;
                             for (var index = firstEncounter; index < importZone!.Items.Count; index++)
                             {

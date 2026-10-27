@@ -37,6 +37,7 @@ public class EncounterData
     public SortedList<string, CombatantData> Items { get; set; } = new();
     public List<LogLineEntry> LogLines { get; set; } = new();
     internal bool LogSourceIdentityKnown { get; set; } = true;
+    internal bool ClipboardImport { get; set; }
     public long DroppedLogLines { get; internal set; }
     internal const int MaximumRecordedLogLines = 65536;
     internal const int MaximumRecordedLogCharacters = 4 * 1024 * 1024;

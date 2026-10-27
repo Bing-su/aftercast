@@ -43,7 +43,16 @@ internal static class ImportPolicy
         foreach(var (field,load,call)in new[]{(0x024d,0x0252,0x0253),(0x0422,0x0427,0x0428),(0x0c49,0x0c4e,0x0c4f)})
         {Check(controls[load]==OpCodes.Ldc_I4_1.Value,"checked UI default: "+Name(controls,field));Call(controls,call,"set_Checked");}
         var dispatch=Body("FormActMain","ParseRawLogLine",4);Call(dispatch,0x0014,"get_InCombat");Call(dispatch,0x001e,"CheckIdleEndCombat");
+        var clip=Body("FormActMain","ImportClip",0);
+        Call(clip,0x0192,"ContainsText");Call(clip,0x0199,"GetText");
+        Check(clip[0x0231]==OpCodes.Newobj.Value&&Name(clip,0x0231)==".ctor","clipboard string reader");
+        var constructor=reader.GetMemberReference((MemberReferenceHandle)MetadataTokens.EntityHandle(BitConverter.ToInt32(clip,0x0232)));
+        Check(reader.GetString(reader.GetTypeReference((TypeReferenceHandle)constructor.Parent).Name)=="StringReader","Unicode text reader");
+        Call(clip,0x027a,"ReadLine");Call(clip,0x0283,"IsNullOrEmpty");
+        Check(clip[0x0348]==OpCodes.Ldc_I4.Value&&BitConverter.ToInt32(clip,0x0349)==1000,"clipboard empty limit");
+        Branch(clip,0x034d,OpCodes.Ble_S,0x0354);
+        Call(clip,0x02d6,"set_LastKnownTime");Call(clip,0x032d,"get_LastKnownTime");Call(clip,0x0339,"ParseRawLogLine");
         return new{policy="time >= begin && (time <= end || extend && InCombat before ParseRawLogLine)",fileBeginDefault=true,fileEndDefault=true,extendDefault=true,
-            idleAdmissionFileEnd="DateTime.MaxValue",activeLiveFileEnd="LastKnownTime (aftercast requires idle admission)",nativeImportExecuted=false};
+            idleAdmissionFileEnd="DateTime.MaxValue",activeLiveFileEnd="LastKnownTime (aftercast requires idle admission)",clipboard=new{input="Unicode StringReader",consecutiveEmptyLimit=1000,undated="LastKnownTime",clipboardAccessExecuted=false},nativeImportExecuted=false};
     }
 }
