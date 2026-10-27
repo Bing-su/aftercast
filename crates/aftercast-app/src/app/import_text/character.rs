@@ -52,7 +52,7 @@ impl AppState {
         }
         true
     }
-    fn active_import_character(&self) -> Option<Option<ImportCharacter>> {
+    pub(in crate::app) fn active_import_character(&self) -> Option<Option<ImportCharacter>> {
         self.import_text
             .full
             .as_ref()
@@ -61,7 +61,7 @@ impl AppState {
             .or_else(|| self.clipboard.viewpoint_snapshot())
     }
 }
-fn description(choice: Option<&ImportCharacter>) -> String {
+pub(in crate::app) fn description(choice: Option<&ImportCharacter>) -> String {
     match choice {
         None => tr("import-character-legacy"),
         Some(choice) if choice.name().is_empty() => tr("import-character-current"),

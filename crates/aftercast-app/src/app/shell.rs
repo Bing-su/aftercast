@@ -44,6 +44,7 @@ pub(super) fn Header() -> Element {
                 }
             }
             div { class: "flex shrink-0 items-center gap-1 px-2",
+                super::import_progress::OpenButton {}
                 Button {
                     variant: ButtonVariant::Ghost,
                     aria_label: tr("import-log"),

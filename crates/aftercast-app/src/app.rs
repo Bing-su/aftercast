@@ -4,6 +4,7 @@ mod companions;
 mod encounter_context;
 mod history;
 mod history_sources;
+mod import_progress;
 mod import_text;
 mod interchange;
 mod log_window;
@@ -137,6 +138,7 @@ struct AppState {
     reparse: reparse::ReparseState,
     clipboard: clipboard_import::State,
     progress: ImportProgress,
+    import_progress: import_progress::State,
     message: String,
     error: Option<String>,
     exit_requested: bool,
@@ -214,6 +216,7 @@ impl AppState {
             reparse: Default::default(),
             clipboard: Default::default(),
             progress: ImportProgress::default(),
+            import_progress: Default::default(),
             message: String::new(),
             error: None,
             exit_requested: false,
@@ -280,6 +283,8 @@ pub fn App() -> Element {
             .with_locale((langid!("ko-KR"), include_str!("../locales/ko-KR.ftl")))
             .with_locale((langid!("en-US"), include_str!("../locales/en-US.ftl")))
     });
+    let progress_lifetime = state.peek().import_progress.hub.clone();
+    use_drop(move || progress_lifetime.close());
     let window = use_window();
     let window_id = window.id();
     use_wry_event_handler(move |event, _| {
@@ -323,6 +328,7 @@ pub fn App() -> Element {
                     }
                     Phase::Idle if !state.read().saving => {
                         state.read().log_windows.close();
+                        state.read().import_progress.close();
                         window.set_close_behavior(WindowCloseBehaviour::WindowCloses);
                         window.close();
                         break;
@@ -525,6 +531,7 @@ fn stop(mut state: Signal<AppState>) {
     {
         let mut state = state.write();
         state.log_windows.invalidate();
+        state.import_progress.retire();
         state.phase = Phase::Stopping;
         state.revision.session += 1;
         state.selected = None;
@@ -705,22 +712,11 @@ fn import_log(mut state: Signal<AppState>) {
 }
 
 async fn wait_import(
-    mut state: Signal<AppState>,
-    mut job: aftercast::ImportJob,
+    state: Signal<AppState>,
+    job: aftercast::ImportJob,
     session: u64,
-) -> std::result::Result<aftercast::ImportReport, aftercast::Error> {
-    if state.peek().revision.session != session || state.peek().cancel_import {
-        job.cancel();
-    }
-    loop {
-        tokio::select! {
-            result = &mut job => return result,
-            () = dioxus_sdk::time::sleep(Duration::from_millis(100)) => {
-                if state.peek().cancel_import || state.peek().revision.session != session { job.cancel(); }
-                if state.peek().revision.session == session { state.write().progress = job.progress(); }
-            }
-        }
-    }
+) -> Result<aftercast::ImportReport, aftercast::Error> {
+    import_progress::wait(state, job, session).await
 }
 
 fn plugin_ui_action(mut state: Signal<AppState>, id: PluginId, show: bool) {

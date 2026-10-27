@@ -64,7 +64,12 @@ internal static class ImportPolicy
         {
             var button=Body("FormImportProgress",method,2);Check(Name(button,0x0002)==field&&Name(button,0x000c)=="charName","progress selection source");Call(button,0x0007,"get_Text");Call(button,0x0017,"Set");
         }
+        var close=Body("FormImportProgress","CloseThis",0);
+        Check(Name(close,0x0007)=="importThreadAlive","progress active-import check");Branch(close,0x000c,OpCodes.Brfalse_S,0x0046);
+        Call(close,0x0031,"Show");Check(close[0x0036]==OpCodes.Ldc_I4_6.Value,"Yes result confirms abort");Branch(close,0x0037,OpCodes.Bne_Un_S,0x0045);
+        Call(close,0x003e,"CancelImport");Call(close,0x0047,"Hide");
+        var closeButton=Body("FormImportProgress","btnClose_Click",2);Call(closeButton,0x0001,"CloseThis");
         return new{policy="time >= begin && (time <= end || extend && InCombat before ParseRawLogLine)",fileBeginDefault=true,fileEndDefault=true,extendDefault=true,
-            idleAdmissionFileEnd="DateTime.MaxValue",activeLiveFileEnd="LastKnownTime (aftercast requires idle admission)",clipboard=new{input="Unicode StringReader",consecutiveEmptyLimit=1000,undated="LastKnownTime",clipboardAccessExecuted=false},character=new{pointOfView="character identity",programmaticDefault="preserve current exact",emptySelection="current name",shortName="YOU when UTF-16 Length <= 2",trim=false,nativeUiExecuted=false},nativeImportExecuted=false};
+            idleAdmissionFileEnd="DateTime.MaxValue",activeLiveFileEnd="LastKnownTime (aftercast requires idle admission)",clipboard=new{input="Unicode StringReader",consecutiveEmptyLimit=1000,undated="LastKnownTime",clipboardAccessExecuted=false},character=new{pointOfView="character identity",programmaticDefault="preserve current exact",emptySelection="current name",shortName="YOU when UTF-16 Length <= 2",trim=false,nativeUiExecuted=false},progressWindow=new{activeClose="confirm abort; Yes cancels then hides; No keeps window",terminalClose="hide",nativeUiExecuted=false},nativeImportExecuted=false};
     }
 }
