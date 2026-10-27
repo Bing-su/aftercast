@@ -303,22 +303,22 @@ mod tests {
             if link {
                 install(root.path(), "link", &[archive], &["dotnet"]).expect_err("reject link");
                 assert!(!root.path().join("dotnet/link").exists());
-            } else {
-                let path = install(root.path(), "regular", &[archive], &["dotnet"])
-                    .expect("tar extraction");
-                assert_eq!(fs::read(path.join("dotnet")).expect("file"), b"run");
-                #[cfg(unix)]
-                {
-                    use std::os::unix::fs::PermissionsExt;
-                    assert_eq!(
-                        fs::metadata(path.join("dotnet"))
-                            .expect("mode")
-                            .permissions()
-                            .mode()
-                            & 0o777,
-                        0o755
-                    );
-                }
+                continue;
+            }
+            let path =
+                install(root.path(), "regular", &[archive], &["dotnet"]).expect("tar extraction");
+            assert_eq!(fs::read(path.join("dotnet")).expect("file"), b"run");
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                assert_eq!(
+                    fs::metadata(path.join("dotnet"))
+                        .expect("mode")
+                        .permissions()
+                        .mode()
+                        & 0o777,
+                    0o755
+                );
             }
         }
     }
