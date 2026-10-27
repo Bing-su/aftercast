@@ -8,7 +8,7 @@
 
 mod archives;
 mod bridge;
-pub use archives::ActFormat;
+pub use archives::{ActExportOptions, ActFormat};
 mod combat;
 mod companions;
 pub use companions::{

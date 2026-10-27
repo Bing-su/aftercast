@@ -27,8 +27,8 @@ public partial class FormActMain
         foreach (var entry in loaded) EncDatabaseAdd(entry.Record);
     }
 
-    internal int ArchiveOperation(int command, string text, ulong id, bool compressed) =>
-        ArchiveOperationAsync(command, text, id, compressed, false).GetAwaiter().GetResult();
+    internal int ArchiveOperation(int command, string text, ulong id, bool compressed, bool includeLogs = true) =>
+        ArchiveOperationAsync(command, text, id, compressed, false, includeLogs: includeLogs).GetAwaiter().GetResult();
 
     // The synchronous compatibility path uses already-completed tasks; the bridge path yields for disk I/O.
     private static Task<T> ArchiveIo<T>(bool asynchronous, Func<T> operation) =>
@@ -44,16 +44,16 @@ public partial class FormActMain
         }
     }
 
-    internal async Task<int> ArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool asynchronous = true, Aftercast.ActCompat.HistorySelection? selection = null)
+    internal async Task<int> ArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool asynchronous = true, Aftercast.ActCompat.HistorySelection? selection = null, bool includeLogs = true)
     {
         if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() == true)
             throw new InvalidOperationException("Archive operations require the owner thread outside dispatched callbacks");
         EnsureSourceCaptureIdle();
         if (Interlocked.CompareExchange(ref sourceArchiveBusy, 1, 0) != 0) throw new InvalidOperationException("Archive operation is already active");
-        try { return await RunArchiveOperationAsync(command, text, id, compressed, asynchronous, selection); }
+        try { return await RunArchiveOperationAsync(command, text, id, compressed, asynchronous, selection, includeLogs); }
         finally { Volatile.Write(ref sourceArchiveBusy, 0); }
     }
-    private async Task<int> RunArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool asynchronous, Aftercast.ActCompat.HistorySelection? selection)
+    private async Task<int> RunArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool asynchronous, Aftercast.ActCompat.HistorySelection? selection, bool includeLogs)
     {
         EnsureCanWaitForLogReader();
         using var logs = SuspendLogReading(false, wait: !asynchronous);
@@ -71,7 +71,7 @@ public partial class FormActMain
             case 1:
                 var bytes = await ArchiveIo(asynchronous, () => ExpandEncounterFile(ReadBoundedFile(text)));
                 lock (CombatGate) return AttachArchives(DecodeEncounterXml(bytes).Select(encounter => (encounter, (StoredEncounter?)null)));
-            case 2: return await ExportEncounterAsync(text, id, compressed, asynchronous);
+            case 2: return await ExportEncounterAsync(text, id, compressed, asynchronous, includeLogs);
             case 3: return await SaveEncounterHistoryAsync(asynchronous);
             case 4: return await RestoreEncounterHistoryAsync(text, asynchronous);
             case 5: return await RestoreSelectedEntriesAsync(selection ?? throw new ArgumentException("Missing history selection"),asynchronous);
@@ -79,14 +79,14 @@ public partial class FormActMain
         }
     }
 
-    private async Task<int> ExportEncounterAsync(string path, ulong id, bool compressed, bool asynchronous)
+    private async Task<int> ExportEncounterAsync(string path, ulong id, bool compressed, bool asynchronous, bool includeLogs)
     {
         ArraySegment<byte> xml;
         lock (CombatGate)
         {
             var encounter = QueryEncounters().Select(item => item.Encounter).SingleOrDefault(item => Identity(item).Id == id)
                 ?? throw new ArgumentException("Encounter does not belong to this session");
-            xml = EncodeEncounter(encounter, history: false);
+            xml = EncodeEncounter(encounter, history: false, includeLogs);
         }
         return await ArchiveIo(asynchronous, () => {
             var payload = compressed ? CompressArchive(xml.AsSpan()).AsMemory() : xml.AsMemory();
@@ -155,10 +155,11 @@ public partial class FormActMain
         return count;
     }
 
-    private ArraySegment<byte> EncodeEncounter(EncounterData encounter, bool history)
+    private ArraySegment<byte> EncodeEncounter(EncounterData encounter, bool history, bool includeLogs = true)
     {
         using var output = new MemoryStream();
-        WriteEncounterXml([encounter], output, true, history);
+        // Public export may omit retained logs; private checkpoints always retain their identity evidence.
+        WriteEncounterXml([encounter], output, includeLogs || history, history);
         if (output.Length > ArchiveLimit) throw new InvalidDataException("Encounter XML exceeds 64 MiB");
         // Retain only the used range, e.g. compression can read the XML without making a second full-size array.
         return new(output.GetBuffer(), 0, checked((int)output.Length));

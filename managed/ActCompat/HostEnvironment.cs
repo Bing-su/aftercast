@@ -199,8 +199,8 @@ namespace Aftercast.ActCompat
         public Task<HistoryPage> ReadHistoryAsync(HistoryQuery query) => main.ReadHistoryAsync(query);
         public int RestoreSelectedHistory(HistorySelection selection) => main.RestoreSelectedHistoryAsync(selection,false).GetAwaiter().GetResult();
         public Task<int> RestoreSelectedHistoryAsync(HistorySelection selection) => main.RestoreSelectedHistoryAsync(selection);
-        public int ArchiveOperation(int command, string text, ulong id, bool compressed) => main.ArchiveOperation(command, text, id, compressed);
-        public Task<int> ArchiveOperationAsync(int command, string text, ulong id, bool compressed) => main.ArchiveOperationAsync(command, text, id, compressed);
+        public int ArchiveOperation(int command, string text, ulong id, bool compressed, bool includeLogs = true) => main.ArchiveOperation(command, text, id, compressed, includeLogs);
+        public Task<int> ArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool includeLogs = true) => main.ArchiveOperationAsync(command, text, id, compressed, includeLogs: includeLogs);
         public CombatSnapshotData? ReadCombatSnapshot(ulong afterRevision) => main.ReadCombatSnapshot(afterRevision);
         public CombatPage<EncounterSummaryData> ListEncounters(int offset, int limit) => main.ListEncounters(offset, limit);
         public EncounterDetailData? ReadEncounter(ulong id, bool live) => main.ReadEncounter(id, live);

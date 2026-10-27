@@ -225,3 +225,108 @@ async fn recording_policy_applies_before_parsing_and_survives_host_restart(
         host.shutdown().await.expect("shutdown");
     }
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10; run mise run test:plugins"]
+async fn explicit_export_log_policy_round_trips_and_preserves_private_history(
+    deployment: Deployment,
+) {
+    let initialize = async |host: &Host| {
+        let parser=host.create_plugin(PluginConfig::builder()
+            .path(Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll"))
+            .type_name("Aftercast.PluginFixture.ImportPlugin").build()).await.expect("fixture");
+        host.initialize_plugin(parser).await.expect("initialize");
+    };
+    let host = Host::start(deployment.config()).await.expect("worker");
+    initialize(&host).await;
+    let source = deployment.directory().join("source.log");
+    std::fs::write(&source, "1|10\n1|20\n3|30\n").expect("synthetic log");
+    host.import_log(source).await.expect("seed");
+    let id = host
+        .encounters(0, 1)
+        .await
+        .expect("encounter")
+        .items
+        .first()
+        .expect("row")
+        .id;
+    for (format, extension) in [(ActFormat::Xml, "xml"), (ActFormat::Gzip, "act")] {
+        for include_logs in [true, false] {
+            let path = deployment
+                .directory()
+                .join(format!("export-{include_logs}.{extension}"));
+            let options = aftercast::ActExportOptions {
+                format,
+                include_logs,
+            };
+            host.export_act_with_options(id, &path, options)
+                .await
+                .expect("explicit export");
+            if format == ActFormat::Xml {
+                let text = std::fs::read_to_string(&path).expect("XML");
+                assert_eq!(
+                    text.matches("<LogLine ").count(),
+                    if include_logs { 3 } else { 0 }
+                );
+            }
+            let bytes = std::fs::read(&path).expect("written image");
+            assert!(matches!(
+                host.export_act_with_options(id, &path, options).await,
+                Err(Error::Managed { .. })
+            ));
+            assert_eq!(
+                std::fs::read(&path).expect("preserved existing file"),
+                bytes
+            );
+            assert_eq!(
+                host.import_act(&path).await.expect("interchange roundtrip"),
+                1
+            );
+            let imported = host.encounters(0, 32).await.expect("imported graph");
+            let last = imported.items.last().expect("last imported");
+            assert_eq!(last.damage, 60);
+            let logs = host
+                .encounter_logs(last.id, 0, 16)
+                .await
+                .expect("logs query")
+                .expect("imported encounter");
+            assert_eq!(logs.page.total, if include_logs { 3 } else { 0 });
+        }
+    }
+    assert_eq!(
+        host.encounter_logs(id, 0, 16)
+            .await
+            .expect("source logs")
+            .expect("original")
+            .page
+            .total,
+        3
+    );
+    host.export_act_with_options(
+        id,
+        deployment.directory().join("missing/destination.xml"),
+        aftercast::ActExportOptions::default(),
+    )
+    .await
+    .expect_err("missing output parent");
+    host.save_history().await.expect("precise checkpoint");
+    host.shutdown().await.expect("stop");
+    let host = Host::start(deployment.config()).await.expect("restart");
+    initialize(&host).await;
+    host.restore_history("")
+        .await
+        .expect("restore private history");
+    let restored = host.encounters(0, 32).await.expect("history");
+    let first = restored.items.first().expect("original restored");
+    assert_eq!(
+        host.encounter_logs(first.id, 0, 16)
+            .await
+            .expect("private logs")
+            .expect("encounter")
+            .page
+            .total,
+        3
+    );
+    host.shutdown().await.expect("close");
+}
