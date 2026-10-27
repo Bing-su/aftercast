@@ -240,6 +240,7 @@ fn toggle_plugin(mut state: Signal<AppState>, path: &str) {
         .find(|plugin| plugin.path == path)
         .cloned();
     drop(current);
+    state.write().plugin_tables.invalidate();
     state.write().phase = Phase::ChangingPlugins;
     state.write().error = None;
     // App-owned: changing tabs cannot cancel a lifecycle request. Stop invalidates its result.

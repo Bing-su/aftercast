@@ -1,6 +1,6 @@
 # Plugin-defined table columns
 
-## ACT reference and current gap
+## ACT reference and implementation
 
 The pinned ACT 3.8.5.288 binary (SHA-256
 `934fc00d0a3c8325b0f7445358860b4c013c5dab3d8fff012512acf6502dd657`)
@@ -13,13 +13,10 @@ thread, catches cell exceptions and displays a column error. Combatant, attack a
 action definitions also provide SortComparer callbacks; encounter and category
 column definitions do not expose that callback.
 
-| Row type / catalog level  | Native table context                 | Existing aftercast state                                                     |
-| ------------------------- | ------------------------------------ | ---------------------------------------------------------------------------- |
-| EncounterData / Encounter | Zone selected, encounter rows        | ColumnDefs retained; GUI encounter list uses fixed summary fields            |
-| CombatantData / Combatant | Encounter selected, participant rows | ColumnDefs retained; typed Rust/Chorale participant table uses fixed fields  |
-| DamageTypeData / Category | Combatant selected, category rows    | Category registrations retained; arbitrary formatted cells not queried       |
-| AttackType / Attack       | Category selected, attack rows       | Typed aggregate queries exist; arbitrary formatted cells not queried         |
-| MasterSwing / Action      | Attack selected, individual rows     | Canonical action/source queries exist; arbitrary formatted cells not queried |
+The Analysis pane now queries and displays all five plugin row levels. The existing
+encounter sidebar and typed summaries remain available; the dynamic table follows
+the main encounter/actor/category context and offers its own row drill-down/back.
+Original action/source identity remains in the existing action/log browser.
 
 ## Managed catalog foundation
 
@@ -45,15 +42,12 @@ catalog tests, not native plugin UI or callback-value execution tests.
 
 ## Finite completion units
 
-| Unit                                     | Status / completion condition                                                                                                                                                                                                                                                                      |
-| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| C1 Catalog                               | Managed catalog and session-owned Bridge/Rust discovery are implemented.                                                                                                                                                                                                                           |
-| C2 Values and sort                       | Implemented managed scoped cells/colors and bounded stable sort with callback errors, registration invalidation and scope-membership checks; see C2 contract below. Cross-worker session ownership belongs to C3.                                                                                  |
-| C3 Rust transport and GUI                | Session-owned metadata/value API is implemented; existing Rust/UI/Chorale table integration remains pending, checked columns and reordering by stable registry key, supported primary/secondary sort, explicit unavailable cells. Reconcile additions/removals using the reference behavior above. |
-| C4 Preferences and end-to-end regression | Settings backend now validates and atomically persists key-based order/visibility/sort. Runtime draft reconciliation, GUI save acknowledgement/stale-response handling and renderer/controller regressions remain pending. Native clicks remain Windows QA.                                        |
-
-Managed C1/C2 delivery does not complete plugin-column support. Existing typed
-aggregate/action APIs remain the current displayed data until the GUI and C4 are connected.
+| Unit                                     | Status / completion condition                                                                                                                                                                                     |
+| ---------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1 Catalog                               | Managed catalog and session-owned Bridge/Rust discovery are implemented.                                                                                                                                          |
+| C2 Values and sort                       | Implemented managed scoped cells/colors and bounded stable sort with callback errors, registration invalidation and scope-membership checks; see C2 contract below. Cross-worker session ownership belongs to C3. |
+| C3 Rust transport and GUI                | Implemented session-owned metadata/value API and Rust/UI/Chorale integration, key-based selection/order, Host primary/secondary sorting and explicit cell/sort errors.                                            |
+| C4 Preferences and end-to-end regression | Implemented atomic key-based settings and draft reconciliation/save acknowledgement. Actual synthetic Host controller regressions pass; native screen/input and Windows execution remain QA.                      |
 
 ## C2 cell, color and sort contract
 
@@ -96,9 +90,9 @@ blocked admitted mutations, registration changes, stale revision/scope membershi
 stable/secondary/descending sorts, inconsistent comparers, actual comparison budget
 fallback, row limits and aggregate output limits. C3 must reserve bounded reply
 space before callbacks; do not rerun formatting/sorting merely to probe capacity.
-Session-owning Rust scope/revision wrappers and actual worker tests remain C3 work.
+Session-owning Rust scope/revision wrappers and actual worker tests implement C3.
 
-## C3 transport API (GUI remains pending)
+## C3 transport API
 
 | API                       | Owned result                                                                                                                                                   |
 | ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -132,10 +126,10 @@ missing scope, no formatter capacity replay, self-unregistration and stale revis
 disable/fresh-enable, dropped reply reuse, Busy and cross-session rejection. A
 separate synthetic managed formatter deliberately waits forever; shutdown timeout,
 pending-call failure and a fresh worker/state lease are checked. This does not
-establish recovery from arbitrary native/kernel hangs. GUI and saved selection,
-column order and sort preferences remain the next C3/C4 unit; native UI is untested.
+establish recovery from arbitrary native/kernel hangs. GUI selection, order and
+sort preferences are connected below; native UI is untested.
 
-## Saved column settings backend (GUI not yet connected)
+## Saved column settings
 
 Optional config tables use the row-level names encounter, combatant, category,
 attack and action. Each stores `order` (all known registered keys), `visible`
@@ -155,11 +149,31 @@ existing config. Runtime callbacks do not write preferences implicitly.
 Six backend tests cover validation, annotations, reset/removal, failed validation
 and failed I/O, plus an actual Host with equal-label/different-key fixture columns,
 disable/fresh-enable and worker restart. Saved keys remain unchanged when the
-plugin disappears; applying/pruning missing keys, new defaults, sort capability
-changes and explicit save/reload acknowledgement are the next GUI unit. Current
-fixed analysis tables do not yet consume these saved preferences.
+plugin disappears; the GUI reconciles only the working layout until an explicit save.
 
-Chorale 0.2.3 supports row-aware custom renderers but ColumnId requires a static
-string. The renderer must map at most 32 currently selected keys to fixed slot IDs,
-without leaking/interning arbitrary plugin keys; preferences continue to use real
-registry keys. Plugin comparison must stay on the Host, not Chorale text sorting.
+## Dynamic table GUI contract
+
+The app reuses Rust/UI-derived Button, Accordion, Badge and Label components and
+Chorale 0.2.3 row-aware renderers. At most 32 selected keys map to fixed static slot
+IDs per frame, without leaking/interning plugin strings. Headers show label and key;
+preferences always use registry keys. Host comparison determines row order and
+Chorale text sorting is disabled. Valid ARGB colors reach individual cells; invalid
+cells show an explicit column error and sort failures show original-order fallback.
+
+| State                | Behavior                                                                                                                                                                                                                                                 |
+| -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| No registrations     | Keep the built-in participant/attack table.                                                                                                                                                                                                              |
+| All columns hidden   | Keep the plugin editor and explicit hidden state; do not substitute built-in columns. No cell callback query is made.                                                                                                                                    |
+| Draft                | Apply previews it; refresh queries the applied layout while retaining draft edits. Discard and use-saved are explicit. Per-level drafts survive navigation and Stop.                                                                                     |
+| Registry change      | Remove missing keys and append new keys with plugin defaults in the working layout; report removed/added/reset sort keys. Durable settings change only on save. More than 32 defaults stay editable with a validation error instead of silent clipping.  |
+| Save                 | Only a valid applied layout may be saved; dirty drafts and failed sorts block save. Failed I/O preserves draft, frame and last acknowledged settings. Duplicate/old save responses cannot complete a new request.                                        |
+| Stop during save     | Accepted local atomic file I/O may complete; acknowledge the durable keys and returned ConfigFile, without reviving the old frame or replacing another draft.                                                                                            |
+| Scope/session change | Scope and session/generation guards reject obsolete row actions and native responses. Import, history restore, plugin lifecycle and Stop invalidate table frames. Missing scopes and query failures are explicit; failures do not auto-repeat callbacks. |
+
+The actual synthetic Host controller regression exercises colors, duplicate labels,
+all-hidden vs no-registration fallback, draft/apply/refresh, failed disk writes and
+retry, persisted restart with a freshly imported graph, removal/re-registration,
+sort/cell errors, callback mutation, drill-down/back, duplicate admissions, screen
+navigation, obsolete scopes/sessions and save completion after Stop. These are
+state/API regressions, not native input tests. The Windows desktop scenario is
+prepared and discovered on Linux; actual Windows/click/focus QA remains unexecuted.

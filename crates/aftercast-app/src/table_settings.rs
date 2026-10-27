@@ -1,5 +1,7 @@
 //! Durable plugin-column keys, separate from transient catalog revisions and row scopes.
+mod runtime;
 use aftercast::TableLevel;
+pub use runtime::{Reconciled, level_key};
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
 pub const LEVELS: [(&str, TableLevel); 5] = [

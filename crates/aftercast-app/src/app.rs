@@ -3,6 +3,7 @@ mod encounter_context;
 mod history;
 mod log_window;
 mod notifications;
+mod plugin_tables;
 mod plugins;
 mod preferences;
 mod reparse;
@@ -44,6 +45,7 @@ enum Phase {
     Importing,
     Archiving,
     ReadingHistory,
+    ReadingTables,
     UpdatingTriggers,
     UpdatingTimers,
     ShowingNotification,
@@ -61,6 +63,7 @@ impl Phase {
             Self::Importing => "importing",
             Self::Archiving => "archiving",
             Self::ReadingHistory => "reading-history",
+            Self::ReadingTables => "reading-tables",
             Self::UpdatingTriggers => "updating-triggers",
             Self::UpdatingTimers => "updating-timers",
             Self::ShowingNotification => "showing-notification",
@@ -97,6 +100,7 @@ struct AppState {
     triggers: triggers::EditorState,
     timers: timers::EditorState,
     history: history::BrowserState,
+    plugin_tables: plugin_tables::BrowserState,
     notifications: notifications::NotificationState,
     plugin_ui_pending: bool,
     startup_failed: bool,
@@ -157,6 +161,7 @@ impl AppState {
             triggers: Default::default(),
             timers: Default::default(),
             history: Default::default(),
+            plugin_tables: Default::default(),
             notifications: Default::default(),
             plugin_ui_pending: false,
             startup_failed: false,
@@ -267,6 +272,7 @@ pub fn App() -> Element {
                     | Phase::Importing
                     | Phase::Archiving
                     | Phase::ReadingHistory
+                    | Phase::ReadingTables
                     | Phase::ChangingPlugins
                     | Phase::UpdatingTimers
                     | Phase::UpdatingTriggers
@@ -490,6 +496,7 @@ fn stop(mut state: Signal<AppState>) {
         state.triggers = Default::default();
         state.timers = Default::default();
         state.history = Default::default();
+        state.plugin_tables.reset_session();
         state.reparse.reset_session();
         state.notifications = Default::default();
         state.plugin_ui_pending = false;
@@ -615,12 +622,14 @@ fn import_log(mut state: Signal<AppState>) {
         let Some(handle) = state.read().handle() else {
             return;
         };
+        state.write().plugin_tables.invalidate();
         state.write().phase = Phase::Importing;
         state.write().cancel_import = false;
         let result = run_import(state, handle, path, session).await;
         if state.read().revision.session != session {
             return;
         }
+        state.write().plugin_tables.invalidate();
         state.write().phase = Phase::Ready;
         match result {
             Ok(report) => {

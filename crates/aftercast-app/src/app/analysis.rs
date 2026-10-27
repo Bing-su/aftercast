@@ -31,6 +31,7 @@ pub(super) fn AnalysisPane() -> Element {
                     }
                 }
             }
+            super::plugin_tables::PluginTablesPane {}
             if let Some(detail) = detail {
                 div { class: "summary-strip mb-6 flex flex-wrap gap-x-9 gap-y-3 border-y border-border py-4 tabular-nums [&_span]:text-xs [&_span]:text-muted-foreground [&_strong]:ml-3 [&_strong]:text-sm [&_strong]:font-medium",
                     div {
@@ -50,25 +51,27 @@ pub(super) fn AnalysisPane() -> Element {
                         strong { "{detail.summary.duration_ticks / 10_000_000} s" }
                     }
                 }
-                if let Some(combatant) = state.read().combatant.clone() {
-                    AttackTable {
-                        key: "{state.read().revision.selection}-{combatant}-{state.read().category:?}-{state.read().settings.ui.language}-{state.read().settings.ui.theme}",
-                        rows: attack_rows(&state.read().attacks, &combatant, state.read().category.as_ref()),
-                    }
-                } else {
-                    ParticipantTable {
-                        key: "{state.read().revision.session}-{state.read().revision.selection}-{state.read().settings.ui.language}-{state.read().settings.ui.theme}",
-                        rows: detail
-                            .combatants
-                            .iter()
-                            .map(|row| Participant {
-                                name: row.name.clone(),
-                                damage: row.damage,
-                                healing: row.healed,
-                                dps: row.enc_dps,
-                                deaths: row.deaths,
-                            })
-                            .collect(),
+                if !super::plugin_tables::dynamic(&state.read()) {
+                    if let Some(combatant) = state.read().combatant.clone() {
+                        AttackTable {
+                            key: "{state.read().revision.selection}-{combatant}-{state.read().category:?}-{state.read().settings.ui.language}-{state.read().settings.ui.theme}",
+                            rows: attack_rows(&state.read().attacks, &combatant, state.read().category.as_ref()),
+                        }
+                    } else {
+                        ParticipantTable {
+                            key: "{state.read().revision.session}-{state.read().revision.selection}-{state.read().settings.ui.language}-{state.read().settings.ui.theme}",
+                            rows: detail
+                                .combatants
+                                .iter()
+                                .map(|row| Participant {
+                                    name: row.name.clone(),
+                                    damage: row.damage,
+                                    healing: row.healed,
+                                    dps: row.enc_dps,
+                                    deaths: row.deaths,
+                                })
+                                .collect(),
+                        }
                     }
                 }
                 Accordion {
@@ -103,7 +106,7 @@ pub(super) fn AnalysisPane() -> Element {
                     class: "py-12 text-sm text-muted-foreground",
                     {tr("loading-selection")}
                 }
-            } else {
+            } else if !super::plugin_tables::dynamic(&state.read()) {
                 div { class: "flex min-h-100 flex-col items-center justify-center px-5 py-10 text-center [&_h2]:text-xl [&_h2]:font-medium [&_p]:my-4 [&_p]:max-w-[48ch] [&_p]:leading-8 [&_p]:text-muted-foreground",
                     icons::ChartNoAxesCombined { class: "mb-5 size-11 text-muted-foreground" }
                     h2 { {tr("analysis-empty-title")} }
@@ -320,7 +323,7 @@ fn AttackTable(rows: Vec<AttackRow>) -> Element {
     }
 }
 
-fn table_labels() -> Labels {
+pub(super) fn table_labels() -> Labels {
     let mut labels = Labels::default();
     labels.previous_page_label = tr("previous");
     labels.next_page_label = tr("next");

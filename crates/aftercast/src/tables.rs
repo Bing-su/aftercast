@@ -45,7 +45,7 @@ pub struct TableCategory {
     pub ally_value: i32,
     pub color_argb: i32,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TableCatalog {
     pub level: TableLevel,
     pub revision: TableRevision,
@@ -150,7 +150,7 @@ pub struct TableCell {
     pub background_argb: Option<i32>,
     pub error: Option<TableCellError>,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TableRow {
     /// Original ordinal in this scope snapshot; never a durable action ID or source-log index.
     pub index: u32,
@@ -161,7 +161,7 @@ pub struct TableRow {
     pub time_sorter: Option<i32>,
     pub cells: Vec<TableCell>,
 }
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct TablePage {
     pub revision: TableRevision,
     pub total: u32,
