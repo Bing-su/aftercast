@@ -128,7 +128,8 @@ Linux. The .NET encoding probe and existing native Windows QA remain separate.
 Companion registration/dispatch and source matching remain separate finite tasks.
 Windows native import, legacy Framework code-page equivalence and actual plugin/UI
 behavior remain unexecuted. This does not claim arbitrary .NET encodings or
-live-follower encoding parity. The existing LogFollower forward reader and backward
-zone-context search both hardcode strict UTF-8, unlike ACT's LogEncoding-based live
-reader. This is a confirmed Linux-capable follow-up requiring its own append,
-rotation, partial-record and context-search regressions; it is not implemented here.
+live-follower encoding parity. The existing LogFollower forward reader and backward zone-context search
+both hardcode strict UTF-8, but ACT uses different constructors for ReadLog and
+FindZoneName. The verified [follower scope](follower-encoding.md) separates these
+policies; forward plugin encoding must not be copied blindly into zone search.
+Follower implementation remains the next Linux unit.
