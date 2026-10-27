@@ -67,6 +67,7 @@ internal static class EncounterArchiveChecks
                 PrepareInvalidHistory(directory, saved, document => ((XmlElement)document.SelectSingleNode("//LogLine")!).SetAttribute("AftercastTimeSorter", "2147483648"));
                 PrepareInvalidHistory(directory, saved, document => ((XmlElement)document.SelectSingleNode("//Swing")!).RemoveAttribute("TimeSorter"));
                 PrepareInvalidHistory(directory, saved, document => ((XmlElement)document.SelectSingleNode("//Swing")!).SetAttribute("TimeSorter", "invalid"));
+                PrepareInvalidHistory(directory, saved, document => ((XmlElement)document.SelectSingleNode("//Encounter")!).SetAttribute("AftercastDroppedLogLines", "-1"));
                 var manual = new EncounterData("Source", "Fixture Zone", root.ActiveZone);
                 manual.Items["GHOST"] = new CombatantData("Ghost", manual);
                 root.ActiveZone.Items.Add(manual);

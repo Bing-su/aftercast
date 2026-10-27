@@ -268,12 +268,14 @@ namespace Advanced_Combat_Tracker
                     root.UpdateRawZone(line);
                 }
                 lines++;
+                var wasInCombat = root.InCombat;
                 root.CheckIdleEndCombat();
                 var info = new LogLineEventArgs(line, 0, detectedTime, root.CurrentZone, root.InCombat);
                 dispatched++;
                 root.PublishOriginalLogRecord(true, path, line, detectedTime, sorter);
                 root.InvokeLogHandlers(root.BeforeLogLineRead, true, info);
                 root.LastLogLine = info.logLine;
+                root.RecordEncounterLog(info, sorter, wasInCombat);
                 root.InvokeLogHandlers(root.OnLogLineRead, true, info);
                 return true;
             }

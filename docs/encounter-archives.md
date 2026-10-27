@@ -75,6 +75,37 @@ restoration reads saved swings; it does not locate byte ranges in the original l
 or run the original parser again. Original-log subscriptions and durable recording
 remain separate contracts.
 
+## Automatic encounter logs
+
+Live file following and raw import retain logs after `BeforeLogLineRead` and
+before `OnLogLineRead`, as in ACT 3.8.5.288 `FormActMain.ParseRawLogLine`.
+Recording is enabled by default (`RecordEncounterLogs`). ACT's default processed
+text is retained; set `OriginalLoglineViewLogs` to keep original input instead.
+The entry uses the dispatched timestamp, final detected type and source sorter
+captured before mutable hooks. Start/end lines are retained when combat was
+active before the idle check or is active after the parser hook. The current
+individual encounter receives the line once; the zone's aggregate `All` graph
+does not receive another copy. A parser that starts combat only in
+`OnLogLineRead` runs after the recording point, as in ACT.
+
+Automatic retention keeps the earliest 65,536 entries and at most 4,194,304 UTF-16
+code units of text per encounter (about 8 MiB of string contents, plus object/list
+overhead). An entry that exceeds either bound is omitted, parsing continues and
+`EncounterData.DroppedLogLines` increases. A later smaller entry can still fit.
+These bounds cover automatic recording; plugin-owned mutations of public
+`LogLines` collections remain the plugin's responsibility. Disabling recording
+omits future lines intentionally and does not count them as capacity loss.
+Private history preserves the omission count in `AftercastDroppedLogLines`;
+older version-1 payloads without that attribute have zero capacity omissions.
+ACT interchange does not carry this private loss metadata.
+
+This is retained encounter context, not lossless recording of every file record.
+Out-of-combat input and blank records are excluded, UI/Rust log-query operations
+and persistence of the recording options remain separate work. Vendor disk-writer
+queue/flush/rotation guarantees are unchanged. The recording-order evidence was
+read from the pinned ACT binary with ILSpy 11.1.0.9782; new runtime regressions
+exercise aftercast on Linux, not ACT's full Windows application.
+
 ## ACT-facing contracts
 
 | Contract                                             | Scope                                                                                                                             |

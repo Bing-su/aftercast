@@ -36,6 +36,19 @@ public class EncounterData
     public HistoryRecord? HistoryRecord { get; set; }
     public SortedList<string, CombatantData> Items { get; set; } = new();
     public List<LogLineEntry> LogLines { get; set; } = new();
+    public long DroppedLogLines { get; internal set; }
+    internal const int MaximumRecordedLogLines = 65536;
+    internal const int MaximumRecordedLogCharacters = 4 * 1024 * 1024;
+    private int recordedLogCharacters;
+
+    internal void RetainLog(LogLineEntry line)
+    {
+        // Keep the earliest source context and report every omission; never block parsing on a full log store.
+        if (LogLines.Count >= MaximumRecordedLogLines || line.LogLine.Length > MaximumRecordedLogCharacters - recordedLogCharacters)
+        { DroppedLogLines = checked(DroppedLogLines + 1); return; }
+        LogLines.Add(line);
+        recordedLogCharacters += line.LogLine.Length;
+    }
     public Dictionary<string, object> Tags { get; set; } = new();
     public int NumCombatants => Items.Count;
     public List<DateTime> StartTimes

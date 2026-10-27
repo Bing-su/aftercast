@@ -25,6 +25,7 @@ public partial class FormActMain
             writer.WriteStartElement("Encounter");
             void Attribute(string name, object value) => writer.WriteAttributeString(name, Convert.ToString(value, CultureInfo.InvariantCulture));
             Attribute("Name", encounter.Title); Attribute("CharName", encounter.CharName);
+            if (history) Attribute("AftercastDroppedLogLines", encounter.DroppedLogLines);
             if (encounter.ZoneName != "Import" && encounter.Parent is { } zone)
             {
                 var zoneName = zone.ZoneName; var zoneStart = zone.StartTime;
@@ -89,6 +90,11 @@ public partial class FormActMain
             if (element.Name != "Encounter") throw new XmlException("Unexpected encounter element: " + element.Name);
             var encounter = new EncounterData(element.GetAttribute("CharName") is { Length: > 0 } name ? name : ActGlobals.charName!, "Import", null!)
             { Title = RequiredAttribute(element, "Name") };
+            if (history && element.HasAttribute("AftercastDroppedLogLines"))
+            {
+                encounter.DroppedLogLines = long.Parse(element.GetAttribute("AftercastDroppedLogLines"), CultureInfo.InvariantCulture);
+                if (encounter.DroppedLogLines < 0) throw new XmlException("Negative dropped log count");
+            }
             foreach (XmlNode child in element.ChildNodes)
             {
                 if (child is not XmlElement item) continue;

@@ -1,0 +1,173 @@
+using System.Text;
+using Advanced_Combat_Tracker;
+using Aftercast.ActCompat;
+using Aftercast.Testing;
+
+internal static class EncounterLogChecks
+{
+    private static readonly DateTime Epoch = DateTime.UnixEpoch;
+    private static void Check(bool condition, [System.Runtime.CompilerServices.CallerArgumentExpression(nameof(condition))] string? expression = null)
+    { if (!condition) throw new Exception("Encounter log check failed: " + expression); }
+
+    internal static void Run()
+    {
+        HostLifetimeChecks.RunBounded(ImportAndRestart);
+        HostLifetimeChecks.RunBounded(SwitchesAndFailure);
+        HostLifetimeChecks.RunBounded(Live);
+        HostLifetimeChecks.RunBounded(Retention);
+        Console.WriteLine("Automatic encounter logs, ACT hook order, boundaries, bounded omissions and restart identity passed.");
+    }
+
+    private static void Add(FormActMain root, LogLineEventArgs info)
+    {
+        root.SetEncounter(info.detectedTime, "Source", "Target");
+        root.AddCombatAction(new(1, false, "None", new Dnum(100), info.detectedTime,
+            root.GlobalTimeSorter, "Strike", "Source", "Physical", "Target"));
+    }
+
+    private static void ImportAndRestart()
+    {
+        var directory = Directory.CreateTempSubdirectory("aftercast-recorded-import-");
+        try
+        {
+            using (var host = new HostEnvironment(directory.FullName))
+            {
+                CombatFixture.ConfigureCategories();
+                var root = ActGlobals.oFormActMain!;
+                root.OriginalLoglineViewLogs = true;
+                root.GetDateTimeFromLog = line => line switch { "later" => Epoch.AddSeconds(20), "idle" => Epoch.AddSeconds(28), _ => Epoch };
+                root.BeforeLogLineRead += (_, info) =>
+                {
+                    if (info.originalLogLine is "first" or "same" or "later") Add(root, info);
+                    if (info.originalLogLine == "end") root.EndCombat(false);
+                    info.logLine = "processed " + info.originalLogLine;
+                    info.detectedType = 9;
+                };
+                root.OnLogLineRead += (_, info) =>
+                {
+                    if (info.originalLogLine is "first" or "same" or "end" or "later" or "idle")
+                        Check(root.ActiveZone.ActiveEncounter!.LogLines[^1].LogLine == info.originalLogLine);
+                };
+                var path = Path.Combine(directory.FullName, "source.log");
+                File.WriteAllText(path, "outside\nfirst\nsame\nsame\nend\noutside\nlater\nidle\n", new UTF8Encoding(false));
+                Check(host.ImportLog(path) is { Encounters: 2, Damage: 400 });
+                CheckLogs(root.ZoneList[0].Items);
+                Check(host.ArchiveOperation(3, "", 0, false) == 2);
+            }
+            using (var restarted = new HostEnvironment(directory.FullName))
+            {
+                CombatFixture.ConfigureCategories();
+                Check(restarted.ArchiveOperation(4, "", 0, false) == 2);
+                CheckLogs(ActGlobals.oFormActMain!.ZoneList[0].Items);
+            }
+        }
+        finally { directory.Delete(true); }
+    }
+
+    private static void CheckLogs(List<EncounterData> encounters)
+    {
+        var ordered = encounters.OrderBy(encounter => encounter.StartTime).ToArray();
+        Check(ordered.Length == 2);
+        Check(ordered[0].LogLines.Select(line => line.LogLine).SequenceEqual(new[] { "first", "same", "same", "end" }));
+        Check(ordered[1].LogLines.Select(line => line.LogLine).SequenceEqual(new[] { "later", "idle" }));
+        foreach (var encounter in ordered)
+        {
+            Check(encounter.DroppedLogLines == 0 && encounter.LogLines.All(line => line.Type == 9));
+            foreach (var action in encounter.GetCombatant("Source")!.AllOut["All"].Items)
+            {
+                var source = encounter.LogLines.Single(line => line.GlobalTimeSorter == action.TimeSorter);
+                Check(source.Time == action.Time && source.LogLine is "first" or "same" or "later");
+            }
+        }
+    }
+
+    private static void SwitchesAndFailure()
+    {
+        var directory = Directory.CreateTempSubdirectory("aftercast-recorded-failure-");
+        try
+        {
+            using var host = new HostEnvironment(directory.FullName);
+            CombatFixture.ConfigureCategories();
+            var root = ActGlobals.oFormActMain!;
+            Check(root.RecordEncounterLogs && !root.OriginalLoglineViewLogs);
+            root.GetDateTimeFromLog = _ => Epoch;
+            root.BeforeLogLineRead += (_, info) =>
+            {
+                root.RecordEncounterLogs = info.originalLogLine != "off";
+                Add(root, info);
+                info.logLine = "processed " + info.originalLogLine;
+                if (info.originalLogLine == "fail") throw new InvalidOperationException("Failure after parser admission");
+            };
+            var path = Path.Combine(directory.FullName, "source.log");
+            File.WriteAllText(path, "off\nprocessed\nfail\n");
+            try { host.ImportLog(path); throw new Exception("Failed parser reported success"); }
+            catch (InvalidDataException) { }
+            var encounter = root.ZoneList[0].Items.Single();
+            Check(encounter.Damage == 300 && encounter.DroppedLogLines == 0);
+            Check(encounter.LogLines.Select(line => line.LogLine).SequenceEqual(new[] { "processed processed", "processed fail" }));
+            Check(host.ListEncounters(0, 16).Items.Single().Status == EncounterStatus.PartialImport);
+        }
+        finally { directory.Delete(true); }
+    }
+
+    private static void Live()
+    {
+        var directory = Directory.CreateTempSubdirectory("aftercast-recorded-live-");
+        try
+        {
+            using var host = new HostEnvironment(directory.FullName);
+            CombatFixture.ConfigureCategories();
+            var root = ActGlobals.oFormActMain!;
+            root.OriginalLoglineViewLogs = true;
+            root.GetDateTimeFromLog = _ => Epoch;
+            var path = Path.Combine(directory.FullName, "live.log");
+            File.WriteAllText(path, "old\n");
+            root.LogFilePath = path;
+            using var done = new ManualResetEventSlim();
+            root.BeforeLogLineRead += (_, info) =>
+            {
+                if (info.originalLogLine == "first") Add(root, info);
+                else if (info.originalLogLine == "end") root.EndCombat(false);
+            };
+            root.OnLogLineRead += (_, info) => { if (info.originalLogLine == "end") done.Set(); };
+            root.OpenLog(false, false);
+            File.AppendAllText(path, "outside\nfirst\nend\n");
+            Check(done.Wait(TimeSpan.FromSeconds(5)));
+            host.StopLogReading();
+            var encounter = root.ActiveZone.ActiveEncounter!;
+            Check(encounter.LogLines.Select(line => line.LogLine).SequenceEqual(new[] { "first", "end" }));
+            Check(encounter.LogLines[0].GlobalTimeSorter == encounter.GetCombatant("Source")!.AllOut["All"].Items.Single().TimeSorter);
+            Check(root.ActiveZone.Items[0].LogLines.Count == 0 && host.Diagnostics.Item1 == 0);
+        }
+        finally { directory.Delete(true); }
+    }
+
+    private static void Retention()
+    {
+        var directory = Directory.CreateTempSubdirectory("aftercast-recorded-bound-");
+        try
+        {
+            using (var host = new HostEnvironment(directory.FullName))
+            {
+                CombatFixture.ConfigureCategories();
+                var root = ActGlobals.oFormActMain!;
+                root.GetDateTimeFromLog = _ => Epoch;
+                root.BeforeLogLineRead += (_, info) => { if (info.originalLogLine == "start") Add(root, info); };
+                var path = Path.Combine(directory.FullName, "source.log");
+                // Non-action lines still belong to combat; an over-budget record must not hide a later small line.
+                File.WriteAllText(path, "start\n" + string.Concat(Enumerable.Repeat(new string('x', 512 * 1024) + "\n", 8)) + "tail\n" + string.Concat(Enumerable.Repeat("x\n", 65537)));
+                Check(host.ImportLog(path).Damage == 100);
+                var encounter = root.ZoneList[0].Items.Single();
+                Check(encounter.LogLines.Count == 65536 && encounter.DroppedLogLines == 11);
+                Check(encounter.LogLines.Any(line => line.LogLine == "tail"));
+                Check(encounter.LogLines.Count(line => line.LogLine.Length == 512 * 1024) == 7);
+                Check(host.ArchiveOperation(3, "", 0, false) == 1);
+            }
+            using var restarted = new HostEnvironment(directory.FullName);
+            CombatFixture.ConfigureCategories();
+            Check(restarted.ArchiveOperation(4, "", 0, false) == 1);
+            Check(ActGlobals.oFormActMain!.ZoneList[0].Items.Single().DroppedLogLines == 11);
+        }
+        finally { directory.Delete(true); }
+    }
+}

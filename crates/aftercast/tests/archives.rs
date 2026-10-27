@@ -43,6 +43,9 @@ async fn archives_survive_restart_and_round_trip_through_public_apis(deployment:
     host.export_act(old_id, &xml, ActFormat::Xml)
         .await
         .expect("export ACT XML");
+    let exported = std::fs::read_to_string(&xml).expect("read encounter logs");
+    assert_eq!(exported.matches("<LogLine ").count(), 2);
+    assert!(exported.contains("Line=\"0|100\"") && exported.contains("Line=\"2|300\""));
     assert!(matches!(
         host.export_act(old_id, &gzip, ActFormat::Gzip).await,
         Err(Error::Managed { .. })
@@ -86,6 +89,22 @@ async fn archives_survive_restart_and_round_trip_through_public_apis(deployment:
     assert_eq!(
         restored.items.first().expect("restored encounter").damage,
         400
+    );
+    let restored_xml = deployment.directory().join("restored.xml");
+    restarted
+        .export_act(restored.items[0].id, &restored_xml, ActFormat::Xml)
+        .await
+        .expect("export restored encounter logs");
+    let restored_xml = std::fs::read_to_string(&restored_xml).expect("read restored logs");
+    assert_eq!(
+        restored_xml
+            .lines()
+            .filter(|line| line.trim_start().starts_with("<LogLine "))
+            .collect::<Vec<_>>(),
+        exported
+            .lines()
+            .filter(|line| line.trim_start().starts_with("<LogLine "))
+            .collect::<Vec<_>>()
     );
     assert_eq!(
         restarted.import_act(&xml).await.expect("read exported XML"),

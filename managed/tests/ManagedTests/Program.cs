@@ -511,6 +511,7 @@ internal static class Program
         CustomTriggerChecks.Run();
         DataCorrectionChecks.Run();
         EncounterArchiveChecks.Run();
+        EncounterLogChecks.Run();
         RootCombatStateChecks.Run();
         RootActionChecks.Run();
         HitRateColumnChecks.Run();

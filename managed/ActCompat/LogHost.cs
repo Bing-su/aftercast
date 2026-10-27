@@ -210,12 +210,15 @@ public partial class FormActMain
             detectedTime = lastKnownTime;
             zone = currentZone;
         }
+        var wasInCombat = InCombat;
         CheckIdleEndCombat();
         var info = new LogLineEventArgs(line, 0, detectedTime, zone, InCombat);
         if (!IsCurrentLog(generation)) return;
         PublishOriginalLogRecord(false, sourcePath, line, detectedTime, timeSorter);
         InvokeLogHandlers(BeforeLogLineRead, false, info, generation);
         LastLogLine = info.logLine;
+        if (!IsCurrentLog(generation)) return;
+        RecordEncounterLog(info, timeSorter, wasInCombat);
         InvokeLogHandlers(OnLogLineRead, false, info, generation);
         if (IsCurrentLog(generation)) ProcessCustomTriggers(line, info, false);
     }
