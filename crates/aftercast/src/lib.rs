@@ -43,7 +43,9 @@ mod reports;
 mod snapshots;
 mod speech;
 mod tables;
-pub use reports::{TextReport, TextReportCatalog, TextReportOptions, TextReportRevision};
+pub use reports::{
+    TextReport, TextReportCatalog, TextReportOptions, TextReportPreset, TextReportRevision,
+};
 mod timers;
 pub use tables::{
     TableCatalog, TableCategory, TableCell, TableCellError, TableColumn, TableLevel, TablePage,

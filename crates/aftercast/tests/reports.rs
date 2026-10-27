@@ -34,6 +34,19 @@ async fn owned_reports_render_once_fail_explicitly_and_reject_stale_sessions(
     std::fs::write(&path, "0|100\n1|300\n").expect("synthetic input");
     host.import_log(&path).await.expect("import");
     let encounter = host.encounters(0, 16).await.expect("encounters").items[0].id;
+    assert_eq!(catalog.default_options.sorting, "EncDPS");
+    assert!(catalog.default_options.show_only_allies);
+    assert_eq!(catalog.presets.len(), 1);
+    assert_eq!(catalog.presets[0].index, 0);
+    let copied = catalog.presets[0].options.clone();
+    assert_eq!(
+        host.text_report(encounter, catalog.revision, &copied)
+            .await
+            .expect("registered preset")
+            .expect("report")
+            .text,
+        "Target:한글日本😀Source:한글日本😀\n"
+    );
     let options = TextReportOptions {
         player_format: "{report-name}:{report-unicode}:{report-count}".into(),
         sorting: "report-name".into(),

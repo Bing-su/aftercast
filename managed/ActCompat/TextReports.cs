@@ -22,7 +22,9 @@ namespace Aftercast.ActCompat
         }
         internal TextExportFormatOptions Format => new(PlayerFormat,Sorting,ShowOnlyAllies,ShowAlliedInfo,AlliesFormat);
     }
-    public sealed record TextReportCatalog(ulong Revision,string[] PlayerVariables,string[] AlliedVariables,string[] SortColumns);
+    public sealed record TextReportPreset(int Index, TextReportOptions Options);
+    public sealed record TextReportCatalog(ulong Revision,string[] PlayerVariables,string[] AlliedVariables,string[] SortColumns,
+        TextReportOptions DefaultOptions, TextReportPreset[] Presets);
     public sealed record TextReport(ulong EncounterId,ulong Revision,string Text);
 }
 namespace Advanced_Combat_Tracker
@@ -39,6 +41,8 @@ namespace Advanced_Combat_Tracker
                 CombatantData.ExportVariables.Take(1025).ToDictionary(pair=>pair.Key,pair=>(pair.Value,pair.Value.GetExportString),StringComparer.Ordinal);
             internal readonly Dictionary<string,(EncounterData.TextExportFormatter Definition,EncounterData.ExportStringDataCallback Callback)> Allied=
                 EncounterData.ExportVariables.Take(1025).ToDictionary(pair=>pair.Key,pair=>(pair.Value,pair.Value.GetExportString),StringComparer.Ordinal);
+            internal readonly TextExportFormatOptions[] Presets=root.TextExportFormats.Take(1025).ToArray();
+            internal readonly TextExportFormatOptions Default=root.defaultTextFormat;
             internal readonly Regex Parser=root.TextExportFormatterRegex;
             internal readonly string Open=root.TextExportFormatterCap1,Close=root.TextExportFormatterCap2;
             internal readonly TableColumnCatalog Columns=root.ReadTableColumns(TableLevel.Combatant);
@@ -46,6 +50,8 @@ namespace Advanced_Combat_Tracker
                 ReferenceEquals(PlayersRegistry,other.PlayersRegistry)&&ReferenceEquals(AlliedRegistry,other.AlliedRegistry)&&
                 ReferenceEquals(Parser,other.Parser)&&Open==other.Open&&Close==other.Close&&Columns.Revision==other.Columns.Revision&&
                 Players.Count==other.Players.Count&&Allied.Count==other.Allied.Count&&
+                ReferenceEquals(Default,other.Default)&&Presets.Length==other.Presets.Length&&
+                Presets.Zip(other.Presets).All(pair=>ReferenceEquals(pair.First,pair.Second))&&
                 Players.All(pair=>other.Players.TryGetValue(pair.Key,out var value)&&ReferenceEquals(pair.Value.Definition,value.Definition)&&ReferenceEquals(pair.Value.Callback,value.Callback))&&
                 Allied.All(pair=>other.Allied.TryGetValue(pair.Key,out var value)&&ReferenceEquals(pair.Value.Definition,value.Definition)&&ReferenceEquals(pair.Value.Callback,value.Callback));
         }
@@ -55,6 +61,8 @@ namespace Advanced_Combat_Tracker
             ObjectDisposedException.ThrowIf(actionsClosed,this);
             if(activeTableQuery) throw new InvalidOperationException("Reentrant reports/table queries are not supported");
         }
+        private static TextReportOptions ReportOptions(TextExportFormatOptions format) =>
+            new(format.PlayerFormat,format.Sorting,format.ShowOnlyAllies,format.ShowAlliedInfo,format.AlliesFormat);
         private TextReportSnapshot CaptureTextReport()
         {
             if(CombatantData.ExportVariables is null||EncounterData.ExportVariables is null ||
@@ -69,7 +77,17 @@ namespace Advanced_Combat_Tracker
                 throw new InvalidDataException("Invalid report parser/caps");
             if(new UTF8Encoding(false,true).GetByteCount(TextExportFormatterRegex.ToString())>16384)
                 throw new InvalidDataException("Report parser pattern exceeds 16 KiB UTF-8");
+            if(TextExportFormats.Count>1024)throw new InvalidDataException("Report preset count exceeds 1024");
             var snapshot=new TextReportSnapshot(this);
+            if(snapshot.Presets.Length>1024)throw new InvalidDataException("Report preset registry grew beyond its bound");
+            var presetBytes=0;
+            foreach(var format in snapshot.Presets.Prepend(snapshot.Default))
+            {
+                if(format is null)throw new InvalidDataException("Null report preset");
+                var options=ReportOptions(format);options.Validate();
+                presetBytes+=Encoding.UTF8.GetByteCount(options.PlayerFormat)+Encoding.UTF8.GetByteCount(options.AlliesFormat)+Encoding.UTF8.GetByteCount(options.Sorting);
+                if(presetBytes>1024*1024)throw new InvalidDataException("Report presets exceed 1 MiB UTF-8");
+            }
             if(snapshot.Players.Count>1024||snapshot.Allied.Count>1024)throw new InvalidDataException("Report variable registry grew beyond its bound");
             return snapshot;
         }
@@ -79,7 +97,8 @@ namespace Advanced_Combat_Tracker
                 var captured=CaptureTextReport();
                 if(textReportSnapshot is null||!textReportSnapshot.Same(this,captured)) {textReportSnapshot=captured;textReportRevision=checked(textReportRevision+1);}
                 return new(textReportRevision,captured.Players.Keys.ToArray(),captured.Allied.Keys.ToArray(),
-                    captured.Columns.Columns.Where(column=>column.CanSort).Select(column=>column.Key).ToArray());
+                    captured.Columns.Columns.Where(column=>column.CanSort).Select(column=>column.Key).ToArray(),ReportOptions(captured.Default),
+                    captured.Presets.Select((format,index)=>new TextReportPreset(index,ReportOptions(format))).ToArray());
             }
         }
         internal TextReport? ReadTextReport(ulong encounterId,ulong revision,TextReportOptions options)

@@ -20,9 +20,9 @@ still the separately configured Windows step of `test:text-exports`.
 
 Original text export also has native font/tabulation, RTF and additional output /
 selective-export preference branches. This first bounded slice does not add those
-missing compatibility overloads or claim their options are implemented. Registered
-TextExportFormats/default preset selection and L9d output preferences still need
-explicit API/GUI mapping; do not invent equivalents from column labels.
+missing compatibility overloads or claim their options are implemented. The catalog now copies the actual built-in default and registered
+`TextExportFormats` in registration order; GUI selection and L9d output preferences
+still need explicit mapping. Do not invent presets from column labels.
 
 ## First managed text-report slice
 
@@ -66,6 +66,13 @@ probe are separate evidence, not a claim of native UI execution on Linux.
    strict UTF-8/JSON (including duplicate keys), reply identity/revision and catalog
    counts/keys are validated. No callback capacity retry or automatic revision
    retry occurs. Missing exact encounters return `None`.
+   Presets expose `defaultOptions` separately from ordered `{ index, options }`
+   entries. ACT's negative default index is not a registered-list slot. Copy a
+   selection's option values into the draft; never re-resolve an old index after
+   registry changes. Reference/order changes invalidate the catalog revision, even
+   for equal-valued replacements. No plugin `ToString`/equality callback is run by
+   catalog discovery. At most 1024 presets and 1 MiB aggregate UTF-8 option text
+   (including the default) are accepted, in addition to individual template limits.
    Synthetic ABI and Rust malformed-envelope/body tests plus an actual isolated
    worker fixture cover dynamic variables/sort keys, original owner/object callbacks,
    descending order, Unicode, callback/invalid UTF-8/output-limit errors, registry

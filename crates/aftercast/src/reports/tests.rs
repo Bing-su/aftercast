@@ -93,3 +93,42 @@ fn rejects_invalid_replies_and_preserves_unicode() {
         .is_err()
     );
 }
+
+#[test]
+fn preset_catalog_validates_order_options_and_aggregate_budget() {
+    let options = TextReportOptions {
+        player_format: "한글{name}".into(),
+        sorting: "Name".into(),
+        ..Default::default()
+    };
+    let mut catalog = serde_json::json!({"revision":1,"playerVariables":[],"alliedVariables":[],"sortColumns":["Name"],"defaultOptions":options,"presets":[{"index":0,"options":options}]});
+    let decode =
+        |value: &serde_json::Value| decode_catalog(&serde_json::to_vec(value).expect("JSON"), 7);
+    assert_eq!(
+        decode(&catalog).expect("valid catalog").presets[0].options,
+        options
+    );
+    catalog["presets"][0]["index"] = serde_json::json!(1);
+    decode(&catalog).expect_err("index order mismatch");
+    catalog["presets"][0]["index"] = serde_json::json!(0);
+    catalog["defaultOptions"]["sorting"] = serde_json::json!("bad\nkey");
+    decode(&catalog).expect_err("invalid default options");
+    catalog["defaultOptions"] = serde_json::to_value(&options).expect("options");
+    let large = TextReportOptions {
+        player_format: "x".repeat(16384),
+        allies_format: "y".repeat(16384),
+        ..Default::default()
+    };
+    catalog["presets"] = serde_json::Value::Array(
+        (0..33)
+            .map(|index| serde_json::json!({"index":index,"options":large}))
+            .collect(),
+    );
+    decode(&catalog).expect_err("aggregate budget");
+    catalog["presets"] = serde_json::Value::Array(
+        (0..1025)
+            .map(|index| serde_json::json!({"index":index,"options":options}))
+            .collect(),
+    );
+    decode(&catalog).expect_err("too many presets");
+}

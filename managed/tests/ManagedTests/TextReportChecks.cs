@@ -39,6 +39,7 @@ internal static class TextReportChecks
     }
     internal static void Run()
     {
+        HostLifetimeChecks.RunBounded(Presets);
         HostLifetimeChecks.RunBounded(FormattingAndSelection);
         HostLifetimeChecks.RunBounded(CallbacksAndRevision);
         HostLifetimeChecks.RunBounded(BudgetsAndParser);
@@ -77,6 +78,39 @@ internal static class TextReportChecks
         var options=Options("{name}",true,true,"group:{group};");
         EncounterData.ExportVariables["group"].GetExportString=(_,allies,_)=>allies.Count.ToString(CultureInfo.InvariantCulture);
         Check(f.Host.ReadTextReport(selected,f.Host.ReadTextReportCatalog().Revision,options)!.Text=="group:2;ZedAlpha\n","selective IgnoreEnemies bypasses manual allies as ACT does");
+    }
+    private sealed class UnsafePreset() : TextExportFormatOptions("{name}","Name",false,false,"")
+    {
+        public override string ToString()=>throw new Exception("Preset display callback must not execute");
+    }
+    private static void Presets()
+    {
+        using var f=new Fixture();
+        var initial=f.Host.ReadTextReportCatalog();
+        Check(initial.DefaultOptions==new TextReportOptions("{n}{NAME5} | {encdps-*}","EncDPS",true,true,"({duration}) {title}: {encdps-*} {maxhit-*}"),"ACT built-in preset values");
+        var first=new UnsafePreset();var second=new TextExportFormatOptions("日本😀{name}","Name",true,true,"group:{group};");
+        f.Root.TextExportFormats.Add(first);f.Root.AddTextFormat(second);f.Root.AddTextFormat(second);
+        var added=f.Host.ReadTextReportCatalog();
+        Check(added.Revision>initial.Revision&&added.Presets.Length==2&&added.Presets[0].Index==0&&added.Presets[1].Index==1,"preset registration order and duplicate behavior");
+        Check(f.Host.ReadTextReport(f.Id,added.Revision,added.Presets[0].Options)!.Text=="ZedAlpha\n","preset options render");
+        added.Presets[0]=new(100,Options("caller mutation"));
+        var owned=f.Host.ReadTextReportCatalog();Check(owned.Presets[0].Index==0&&owned.Revision==added.Revision,"caller-owned preset array");
+        f.Root.TextExportFormats.Reverse();var moved=f.Host.ReadTextReportCatalog();
+        Check(moved.Revision>owned.Revision&&moved.Presets[0].Options.PlayerFormat==second.PlayerFormat,"reorder invalidates indexes");
+        Throws<InvalidOperationException>(()=>f.Host.ReadTextReport(f.Id,owned.Revision,owned.Presets[0].Options));
+        f.Root.TextExportFormats[0]=new(second.PlayerFormat,second.Sorting,second.ShowOnlyAllies,second.ShowAlliedInfo,second.AlliesFormat);
+        Check(f.Host.ReadTextReportCatalog().Revision>moved.Revision,"same-valued replacement invalidates catalog");
+        f.Root.TextExportFormats.Clear();Check(f.Host.ReadTextReportCatalog().Presets.Length==0,"preset removal");
+        CombatantData.ExportVariables["preset-change"]=new("change","","",(_,_)=>{f.Root.TextExportFormats.Add(first);return "changed";});
+        var beforeChange=f.Host.ReadTextReportCatalog();
+        Throws<InvalidOperationException>(()=>f.Host.ReadTextReport(f.Id,beforeChange.Revision,Options("{preset-change}")));
+        Check(f.Host.ReadTextReportCatalog().Revision>beforeChange.Revision,"preset mutation during callback invalidates render");
+        f.Root.TextExportFormats.Clear();CombatantData.ExportVariables.Remove("preset-change");
+        f.Root.TextExportFormats.Add(null!);Throws<InvalidDataException>(()=>f.Host.ReadTextReportCatalog());f.Root.TextExportFormats.Clear();
+        for(var index=0;index<1025;index++)f.Root.TextExportFormats.Add(first);
+        Throws<InvalidDataException>(()=>f.Host.ReadTextReportCatalog());f.Root.TextExportFormats.Clear();
+        for(var index=0;index<33;index++)f.Root.TextExportFormats.Add(new(new string('x',16384),"Name",false,false,new string('y',16384)));
+        Throws<InvalidDataException>(()=>f.Host.ReadTextReportCatalog());f.Root.TextExportFormats.Clear();
     }
     private static void CallbacksAndRevision()
     {

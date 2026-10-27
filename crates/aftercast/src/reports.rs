@@ -19,15 +19,25 @@ pub struct TextReportCatalog {
     pub allied_variables: Vec<String>,
     /// Registration keys, not displayed labels. Unknown keys retain ACT's damage-sort fallback.
     pub sort_columns: Vec<String>,
+    /// ACT's built-in format (the legacy API's negative format index).
+    pub default_options: TextReportOptions,
+    /// Registered options in catalog order. Copy into a draft; never re-resolve an old index.
+    pub presets: Vec<TextReportPreset>,
 }
-#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TextReportOptions {
     pub player_format: String,
     pub sorting: String,
     pub show_only_allies: bool,
     pub show_allied_info: bool,
     pub allies_format: String,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TextReportPreset {
+    pub index: u32,
+    pub options: TextReportOptions,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TextReport {
@@ -43,6 +53,8 @@ struct CatalogReply {
     player_variables: Vec<String>,
     allied_variables: Vec<String>,
     sort_columns: Vec<String>,
+    default_options: TextReportOptions,
+    presets: Vec<TextReportPreset>,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -85,6 +97,24 @@ fn decode_catalog(bytes: &[u8], session: u64) -> Result<TextReportCatalog, Error
     keys(&reply.player_variables, 1024, 256)?;
     keys(&reply.allied_variables, 1024, 256)?;
     keys(&reply.sort_columns, 256, 1024)?;
+    if reply.presets.len() > 1024 {
+        return Err(invalid("too many report presets"));
+    }
+    let mut budget = 0;
+    for (index, preset) in reply.presets.iter().enumerate() {
+        if preset.index as usize != index {
+            return Err(invalid("report preset order mismatch"));
+        }
+    }
+    for options in std::iter::once(&reply.default_options)
+        .chain(reply.presets.iter().map(|preset| &preset.options))
+    {
+        options.validate()?;
+        budget += options.player_format.len() + options.allies_format.len() + options.sorting.len();
+        if budget > MAX_TEXT {
+            return Err(invalid("report preset catalog exceeds budget"));
+        }
+    }
     Ok(TextReportCatalog {
         revision: TextReportRevision {
             session,
@@ -93,6 +123,8 @@ fn decode_catalog(bytes: &[u8], session: u64) -> Result<TextReportCatalog, Error
         player_variables: reply.player_variables,
         allied_variables: reply.allied_variables,
         sort_columns: reply.sort_columns,
+        default_options: reply.default_options,
+        presets: reply.presets,
     })
 }
 fn decode_report(

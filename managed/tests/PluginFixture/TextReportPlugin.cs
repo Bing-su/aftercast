@@ -9,6 +9,7 @@ public sealed class TextReportPlugin : IActPluginV1
 {
     private readonly ImportPlugin parser = new();
     private int owner, calls;
+    private readonly TextExportFormatOptions preset=new("{report-name}:{report-unicode}","report-name",false,false,"");
     private FormActMain root = null!;
     private void Own(CombatantData actor)
     {
@@ -32,6 +33,7 @@ public sealed class TextReportPlugin : IActPluginV1
             return "removed";
         });
         CombatantData.ExportVariables["report-mutate"] = new("mutate","","",(_,_)=>{CombatantData.ExportVariables["report-added"]=new("added","","",(_,_)=>"added");return "mutated";});
+        root.AddTextFormat(preset);
         EncounterData.ExportVariables["report-group"] = new("group","","",(encounter,allies,_)=>
         {
             if(Environment.CurrentManagedThreadId!=owner || allies.Any(actor=>!encounter.Items.Values.Any(value=>ReferenceEquals(value,actor))))
@@ -41,6 +43,7 @@ public sealed class TextReportPlugin : IActPluginV1
     }
     public void DeInitPlugin()
     {
+        root.TextExportFormats.RemoveAll(value=>ReferenceEquals(value,preset));
         foreach(var key in new[]{"report-name","report-unicode","report-count","report-fail","report-invalid","report-limit","report-mutate","report-added","report-remove"}) CombatantData.ExportVariables.Remove(key);
         CombatantData.ColumnDefs.Remove("report-name"); EncounterData.ExportVariables.Remove("report-group"); parser.DeInitPlugin();
     }
