@@ -89,8 +89,9 @@ pub(super) fn AnalysisPane() -> Element {
                 }
                 for id in [detail.summary.id] {
                     super::encounter_context::EncounterContext {
-                        key: "{state.read().revision.session}-{state.read().revision.selection}",
+                        key: "{state.read().revision.session}-{state.read().revision.selection}-{state.read().settings.ui.language}-{state.read().settings.ui.theme}",
                         id,
+                        title: format!("{} / {}", detail.summary.zone, detail.summary.title),
                     }
                 }
                 p { class: "my-6 max-w-[70ch] text-xs leading-7 text-muted-foreground",

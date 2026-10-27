@@ -336,3 +336,83 @@ test('running plugin toggles and failed startup retry use fresh instances', asyn
   await expect(page.getByRole('button', { name: 'Open plugin settings', exact: true })).toHaveCount(0);
   await quit();
 });
+
+test('independent log windows retain selection and expire on restore or worker stop', async () => {
+  const plugin = path.resolve(target, '../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll');
+  await fs.writeFile(path.join(directory, 'config.toml'), `schema_version = 1\n[ui]\nlanguage = "en-US"\n[host]\nplugins = [${JSON.stringify(plugin)}]\n[host.plugin_types]\n${JSON.stringify(plugin)} = "Aftercast.PluginFixture.ImportPlugin"\n`);
+  const log = path.join(directory, 'window-fixture.log');
+  const importFixture = async (text: string) => {
+    await fs.writeFile(log, text);
+    await page.getByRole('button', { name: 'Import / Export', exact: true }).click();
+    await page.locator('#log-path').fill(log);
+    await page.locator('main').getByRole('button', { name: 'Import log', exact: true }).click();
+    await expect(page.getByRole('status').last()).toContainText('Import completed');
+    await page.getByRole('button', { name: 'Analysis', exact: true }).click();
+  };
+  const context = (target: Page) => target.getByRole('region', { name: 'Actions and encounter logs', exact: true });
+  const openWindow = async () => {
+    const pages = () => browser.contexts().flatMap(context => context.pages());
+    const before = new Set(pages());
+    await context(page).getByRole('button', { name: 'Open log window', exact: true }).click();
+    await expect.poll(() => pages().filter(candidate => !before.has(candidate)).length).toBe(1);
+    const opened = pages().find(candidate => !before.has(candidate))!;
+    opened.on('pageerror', error => browserErrors.push(error.message));
+    await expect(opened.getByRole('button', { name: 'Close log window', exact: true })).toBeVisible();
+    return opened;
+  };
+  await start();
+  await page.getByRole('button', { name: 'Start host', exact: true }).click();
+  await expect(page.getByTestId('host-status')).toHaveText('Host running', { timeout: 40_000 });
+  await importFixture('0|100\n0|300\n');
+  await page.locator('.encounter-item').click();
+  await context(page).getByRole('button', { name: /Source → Target · Strike · 100/ }).click();
+  const first = await openWindow();
+  const second = await openWindow();
+  await expect(context(first).locator('[aria-current="true"]')).toContainText('0|100');
+  await expect(context(second).locator('[aria-current="true"]')).toContainText('0|100');
+  await context(first).getByRole('button', { name: 'Back to actions', exact: true }).click();
+  await context(first).getByRole('button', { name: /Source → Target · Strike · 300/ }).click();
+  await expect(context(first).locator('[aria-current="true"]')).toContainText('0|300');
+  await expect(context(second).locator('[aria-current="true"]')).toContainText('0|100');
+  await expect(context(page).locator('[aria-current="true"]')).toContainText('0|100');
+  await first.getByRole('button', { name: 'Close log window', exact: true }).click();
+  await expect.poll(() => first.isClosed()).toBe(true);
+  const reopened = await openWindow();
+  await expect(context(reopened).locator('[aria-current="true"]')).toContainText('0|100');
+  await importFixture('1|25\n');
+  await expect(page.locator('.encounter-item')).toHaveCount(2);
+  // Locate the new encounter by its action rather than relying on presentation order.
+  for (const item of await page.locator('.encounter-item').all()) {
+    await item.click();
+    await expect(context(page).getByRole('button', { name: 'Open log window', exact: true })).toBeEnabled();
+    if (await context(page).getByRole('button', { name: /Source → Target · Strike · 25/ }).count()) break;
+  }
+  await context(page).getByRole('button', { name: /Source → Target · Strike · 25/ }).click();
+  const otherEncounter = await openWindow();
+  await expect(context(otherEncounter).locator('[aria-current="true"]')).toContainText('1|25');
+  await expect(context(second).locator('[aria-current="true"]')).toContainText('0|100');
+  await page.getByRole('button', { name: 'Import / Export', exact: true }).click();
+  await page.getByRole('button', { name: 'Save history checkpoint', exact: true }).click();
+  await expect(page.getByRole('status').last()).toHaveText('History saved: 2');
+  await expect(context(second).locator('[aria-current="true"]')).toContainText('0|100');
+  await page.getByRole('button', { name: 'Restore saved history', exact: true }).click();
+  await expect(page.getByRole('status').last()).toContainText('History restored:');
+  for (const child of [second, reopened, otherEncounter]) {
+    await expect(context(child).getByRole('status')).toContainText('This window’s encounter context is no longer available.');
+    await expect(context(child).locator('li')).toHaveCount(0);
+    await expect(context(child).getByRole('button', { name: 'Refresh', exact: true })).toBeDisabled();
+    await expect(context(child).getByRole('button', { name: 'Open log window', exact: true })).toBeDisabled();
+  }
+  await page.getByRole('button', { name: 'Analysis', exact: true }).click();
+  await page.locator('.encounter-item').first().click();
+  const restored = await openWindow();
+  await expect(context(restored).getByRole('status')).toContainText('Omitted by retention limits 0');
+  await page.getByRole('button', { name: 'Stop host', exact: true }).click();
+  await expect(page.getByTestId('host-status')).toHaveText('Host stopped');
+  await expect(context(restored).getByRole('status')).toContainText('This window’s encounter context is no longer available.');
+  expect(browserErrors).toEqual([]);
+  await quit();
+  for (const child of [second, reopened, otherEncounter, restored]) {
+    await expect.poll(() => child.isClosed()).toBe(true);
+  }
+});

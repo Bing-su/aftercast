@@ -1,8 +1,10 @@
-use super::{AppState, tr};
-use crate::components::{Accordion, Button, ButtonVariant};
-use aftercast::{
-    EncounterAction, EncounterId, EncounterLogs, EncounterPage, HostHandle, SourceLogLink,
+use super::{
+    AppState,
+    log_window::{ContextEndpoint, InitialPage, WindowAppearance},
+    tr,
 };
+use crate::components::{Accordion, Button, ButtonVariant};
+use aftercast::{EncounterAction, EncounterId, EncounterLogs, EncounterPage, SourceLogLink};
 use dioxus::prelude::*;
 
 const PAGE: u32 = 50;
@@ -19,15 +21,28 @@ struct ContextState {
     source: Option<(u32, i32)>,
     error: Option<String>,
     unavailable: bool,
+    invalidated: bool,
 }
 
 impl ContextState {
+    fn invalidate(&mut self) {
+        self.generation += 1;
+        self.busy = false;
+        self.actions = None;
+        self.logs = None;
+        self.source = None;
+        self.error = None;
+        self.unavailable = true;
+        self.invalidated = true;
+    }
+
     fn receive(&mut self, generation: u64, result: Result<PageResult, aftercast::Error>) {
         if self.generation != generation {
             return;
         }
         self.busy = false;
         match result {
+            Ok(PageResult::Actions(None) | PageResult::Logs(None)) => self.invalidate(),
             Ok(PageResult::Actions(page)) => {
                 self.unavailable = page.is_none();
                 self.actions = page;
@@ -35,6 +50,10 @@ impl ContextState {
             Ok(PageResult::Logs(page)) => {
                 self.unavailable = page.is_none();
                 self.logs = page;
+            }
+            Err(error @ (aftercast::Error::Closed | aftercast::Error::WorkerFailed(_))) => {
+                self.invalidate();
+                self.error = Some(error.to_string());
             }
             Err(error) => self.error = Some(error.to_string()),
         }
@@ -67,12 +86,16 @@ enum PageResult {
 
 fn load(
     mut state: Signal<ContextState>,
-    handle: HostHandle,
-    id: EncounterId,
+    endpoint: Signal<ContextEndpoint>,
     logs: bool,
     offset: u32,
     source: Option<(u32, i32)>,
 ) {
+    let endpoint = endpoint.peek().clone();
+    if !endpoint.valid() {
+        state.write().invalidate();
+        return;
+    }
     let generation = {
         let mut state = state.write();
         state.generation += 1;
@@ -92,31 +115,101 @@ fn load(
     };
     spawn(async move {
         let result = if logs {
-            handle
-                .encounter_logs(id, offset, PAGE)
+            endpoint
+                .handle
+                .encounter_logs(endpoint.id, offset, PAGE)
                 .await
                 .map(PageResult::Logs)
         } else {
-            handle
-                .encounter_actions(id, offset, PAGE)
+            endpoint
+                .handle
+                .encounter_actions(endpoint.id, offset, PAGE)
                 .await
                 .map(PageResult::Actions)
         };
-        state.write().receive(generation, result);
+        if endpoint.valid() {
+            if matches!(
+                &result,
+                Err(aftercast::Error::Closed | aftercast::Error::WorkerFailed(_))
+            ) {
+                endpoint.lifetime.invalidate();
+            }
+            state.write().receive(generation, result);
+        } else {
+            state.write().invalidate();
+        }
+    });
+}
+
+fn open_window(mut state: Signal<ContextState>, endpoint: ContextEndpoint, initial: InitialPage) {
+    let Some(pending) = super::log_window::open(endpoint, initial) else {
+        return;
+    };
+    // Scoped to this browser: unmount cancels the reply handler, not the queued window.
+    spawn(async move {
+        if pending.try_resolve().await.is_err() {
+            tracing::error!("failed to create encounter log window");
+            state.write().error = Some(tr("log-window-open-failed"));
+        }
     });
 }
 
 #[component]
-pub(super) fn EncounterContext(id: EncounterId) -> Element {
+pub(super) fn EncounterContext(id: EncounterId, title: String) -> Element {
     let app = use_context::<Signal<AppState>>();
-    let mut state = use_signal(ContextState::default);
+    let Some(handle) = app.read().handle() else {
+        return rsx! {};
+    };
+    use_context_provider(|| ContextEndpoint {
+        handle,
+        id,
+        generation: app.read().log_windows.generation(),
+        lifetime: app.read().log_windows.clone(),
+        appearance: WindowAppearance {
+            title,
+            theme: app.read().settings.ui.theme.clone(),
+            language: app.read().settings.ui.language.clone(),
+        },
+    });
+    rsx! {
+        ContextBrowser {
+            initial: InitialPage::default(),
+            can_open: app.read().phase == super::Phase::Ready,
+        }
+    }
+}
+
+#[component]
+pub(super) fn ContextBrowser(
+    initial: InitialPage,
+    #[props(default = true)] can_open: bool,
+) -> Element {
+    let endpoint = use_signal(use_context::<ContextEndpoint>);
+    let mut state = use_signal(|| ContextState {
+        actions_offset: initial.actions_offset,
+        ..ContextState::default()
+    });
     use_effect(move || {
-        if let Some(handle) = app.peek().handle() {
-            load(state, handle, id, false, 0, None);
+        load(
+            state,
+            endpoint,
+            initial.logs,
+            initial.offset,
+            initial.source,
+        )
+    });
+    use_future(move || async move {
+        loop {
+            dioxus_sdk::time::sleep(std::time::Duration::from_millis(100)).await;
+            if !endpoint.peek().valid() {
+                state.write().invalidate();
+                break;
+            }
         }
     });
     let logs_view = state.read().logs_view;
     let busy = state.read().busy;
+    let invalidated = state.read().invalidated;
     let offset = if logs_view {
         state.read().logs_offset
     } else {
@@ -142,13 +235,27 @@ pub(super) fn EncounterContext(id: EncounterId) -> Element {
                 div { class: "flex flex-wrap items-center gap-3",
                     Button {
                         variant: ButtonVariant::Outline,
+                        disabled: invalidated,
                         onclick: move |_| {
-                            if let Some(handle) = app.peek().handle() {
-                                let next_offset = if logs_view { state.peek().actions_offset } else { 0 };
-                                load(state, handle, id, !logs_view, next_offset, None);
-                            }
+                            let next_offset = if logs_view { state.peek().actions_offset } else { 0 };
+                            load(state, endpoint, !logs_view, next_offset, None);
                         },
                         {tr(if logs_view { "back-actions" } else { "view-logs" })}
+                    }
+                    Button {
+                        variant: ButtonVariant::Outline,
+                        disabled: busy || invalidated || !can_open,
+                        onclick: move |_| open_window(
+                            state,
+                            endpoint.peek().clone(),
+                            InitialPage {
+                                logs: true,
+                                offset: if logs_view { offset } else { 0 },
+                                actions_offset: state.peek().actions_offset,
+                                source: if logs_view { source } else { None },
+                            },
+                        ),
+                        {tr("open-log-window")}
                     }
                     if busy {
                         Button {
@@ -174,7 +281,9 @@ pub(super) fn EncounterContext(id: EncounterId) -> Element {
                     }
                 }
                 if state.read().unavailable {
-                    p { role: "status", {tr("encounter-unavailable")} }
+                    p { role: "status",
+                        {tr(if invalidated { "log-window-expired" } else { "encounter-unavailable" })}
+                    }
                 }
                 if logs_view {
                     if let Some(logs) = logs {
@@ -243,13 +352,10 @@ pub(super) fn EncounterContext(id: EncounterId) -> Element {
                                 Button {
                                     variant: ButtonVariant::Ghost,
                                     class: "h-auto w-full flex-col items-start whitespace-normal py-3 text-left".to_owned(),
-                                    disabled: busy || !matches!(action.source, SourceLogLink::Retained(_)),
+                                    disabled: busy || invalidated || !matches!(action.source, SourceLogLink::Retained(_)),
                                     onclick: move |_| {
-                                        if let (Some(handle), SourceLogLink::Retained(index)) = (
-                                            app.peek().handle(),
-                                            action.source,
-                                        ) {
-                                            load(state, handle, id, true, index, Some((index, action.time_sorter)));
+                                        if let SourceLogLink::Retained(index) = action.source {
+                                            load(state, endpoint, true, index, Some((index, action.time_sorter)));
                                         }
                                     },
                                     span {
@@ -276,11 +382,9 @@ pub(super) fn EncounterContext(id: EncounterId) -> Element {
                 div { class: "flex items-center gap-3 text-xs text-muted-foreground",
                     Button {
                         variant: ButtonVariant::Ghost,
-                        disabled: busy || offset == 0,
+                        disabled: busy || invalidated || offset == 0,
                         onclick: move |_| {
-                            if let Some(handle) = app.peek().handle() {
-                                load(state, handle, id, logs_view, offset.saturating_sub(PAGE), None);
-                            }
+                            load(state, endpoint, logs_view, offset.saturating_sub(PAGE), None);
                         },
                         {tr("previous")}
                     }
@@ -289,21 +393,17 @@ pub(super) fn EncounterContext(id: EncounterId) -> Element {
                     }
                     Button {
                         variant: ButtonVariant::Ghost,
-                        disabled: busy || offset.saturating_add(PAGE) >= total,
+                        disabled: busy || invalidated || offset.saturating_add(PAGE) >= total,
                         onclick: move |_| {
-                            if let Some(handle) = app.peek().handle() {
-                                load(state, handle, id, logs_view, offset + PAGE, None);
-                            }
+                            load(state, endpoint, logs_view, offset + PAGE, None);
                         },
                         {tr("next")}
                     }
                     Button {
                         variant: ButtonVariant::Ghost,
-                        disabled: busy,
+                        disabled: busy || invalidated,
                         onclick: move |_| {
-                            if let Some(handle) = app.peek().handle() {
-                                load(state, handle, id, logs_view, offset, source);
-                            }
+                            load(state, endpoint, logs_view, offset, source);
                         },
                         {tr("refresh")}
                     }
@@ -333,6 +433,44 @@ mod tests {
         line.source = aftercast::SourceLogLink::Ambiguous;
         assert!(!source_matches(Some((0, 42)), 0, &line));
     }
+    #[test]
+    fn invalidation_clears_selection_and_rejects_pending_log_pages() {
+        let mut state = ContextState {
+            generation: 5,
+            busy: true,
+            source: Some((0, 42)),
+            logs: Some(aftercast::EncounterLogs {
+                page: aftercast::EncounterPage {
+                    total: 0,
+                    items: vec![],
+                },
+                dropped: 123,
+            }),
+            ..ContextState::default()
+        };
+        state.invalidate();
+        state.receive(5, Ok(PageResult::Logs(None)));
+        state.receive(5, Err(aftercast::Error::Closed));
+        assert!(state.invalidated && state.unavailable);
+        assert!(!state.busy);
+        assert!(state.logs.is_none() && state.actions.is_none() && state.source.is_none());
+        assert!(state.error.is_none());
+    }
+
+    #[test]
+    fn a_closed_worker_clears_the_previous_selection_instead_of_reusing_it() {
+        let mut state = ContextState {
+            generation: 2,
+            busy: true,
+            source: Some((7, 42)),
+            ..ContextState::default()
+        };
+        state.receive(2, Err(aftercast::Error::Closed));
+        assert!(state.invalidated && state.unavailable && !state.busy);
+        assert!(state.source.is_none());
+        assert_eq!(state.error.as_deref(), Some("the host is closed"));
+    }
+
     #[test]
     fn cancelled_or_replaced_queries_cannot_publish_late_pages_or_errors() {
         let mut state = ContextState {

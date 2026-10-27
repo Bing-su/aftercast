@@ -1,5 +1,6 @@
 mod analysis;
 mod encounter_context;
+mod log_window;
 mod plugins;
 mod preferences;
 mod shell;
@@ -78,6 +79,7 @@ struct AppState {
     phase: Phase,
     screen: &'static str,
     running: Option<RunningHost>,
+    log_windows: std::sync::Arc<log_window::WindowLifetime>,
     plugins: Vec<LoadedPlugin>,
     plugin_ui_pending: bool,
     startup_failed: bool,
@@ -125,6 +127,7 @@ impl AppState {
             phase: Phase::Idle,
             screen: "analysis",
             running: None,
+            log_windows: Default::default(),
             plugins: Vec::new(),
             plugin_ui_pending: false,
             startup_failed: false,
@@ -237,6 +240,7 @@ pub fn App() -> Element {
                         stop(state);
                     }
                     Phase::Idle if !state.read().saving => {
+                        state.read().log_windows.close();
                         window.set_close_behavior(WindowCloseBehaviour::WindowCloses);
                         window.close();
                         break;
@@ -426,6 +430,7 @@ fn stop(mut state: Signal<AppState>) {
     };
     {
         let mut state = state.write();
+        state.log_windows.invalidate();
         state.phase = Phase::Stopping;
         state.revision.session += 1;
         state.selected = None;
@@ -659,6 +664,9 @@ fn archive_history(mut state: Signal<AppState>, restore: bool) {
         return;
     };
     let session = state.read().revision.session;
+    if restore {
+        state.read().log_windows.invalidate();
+    }
     state.write().phase = Phase::Archiving;
     let message = tr(if restore {
         "history-restored"
@@ -674,6 +682,10 @@ fn archive_history(mut state: Signal<AppState>, restore: bool) {
         };
         if state.read().revision.session != session {
             return;
+        }
+        // Also invalidate a window queued during restore, before its result became known.
+        if restore {
+            state.read().log_windows.invalidate();
         }
         state.write().phase = Phase::Ready;
         match result {
