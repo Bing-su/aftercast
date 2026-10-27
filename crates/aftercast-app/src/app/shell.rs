@@ -15,8 +15,8 @@ pub(super) fn Header() -> Element {
                     button {
                         class: "workflow-tab shrink-0 px-4 text-sm min-[1280px]:px-5 min-[1280px]:text-base text-muted-foreground hover:bg-accent hover:text-foreground aria-[current=page]:border-primary aria-[current=page]:bg-accent aria-[current=page]:text-primary disabled:cursor-default disabled:opacity-40",
                         "aria-current": if state.read().screen == screen { "page" } else { "false" },
-                        disabled: matches!(screen, "triggers" | "history"),
-                        title: if matches!(screen, "triggers" | "history") { tr("planned-feature") } else { tr(screen) },
+                        disabled: screen == "history",
+                        title: if screen == "history" { tr("planned-feature") } else { tr(screen) },
                         onclick: move |_| state.write().screen = screen,
                         {tr(screen)}
                     }

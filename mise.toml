@@ -32,7 +32,7 @@ run = [
 
 [tasks.check]
 description = "Run Rust, managed and CLR fixture checks (DOTNET_ROOT required)"
-depends = ["managed:test", "test:winforms", "test:hosting", "test:plugins"]
+depends = ["managed:test", "test:winforms", "test:hosting", "test:plugins", "test:gui-state"]
 run = [
   "cargo fmt --all --check",
   "cargo clippy --workspace --all-targets -- -D warnings",
@@ -416,3 +416,8 @@ run = [
   "dotnet build managed/tests/LegacyReference/LegacyReference.csproj -c Release -p:RestoreLockedMode=true",
   "dotnet build managed/tests/OriginalReference/OriginalReference.csproj -c Release -p:RestoreLockedMode=true",
 ]
+
+[tasks."test:gui-state"]
+description = "Test trigger GUI controller contracts against an isolated Host without native clicks"
+depends = ["test:plugins"]
+run = "cargo test -p aftercast-app trigger_ui_contract -- --ignored"

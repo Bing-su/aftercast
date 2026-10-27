@@ -64,7 +64,7 @@ fn source_matches(source: Option<(u32, i32)>, index: u32, line: &aftercast::Enco
     source == Some((index, line.time_sorter)) && line.source == SourceLogLink::Retained(index)
 }
 
-fn format_time(time: aftercast::LogTimestamp) -> String {
+pub(super) fn format_time(time: aftercast::LogTimestamp) -> String {
     // Format the source wall-clock ticks without converting local/unspecified times to another zone.
     let ticks = time.ticks as i64;
     let seconds = ticks / 10_000_000 - 62_135_596_800;

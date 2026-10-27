@@ -4,6 +4,7 @@ mod log_window;
 mod plugins;
 mod preferences;
 mod shell;
+mod triggers;
 
 use std::time::Duration;
 
@@ -38,6 +39,7 @@ enum Phase {
     Ready,
     Importing,
     Archiving,
+    UpdatingTriggers,
     ChangingPlugins,
     Stopping,
 }
@@ -51,6 +53,7 @@ impl Phase {
             Self::Ready => "ready",
             Self::Importing => "importing",
             Self::Archiving => "archiving",
+            Self::UpdatingTriggers => "updating-triggers",
             Self::ChangingPlugins => "changing-plugins",
             Self::Stopping => "stopping",
         }
@@ -81,6 +84,7 @@ struct AppState {
     running: Option<RunningHost>,
     log_windows: std::sync::Arc<log_window::WindowLifetime>,
     plugins: Vec<LoadedPlugin>,
+    triggers: triggers::EditorState,
     plugin_ui_pending: bool,
     startup_failed: bool,
     failed_plugin: Option<String>,
@@ -136,6 +140,7 @@ impl AppState {
             running: None,
             log_windows: Default::default(),
             plugins: Vec::new(),
+            triggers: Default::default(),
             plugin_ui_pending: false,
             startup_failed: false,
             failed_plugin: None,
@@ -243,7 +248,8 @@ pub fn App() -> Element {
                     | Phase::Initializing
                     | Phase::Importing
                     | Phase::Archiving
-                    | Phase::ChangingPlugins => {
+                    | Phase::ChangingPlugins
+                    | Phase::UpdatingTriggers => {
                         stop(state);
                     }
                     Phase::Idle if !state.read().saving => {
@@ -294,6 +300,9 @@ pub fn App() -> Element {
                         },
                         "plugins" => rsx! {
                             plugins::PluginsPane {}
+                        },
+                        "triggers" => rsx! {
+                            triggers::TriggersPane {}
                         },
                         "import" => rsx! {
                             analysis::ImportPane {}
@@ -448,6 +457,7 @@ fn stop(mut state: Signal<AppState>) {
         state.category = None;
         state.encounters.clear();
         state.plugins.clear();
+        state.triggers = Default::default();
         state.plugin_ui_pending = false;
         state.loading = false;
     }

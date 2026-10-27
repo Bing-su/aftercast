@@ -180,7 +180,7 @@ test('embedded runtime starts a real Host, imports expected totals and survives 
   await expect(page.getByTestId('host-status')).toHaveText('Host running', { timeout: 40_000 });
   await page.getByRole('button', { name: 'Analysis', exact: true }).click();
   await expect(page.locator('.topbar')).not.toContainText('aftercast');
-  await expect(page.getByRole('button', { name: 'Custom triggers', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'Custom triggers', exact: true })).toBeEnabled();
   await expect(page.getByRole('button', { name: 'History', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Import / Export', exact: true }).click();
   await page.locator('#log-path').fill(log);
