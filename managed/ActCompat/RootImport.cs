@@ -312,7 +312,9 @@ namespace Advanced_Combat_Tracker
                             }
                             else skipped = SkipOutsideRange(next.Line, next.Time, next.Source == 0);
                             if (!skipped && !TryDispatch(next)) break;
-                            sourceInput?.Consume(next.Source, next.BeyondMain || range is not null && next.Line.Length != 0 && next.Time > range.End);
+                            // Only a rejected past-end head closes its source; an extended row must
+                            // remain readable even when parsing that row changes the combat state.
+                            sourceInput?.Consume(next.Source, next.BeyondMain || skipped && range is not null && next.Line.Length != 0 && next.Time > range.End);
                             nextLine = null;
                         }
                         if (!ending && nextLine is null && (sourceInput?.Completed ?? (buffered.Count == 0 && input.Reader.Completion.IsCompleted)))
@@ -346,7 +348,8 @@ namespace Advanced_Combat_Tracker
 
             private bool SkipOutsideRange(string line, DateTime time, bool mainSource)
             {
-                if (range is null || line.Length == 0 || time >= range.Start && time <= range.End) return false;
+                if (range is null || line.Length == 0 || time >= range.Start &&
+                    (time <= range.End || range.ExtendToCombatEnd && root.InCombat)) return false;
                 lines++;
                 if (time > range.End)
                 {

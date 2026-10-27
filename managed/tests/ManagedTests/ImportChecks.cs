@@ -63,6 +63,7 @@ internal static class ImportChecks
     internal static void Run()
     {
         HostLifetimeChecks.RunBounded(ImportRangeChecks.Run);
+        ImportBoundaryChecks.Run();
         HostLifetimeChecks.RunBounded(SuccessAndRepeated);
         HostLifetimeChecks.RunBounded(EmptyAndAdmission);
         HostLifetimeChecks.RunBounded(FailureRestoration);
