@@ -433,7 +433,9 @@ fn import_log(mut state: Signal<AppState>) {
     if state.read().phase != Phase::Ready || state.read().plugins.is_empty() {
         return;
     }
-    spawn(async move {
+    let language = i18n();
+    // Imports belong to the app, e.g. changing tabs must not cancel cleanup and leave Phase::Importing stuck.
+    spawn_forever(async move {
         let session = state.read().revision.session;
         let configured = state.peek().import_path.trim().to_owned();
         let path = if configured.is_empty() {
@@ -470,7 +472,7 @@ fn import_log(mut state: Signal<AppState>) {
             Ok(report) => {
                 state.write().message = format!(
                     "{} · {} / {} · {}",
-                    tr("import-complete"),
+                    language.translate("import-complete"),
                     report.records_dispatched,
                     report.lines_read,
                     report.encounters
@@ -482,7 +484,7 @@ fn import_log(mut state: Signal<AppState>) {
                     Some(aftercast::Error::Cancelled)
                 ) =>
             {
-                state.write().message = tr("import-cancelled")
+                state.write().message = language.translate("import-cancelled")
             }
             Err(error) => state.write().fail_report(error),
         }
