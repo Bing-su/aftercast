@@ -334,3 +334,119 @@ async fn plugin_status_and_settings_respect_terminal_instances_and_session_resta
         .await
         .expect("shutdown restarted owner");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
+async fn running_toggles_preserve_worker_history_and_stop_old_callbacks(deployment: Deployment) {
+    use aftercast::PluginState;
+
+    let mut host = Host::start(deployment.config()).await.expect("host");
+    let assembly = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let session = host.session_id().await.expect("original session");
+    let parser = construct(&mut host, &assembly, "ImportPlugin").await;
+    host.initialize_plugin(parser).await.expect("parser");
+    let log = deployment.directory().join("toggle.log");
+    let state = deployment.directory().join("state");
+    let observed = state.join("toggle.observed");
+    let parse = async |host: &mut Host, text: &str| {
+        std::fs::write(&log, text).expect("synthetic log");
+        host.import_log(&log)
+            .await
+            .expect("parser remains operational");
+    };
+    let mut previous = None;
+    let mut first_encounter = None;
+    for round in 0..3 {
+        let observer = construct(&mut host, &assembly, "ToggleObserverPlugin").await;
+        assert_ne!(previous, Some(observer), "enable must use a fresh instance");
+        host.initialize_plugin(observer).await.expect("enable");
+        let before = std::fs::read_to_string(&observed)
+            .unwrap_or_default()
+            .lines()
+            .count();
+        parse(&mut host, "0|100\n0|200\n").await;
+        assert_eq!(lines(&state, "toggle.observed"), before + 2);
+        if round == 0 {
+            let encounter = host.encounters(0, 32).await.expect("history").items[0].clone();
+            assert_eq!(encounter.damage, 300);
+            first_encounter = Some(encounter.id);
+        }
+        host.deinitialize_plugin(observer).await.expect("disable");
+        assert_eq!(
+            host.plugin_status(observer).await.expect("status").state,
+            PluginState::Stopped
+        );
+        host.initialize_plugin(observer)
+            .await
+            .expect_err("terminal instance");
+        parse(&mut host, "1|50\n").await;
+        assert_eq!(
+            lines(&state, "toggle.observed"),
+            before + 2,
+            "no callbacks while disabled"
+        );
+        assert_eq!(host.session_id().await.expect("same session"), session);
+        let retained = host
+            .encounter_actions(first_encounter.expect("first encounter"), 0, 10)
+            .await
+            .expect("query existing graph")
+            .expect("identity retained");
+        assert_eq!(retained.total, 2);
+        assert_eq!(
+            retained.items[0].source,
+            aftercast::SourceLogLink::Retained(0)
+        );
+        assert_eq!(
+            retained.items[1].source,
+            aftercast::SourceLogLink::Retained(1)
+        );
+        previous = Some(observer);
+    }
+    for _ in 0..2 {
+        let failed = construct(&mut host, &assembly, "InitFailurePlugin").await;
+        initialization_failure(&mut host, failed, "fixture initialization failure").await;
+        assert_eq!(
+            host.plugin_status(failed)
+                .await
+                .expect("failed status")
+                .state,
+            PluginState::Failed
+        );
+        assert_eq!(
+            host.session_id()
+                .await
+                .expect("failed enable preserves session"),
+            session
+        );
+    }
+    let retry = construct(&mut host, &assembly, "ToggleObserverPlugin").await;
+    host.initialize_plugin(retry)
+        .await
+        .expect("fresh retry without restarting parser");
+    let throwing = construct(&mut host, &assembly, "ShutdownFailurePlugin").await;
+    host.initialize_plugin(throwing)
+        .await
+        .expect("throwing fixture ready");
+    assert!(host.deinitialize_plugin(throwing).await.is_err());
+    assert_eq!(
+        host.plugin_status(throwing)
+            .await
+            .expect("cleanup is terminal")
+            .state,
+        PluginState::Stopped
+    );
+    parse(&mut host, "2|25\n").await;
+    assert_eq!(lines(&state, "toggle.observed"), 7);
+    assert_eq!(
+        host.session_id().await.expect("still original worker"),
+        session
+    );
+    host.save_history()
+        .await
+        .expect("checkpoint after lifecycle failures");
+    host.shutdown()
+        .await
+        .expect("no double deinit of failed/stopped instances");
+}

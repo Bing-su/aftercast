@@ -128,4 +128,5 @@ enable-plugin = Enable plugin
 disable-plugin = Disable plugin
 retry-plugin-startup = Retry startup with fresh instances
 plugin-startup-failed = Startup failed
-plugin-restart-policy = Stop the host before changing enablement. Save to keep the selection. Each start or retry launches a fresh worker and initializes enabled plugins in configured order. A failed or stopped instance is never reused. Close the settings window to hide it; host shutdown owns disposal.
+plugin-restart-policy = Enable and disable plugins while the host runs. Enable creates a new instance in the same worker and preserves encounter history; disable drains callbacks before cleanup. Retry a failed enable with Enable. Save to keep the selection. Replacing a loaded DLL requires stopping and starting the host. Plugin static state and dependencies remain plugin-owned. Close the settings window to hide it; host shutdown owns disposal.
+changing-plugins = Changing plugin state…

@@ -67,3 +67,18 @@ public class RecordingPlugin : IActPluginV1
         parser.DeInitPlugin();
     }
 }
+
+// Independent observer: toggling it must not stop the parser or erase combat state.
+public class ToggleObserverPlugin : IActPluginV1
+{
+    private FormActMain? root;
+    public void InitPlugin(TabPage tab, Label status)
+    {
+        root = ActGlobals.oFormActMain!;
+        root.OnLogLineRead += Read;
+        status.Text = "Observer ready";
+    }
+    private void Read(bool import, LogLineEventArgs info) =>
+        File.AppendAllText(Path.Combine(root!.AppDataFolder.FullName, "toggle.observed"), info.logLine + "\n");
+    public void DeInitPlugin() => root!.OnLogLineRead -= Read;
+}

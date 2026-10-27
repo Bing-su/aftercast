@@ -1,5 +1,8 @@
-use super::{AppState, Phase, plugin_ui_action, save_settings, start, tr};
+use super::{AppState, LoadedPlugin, Phase, plugin_ui_action, save_settings, start, tr};
 use crate::components::{Badge, Button, ButtonVariant, Input, Label};
+use crate::config::resolve;
+use aftercast::{PluginConfig, PluginState};
+use dioxus::core::spawn_forever;
 use dioxus::prelude::*;
 
 #[component]
@@ -106,7 +109,9 @@ pub(super) fn PluginsPane() -> Element {
                             rsx! {
                                 Button {
                                     variant: ButtonVariant::Outline,
-                                    disabled,
+                                    disabled: !matches!(state.read().phase, Phase::Idle | Phase::Ready)
+                                                                            || state.read().saving || state.read().file.is_none() || state.read().plugin_ui_pending
+                                        || state.read().file.is_none() || state.read().plugin_ui_pending,
                                     aria_pressed: enabled,
                                     onclick: move |_| toggle_plugin(state, &path),
                                     {tr(if enabled { "disable-plugin" } else { "enable-plugin" })}
@@ -188,24 +193,152 @@ fn add_plugin(mut state: Signal<AppState>) {
     });
 }
 
-fn toggle_plugin(mut state: Signal<AppState>, path: &str) {
-    if state.read().phase != Phase::Idle || state.read().saving {
-        return;
-    }
-    let mut current = state.write();
-    if current
+fn set_enabled(state: &mut AppState, path: &str, enabled: bool) {
+    state
         .settings
         .host
         .disabled_plugins
-        .iter()
-        .any(|entry| entry == path)
+        .retain(|entry| entry != path);
+    if !enabled {
+        state.settings.host.disabled_plugins.push(path.to_owned());
+    }
+}
+
+fn toggle_plugin(mut state: Signal<AppState>, path: &str) {
+    let current = state.read();
+    if !matches!(current.phase, Phase::Idle | Phase::Ready)
+        || current.saving
+        || current.plugin_ui_pending
+        || current.file.is_none()
     {
-        current
-            .settings
-            .host
-            .disabled_plugins
-            .retain(|entry| entry != path);
-    } else {
-        current.settings.host.disabled_plugins.push(path.to_owned());
+        return;
+    }
+    let enabled = current
+        .settings
+        .host
+        .disabled_plugins
+        .contains(&path.to_owned());
+    if current.phase == Phase::Idle {
+        drop(current);
+        set_enabled(&mut state.write(), path, enabled);
+        return;
+    }
+    let Some(handle) = current.handle() else {
+        return;
+    };
+    let session = current.revision.session;
+    let path = path.to_owned();
+    let config = PluginConfig::builder()
+        .path(resolve(&current.root, &path))
+        .maybe_type_name(
+            current
+                .settings
+                .host
+                .plugin_types
+                .get(&path)
+                .cloned()
+                .filter(|name| !name.trim().is_empty()),
+        )
+        .build();
+    let existing = current
+        .plugins
+        .iter()
+        .find(|plugin| plugin.path == path)
+        .cloned();
+    drop(current);
+    state.write().phase = Phase::ChangingPlugins;
+    state.write().error = None;
+    // App-owned: changing tabs cannot cancel a lifecycle request. Stop invalidates its result.
+    spawn_forever(async move {
+        if enabled {
+            enable_running_plugin(state, handle, session, path, config).await;
+        } else if let Some(plugin) = existing {
+            disable_running_plugin(state, handle, session, plugin).await;
+        } else if state.read().revision.session == session {
+            state.write().phase = Phase::Ready;
+            state
+                .write()
+                .fail("Enabled plugin has no live instance; stop the host before retrying");
+        }
+    });
+}
+
+async fn enable_running_plugin(
+    mut state: Signal<AppState>,
+    handle: aftercast::HostHandle,
+    session: u64,
+    path: String,
+    config: PluginConfig,
+) {
+    let result = async {
+        let id = handle.create_plugin(config).await?;
+        let status = handle.initialize_plugin(id).await?;
+        // Preserve ownership even if the subsequent capability query fails.
+        let info = handle.plugin_status(id).await;
+        Ok::<_, aftercast::Error>((id, status, info))
+    }
+    .await;
+    if state.read().revision.session != session {
+        return;
+    }
+    let mut current = state.write();
+    current.phase = Phase::Ready;
+    match result {
+        Ok((id, status, info)) => {
+            let info = info.unwrap_or_else(|error| {
+                current.fail(error);
+                aftercast::PluginStatus {
+                    state: PluginState::Initialized,
+                    settings: aftercast::PluginSettings::NoPage,
+                }
+            });
+            current.plugins.push(LoadedPlugin {
+                path: path.clone(),
+                id,
+                status,
+                info,
+            });
+            set_enabled(&mut current, &path, true);
+            current.failed_plugin = None;
+        }
+        Err(error) => {
+            current.failed_plugin = Some(path);
+            current.fail(error);
+        }
+    }
+}
+
+async fn disable_running_plugin(
+    mut state: Signal<AppState>,
+    handle: aftercast::HostHandle,
+    session: u64,
+    plugin: LoadedPlugin,
+) {
+    let result = handle.deinitialize_plugin(plugin.id).await;
+    // DeInit can throw after terminal cleanup; reconcile status and keep the error.
+    let status = handle.plugin_status(plugin.id).await;
+    if state.read().revision.session != session {
+        return;
+    }
+    let mut current = state.write();
+    current.phase = Phase::Ready;
+    match status {
+        Ok(info) if info.state == PluginState::Stopped => {
+            current.plugins.retain(|entry| entry.id != plugin.id);
+            set_enabled(&mut current, &plugin.path, false);
+        }
+        Ok(info) => {
+            if let Some(entry) = current
+                .plugins
+                .iter_mut()
+                .find(|entry| entry.id == plugin.id)
+            {
+                entry.info = info;
+            }
+        }
+        Err(error) => current.fail(error),
+    }
+    if let Err(error) = result {
+        current.fail(error);
     }
 }

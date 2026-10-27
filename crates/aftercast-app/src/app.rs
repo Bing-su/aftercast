@@ -37,6 +37,7 @@ enum Phase {
     Ready,
     Importing,
     Archiving,
+    ChangingPlugins,
     Stopping,
 }
 
@@ -49,6 +50,7 @@ impl Phase {
             Self::Ready => "ready",
             Self::Importing => "importing",
             Self::Archiving => "archiving",
+            Self::ChangingPlugins => "changing-plugins",
             Self::Stopping => "stopping",
         }
     }
@@ -213,7 +215,11 @@ pub fn App() -> Element {
                 }
                 let phase = state.read().phase;
                 match phase {
-                    Phase::Ready | Phase::Initializing | Phase::Importing | Phase::Archiving => {
+                    Phase::Ready
+                    | Phase::Initializing
+                    | Phase::Importing
+                    | Phase::Archiving
+                    | Phase::ChangingPlugins => {
                         stop(state);
                     }
                     Phase::Idle if !state.read().saving => {
