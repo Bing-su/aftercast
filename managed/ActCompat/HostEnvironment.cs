@@ -195,6 +195,9 @@ namespace Aftercast.ActCompat
         // Quiesce file callbacks before the boundary so an admitted line cannot race encounter finalization.
         public NotificationPage ReadNotifications(ulong after, int limit) => main.ReadNotifications(after, limit);
         public NotificationItem ShowNotification(ulong id) => main.ShowNotification(id);
+        public NotificationStatus ReadNotificationStatus() => main.ReadNotificationStatus();
+        public NotificationChange MarkNotificationsRead(ulong through) => main.MarkNotificationsRead(through);
+        public NotificationChange ClearReadNotifications(ulong through) => main.ClearReadNotifications(through);
         public object TimerOperation(int command,ulong revision,string? previousKey,TimerDefinition? definition,
             string? key,int offset,int limit)
         {

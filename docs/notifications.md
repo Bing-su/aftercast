@@ -1,4 +1,4 @@
-# ACT notification history and Show callbacks
+# ACT notification history and controls
 
 The reference is ACT 3.8.5.288 `FormActMain.NotificationAdd` and
 `NotificationHistoryItem.btnShow_Click`. Notifications are distinct from host
@@ -47,8 +47,8 @@ invalidates the UI session and clears history; replies from older sessions canno
 new state or clear a newer request. A successful Show remains available for a later
 intentional click. An acknowledged Show is never automatically retried after an error.
 
-Mark-all, direct mark-read without Show, clear-read and badge-blinking controls remain
-subsequent ACT history operations. Native callback effects remain platform-dependent;
+Mark-all and clear-read now have managed/Bridge/Rust APIs described below; GUI controls
+and badge-blinking preference are the next connection unit. Native callback effects remain platform-dependent;
 the partial WinForms rendering bridge is still planning only.
 
 Synthetic managed tests cover owner identity, original sender/fresh event arguments,
@@ -57,3 +57,39 @@ exceptions, concurrent producers, paging/retention, expired IDs and session clea
 Actual native callback window display, focus and input remain Windows validation;
 Linux tests do not establish WinForms rendering compatibility. The partial WinForms
 rendering bridge remains a separate plan, not an implemented notification feature.
+
+## Whole-history bulk API
+
+The pinned ACT reference `FormActMain.btnNotificationsMarkRead_Click` sets Read on
+every retained history control. `btnNotificationsClearRead_Click` disposes only
+read controls. `NotificationCountDraw` counts all unread entries: no badge for zero,
+1–9 individually, a 10-or-more indicator otherwise; `cbNotificationBlink` defaults
+to true and is persisted through ACT's settings serializer. Turning blinking off
+does not hide the count. These reference methods were inspected from the pinned
+local binary; native timer animation/input is not exercised by Linux contracts.
+
+For asynchronous requests, the accepted `NotificationStatus.snapshot_cursor` bounds
+the whole observed history. It differs from a page's `next_cursor`: a one-item page
+can carry the full history upper bound. Explicitly mark/clear through that bound;
+newer arrivals remain untouched, even if read before a delayed clear executes.
+This is an explicit asynchronous boundary rather than an unbounded changing set.
+
+| Operation                           | Contract                                                                                                                                                                                                                                               |
+| ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `notification_status()`             | Whole retained/unread counts, omission count and a session-owned snapshot bound. No plugin callback.                                                                                                                                                   |
+| `mark_notifications_read(through)`  | Mark retained entries through the bound read. Do not invoke or disable Show callbacks. Already-read or expired entries are no-ops.                                                                                                                     |
+| `clear_read_notifications(through)` | Remove only read entries through the bound; release callback/sender references. Clear does not increase omissions or reset IDs. Cleared Show IDs are rejected permanently.                                                                             |
+| Result                              | Changed count plus first page and whole counts, captured under the mutation lock. Reset pagination to this acknowledged first page rather than editing stale pages locally.                                                                            |
+| Repetition/failure                  | Repeating the same bound without intervening read-state changes is idempotent. Future bounds, disposed roots, wrong owner thread and foreign sessions are rejected. Validation precedes mutation; no callback/logging is invoked during bulk mutation. |
+| Retention                           | The existing 256-entry/text bound still applies. Explicit clear frees text capacity; later IDs remain monotonic. No global total of all historical arrivals is implied by retained/unread counts.                                                      |
+
+Bridge commands 3/4 mutate and command 5 reads status. Fixed reply capacity and
+command fields are checked before dispatch; owner-thread isolation and existing
+operation admission apply. Rust rejects impossible counts/page boundaries and
+foreign-session bounds. No new cancellation or callback preemption is introduced.
+
+Synthetic managed and actual worker regressions cover whole-history vs page scope,
+new arrivals between observation and mutation, repeated calls, errors before
+mutation, preserved Show callbacks, cleared/old-session IDs, empty histories,
+counts and monotonic IDs. GUI duplicate/stale responses, badge refresh and durable
+blink preference remain pending; an API passing these tests does not complete UI parity.

@@ -4,7 +4,9 @@ namespace Aftercast.ActCompat
 {
     public sealed record NotificationItem(ulong Id, long TimeTicks, string Title, string Message, bool Read,
         bool CanShow, string? ShowError);
-    public sealed record NotificationPage(ulong LatestId, ulong Omitted, NotificationItem[] Items);
+    public sealed record NotificationPage(ulong LatestId, ulong Omitted, NotificationItem[] Items, int Retained, int Unread);
+    public sealed record NotificationStatus(ulong LatestId, ulong Omitted, int Retained, int Unread);
+    public sealed record NotificationChange(int Changed, NotificationPage Page);
 }
 
 namespace Advanced_Combat_Tracker
@@ -60,8 +62,54 @@ namespace Advanced_Combat_Tracker
             lock (notificationGate)
             {
                 ObjectDisposedException.ThrowIf(notificationsClosed || IsDisposed, this);
-                return new(notificationSequence, omittedNotifications,
-                    notifications.Where(item => item.Id > after).Take(limit).Select(item => item.Snapshot()).ToArray());
+                if (after > notificationSequence) throw new ArgumentOutOfRangeException(nameof(after));
+                return NotificationPageSnapshot(after, limit);
+            }
+        }
+
+        // Snapshot bounds refer to the whole retained history, never just the visible page.
+        private NotificationPage NotificationPageSnapshot(ulong after, int limit) => new(notificationSequence, omittedNotifications,
+            notifications.Where(item => item.Id > after).Take(limit).Select(item => item.Snapshot()).ToArray(),
+            notifications.Count, notifications.Count(item => !item.Read));
+
+        public NotificationStatus ReadNotificationStatus()
+        {
+            lock (notificationGate)
+            {
+                ObjectDisposedException.ThrowIf(notificationsClosed || IsDisposed, this);
+                return new(notificationSequence, omittedNotifications, notifications.Count, notifications.Count(item => !item.Read));
+            }
+        }
+
+        public NotificationChange MarkNotificationsRead(ulong through) => ChangeNotifications(through, false);
+        public NotificationChange ClearReadNotifications(ulong through) => ChangeNotifications(through, true);
+        private NotificationChange ChangeNotifications(ulong through, bool clearRead)
+        {
+            if (Environment.CurrentManagedThreadId != ownerThread)
+                throw new InvalidOperationException("Notification changes require the host owner thread");
+            lock (notificationGate)
+            {
+                ObjectDisposedException.ThrowIf(notificationsClosed || IsDisposed, this);
+                if (through > notificationSequence) throw new ArgumentOutOfRangeException(nameof(through));
+                var changed = 0;
+                for (var node = notifications.First; node is not null;)
+                {
+                    var next = node.Next;
+                    var item = node.Value;
+                    if (item.Id <= through && (clearRead ? item.Read : !item.Read))
+                    {
+                        changed++;
+                        if (clearRead)
+                        {
+                            notificationCharacters -= item.Title.Length + item.Message.Length;
+                            item.Disable(); notifications.Remove(node);
+                        }
+                        else item.Read = true;
+                    }
+                    node = next;
+                }
+                // Publish the first page/counts under the same lock; additions after this boundary remain unread.
+                return new(changed, NotificationPageSnapshot(0, 16));
             }
         }
 

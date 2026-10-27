@@ -30,6 +30,8 @@ internal static class NotificationChecks
                 Callbacks(root, context);
                 Check(host.DiagnosticsSnapshot.Item2.Any(line => line.Contains("Notification Show:") && line.Contains("synthetic Show failure")),
                     "Show exception was not recorded on the original host");
+                Bulk(root);
+                ConcurrentBulk(root);
                 InfoLogFailure(root, host);
                 Retention(root);
             }
@@ -83,12 +85,64 @@ internal static class NotificationChecks
         Reject(() => root.ReadNotifications(0,0));
         Reject(() => root.ReadNotifications(0,17));
     }
+    private static void Bulk(FormActMain root)
+    {
+        var before = root.ReadNotifications(0, 16);
+        Reject(() => root.MarkNotificationsRead(before.LatestId + 1));
+        Reject(() => root.ClearReadNotifications(before.LatestId + 1));
+        Reject(() => root.ReadNotifications(before.LatestId + 1, 16));
+        Task.Run(() => Reject(() => root.MarkNotificationsRead(before.LatestId))).GetAwaiter().GetResult();
+        for (var index = 0; index < 20; index++) root.NotificationAdd("bulk", index.ToString(), (_, _) => throw new Exception("Bulk invoked callback"));
+        var snapshot = root.ReadNotifications(0, 16);
+        root.NotificationAdd("new arrival", "outside accepted boundary");
+        var marked = root.MarkNotificationsRead(snapshot.LatestId);
+        Check(marked.Changed == snapshot.Unread && marked.Page.Unread == 1, "Mark all used a page bound or touched new arrivals");
+        Check(root.MarkNotificationsRead(snapshot.LatestId).Changed == 0, "Mark all is not idempotent");
+        var newest = root.ReadNotifications(snapshot.LatestId, 16).Items.Single();
+        root.ShowNotification(newest.Id); // a newer read entry also lies outside the clear boundary
+        var cleared = root.ClearReadNotifications(snapshot.LatestId);
+        Check(cleared.Changed == snapshot.Retained && cleared.Page.Retained == 1 && cleared.Page.Unread == 0,
+            "Clear read crossed snapshot boundary or removed unread entries");
+        Check(cleared.Page.Omitted == snapshot.Omitted && cleared.Page.LatestId == newest.Id,
+            "Intentional clear changed omissions or reset IDs");
+        Check(root.ClearReadNotifications(snapshot.LatestId).Changed == 0, "Repeated clear changed history");
+        Reject(() => root.ShowNotification(snapshot.Items[0].Id));
+        var status = root.ReadNotificationStatus();
+        Check(status.Retained == 1 && status.Unread == 0 && status.LatestId == newest.Id, "Badge counts are not whole-history counts");
+        root.ClearReadNotifications(newest.Id);
+        root.NotificationAdd("after clear", "monotonic identity");
+        Check(root.ReadNotifications(0,16).Items.Single().Id > newest.Id, "Clear reused stale IDs");
+    }
+    private static void ConcurrentBulk(FormActMain root)
+    {
+        var snapshot = root.ReadNotificationStatus();
+        using var ready = new ManualResetEventSlim();
+        using var resume = new ManualResetEventSlim();
+        var producer = Task.Run(() =>
+        {
+            for (var index = 0; index < 20; index++) root.NotificationAdd("bulk race", index.ToString());
+            ready.Set();
+            Check(resume.Wait(TimeSpan.FromSeconds(10)), "Producer was not released");
+            for (var index = 20; index < 40; index++) root.NotificationAdd("bulk race", index.ToString());
+        });
+        try
+        {
+            Check(ready.Wait(TimeSpan.FromSeconds(10)), "Producer did not reach the bulk boundary");
+            root.MarkNotificationsRead(snapshot.LatestId);
+        }
+        finally { resume.Set(); producer.GetAwaiter().GetResult(); }
+        Check(root.ReadNotificationStatus().Unread == 40, "Concurrent producer entries were marked across the boundary");
+        var cleared = root.ClearReadNotifications(snapshot.LatestId);
+        Check(cleared.Page.Retained == 40 && cleared.Page.Unread == 40, "Clear removed concurrent unread arrivals");
+        Check(cleared.Page.Items.All(item => item.Id > snapshot.LatestId && !item.Read), "Bulk raced new records");
+    }
     private sealed class BrokenWriter : StringWriter
     {
         public override void WriteLine(string? value) => throw new IOException("synthetic notification log failure");
     }
     private static void InfoLogFailure(FormActMain root, HostEnvironment host)
     {
+        var after = root.ReadNotificationStatus().LatestId;
         var output = Console.Out;
         using var broken = new BrokenWriter();
         try
@@ -97,7 +151,7 @@ internal static class NotificationChecks
             root.NotificationAdd("retained", "despite information log failure");
         }
         finally { Console.SetOut(output); }
-        Check(root.ReadNotifications(0,16).Items.Any(item => item.Title == "retained"), "Info log failure discarded the notification");
+        Check(root.ReadNotifications(after,16).Items.Any(item => item.Title == "retained"), "Info log failure discarded the notification");
         Check(host.DiagnosticsSnapshot.Item2.Any(line => line.Contains("Notification info log:") && line.Contains("synthetic notification log failure")),
             "Info log failure was not reported to host diagnostics");
     }

@@ -70,7 +70,15 @@ internal sealed class PluginSession
         return HostJson.Encode(result!);
     });
     internal byte[] NotificationOperation(int command, ulong id, int limit) => OnOwner(() =>
-        HostJson.Encode(command == 1 ? (object)Host().ReadNotifications(id, limit) : Host().ShowNotification(id)));
+        HostJson.Encode(command switch
+        {
+            1 => (object)Host().ReadNotifications(id, limit),
+            2 => Host().ShowNotification(id),
+            3 => Host().MarkNotificationsRead(id),
+            4 => Host().ClearReadNotifications(id),
+            5 => Host().ReadNotificationStatus(),
+            _ => throw new ArgumentOutOfRangeException(nameof(command)),
+        }));
     internal void EndCombat() => OnOwner(() => { environment?.EndCombat(); return 0; });
     internal int ArchiveOperation(int command, string text, ulong id, bool compressed) => OnOwner(() =>
     {

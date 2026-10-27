@@ -32,6 +32,21 @@ pub struct NotificationPage {
     pub omitted: u64,
     pub items: Vec<Notification>,
     pub next_cursor: NotificationCursor,
+    pub status: NotificationStatus,
+}
+/// Whole-history counts at one model snapshot, independent of the visible page.
+#[derive(Debug, Clone)]
+pub struct NotificationStatus {
+    pub snapshot_cursor: NotificationCursor,
+    pub omitted: u64,
+    pub retained: u32,
+    pub unread: u32,
+}
+#[derive(Debug, Clone)]
+pub struct NotificationChange {
+    pub changed: u32,
+    /// First page and counts captured atomically with the mutation.
+    pub page: NotificationPage,
 }
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -69,6 +84,78 @@ struct RawPage {
     latest_id: u64,
     omitted: u64,
     items: Vec<RawItem>,
+    retained: u32,
+    unread: u32,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawStatus {
+    latest_id: u64,
+    omitted: u64,
+    retained: u32,
+    unread: u32,
+}
+impl RawStatus {
+    fn owned(self, session: u64) -> Result<NotificationStatus, Error> {
+        if self.retained > 256 || self.unread > self.retained {
+            return Err(invalid("invalid notification history counts"));
+        }
+        Ok(NotificationStatus {
+            snapshot_cursor: NotificationCursor {
+                session,
+                value: self.latest_id,
+            },
+            omitted: self.omitted,
+            retained: self.retained,
+            unread: self.unread,
+        })
+    }
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawChange {
+    changed: u32,
+    page: RawPage,
+}
+impl RawPage {
+    fn owned(self, session: u64, after: u64, limit: u32) -> Result<NotificationPage, Error> {
+        let status = RawStatus {
+            latest_id: self.latest_id,
+            omitted: self.omitted,
+            retained: self.retained,
+            unread: self.unread,
+        }
+        .owned(session)?;
+        if after > self.latest_id
+            || self.items.len() > limit as usize
+            || self.items.len() > self.retained as usize
+            || self.items.iter().filter(|item| !item.read).count() > self.unread as usize
+        {
+            return Err(invalid("notification page/count boundary mismatch"));
+        }
+        let mut sequence = after;
+        let mut items = Vec::with_capacity(self.items.len());
+        for item in self.items {
+            if item.id <= sequence || item.id > self.latest_id {
+                return Err(invalid("unordered notification IDs"));
+            }
+            sequence = item.id;
+            items.push(item.owned(session)?);
+        }
+        if items.is_empty() {
+            sequence = self.latest_id;
+        }
+        Ok(NotificationPage {
+            latest_id: self.latest_id,
+            omitted: self.omitted,
+            items,
+            next_cursor: NotificationCursor {
+                session,
+                value: sequence,
+            },
+            status,
+        })
+    }
 }
 impl HostHandle {
     /// Reads at most 16 notifications after an opaque session-owned cursor.
@@ -85,29 +172,43 @@ impl HostHandle {
         }
         let after = after.map_or(0, |cursor| cursor.value);
         let page: RawPage = self.notification_call(1, after, limit).await?;
-        if page.items.len() > limit as usize {
-            return Err(invalid("page exceeds requested limit"));
+        page.owned(self.session, after, limit)
+    }
+    /// Whole retained-history counts, without invoking a plugin callback.
+    pub async fn notification_status(&self) -> Result<NotificationStatus, Error> {
+        let status: RawStatus = self.notification_call(5, 0, 0).await?;
+        status.owned(self.session)
+    }
+    /// Marks all retained entries through the accepted snapshot read, without invoking Show.
+    /// Newer entries remain untouched. Repeated requests are idempotent.
+    pub async fn mark_notifications_read(
+        &self,
+        through: NotificationCursor,
+    ) -> Result<NotificationChange, Error> {
+        self.change_notifications(through, 3).await
+    }
+    /// Releases read entries/delegates through the accepted snapshot. Cleared IDs expire permanently.
+    pub async fn clear_read_notifications(
+        &self,
+        through: NotificationCursor,
+    ) -> Result<NotificationChange, Error> {
+        self.change_notifications(through, 4).await
+    }
+    async fn change_notifications(
+        &self,
+        through: NotificationCursor,
+        command: u32,
+    ) -> Result<NotificationChange, Error> {
+        if through.session != self.session {
+            return Err(invalid("bulk boundary belongs to another host session"));
         }
-        let mut sequence = after;
-        let mut items = Vec::with_capacity(page.items.len());
-        for item in page.items {
-            if item.id <= sequence || item.id > page.latest_id {
-                return Err(invalid("unordered notification IDs"));
-            }
-            sequence = item.id;
-            items.push(item.owned(self.session)?);
+        let change: RawChange = self.notification_call(command, through.value, 0).await?;
+        if change.changed > 256 || change.page.latest_id < through.value {
+            return Err(invalid("invalid notification mutation result"));
         }
-        if items.is_empty() {
-            sequence = page.latest_id;
-        }
-        Ok(NotificationPage {
-            latest_id: page.latest_id,
-            omitted: page.omitted,
-            items,
-            next_cursor: NotificationCursor {
-                session: self.session,
-                value: sequence,
-            },
+        Ok(NotificationChange {
+            changed: change.changed,
+            page: change.page.owned(self.session, 0, 16)?,
         })
     }
     /// Explicitly invokes the retained callback on its worker owner. Success permits subsequent intentional Show calls.
@@ -156,4 +257,52 @@ impl HostHandle {
 }
 fn invalid(error: impl std::fmt::Display) -> Error {
     Error::InvalidNotificationRequest(error.to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn notification_counts_and_cursors_reject_inconsistent_worker_results() {
+        let page = || RawPage {
+            latest_id: 3,
+            omitted: 0,
+            retained: 0,
+            unread: 0,
+            items: vec![],
+        };
+        assert!(page().owned(1, 4, 16).is_err(), "cursor beyond snapshot");
+        let mut invalid = page();
+        invalid.unread = 1;
+        invalid.owned(1, 0, 16).expect_err("invalid history counts");
+        let mut invalid = page();
+        invalid.retained = 257;
+        invalid.owned(1, 0, 16).expect_err("invalid history counts");
+        let mut invalid = page();
+        invalid.items.push(RawItem {
+            id: 1,
+            time_ticks: 1,
+            title: String::new(),
+            message: String::new(),
+            read: true,
+            can_show: false,
+            show_error: None,
+        });
+        assert!(
+            invalid.owned(1, 0, 16).is_err(),
+            "items exceed retained count"
+        );
+        let valid = page()
+            .owned(7, 0, 16)
+            .expect("empty after intentional clear");
+        assert_eq!(
+            valid.status.snapshot_cursor,
+            NotificationCursor {
+                session: 7,
+                value: 3
+            }
+        );
+        assert_eq!(valid.next_cursor, valid.status.snapshot_cursor);
+    }
 }

@@ -20,7 +20,10 @@ mod import;
 mod local_runtime;
 mod logs;
 mod notifications;
-pub use notifications::{Notification, NotificationCursor, NotificationId, NotificationPage};
+pub use notifications::{
+    Notification, NotificationChange, NotificationCursor, NotificationId, NotificationPage,
+    NotificationStatus,
+};
 mod plugins;
 mod process;
 mod runtime;
