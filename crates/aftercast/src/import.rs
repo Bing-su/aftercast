@@ -21,6 +21,59 @@ pub struct ImportProgress {
     pub total_bytes: u64,
 }
 
+/// Explicit supported source encoding; no locale or byte-content guess is made.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[repr(u32)]
+pub enum ImportEncoding {
+    #[default]
+    Utf8 = 65001,
+    Utf16Le = 1200,
+    Utf16Be = 1201,
+    Utf32Le = 12000,
+    Utf32Be = 12001,
+    ShiftJis = 932,
+    WindowsKorean = 949,
+    Windows1252 = 1252,
+    Ascii = 20127,
+}
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+pub enum ImportInvalidBytes {
+    #[default]
+    Strict,
+    /// Use the chosen framework encoding's standard replacement, which can change source text.
+    Replace,
+}
+/// An owned immutable request snapshot. Default is UTF-8 strict with Unicode BOM detection.
+/// This differs from an omitted option, which inherits the plugin's LogEncoding at admission.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImportTextOptions {
+    pub encoding: ImportEncoding,
+    pub invalid_bytes: ImportInvalidBytes,
+    /// The selected encoding's own preamble is consumed even when other BOM detection is disabled.
+    pub detect_bom: bool,
+}
+impl Default for ImportTextOptions {
+    fn default() -> Self {
+        Self {
+            encoding: ImportEncoding::Utf8,
+            invalid_bytes: ImportInvalidBytes::Strict,
+            detect_bom: true,
+        }
+    }
+}
+impl ImportTextOptions {
+    fn encode(self, packet: &mut [u8]) -> Result<(), Error> {
+        let mut fields = packet
+            .get_mut(40..48)
+            .ok_or_else(|| Error::InvalidImportRequest("missing text fields".into()))?;
+        fields.put_u32_le(self.encoding as u32);
+        let flags = u32::from(self.invalid_bytes == ImportInvalidBytes::Replace)
+            | (u32::from(!self.detect_bom) << 1);
+        fields.put_u32_le(flags);
+        Ok(())
+    }
+}
+
 /// Inclusive source wall-clock bounds for ACT history reparse, in 100 ns ticks since year 0001.
 /// No timezone conversion or extension to combat end is performed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -86,6 +139,7 @@ impl Future for ImportJob {
 
 pub(crate) struct PendingImport {
     pub(crate) range: Option<ImportRange>,
+    pub(crate) text: Option<ImportTextOptions>,
     pub(crate) cancellation: Arc<AtomicBool>,
     pub(crate) progress: watch::Sender<ImportProgress>,
     pub(crate) complete: oneshot::Sender<Result<ImportReport, Error>>,
@@ -95,6 +149,9 @@ impl PendingImport {
     pub(crate) fn begin(&self, session: &mut RemoteSession, path: &Utf8Path) -> Result<(), Error> {
         let path = canonicalize(path)?;
         let mut packet = import_packet(session.id(), path.as_str())?;
+        if let Some(text) = self.text {
+            text.encode(&mut packet)?;
+        }
         if let Some(range) = self.range {
             packet
                 .get_mut(24..32)
@@ -245,10 +302,10 @@ impl HostHandle {
         self.start_import_range(path, range).await?.wait().await
     }
 
-    /// Imports the initial contents of a UTF-8 file through initialized plugins and drains actions.
+    /// Imports captured file contents through initialized plugins using their LogEncoding (default strict UTF-8).
     ///
     /// Call while live combat is idle. Live file delivery is paused and
-    /// restored, including after failure. Appends after opening are excluded; malformed UTF-8,
+    /// restored, including after failure. Appends after opening are excluded. Strict decoding errors,
     /// records over 8 MiB and premature truncation fail visibly. Partial imported history remains
     /// after failure. Hook delivery alone does not establish that a plugin accepted the records.
     pub async fn import_log(&self, path: impl AsRef<Utf8Path>) -> Result<ImportReport, Error> {

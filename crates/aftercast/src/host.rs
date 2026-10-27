@@ -8,7 +8,7 @@ use bytes::{BufMut, BytesMut};
 use camino::{Utf8Path, Utf8PathBuf};
 use tokio::sync::{oneshot, watch};
 
-use crate::import::{ImportJob, ImportProgress, ImportRange, PendingImport};
+use crate::import::{ImportJob, ImportProgress, ImportRange, ImportTextOptions, PendingImport};
 use crate::process::{AudioKind, RemoteSession};
 use crate::runtime::Request;
 use crate::{Error, HostConfig};
@@ -190,28 +190,51 @@ impl HostHandle {
             .await
     }
     /// Starts an import with explicit cancellation and coalesced progress.
+    /// Inherits the plugin's LogEncoding at admission; without a plugin override this is strict UTF-8.
     pub async fn start_import(&self, path: impl AsRef<Utf8Path>) -> Result<ImportJob, Error> {
-        self.start_import_with_range(path.as_ref(), None).await
+        self.start_import_request(path.as_ref(), None, None).await
     }
     /// Starts an observable source reparse with inclusive ACT wall-clock bounds.
+    /// Inherits the plugin's LogEncoding; use the options variant for an explicit decoding policy.
     pub async fn start_import_range(
         &self,
         path: impl AsRef<Utf8Path>,
         range: ImportRange,
     ) -> Result<ImportJob, Error> {
-        self.start_import_with_range(path.as_ref(), Some(range))
+        self.start_import_request(path.as_ref(), Some(range), None)
             .await
     }
-    async fn start_import_with_range(
+    /// Starts a whole-file import with an explicit, request-owned decoding policy.
+    pub async fn start_import_with_options(
+        &self,
+        path: impl AsRef<Utf8Path>,
+        text: ImportTextOptions,
+    ) -> Result<ImportJob, Error> {
+        self.start_import_request(path.as_ref(), None, Some(text))
+            .await
+    }
+    /// Starts an inclusive range import using the same decoding policy as the whole-file path.
+    pub async fn start_import_range_with_options(
+        &self,
+        path: impl AsRef<Utf8Path>,
+        range: ImportRange,
+        text: ImportTextOptions,
+    ) -> Result<ImportJob, Error> {
+        self.start_import_request(path.as_ref(), Some(range), Some(text))
+            .await
+    }
+    async fn start_import_request(
         &self,
         path: &Utf8Path,
         range: Option<ImportRange>,
+        text: Option<ImportTextOptions>,
     ) -> Result<ImportJob, Error> {
         let cancellation = Arc::new(AtomicBool::new(false));
         let (progress, updates) = watch::channel(ImportProgress::default());
         let (complete, result) = oneshot::channel();
         let pending = PendingImport {
             range,
+            text,
             cancellation: cancellation.clone(),
             progress,
             complete,

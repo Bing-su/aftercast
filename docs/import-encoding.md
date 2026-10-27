@@ -21,8 +21,8 @@ probe on Linux, not execution of ACT's native import dialog or Windows Framework
 `HostEnvironment.ImportLog` and `BeginImport` accept optional `ImportTextOptions`.
 Omitting options snapshots the plugin-selected `FormActMain.LogEncoding`; the
 replacement root defaults to strict UTF-8. The existing Bridge/Rust full/range
-routes already inherit a plugin's selection, but explicit request options and GUI
-selection remain a subsequent connection unit.
+routes inherit a plugin's selection. Explicit Bridge/Rust options are connected
+below; GUI selection remains a subsequent connection unit.
 
 | Code page     | Explicit encoding          |
 | ------------- | -------------------------- |
@@ -65,11 +65,41 @@ Pipeline tests verify full/range action totals, equal-time bounds, captured plug
 selection, progress bounds, cancellation cleanup, and damage retained before a
 malformed suffix. They use only temporary synthetic files.
 
+## Explicit Bridge/Rust request options
+
+| API choice                                                             | Decoding policy                                                                                                                                                         |
+| ---------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `start_import`, `start_import_range`, `import_log`, `import_log_range` | Omit text options; inherit plugin LogEncoding at managed admission. The root starts as strict UTF-8 unless a plugin changes it.                                         |
+| `start_import_with_options`, `start_import_range_with_options`         | Send owned `ImportTextOptions` explicitly. `ImportTextOptions::default()` means UTF-8 + Strict + BOM detection, and overrides a plugin selection for this request only. |
+
+The Rust types expose nine `ImportEncoding` variants, `ImportInvalidBytes::Strict`
+and `Replace`, and `detect_bom`. These values are copied into the admitted request;
+changing a caller's local options afterward cannot alter it. Waiting/cancellation
+reuse ImportJob. Neither explicit options nor replacement mode writes back to the
+plugin's property or changes the next request's default. Options are ordinary
+reusable values; the Host handle and packet session own admission and cleanup.
+
+BEGIN uses byte 40 for code page (zero means omitted/plugin selection), byte 44 for
+flags (bit 0 standard replacement, bit 1 disable detection of other BOMs), while
+bytes 48–55 and 60–63 remain reserved zero. A zero code page requires zero flags;
+unknown code pages/bits are rejected before import admission. The path remains
+strict UTF-8 independently of the source encoding. ADVANCE/CANCEL use canonical
+64-byte packets with zero range/options/reserved fields; they cannot change an
+admitted decoding policy. Packet version and size checks remain enforced.
+
+Actual isolated worker regressions round-trip all nine selections through full and
+inclusive same-time range imports, compare retained Unicode original records and
+action totals, and check BOM override/disable, strict partial results, replacement
+without default-policy leakage, byte progress, cancellation, closed handles and a
+fresh Host. A synthetic KoreanEncodingPlugin separately proves omitted-option
+inheritance, explicit UTF-8 override, preserved plugin defaults and restoration of
+strict UTF-8 after deinitialization. No user files or live capture are involved.
+
 ## Remaining connection and validation
 
-Bridge/Rust explicit options, import/reparse GUI selection and request ownership
-regressions remain pending. Existing requests keep their previous default rather
-than silently enabling replacement. Companion registration/dispatch and source
-matching remain separate finite tasks. Windows native import, legacy Framework
-code-page equivalence and actual plugin/UI behavior remain unexecuted. This does
-not claim arbitrary .NET encodings or live-follower encoding parity.
+Import/reparse GUI choice, draft/session ownership and restart policy remain
+pending. Existing requests retain their prior defaults. Companion registration/
+dispatch and source matching remain separate finite tasks. Windows native import,
+legacy Framework code-page equivalence and actual plugin/UI behavior remain
+unexecuted. This does not claim arbitrary .NET encodings or live-follower encoding
+parity; the existing follower is still strict UTF-8 and must be assessed separately.

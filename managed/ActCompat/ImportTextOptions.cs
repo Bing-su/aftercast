@@ -24,6 +24,7 @@ public sealed record ImportTextOptions(int CodePage = 65001, bool ReplaceInvalid
         if (codePage is not (65001 or 1200 or 1201 or 12000 or 12001 or 932 or 949 or 1252 or 20127))
             throw new ArgumentException($"Unsupported import code page: {codePage}");
     }
+    public void Validate() => ValidateCodePage(CodePage);
     internal Encoding Resolve()
     {
         var encoding = DefaultEncoding(CodePage);

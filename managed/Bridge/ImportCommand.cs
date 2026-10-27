@@ -23,18 +23,28 @@ public static partial class EntryPoint
             Marshal.Copy(buffer + offset, bytes, 0, length);
             var path = new UTF8Encoding(false, true).GetString(bytes);
             if (path.Contains('\0')) throw new ArgumentException("Import path contains NUL");
-            if (Marshal.ReadInt64(buffer, 40) != 0 || Marshal.ReadInt64(buffer, 48) != 0 || Marshal.ReadInt32(buffer, 60) != 0)
+            if (Marshal.ReadInt64(buffer, 48) != 0 || Marshal.ReadInt32(buffer, 60) != 0)
                 throw new ArgumentException("Nonzero reserved import fields");
+            var codePage = Marshal.ReadInt32(buffer, 40);
+            var flags = Marshal.ReadInt32(buffer, 44);
+            if ((flags & ~3) != 0) throw new ArgumentException("Invalid import text flags");
+            if (codePage == 0 && flags != 0) throw new ArgumentException("Text flags require an explicit import encoding");
+            Aftercast.ActCompat.ImportTextOptions? text = codePage == 0 ? null : new(codePage, (flags & 1) != 0, (flags & 2) == 0);
+            text?.Validate();
             Aftercast.ActCompat.ImportRange? range = null;
             if (command == 4)
                 range = new(new DateTime(Marshal.ReadInt64(buffer, 24), DateTimeKind.Unspecified),
                     new DateTime(Marshal.ReadInt64(buffer, 32), DateTimeKind.Unspecified));
             else if (Marshal.ReadInt64(buffer, 24) != 0 || Marshal.ReadInt64(buffer, 32) != 0)
                 throw new ArgumentException("Full import must not specify a time range");
-            plugins.Value.BeginImport(path, range);
+            plugins.Value.BeginImport(path, range, text);
             return 1;
         }
         if (sizeBytes != 64 || command is not (2 or 3)) throw new ArgumentException("Invalid import step");
+        if (Marshal.ReadInt32(buffer,16) != 64 || Marshal.ReadInt32(buffer,20) != 0 ||
+            Marshal.ReadInt64(buffer,24) != 0 || Marshal.ReadInt64(buffer,32) != 0 ||
+            Marshal.ReadInt64(buffer,40) != 0 || Marshal.ReadInt64(buffer,48) != 0 || Marshal.ReadInt32(buffer,60) != 0)
+            throw new ArgumentException("Invalid import continuation fields");
         Aftercast.ActCompat.ImportResult? result;
         try { result = plugins.Value.AdvanceImport(command == 3); }
         catch (OperationCanceledException) { return 2; }
