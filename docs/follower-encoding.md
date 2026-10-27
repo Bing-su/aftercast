@@ -1,8 +1,8 @@
-# Live follower encoding: verified next scope
+# Live follower encoding
 
 Import GUI is connected and tested separately in [import encodings](import-encoding.md).
-Its per-request choices do not configure live capture. No follower implementation
-change is included in this checkpoint.
+Its per-request choices do not configure live capture. Forward capture snapshots
+the plugin LogEncoding at OpenLog; initial zone search remains a separate policy.
 
 ## Pinned ACT evidence
 
@@ -22,10 +22,27 @@ checks property and StreamReader contracts; it does not execute FindZoneName.
 
 ## Current aftercast and bounded implementation order
 
-`LogFollower.Read` and `ReadInitialZone` currently decode strict UTF-8 and scan
-single-byte LF. OpenLog does not pass a captured LogEncoding. The initial partial
-record check assumes a final LF or a three-byte UTF-8-only BOM. Extending only
-GetString would corrupt UTF-16/32 framing and historical-tail handling.
+`OpenLog` validates/clones the same nine supported encodings and fallback policies
+as import before retiring an existing reader. Reassigning LogEncoding affects the
+next OpenLog, not an active reader. The forward decoder frames encoded CR/LF units,
+retains incomplete bytes at temporary EOF, and resets to the captured codec at
+truncation/replacement. Complete old records drain before rotation; incomplete old
+records are reported and discarded, including fragments discarded by truncation. A source record is bounded to 8 MiB; strict
+malformed records are reported and skipped, allowing later records to continue.
+
+Selected preambles precede other Unicode BOMs at byte zero. This keeps aftercast's
+existing generation-start BOM policy: a BOM appended at a nonzero tail is content.
+ACT's newly constructed StreamReader can detect a BOM at its initial tail position;
+this is a deliberate difference, not verified native parity. Existing partial
+historical records are discarded until their first encoded delimiter; they are
+never replayed. Strict fallback survives BOM override, unlike ACT StreamReader's
+replacement fallback reset. No encoding is guessed.
+
+`ReadInitialZone` still uses bounded positional reverse UTF-8/LF scans. The test
+selecting forward Korean code page 949 while finding a UTF-8 historical Korean zone
+proves the policies are independent. Wide BOM zone history, CR-only reverse records
+and ACT default-reader replacement parity remain follow-up work in F3. Forward
+support does not claim these reverse-search cases are complete.
 
 | Unit                                | Required completion evidence                                                                                                                                                                                                                                                                                                                           |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -37,3 +54,14 @@ Use only temporary synthetic logs. Preserve the current reader lifecycle and
 retired-reader bounds, owner dispatch and import suspension. The existing tests in
 LogFollowerChecks, LogHostChecks and HostLifetimeChecks remain mandatory regressions.
 Windows native input/capture and arbitrary plugin effects remain separate QA.
+
+## Implemented verification
+
+Synthetic temporary files cover all nine forward encodings, byte-at-a-time BOM and
+character delivery, CR/CRLF, misaligned historical UTF-16/32 tails, malformed strict
+and replacement recovery, truncation with incomplete units, rotation from BOM-wide
+to captured UTF-8, pause/resume, callback failure and joined shutdown. Host tests
+check original decoded strings, encoding snapshot ownership, rejected admission
+preserving the old reader, and independent initial zone decoding. The reference
+LogEncodingProbe additionally checks StreamReader at a nonzero tail and the default
+zone reader after seek; it does not invoke ACT native reader threads or FindZoneName.

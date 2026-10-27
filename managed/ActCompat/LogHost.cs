@@ -37,6 +37,7 @@ public partial class FormActMain
 
     public void OpenLog(bool getCurrentZone, bool getCharNameFromFile)
     {
+        var encoding = Aftercast.ActCompat.ImportTextOptions.Validate(LogEncoding);
         EnsureCanWaitForLogReader();
         if (getCharNameFromFile)
             throw new PlatformNotSupportedException("Character-name discovery from log filenames is not implemented");
@@ -65,7 +66,7 @@ public partial class FormActMain
             {
                 if (logHostStopped || generation != logGeneration) return;
                 next = new LogFollower(path, line => ReceiveLogLine(generation, path, line),
-                    error => WriteExceptionLog(error, "Log follower"), () => ReadThreadLock || IsLogDeliveryPaused(generation), initialSnapshot: true);
+                    error => WriteExceptionLog(error, "Log follower"), () => ReadThreadLock || IsLogDeliveryPaused(generation), initialSnapshot: true, encoding: encoding);
                 follower = next;
             }
             var snapshot = getCurrentZone ? next.ReadInitialZone(ZoneChangeRegex, () =>

@@ -37,6 +37,24 @@ public static class LogEncodingProbe
                 throw new Exception("Selected preamble must precede BOM override");
         using (var reader = new StreamReader(new MemoryStream(new byte[] { 0xef, 0xbb, 0xbf, 97 }), Encoding.UTF8, false))
             if (reader.ReadToEnd() != "a") throw new Exception("Selected preamble must be consumed with detection disabled");
+        // ACT OpenLog seeks before constructing the reader: do not inspect historical bytes as an import.
+        root.LogEncoding = Encoding.GetEncoding(949);
+        using (var source = new MemoryStream())
+        {
+            source.Write(Encoding.UTF8.GetBytes("historical\n"));
+            var tail = source.Position;
+            source.Write(root.LogEncoding.GetBytes("한글\n"));
+            source.Position = tail;
+            using var reader = new StreamReader(source, root.LogEncoding);
+            if (reader.ReadLine() != "한글") throw new Exception("Selected tail reader changed");
+        }
+        using (var source = new MemoryStream(Encoding.UTF8.GetBytes("old\nzone:한글\n")))
+        using (var reader = new StreamReader(source))
+        {
+            source.Position = 4;
+            if (reader.ReadLine() != "zone:한글" || reader.CurrentEncoding.CodePage != 65001)
+                throw new Exception("Default zone reader inherited plugin encoding");
+        }
         return "Log encodings";
     }
 }

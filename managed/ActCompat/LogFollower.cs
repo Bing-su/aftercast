@@ -1,4 +1,5 @@
 using System.Text;
+using Aftercast.ActCompat;
 using System.Runtime.InteropServices;
 
 namespace Advanced_Combat_Tracker;
@@ -22,6 +23,8 @@ internal sealed class LogFollower : IDisposable
     private bool disposed;
     private bool initialSnapshotPending;
     private readonly bool discardInitialContinuation;
+    private readonly bool initialCr;
+    private readonly Encoding selectedEncoding;
     private Exception? reportingFailure;
     private long InitialPosition { get; }
     internal bool IsAlive => worker.IsAlive;
@@ -31,7 +34,10 @@ internal sealed class LogFollower : IDisposable
         : this(path, onLine, onError, paused, false) { }
 
     internal LogFollower(string path, Action<string> onLine, Action<Exception> onError, Func<bool> paused, bool initialSnapshot)
+        : this(path, onLine, onError, paused, initialSnapshot, new ImportTextOptions().Resolve()) { }
+    internal LogFollower(string path, Action<string> onLine, Action<Exception> onError, Func<bool> paused, bool initialSnapshot, Encoding encoding)
     {
+        selectedEncoding = ImportTextOptions.Validate(encoding);
         ArgumentNullException.ThrowIfNull(onLine);
         ArgumentNullException.ThrowIfNull(onError);
         ArgumentNullException.ThrowIfNull(paused);
@@ -49,14 +55,17 @@ internal sealed class LogFollower : IDisposable
             InitialPosition = opened.Seek(0, SeekOrigin.End);
             if (InitialPosition > 0)
             {
-                // A suffix appended to a pre-existing partial record is historical input, not a new complete live record.
-                var count = InitialPosition == 3 ? 3 : 1;
-                Span<byte> boundary = stackalloc byte[count];
-                if (RandomAccess.Read(opened.SafeFileHandle, boundary, InitialPosition - count) != count)
+                var width = LiveLogDecoder.Width(selectedEncoding);
+                var preamble = selectedEncoding.GetPreamble();
+                Span<byte> boundary = stackalloc byte[4];
+                var completeUnit = InitialPosition % width == 0 && InitialPosition >= width;
+                if (completeUnit && RandomAccess.Read(opened.SafeFileHandle, boundary[..width], InitialPosition - width) != width)
                     throw new EndOfStreamException("Log was truncated while checking its initial record boundary");
-                // A BOM-only image has encoding metadata but no historical partial record to discard.
-                discardInitialContinuation = boundary[^1] != (byte)'\n' &&
-                    !(InitialPosition == 3 && boundary.SequenceEqual(new byte[] { 0xef, 0xbb, 0xbf }));
+                initialCr = completeUnit && LiveLogDecoder.IsControl(boundary[..width], selectedEncoding, (byte)'\r');
+                var terminated = completeUnit && (initialCr || LiveLogDecoder.IsControl(boundary[..width], selectedEncoding, (byte)'\n'));
+                var bomOnly = InitialPosition == preamble.Length && preamble.Length != 0 &&
+                    RandomAccess.Read(opened.SafeFileHandle, boundary[..preamble.Length], 0) == preamble.Length && boundary[..preamble.Length].SequenceEqual(preamble);
+                discardInitialContinuation = !terminated && !bomOnly;
             }
             stream = opened;
             worker = new Thread(Read) { IsBackground = true, Name = "Aftercast log follower" };
@@ -73,10 +82,7 @@ internal sealed class LogFollower : IDisposable
     private void Read()
     {
         var bytes = new byte[4096];
-        var encoding = new UTF8Encoding(false, true);
-        using var pending = new MemoryStream();
-        var discarding = discardInitialContinuation;
-        var firstRecord = InitialPosition == 0;
+        using var decoder = new LiveLogDecoder(selectedEncoding, InitialPosition, discardInitialContinuation, initialCr);
         try
         {
             while (!stopped.WaitOne(0))
@@ -87,11 +93,10 @@ internal sealed class LogFollower : IDisposable
                 if (isPaused) { stopped.WaitOne(10); continue; }
                 if (stream.Length < stream.Position)
                 {
-                    // Truncation discards an incomplete record, including any split UTF-8 character.
+                    // A new image starts with fresh prefix/alignment state; no partial character survives truncation.
+                    if (decoder.HasPending) Report(new InvalidDataException("Log truncation discarded an incomplete source record"));
                     stream.Seek(0, SeekOrigin.Begin);
-                    pending.SetLength(0);
-                    discarding = false;
-                    firstRecord = true;
+                    decoder.Reset();
                 }
                 var count = stream.Read(bytes, 0, bytes.Length);
                 if (count == 0)
@@ -99,49 +104,14 @@ internal sealed class LogFollower : IDisposable
                     // Drain the old complete tail before switching; absence during rename/create is temporary.
                     if (ReopenReplacement())
                     {
-                        if (pending.Length > 0) Report(new InvalidDataException("Log replacement discarded an incomplete UTF-8 record"));
-                        pending.SetLength(0);
-                        discarding = false;
-                        firstRecord = true;
+                        if (decoder.HasPending) Report(new InvalidDataException("Log replacement discarded an incomplete source record"));
+                        decoder.Reset();
                         continue;
                     }
                     stopped.WaitOne(10);
                     continue;
                 }
-                var remaining = bytes.AsSpan(0, count);
-                while (!remaining.IsEmpty)
-                {
-                    var newline = remaining.IndexOf((byte)'\n');
-                    var fragment = newline < 0 ? remaining : remaining[..newline];
-                    if (!discarding)
-                    {
-                        if (pending.Length + fragment.Length > MaximumLineLength)
-                        {
-                            // Bound malformed input while preserving all later complete records.
-                            pending.SetLength(0);
-                            discarding = true;
-                            Report(new InvalidDataException($"Pending log line exceeds {MaximumLineLength} UTF-8 bytes"));
-                        }
-                        else pending.Write(fragment);
-                    }
-                    if (newline < 0) break;
-                    if (!discarding)
-                    {
-                        try
-                        {
-                            var content = pending.GetBuffer().AsSpan(0, (int)pending.Length);
-                            if (!content.IsEmpty && content[^1] == '\r') content = content[..^1];
-                            var line = encoding.GetString(content);
-                            if (firstRecord && line.StartsWith('\uFEFF')) line = line[1..];
-                            if (!Deliver(line)) return;
-                        }
-                        catch (Exception error) { Report(error); }
-                    }
-                    pending.SetLength(0);
-                    discarding = false;
-                    firstRecord = false;
-                    remaining = remaining[(newline + 1)..];
-                }
+                if (!decoder.Feed(bytes.AsSpan(0, count), Deliver, Report)) return;
             }
         }
         catch (Exception error) { Report(error); }

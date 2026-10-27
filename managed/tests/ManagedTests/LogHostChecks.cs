@@ -47,6 +47,7 @@ internal static class LogHostChecks
         finally { directory.Delete(true); }
         ReopenFromCallback();
         HistoricalZone();
+        EncodingSnapshot();
     }
 
     private static void ReopenFromCallback()
@@ -98,6 +99,8 @@ internal static class LogHostChecks
                 output.Write(Encoding.UTF8.GetBytes("zone:incomplete"));
                 output.WriteByte(0xea);
             }
+            // Initial zone remains the default UTF-8 path even when forward capture selects Korean legacy text.
+            root.LogEncoding = Encoding.GetEncoding(949);
             root.ZoneChangeRegex = new("^zone:(?<zone>.+)$");
             root.LogFilePath = path;
             root.OpenLog(true, false);
@@ -106,4 +109,31 @@ internal static class LogHostChecks
         }
         finally { directory.Delete(true); }
     }
+    private static void EncodingSnapshot()
+    {
+        var directory = Directory.CreateTempSubdirectory("aftercast-live-codec-");
+        try
+        {
+            using var environment = new HostEnvironment(directory.FullName);
+            var root = ActGlobals.oFormActMain!;
+            var path = Path.Combine(directory.FullName, "selected.log");
+            File.WriteAllBytes(path, []);
+            root.LogFilePath = path;
+            root.LogEncoding = Encoding.GetEncoding(949);
+            root.GetDateTimeFromLog = _ => DateTime.UnixEpoch;
+            var lines = new ConcurrentQueue<string>();
+            root.OnLogLineRead += (_, line) => lines.Enqueue(line.originalLogLine);
+            root.OpenLog(false, false);
+            root.LogEncoding = Encoding.GetEncoding(28591);
+            try { root.OpenLog(false, false); throw new Exception("Unsupported encoding accepted"); }
+            catch (ArgumentException) { }
+            // Rejected admission must leave the old reader alive with its original encoding snapshot.
+            using (var output = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete))
+                output.Write(Encoding.GetEncoding(949).GetBytes("한글\n"));
+            Check(SpinWait.SpinUntil(() => lines.Count == 1, TimeSpan.FromSeconds(5)));
+            Check(lines.TryPeek(out var original) && original == "한글" && environment.Diagnostics.Item1 == 0);
+        }
+        finally { directory.Delete(true); }
+    }
+
 }

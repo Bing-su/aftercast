@@ -4,7 +4,7 @@ using System.Runtime.ExceptionServices;
 using System.Text;
 using Advanced_Combat_Tracker;
 
-internal static class LogFollowerChecks
+internal static partial class LogFollowerChecks
 {
     private static readonly Type FollowerType = typeof(ActGlobals).Assembly.GetType("Advanced_Combat_Tracker.LogFollower", throwOnError: true)!;
 
@@ -50,6 +50,7 @@ internal static class LogFollowerChecks
             SelfDispose(Path.Combine(directory.FullName, "self.log"));
             OversizedLine(Path.Combine(directory.FullName, "oversized.log"));
             Replacement(Path.Combine(directory.FullName, "replacement.log"));
+            SelectedEncodings(directory.FullName);
         }
         finally { directory.Delete(recursive: true); }
         Console.WriteLine("Log follower end-tail, split UTF-8, framing, pause, truncation, replacement, callback isolation and disposal checks passed.");
@@ -110,11 +111,11 @@ internal static class LogFollowerChecks
         DrainReadCycles();
         Append(path, "fresh\n");
         Wait(() => lines.Count == 5, "reader did not restart after truncation");
-        Check(lines.ToArray()[4] == "fresh" && errors.IsEmpty, "truncation retained stale text or UTF-8 state");
+        Check(lines.ToArray()[4] == "fresh" && errors.Count == 1 && errors.TryPeek(out var truncated) && truncated.Message.Contains("truncation", StringComparison.Ordinal), "truncation retained stale text or UTF-8 state");
 
         follower.Dispose();
         Append(path, "after disposal\n");
-        Check(lines.Count == 5 && errors.IsEmpty, "disposed reader invoked callbacks");
+        Check(lines.Count == 5 && errors.Count == 1, "disposed reader invoked callbacks");
         // Joining the worker is the synchronization proof; a delay cannot prove callback exclusion.
         Check(!((Thread)FollowerType.GetField("worker", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(follower)!).IsAlive,
             "Dispose returned before the worker exited");
