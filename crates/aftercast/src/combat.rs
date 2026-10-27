@@ -99,6 +99,8 @@ pub struct EncounterLog {
     pub time: LogTimestamp,
     pub time_sorter: i32,
     pub log_type: i32,
+    /// Uniqueness and provenance checked across the whole encounter in the same read as this text.
+    pub source: SourceLogLink,
     pub text: String,
 }
 
@@ -373,12 +375,7 @@ impl<'a> Reader<'a> {
         let victim = self.text()?;
         let attack = self.text()?;
         let damage = self.text()?;
-        let source = match self.i32()? {
-            -1 => SourceLogLink::Missing,
-            -2 => SourceLogLink::Ambiguous,
-            index if index >= 0 => SourceLogLink::Retained(index.cast_unsigned()),
-            _ => return Err(invalid("invalid source log link")),
-        };
+        let source = self.source()?;
         Ok(EncounterAction {
             time,
             time_sorter,
@@ -389,11 +386,20 @@ impl<'a> Reader<'a> {
             source,
         })
     }
+    fn source(&mut self) -> Result<SourceLogLink, Error> {
+        match self.i32()? {
+            -1 => Ok(SourceLogLink::Missing),
+            -2 => Ok(SourceLogLink::Ambiguous),
+            index if index >= 0 => Ok(SourceLogLink::Retained(index.cast_unsigned())),
+            _ => Err(invalid("invalid source log link")),
+        }
+    }
     fn log(&mut self) -> Result<EncounterLog, Error> {
         Ok(EncounterLog {
             time: self.time()?,
             time_sorter: self.i32()?,
             log_type: self.i32()?,
+            source: self.source()?,
             text: self.text()?,
         })
     }
@@ -423,10 +429,15 @@ fn decode_logs(payload: &[u8], offset: u32, limit: u32) -> Result<Option<Encount
         if dropped > i64::MAX as u64 {
             return Err(invalid("invalid omitted log count"));
         }
-        Some(EncounterLogs {
-            dropped,
-            page: reader.page(limit, offset, Reader::log)?,
-        })
+        let page = reader.page(limit, offset, Reader::log)?;
+        for (position, line) in page.items.iter().enumerate() {
+            if let SourceLogLink::Retained(index) = line.source
+                && index != offset + position as u32
+            {
+                return Err(invalid("log source index mismatch"));
+            }
+        }
+        Some(EncounterLogs { dropped, page })
     } else {
         None
     };
@@ -547,6 +558,7 @@ mod tests {
         logs.put_u32_le(0);
         logs.put_i32_le(42);
         logs.put_i32_le(12);
+        logs.put_i32_le(0);
         text(&mut logs, "한글\0 source");
         let page = decode_logs(&logs, 0, 1)
             .expect("log page")
@@ -556,6 +568,9 @@ mod tests {
         for length in 0..logs.len() {
             decode_logs(&logs[..length], 0, 1).expect_err("truncated logs");
         }
+        let mut wrong_index = logs.clone();
+        wrong_index[40..44].copy_from_slice(&1_i32.to_le_bytes());
+        decode_logs(&wrong_index, 0, 1).expect_err("mismatched log position");
         logs[4..12].copy_from_slice(&u64::MAX.to_le_bytes());
         decode_logs(&logs, 0, 1).expect_err("invalid loss count");
     }

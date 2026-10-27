@@ -108,8 +108,9 @@ New checkpoints record whether source identities are known in
 this provenance are browsable, but their actions report unavailable source links;
 coincidentally equal reconstructed sorters must not select a different line.
 They are current graph reads, not frozen snapshots; a source offset belongs only
-to its originating encounter. The GUI checks the selected sorter's identity again
-when opening its log page. Session IDs do not survive restart.
+to its originating encounter. Each log row carries a source-link status computed under the same lock as the
+page, including duplicates outside that page. The GUI rechecks this status and
+the selected sorter before highlighting a source. Session IDs do not survive restart.
 The Analysis pane exposes these pages using Rust/UI-derived Button/Accordion
 components; Import/Export exposes checkpoint save/restore and clears old selections
 after restoration. Persistence of recording options remains separate work. Vendor disk-writer

@@ -99,6 +99,8 @@ internal static class EncounterLogChecks
         var line = encounter.LogLines[0];
         encounter.LogLines.Add(line);
         Check(host.ReadEncounterActions(id, 0, 1)!.Items[0].SourceIndex == -2);
+        // The duplicate is outside this one-row page, added after the initial action query above.
+        Check(host.ReadEncounterLogs(id, 0, 1)!.Page.Items[0].SourceIndex == -2);
         encounter.LogLines.RemoveAt(encounter.LogLines.Count - 1);
         encounter.LogLines.RemoveAt(0);
         Check(host.ReadEncounterActions(id, 0, 1)!.Items[0].SourceIndex == -1);

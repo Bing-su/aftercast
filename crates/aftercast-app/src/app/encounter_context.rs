@@ -41,6 +41,10 @@ impl ContextState {
     }
 }
 
+fn source_matches(source: Option<(u32, i32)>, index: u32, line: &aftercast::EncounterLog) -> bool {
+    source == Some((index, line.time_sorter)) && line.source == SourceLogLink::Retained(index)
+}
+
 fn format_time(time: aftercast::LogTimestamp) -> String {
     // Format the source wall-clock ticks without converting local/unspecified times to another zone.
     let ticks = time.ticks as i64;
@@ -187,16 +191,35 @@ pub(super) fn EncounterContext(id: EncounterId) -> Element {
                         }
                         if let Some((index, sorter)) = source {
                             if index != offset
-                                || logs.page.items.first().is_none_or(|line| line.time_sorter != sorter)
+                                || logs
+                                    .page
+                                    .items
+                                    .first()
+                                    .is_none_or(|line| !source_matches(Some((index, sorter)), offset, line))
                             {
-                                p { role: "alert", {tr("source-unavailable")} }
+                                p { role: "alert",
+                                    {
+                                        tr(
+                                            if logs
+                                                .page
+                                                .items
+                                                .first()
+                                                .is_some_and(|line| line.source == SourceLogLink::Ambiguous)
+                                            {
+                                                "source-ambiguous"
+                                            } else {
+                                                "source-unavailable"
+                                            },
+                                        )
+                                    }
+                                }
                             }
                         }
                         ol { class: "divide-y divide-border border-y border-border",
                             for (index, line) in logs.page.items.iter().enumerate() {
                                 li {
-                                    class: if source == Some((offset + index as u32, line.time_sorter)) { "bg-accent p-3 outline-1 outline-primary" } else { "p-3" },
-                                    "aria-current": if source == Some((offset + index as u32, line.time_sorter)) { "true" } else { "false" },
+                                    class: if source_matches(source, offset + index as u32, line) { "bg-accent p-3 outline-1 outline-primary" } else { "p-3" },
+                                    "aria-current": if source_matches(source, offset + index as u32, line) { "true" } else { "false" },
                                     p { class: "mb-2 text-xs text-muted-foreground tabular-nums",
                                         "#{offset + index as u32 + 1} · "
                                         {format_time(line.time)}
@@ -292,7 +315,24 @@ pub(super) fn EncounterContext(id: EncounterId) -> Element {
 
 #[cfg(test)]
 mod tests {
-    use super::{ContextState, PageResult};
+    use super::{ContextState, PageResult, source_matches};
+    #[test]
+    fn source_highlight_rejects_a_duplicate_added_after_the_action_query() {
+        let mut line = aftercast::EncounterLog {
+            time: aftercast::LogTimestamp {
+                ticks: 0,
+                utc_ticks: None,
+                kind: aftercast::LogTimeKind::Unspecified,
+            },
+            time_sorter: 42,
+            log_type: 0,
+            text: "source".into(),
+            source: aftercast::SourceLogLink::Retained(0),
+        };
+        assert!(source_matches(Some((0, 42)), 0, &line));
+        line.source = aftercast::SourceLogLink::Ambiguous;
+        assert!(!source_matches(Some((0, 42)), 0, &line));
+    }
     #[test]
     fn cancelled_or_replaced_queries_cannot_publish_late_pages_or_errors() {
         let mut state = ContextState {

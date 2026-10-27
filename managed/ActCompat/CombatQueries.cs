@@ -11,7 +11,7 @@ namespace Aftercast.ActCompat
         long Damage, long DurationTicks, double DPS, double EncDPS, int Swings, int Hits, int CritHits, int Misses, int Blocked);
     public sealed record EncounterActionData(DateTime Time, int TimeSorter, string Attacker, string Victim,
         string Attack, string Damage, int SourceIndex);
-    public sealed record EncounterLogData(DateTime Time, int TimeSorter, int Type, string Text);
+    public sealed record EncounterLogData(DateTime Time, int TimeSorter, int Type, string Text, int SourceIndex);
     public sealed record EncounterLogPageData(long Dropped, CombatPage<EncounterLogData> Page);
     public sealed record CombatPage<T>(int Total, T[] Items);
 }
@@ -126,15 +126,10 @@ namespace Advanced_Combat_Tracker
                 // Canonical outgoing All lists avoid multiplying actions across overlapping parser categories.
                 var actions = encounter.Items.Values.SelectMany(actor => actor.AllOut.TryGetValue("All", out var all)
                     ? (IEnumerable<MasterSwing>)all.Items : []);
-                var sources = new Dictionary<int, int>();
-                for (var index = 0; index < encounter.LogLines.Count; index++)
-                {
-                    var sorter = encounter.LogLines[index].GlobalTimeSorter;
-                    if (!sources.TryAdd(sorter, index)) sources[sorter] = -2;
-                }
+                var sources = SourceIndices(encounter);
                 return new(actions.Count(), actions.Skip(offset).Take(limit).Select(action => new EncounterActionData(
                     action.Time, action.TimeSorter, action.Attacker, action.Victim, action.AttackType, action.Damage.ToString(),
-                    encounter.LogSourceIdentityKnown ? sources.GetValueOrDefault(action.TimeSorter, -1) : -1)).ToArray());
+                    sources.GetValueOrDefault(action.TimeSorter, -1))).ToArray());
             }
         }
 
@@ -144,9 +139,25 @@ namespace Advanced_Combat_Tracker
             lock (CombatGate)
             {
                 var encounter = QueryEncounters().Select(item => item.Encounter).FirstOrDefault(item => Identity(item).Id == id);
-                return encounter is null ? null : new(encounter.DroppedLogLines,
-                    new(encounter.LogLines.Count, encounter.LogLines.Skip(offset).Take(limit).Select(line => new EncounterLogData(line.Time, line.GlobalTimeSorter, line.Type, line.LogLine)).ToArray()));
+                if (encounter is null) return null;
+                var sources = SourceIndices(encounter);
+                return new(encounter.DroppedLogLines,
+                    new(encounter.LogLines.Count, encounter.LogLines.Skip(offset).Take(limit).Select(line => new EncounterLogData(
+                        line.Time, line.GlobalTimeSorter, line.Type, line.LogLine, sources.GetValueOrDefault(line.GlobalTimeSorter, -1))).ToArray()));
             }
+        }
+
+        private static Dictionary<int, int> SourceIndices(EncounterData encounter)
+        {
+            // Called under CombatGate so even duplicates outside the returned page invalidate source selection.
+            var sources = new Dictionary<int, int>();
+            if (!encounter.LogSourceIdentityKnown) return sources;
+            for (var index = 0; index < encounter.LogLines.Count; index++)
+            {
+                var sorter = encounter.LogLines[index].GlobalTimeSorter;
+                if (!sources.TryAdd(sorter, index)) sources[sorter] = -2;
+            }
+            return sources;
         }
 
         private void CompleteImportQueries(ZoneData zone, int first, bool success)

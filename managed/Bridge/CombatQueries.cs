@@ -117,7 +117,8 @@ internal static class CombatQueryEncoding
                 writer.Write(value.Dropped); writer.Write(value.Page.Total); writer.Write(value.Page.Items.Length);
                 foreach (var line in value.Page.Items)
                 {
-                    Budget(20); Time(line.Time); writer.Write(line.TimeSorter); writer.Write(line.Type);
+                    Budget(24); Time(line.Time); writer.Write(line.TimeSorter); writer.Write(line.Type);
+                    writer.Write(line.SourceIndex);
                     Text(line.Text);
                 }
             }
