@@ -94,10 +94,51 @@ resave is not a contract: existing import-zone serialization can normalize
 representation difference does not change the tested clipboard marker or
 retained actions/logs and was not changed as part of this unit.
 
-## Remaining L6b wiring
+## Supplied-provider GUI checkpoint (OS wiring incomplete)
 
-1. Rust/UI explicit paste/import controls using an injectable clipboard adapter,
-   with a snapshot independent of raw-file options and session-owned async state.
-2. OS clipboard/native UI interaction requires later Windows/native QA. No
-   clipboard access or native ACT execution is claimed by the IL probe or worker
-   tests. Clipboard monitoring is outside this explicit-action feature.
+The Import / Export pane registers the existing Rust/UI Accordion, Button and
+Progress components for an explicit read → preview → import flow. The adapter is
+injected through Dioxus context. The default provider is deliberately unavailable,
+so the normal application's Paste button is disabled and explains that no provider
+is connected. **This is not completion of the end-user OS clipboard feature.**
+
+A live `arboard` reader addition was rejected by automatic approval review before
+execution. No such reader was added, invoked or substituted through another OS
+path. Only the unaffected supplied-provider UI/controller and in-memory tests
+were completed. OS wiring remains an approval blocker, rather than a claim that
+Linux clipboard access is technically impossible.
+
+| GUI contract    | Implemented supplied-provider behavior                                                                                                                                                                                                                                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Explicit action | Construction, render, tab changes and import never read again. Only Paste requests a provider snapshot; Import uses that immutable preview. No watcher or persistent OS handle is implemented.                                                                                                                                                                                                          |
+| Limits/preview  | Validate nonempty UTF-8 equivalent size up to 8 MiB before staging. Show byte/character counts and at most 512 characters, keeping complete snapshot bytes for import. Unsupported formats and unavailable/busy providers are explicit local failures; previous draft is retained.                                                                                                                      |
+| Ownership       | One provider read at a time, including across Host session changes. Late results cannot replace a newer draft/session. Duplicate read/import/clear/cancel events are rejected.                                                                                                                                                                                                                          |
+| Quit            | Abandon a pending read token without waiting for its result, then use the existing Ready→Host Stop or Idle→window-close path. A late supplied result is ignored; no unsafe thread termination is attempted.                                                                                                                                                                                             |
+| Import          | Reuse typed clipboard API and tab-independent wait/cancel. Raw path/encoding/range/companion drafts are separate. Failed/cancelled snapshots remain for inspection/retry; Host stop retains the draft and a fresh application starts empty.                                                                                                                                                             |
+| Privacy         | No clipboard text/provider diagnostic is formatted into shared desktop errors, application logs or settings. Adapter errors carry no strings. Import failures show a fixed local message. Preview is intentionally visible and imported text intentionally reaches initialized parsers and bounded retained encounter logs; third-party plugin diagnostics remain governed by existing plugin behavior. |
+
+Four tests cover in-memory Unicode/size/format failures, a single-flight blocking
+provider with stale-session replies, pending-read Quit in Idle/Ready, and an actual
+isolated Host controller flow. The Host scenario checks immutable preview use,
+raw option independence, tab navigation, partial parsing failure, draft retention,
+general desktop log redaction with an active captured tracing sink, cancel and
+late session results. No test calls a production/OS reader; all read operations
+use injected memory data.
+
+## OS support evidence and remaining wiring
+
+The project already depends on registry `arboard` 3.7.0 with default features off.
+Its installed official crate source exposes `Clipboard::get_text`, a Windows
+backend and an unconditional Linux X11 backend. Native Wayland data-control is
+behind an optional feature that is not enabled here; an X11/XWayland connection
+would use the existing path. No new installation, dependency, persistent grant or
+OS setting change was required by the supplied-provider work. The proposed live
+read shim was not added or compiled because of the approval rejection; this
+checkpoint makes no live-provider build or execution claim.
+
+1. Obtain approval for adding/connecting a live provider without executing OS
+   reads in tests, then replace the default unavailable provider. Keep tests
+   explicitly in-memory; do not invoke a default provider read as a test.
+2. Actual OS clipboard access and native UI input/Windows execution remain
+   unverified. Neither IL policy probes nor synthetic Host tests run native ACT
+   clipboard code. Clipboard monitoring remains outside this feature.

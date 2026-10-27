@@ -1,4 +1,5 @@
 mod analysis;
+mod clipboard_import;
 mod companions;
 mod encounter_context;
 mod history;
@@ -47,6 +48,7 @@ enum Phase {
     Ready,
     Importing,
     SelectingImport,
+    ReadingClipboard,
     Archiving,
     ReadingHistory,
     ReadingTables,
@@ -68,6 +70,7 @@ impl Phase {
             Self::Ready => "ready",
             Self::Importing => "importing",
             Self::SelectingImport => "selecting-import",
+            Self::ReadingClipboard => "reading-clipboard",
             Self::Archiving => "archiving",
             Self::ReadingHistory => "reading-history",
             Self::ReadingTables => "reading-tables",
@@ -132,6 +135,7 @@ struct AppState {
     interchange: interchange::State,
     companions: companions::State,
     reparse: reparse::ReparseState,
+    clipboard: clipboard_import::State,
     progress: ImportProgress,
     message: String,
     error: Option<String>,
@@ -208,6 +212,7 @@ impl AppState {
             interchange: Default::default(),
             companions: Default::default(),
             reparse: Default::default(),
+            clipboard: Default::default(),
             progress: ImportProgress::default(),
             message: String::new(),
             error: None,
@@ -268,6 +273,7 @@ pub fn App() -> Element {
     let ApplicationRoot(root) = use_context::<ApplicationRoot>();
     let mut state = use_signal(|| AppState::new(root));
     use_context_provider(|| state);
+    use_context_provider(clipboard_import::Adapter::default);
     let locale = try_use_init_i18n(|| {
         I18nConfig::new(langid!("ko-KR"))
             .with_fallback(langid!("en-US"))
@@ -297,6 +303,9 @@ pub fn App() -> Element {
                 }
                 let phase = state.read().phase;
                 match phase {
+                    Phase::ReadingClipboard => {
+                        state.write().abandon_clipboard_read_for_exit();
+                    }
                     Phase::Ready
                     | Phase::Initializing
                     | Phase::Importing
@@ -532,6 +541,7 @@ fn stop(mut state: Signal<AppState>) {
         state.history = Default::default();
         state.plugin_tables.reset_session();
         state.reparse.reset_session();
+        state.clipboard.reset_session();
         state.import_text.reset_session();
         state.interchange.stop();
         state.companions.reset_session();

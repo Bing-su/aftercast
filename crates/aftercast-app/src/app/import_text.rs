@@ -151,6 +151,7 @@ impl AppState {
             && !self.exit_requested
             && !self.import_text.active()
             && !self.reparse.active()
+            && !self.clipboard.active()
     }
     pub(super) fn edit_import_text(
         &mut self,
@@ -178,6 +179,7 @@ impl AppState {
             && !self.loading
             && !self.exit_requested
             && !self.import_text.active()
+            && !self.clipboard.active()
             && self
                 .plugins
                 .iter()

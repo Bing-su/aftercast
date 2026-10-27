@@ -137,7 +137,8 @@ pub(super) fn ImportPane() -> Element {
                 id: "log-path".to_owned(),
                 value: state.read().import_path.clone(),
                 placeholder: tr("log-path-hint"),
-                disabled: state.read().phase == Phase::Importing || state.read().import_text.active(),
+                disabled: state.read().phase == Phase::Importing || state.read().import_text.active()
+                    || state.read().clipboard.active(),
                 oninput: move |event: FormEvent| state.write().edit_import_path(text_view, event.value()),
             }
             super::import_text::TextControls {}
@@ -149,7 +150,9 @@ pub(super) fn ImportPane() -> Element {
                     icons::FileUp {}
                     {tr("import-log")}
                 }
-                if state.read().phase == Phase::Importing && !state.read().reparse.active() {
+                if state.read().phase == Phase::Importing && !state.read().reparse.active()
+                    && !state.read().clipboard.active()
+                {
                     Button {
                         variant: ButtonVariant::Outline,
                         disabled: state.read().cancel_import,
@@ -158,7 +161,7 @@ pub(super) fn ImportPane() -> Element {
                     }
                 }
             }
-            if state.read().phase == Phase::Importing {
+            if state.read().phase == Phase::Importing && !state.read().clipboard.importing() {
                 div {
                     role: "status",
                     class: "space-y-3 py-4 text-sm text-muted-foreground",
@@ -174,13 +177,14 @@ pub(super) fn ImportPane() -> Element {
                     }
                 }
             }
-            if state.read().phase == Phase::Importing {
+            if state.read().phase == Phase::Importing && !state.read().clipboard.importing() {
                 p { class: "text-xs tabular-nums text-muted-foreground",
                     {tr("sources-progress-excluded")}
                     " {state.read().progress.companion_heads_excluded}"
                 }
             }
             super::reparse::ReparseControls {}
+            super::clipboard_import::Controls {}
             div { class: "my-5 flex flex-wrap gap-3",
                 Button {
                     variant: ButtonVariant::Outline,
