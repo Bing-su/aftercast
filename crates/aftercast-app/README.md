@@ -3,6 +3,24 @@
 This first executable implements the aggregate workflow from the
 [GUI plan](../../docs/gui-plan.md). It does not yet implement every planned ACT tab.
 
+| Surface | Current behavior |
+| --- | --- |
+| Top navigation | Analysis, plugins, import/export and settings; no application logo |
+| Analysis sidebar | Search the current encounter page, expand zones/participants, select parser-owned categories and incoming/outgoing direction |
+| Analysis workspace | Sortable participant/attack aggregates, localized pagination and a collapsible damage-contribution chart below the table |
+| Accordion | Shared Rust/UI-style disclosure with native button keyboard behavior, ARIA state and reduced-motion support; used by the explorer and chart |
+| Import/export | Real log-file import with progress/cancellation; export is not implemented |
+| Triggers/history | Disabled navigation entries marked as planned; no simulated editor or durable archive |
+
+Attack pages are read asynchronously in chunks of 256 and discarded when the
+session or encounter selection changes. Parser categories and ACT `All` rows
+remain separate: summing overlapping categories would double-count actions.
+Imports belong to the application and continue across tab navigation; returning
+to the import pane exposes the current progress and cancellation action.
+The graph remains a contribution overview; it does not invent a damage time series
+from aggregate data. Individual-event/source-log views and timer/mini-window
+controls from the design concept are not implemented.
+
 | Command                    | Purpose                                                                                 |
 | -------------------------- | --------------------------------------------------------------------------------------- |
 | `mise run gui:css`         | Install with Bun's frozen lockfile; rebuild the embedded Tailwind/Catppuccin stylesheet |
@@ -63,7 +81,7 @@ the working directory. Invalid configuration is reported and never silently rese
 | `src/main.rs`                                       | Common CLI parsing, authenticated child dispatch before GUI startup, logging and window setup       |
 | `src/app.rs`                                        | Shared async session state and host operations; rejects stale session/selection responses           |
 | `src/app/shell.rs`                                  | Navigation, encounters and application actions                                                      |
-| `src/app/analysis.rs`                               | Encounter aggregates, Chorale table and Dioxus chart; detailed attacks can extend this screen       |
+| `src/app/analysis.rs`                               | Participant/attack aggregates, Chorale tables, collapsible Dioxus chart and log-import pane          |
 | `src/app/plugins.rs`                                | Plugin order, type overrides and status; future native settings/overlay actions belong here         |
 | `src/app/preferences.rs`                            | Fluent locale, Catppuccin flavour and runtime preferences                                           |
 | `src/config.rs`                                     | Validated, comment-preserving TOML and atomic replacement                                           |
