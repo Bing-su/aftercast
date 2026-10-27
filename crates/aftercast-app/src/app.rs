@@ -102,6 +102,20 @@ struct AppState {
 }
 
 impl AppState {
+    fn can_save_settings(&self) -> bool {
+        !self.saving && self.file.is_some() && self.phase != Phase::ChangingPlugins
+    }
+
+    fn begin_settings_save(&mut self) -> Option<(Utf8PathBuf, ConfigFile)> {
+        if !self.can_save_settings() {
+            return None;
+        }
+        let mut file = self.file.clone()?;
+        file.settings = self.settings.clone();
+        self.saving = true;
+        Some((self.root.clone(), file))
+    }
+
     fn new(root: Utf8PathBuf) -> Self {
         Self {
             root,
@@ -683,17 +697,8 @@ fn archive_history(mut state: Signal<AppState>, restore: bool) {
 }
 
 fn save_settings(mut state: Signal<AppState>) {
-    let (root, file) = {
-        let mut current = state.write();
-        if current.saving {
-            return;
-        }
-        let Some(mut file) = current.file.clone() else {
-            return;
-        };
-        file.settings = current.settings.clone();
-        current.saving = true;
-        (current.root.clone(), file)
+    let Some((root, file)) = state.write().begin_settings_save() else {
+        return;
     };
     let saved_message = tr("settings-saved");
     // Settings belong to the app: changing panes must not cancel I/O and strand the global saving flag.
@@ -740,6 +745,43 @@ mod tests {
         state.receive_detail(current, Err(aftercast::Error::Closed));
         assert!(state.error.is_some());
         assert!(!state.detail_loading);
+    }
+
+    #[test]
+    fn pending_plugin_toggle_cannot_persist_the_previous_enablement() {
+        let directory = tempfile::tempdir().expect("settings directory");
+        let root = camino::Utf8Path::from_path(directory.path()).expect("UTF-8 temp path");
+        let mut state = AppState::new(root.to_owned());
+        state.file = Some(ConfigFile::load(root).expect("new config"));
+        state.settings.host.plugins.push("fixture.dll".to_owned());
+        for enabled in [false, true] {
+            state.phase = Phase::ChangingPlugins;
+            assert!(state.begin_settings_save().is_none());
+            assert!(!state.saving);
+            // Complete the lifecycle before saving, as the async result handler does.
+            state.phase = Phase::Ready;
+            if enabled {
+                state.settings.host.disabled_plugins.clear();
+            } else {
+                state
+                    .settings
+                    .host
+                    .disabled_plugins
+                    .push("fixture.dll".to_owned());
+            }
+            let (root, file) = state.begin_settings_save().expect("save settled selection");
+            assert!(
+                state.begin_settings_save().is_none(),
+                "no overlapping saves"
+            );
+            state.file = Some(file.save(&root).expect("persist result"));
+            state.saving = false;
+            let reloaded = ConfigFile::load(&root).expect("reload persisted config");
+            assert_eq!(
+                reloaded.settings.host.enabled_plugins().count(),
+                usize::from(enabled)
+            );
+        }
     }
 
     #[test]

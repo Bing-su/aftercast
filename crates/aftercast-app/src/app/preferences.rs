@@ -135,7 +135,7 @@ pub(super) fn SettingsPane() -> Element {
             div { class: "flex gap-2",
                 Button {
                     id: "save-settings",
-                    disabled: disabled || state.read().file.is_none(),
+                    disabled: !state.read().can_save_settings(),
                     onclick: move |_| save_settings(state),
                     icons::Save {}
                     {tr("save-settings")}

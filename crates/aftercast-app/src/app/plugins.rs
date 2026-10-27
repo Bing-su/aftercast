@@ -110,7 +110,8 @@ pub(super) fn PluginsPane() -> Element {
                                 Button {
                                     variant: ButtonVariant::Outline,
                                     disabled: !matches!(state.read().phase, Phase::Idle | Phase::Ready)
-                                                                            || state.read().saving || state.read().file.is_none() || state.read().plugin_ui_pending
+                                                                                                                || state.read().saving || state.read().file.is_none() || state.read().plugin_ui_pending
+                                        || state.read().file.is_none() || state.read().plugin_ui_pending
                                         || state.read().file.is_none() || state.read().plugin_ui_pending,
                                     aria_pressed: enabled,
                                     onclick: move |_| toggle_plugin(state, &path),
@@ -147,7 +148,7 @@ pub(super) fn PluginsPane() -> Element {
             }
             Button {
                 variant: ButtonVariant::Outline,
-                disabled: state.read().saving || state.read().file.is_none(),
+                disabled: !state.read().can_save_settings(),
                 onclick: move |_| save_settings(state),
                 icons::Save {}
                 {tr("save-settings")}
