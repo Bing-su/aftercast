@@ -62,19 +62,30 @@ namespace Advanced_Combat_Tracker
             }
         }
 
-        internal void BeginImport(string path, ImportRange? range = null, ImportTextOptions? text = null)
+        internal void BeginImport(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null)
         {
             ArgumentException.ThrowIfNullOrEmpty(path);
             if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("An absolute import path is required", nameof(path));
             if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() == true)
                 throw new InvalidOperationException("Import must start outside a dispatched callback on the owner thread");
             var encoding = text?.Resolve() ?? ImportTextOptions.Validate(LogEncoding);
+            var companionSnapshot = companions?.ToArray() ?? [];
+            if (companionSnapshot.Length > 64) throw new ArgumentException("At most 64 companions can be imported");
+            var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var source in companionSnapshot)
+            {
+                ArgumentNullException.ThrowIfNull(source);
+                CompanionLogCatalog.ValidateName(source.Name);
+                if (!names.Add(source.Name)) throw new ArgumentException("Duplicate companion selection: " + source.Name);
+                source.Text?.Validate();
+            }
+            companionSnapshot = companionSnapshot.OrderBy(source => source.Name, StringComparer.OrdinalIgnoreCase).ToArray();
             EnsureCanWaitForLogReader();
             lock (CombatGate)
             {
                 EnsureCombatOpen();
                 if (inCombat) throw new InvalidOperationException("End live combat before importing a log file");
-                activeImport = new ImportOperation(this, path, range, encoding, text?.DetectBom ?? true);
+                activeImport = new ImportOperation(this, path, range, encoding, text?.DetectBom ?? true, companionSnapshot);
             }
             try { activeImport.Start(); }
             catch
@@ -94,9 +105,9 @@ namespace Advanced_Combat_Tracker
             finally { if (operation.Completed) lock (CombatGate) activeImport = null; }
         }
 
-        internal ImportResult ImportLog(string path, ImportRange? range = null, ImportTextOptions? text = null)
+        internal ImportResult ImportLog(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null)
         {
-            BeginImport(path, range, text);
+            BeginImport(path, range, text, companions);
             while (true)
             {
                 var before = CurrentImportProgress;
@@ -107,7 +118,7 @@ namespace Advanced_Combat_Tracker
             }
         }
 
-        private sealed class ImportOperation(FormActMain root, string path, ImportRange? range, Encoding encoding, bool detectBom)
+        private sealed class ImportOperation(FormActMain root, string path, ImportRange? range, Encoding encoding, bool detectBom, ImportCompanion[] companions)
         {
             internal int OwnerThread { get; } = Environment.CurrentManagedThreadId;
             internal bool Exclusive;
@@ -121,13 +132,18 @@ namespace Advanced_Combat_Tracker
             private ulong snapshotBefore;
             private long lines, dispatched, bytesRead, totalBytes;
             private readonly CancellationTokenSource cancellation = new();
-            private readonly Channel<string[]> input = Channel.CreateBounded<string[]>(new BoundedChannelOptions(4) {
-                SingleReader = true, SingleWriter = true, FullMode = BoundedChannelFullMode.Wait });
+            private readonly Channel<string[]> input = Channel.CreateBounded<string[]>(new BoundedChannelOptions(4)
+            {
+                SingleReader = true,
+                SingleWriter = true,
+                FullMode = BoundedChannelFullMode.Wait
+            });
             private readonly Queue<string> buffered = new();
-            private (string Line, DateTime Time)? nextLine;
+            private ImportSourceRecord? nextLine;
+            private ImportSourceInput? sourceInput;
             private Task? reading;
             private readonly List<Exception> failures = new();
-            internal ImportProgress Progress => new(lines, dispatched, Interlocked.Read(ref bytesRead), Interlocked.Read(ref totalBytes));
+            internal ImportProgress Progress => new(lines, dispatched, sourceInput?.BytesRead ?? Interlocked.Read(ref bytesRead), sourceInput?.TotalBytes ?? Interlocked.Read(ref totalBytes));
             internal DateTime? LiveEstimatedTime => live?.EstimatedTime;
 
             internal void Start()
@@ -158,7 +174,13 @@ namespace Advanced_Combat_Tracker
                 }
                 root.NotifyImportFileChanged(true, path);
                 // Only the input task owns the reader; parsing and ACT callbacks stay on the owner thread.
-                reading = Task.Run(async () => {
+                if (companions.Length != 0)
+                {
+                    sourceInput = new(path, encoding, detectBom, companions, message => root.WriteHostWarning(message, "Companion import"));
+                    reading = sourceInput.Start(cancellation.Token);
+                }
+                else reading = Task.Run(async () =>
+                {
                     var batch = new List<string>();
                     try
                     {
@@ -230,23 +252,30 @@ namespace Advanced_Combat_Tracker
                         {
                             if (nextLine is null)
                             {
-                                if (buffered.Count == 0 && input.Reader.TryRead(out var batch))
-                                    foreach (var record in batch) buffered.Enqueue(record);
-                                if (!buffered.TryDequeue(out var line)) break;
-                                nextLine = (line, line.Length == 0 ? DateTime.MinValue : root.GetDateTimeFromLog(line));
+                                if (sourceInput is { } group)
+                                {
+                                    if (!group.TryNext(root.GetDateTimeFromLog, out var record)) break;
+                                    nextLine = record;
+                                }
+                                else
+                                {
+                                    if (buffered.Count == 0 && input.Reader.TryRead(out var batch))
+                                        foreach (var record in batch) buffered.Enqueue(record);
+                                    if (!buffered.TryDequeue(out var line)) break;
+                                    nextLine = new(line, line.Length == 0 ? DateTime.MinValue : root.GetDateTimeFromLog(line), path, "", 0);
+                                }
                             }
-                            if (SkipOutsideRange(nextLine.Value.Line, nextLine.Value.Time))
-                            {
-                                nextLine = null;
-                                continue;
-                            }
-                            if (!TryDispatch(nextLine.Value.Line, nextLine.Value.Time)) break;
+                            var next = nextLine.Value;
+                            var skipped = SkipOutsideRange(next.Line, next.Time, next.Source == 0);
+                            if (!skipped && !TryDispatch(next)) break;
+                            sourceInput?.Consume(next.Source, range is not null && next.Line.Length != 0 && next.Time > range.End);
                             nextLine = null;
                         }
-                        if (!ending && nextLine is null && buffered.Count == 0 && input.Reader.Completion.IsCompleted)
+                        if (!ending && nextLine is null && (sourceInput?.Completed ?? (buffered.Count == 0 && input.Reader.Completion.IsCompleted)))
                         {
-                            input.Reader.Completion.GetAwaiter().GetResult();
+                            if (sourceInput is null) input.Reader.Completion.GetAwaiter().GetResult();
                             ending = true;
+                            cancellation.Cancel();
                         }
                     }
                     catch (Exception error) { failures.Add(error); ending = true; cancellation.Cancel(); }
@@ -259,20 +288,20 @@ namespace Advanced_Combat_Tracker
                 if (reading is { IsCompleted: false }) return null;
                 // Keep diagnostics responsive while an already accepted action callback is finishing.
                 if (!root.actionsIdle.IsSet || !root.combatTransitionsIdle.IsSet) return null;
+                if (sourceInput?.Failure is { } sourceError && !failures.Contains(sourceError)) failures.Add(sourceError);
                 return Finish();
             }
 
-            private bool SkipOutsideRange(string line, DateTime time)
+            private bool SkipOutsideRange(string line, DateTime time, bool mainSource)
             {
                 if (range is null || line.Length == 0 || time >= range.Start && time <= range.End) return false;
                 lines++;
                 if (time > range.End)
                 {
                     // ACT stops at the first later timestamp, even if subsequent records go backwards.
-                    ending = true;
-                    cancellation.Cancel();
+                    if (sourceInput is null) { ending = true; cancellation.Cancel(); }
                 }
-                else
+                else if (mainSource)
                 {
                     // Recover preceding raw zone context without dispatching out-of-range plugin callbacks.
                     lock (root.CombatGate) root.UpdateRawZone(line);
@@ -280,8 +309,10 @@ namespace Advanced_Combat_Tracker
                 return true;
             }
 
-            private bool TryDispatch(string line, DateTime detectedTime)
+            private bool TryDispatch(ImportSourceRecord record)
             {
+                var line = record.Line;
+                var detectedTime = record.Time;
                 if (line.Length == 0) { lines++; return true; }
                 int sorter;
                 lock (root.CombatGate)
@@ -290,16 +321,17 @@ namespace Advanced_Combat_Tracker
                     // Keep this record pending until the previous encounter can end without a synchronous action drain.
                     if (root.inCombat && time - root.lastHostileTime > TimeSpan.FromSeconds(6) &&
                         (!root.actionsIdle.IsSet || !root.combatTransitionsIdle.IsSet)) return false;
-                    root.LastKnownTime = detectedTime;
+                    // ACT companion input may advance the shared clock but must not rewind it.
+                    if (record.Source == 0 || detectedTime > root.lastKnownTime) root.LastKnownTime = detectedTime;
                     sorter = ++root.GlobalTimeSorter;
                     root.UpdateRawZone(line);
                 }
                 lines++;
                 var wasInCombat = root.InCombat;
                 root.CheckIdleEndCombat();
-                var info = new LogLineEventArgs(line, 0, detectedTime, root.CurrentZone, root.InCombat);
+                var info = new LogLineEventArgs(line, 0, detectedTime, root.CurrentZone, root.InCombat, record.Name);
                 dispatched++;
-                root.PublishOriginalLogRecord(true, path, line, detectedTime, sorter);
+                root.PublishOriginalLogRecord(true, record.Path, line, detectedTime, sorter, record.Name);
                 root.InvokeLogHandlers(root.BeforeLogLineRead, true, info);
                 root.LastLogLine = info.logLine;
                 root.RecordEncounterLog(info, sorter, wasInCombat);

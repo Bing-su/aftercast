@@ -19,12 +19,15 @@ internal sealed class ImportLogReader : IDisposable
     private long bytesRead;
     private int offset, count;
     private bool prefixChecked, skipLf, disposed;
+    internal bool RequireCompleteRecords { get; init; }
+    internal bool DiscardedIncompleteTail { get; private set; }
     internal long TotalBytes => initialLength;
     internal long BytesRead => bytesRead;
 
     internal ImportLogReader(string path) : this(path, new ImportTextOptions().Resolve(), true) { }
     internal ImportLogReader(string path, Encoding encoding, bool detectBom = true) : this(new FileStream(path, FileMode.Open, FileAccess.Read,
-        FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.Asynchronous | FileOptions.SequentialScan), encoding, detectBom) { }
+        FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.Asynchronous | FileOptions.SequentialScan), encoding, detectBom)
+    { }
 
     // The deterministic stream seam has the same ownership and byte-zero contract as a newly opened file.
     internal ImportLogReader(Stream stream) : this(stream, new ImportTextOptions().Resolve(), true) { }
@@ -53,6 +56,7 @@ internal sealed class ImportLogReader : IDisposable
             if (offset == count && !ReadChunk())
             {
                 if (pending.Length == 0) { line = ""; return false; }
+                if (RequireCompleteRecords) { DiscardedIncompleteTail = true; pending.SetLength(0); line = ""; return false; }
                 line = DecodeRecord(pending.GetBuffer().AsSpan(0, (int)pending.Length));
                 return true;
             }
@@ -83,6 +87,12 @@ internal sealed class ImportLogReader : IDisposable
             if (offset == count)
             {
                 ValidateLength();
+                if (bytesRead == initialLength && RequireCompleteRecords && pending.Length != 0)
+                {
+                    DiscardedIncompleteTail = true;
+                    pending.SetLength(0);
+                    return null;
+                }
                 if (bytesRead == initialLength)
                     return pending.Length == 0 ? null : DecodeRecord(pending.GetBuffer().AsSpan(0, (int)pending.Length));
                 count = await stream.ReadAsync(buffer.AsMemory(0, (int)Math.Min(buffer.Length, initialLength - bytesRead)), cancellation).ConfigureAwait(false);
@@ -232,7 +242,12 @@ internal sealed class ImportLogReader : IDisposable
             decodingFailed = true;
             throw new InvalidDataException($"The import record is not valid {encoding.WebName} (code page {encoding.CodePage}).", error);
         }
-        finally { pending.SetLength(0); }
+        finally
+        {
+            pending.SetLength(0);
+            // Multi-source import must not retain one maximum-size allocation for every admitted file.
+            if (pending.Capacity > 128 * 1024) pending.Capacity = 0;
+        }
     }
 
     public void Dispose()

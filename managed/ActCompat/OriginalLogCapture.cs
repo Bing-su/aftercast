@@ -1,7 +1,7 @@
 namespace Aftercast.ActCompat
 {
     // Immutable transport evidence: this is the original dispatched text, not plugin acceptance or durable storage.
-    public sealed record OriginalLogRecord(bool IsImport, string Path, string Line, DateTime Time, int TimeSorter);
+    public sealed record OriginalLogRecord(bool IsImport, string Path, string Line, DateTime Time, int TimeSorter, string CompanionLogName = "");
 }
 
 namespace Advanced_Combat_Tracker
@@ -10,12 +10,12 @@ namespace Advanced_Combat_Tracker
     {
         internal event Action<Aftercast.ActCompat.OriginalLogRecord>? OriginalLogRecordRead;
 
-        private void PublishOriginalLogRecord(bool isImport, string path, string line, DateTime time, int timeSorter)
+        private void PublishOriginalLogRecord(bool isImport, string path, string line, DateTime time, int timeSorter, string companionLogName = "")
         {
             var observers = OriginalLogRecordRead;
             if (observers is null || line.Length == 0) return;
             // One immutable snapshot is shared by all observers, e.g. later hook edits cannot replace its Line.
-            var record = new Aftercast.ActCompat.OriginalLogRecord(isImport, path, line, time, timeSorter);
+            var record = new Aftercast.ActCompat.OriginalLogRecord(isImport, path, line, time, timeSorter, companionLogName);
             foreach (var observer in Delegate.EnumerateInvocationList(observers))
                 try { observer(record); }
                 catch (Exception error)

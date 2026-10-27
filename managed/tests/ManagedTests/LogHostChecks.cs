@@ -50,6 +50,7 @@ internal static class LogHostChecks
         EncodingSnapshot();
         LogInitialZoneChecks.Run();
         CompanionCatalogChecks.Run();
+        CompanionImportChecks.Run();
     }
 
     private static void ReopenFromCallback()
