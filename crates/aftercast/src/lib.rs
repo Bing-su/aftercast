@@ -10,6 +10,11 @@ mod archives;
 mod bridge;
 pub use archives::ActFormat;
 mod combat;
+mod companions;
+pub use companions::{
+    CompanionSource, LiveLogOptions, LiveLogSelection, LiveLogSnapshot, LiveLogSourceStatus,
+    LiveLogState, SourceImportOptions,
+};
 mod diagnostics;
 mod history;
 mod host;
@@ -68,6 +73,8 @@ pub use snapshots::{CombatRevision, CombatSnapshot, CombatSnapshotStatus, Combat
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("invalid companion request or response: {0}")]
+    InvalidCompanionRequest(String),
     #[error("invalid table request or response: {0}")]
     InvalidTableRequest(String),
     #[error("invalid history request or response: {0}")]

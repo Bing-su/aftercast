@@ -192,7 +192,8 @@ impl HostHandle {
     /// Starts an import with explicit cancellation and coalesced progress.
     /// Inherits the plugin's LogEncoding at admission; without a plugin override this is strict UTF-8.
     pub async fn start_import(&self, path: impl AsRef<Utf8Path>) -> Result<ImportJob, Error> {
-        self.start_import_request(path.as_ref(), None, None).await
+        self.start_import_request(path.as_ref(), None, None, None)
+            .await
     }
     /// Starts an observable source reparse with inclusive ACT wall-clock bounds.
     /// Inherits the plugin's LogEncoding; use the options variant for an explicit decoding policy.
@@ -201,7 +202,7 @@ impl HostHandle {
         path: impl AsRef<Utf8Path>,
         range: ImportRange,
     ) -> Result<ImportJob, Error> {
-        self.start_import_request(path.as_ref(), Some(range), None)
+        self.start_import_request(path.as_ref(), Some(range), None, None)
             .await
     }
     /// Starts a whole-file import with an explicit, request-owned decoding policy.
@@ -210,7 +211,7 @@ impl HostHandle {
         path: impl AsRef<Utf8Path>,
         text: ImportTextOptions,
     ) -> Result<ImportJob, Error> {
-        self.start_import_request(path.as_ref(), None, Some(text))
+        self.start_import_request(path.as_ref(), None, Some(text), None)
             .await
     }
     /// Starts an inclusive range import using the same decoding policy as the whole-file path.
@@ -220,14 +221,30 @@ impl HostHandle {
         range: ImportRange,
         text: ImportTextOptions,
     ) -> Result<ImportJob, Error> {
-        self.start_import_request(path.as_ref(), Some(range), Some(text))
+        self.start_import_request(path.as_ref(), Some(range), Some(text), None)
             .await
+    }
+    /// Starts an owned multi-source reparse. An empty explicit selection reads only the main file.
+    pub async fn start_import_sources(
+        &self,
+        path: impl AsRef<Utf8Path>,
+        options: crate::SourceImportOptions,
+    ) -> Result<ImportJob, Error> {
+        crate::companions::validate_sources(&options.companions, 64)?;
+        self.start_import_request(
+            path.as_ref(),
+            options.range,
+            options.text,
+            Some(options.companions),
+        )
+        .await
     }
     async fn start_import_request(
         &self,
         path: &Utf8Path,
         range: Option<ImportRange>,
         text: Option<ImportTextOptions>,
+        sources: Option<Vec<crate::CompanionSource>>,
     ) -> Result<ImportJob, Error> {
         let cancellation = Arc::new(AtomicBool::new(false));
         let (progress, updates) = watch::channel(ImportProgress::default());
@@ -235,6 +252,8 @@ impl HostHandle {
         let pending = PendingImport {
             range,
             text,
+            sources,
+            source_owner: None,
             cancellation: cancellation.clone(),
             progress,
             complete,
@@ -474,6 +493,8 @@ fn dispatch(session: &mut RemoteSession, command: Command, operations: &mut Opti
                     request,
                     Request::Diagnostics | Request::Snapshot | Request::Combat | Request::Logs
                 )
+                && !(matches!(request, Request::Companions)
+                    && packet.get(16..20) == Some(5_u32.to_le_bytes().as_slice()))
             {
                 drop(reply.send(Err(Error::Busy)));
                 return;
@@ -508,7 +529,7 @@ fn dispatch(session: &mut RemoteSession, command: Command, operations: &mut Opti
                 result => drop(reply.send(result.map(|_| ()))),
             }
         }
-        Command::Import(path, pending, reply) => {
+        Command::Import(path, mut pending, reply) => {
             let result = if operations.is_some() {
                 Err(Error::Busy)
             } else {

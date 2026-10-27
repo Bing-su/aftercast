@@ -1,5 +1,7 @@
+use crate::companions::{self, CompanionSource, WireSource, WireText};
 use bytes::{Buf, BufMut, BytesMut};
 use camino::Utf8Path;
+use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::Arc;
@@ -13,12 +15,15 @@ use crate::runtime::{Request, canonicalize};
 use crate::{Error, HostHandle};
 
 /// Latest input progress; read-ahead bytes can lead parsed records by the bounded input buffer.
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImportProgress {
     pub lines_read: u64,
     pub records_dispatched: u64,
     pub bytes_read: u64,
     pub total_bytes: u64,
+    /// Framed future companion heads excluded at the terminal main watermark, not unread suffix size.
+    pub companion_heads_excluded: u64,
 }
 
 /// Explicit supported source encoding; no locale or byte-content guess is made.
@@ -140,14 +145,43 @@ impl Future for ImportJob {
 pub(crate) struct PendingImport {
     pub(crate) range: Option<ImportRange>,
     pub(crate) text: Option<ImportTextOptions>,
+    pub(crate) sources: Option<Vec<CompanionSource>>,
+    pub(crate) source_owner: Option<u64>,
     pub(crate) cancellation: Arc<AtomicBool>,
     pub(crate) progress: watch::Sender<ImportProgress>,
     pub(crate) complete: oneshot::Sender<Result<ImportReport, Error>>,
 }
 
 impl PendingImport {
-    pub(crate) fn begin(&self, session: &mut RemoteSession, path: &Utf8Path) -> Result<(), Error> {
+    pub(crate) fn begin(
+        &mut self,
+        session: &mut RemoteSession,
+        path: &Utf8Path,
+    ) -> Result<(), Error> {
         let path = canonicalize(path)?;
+        if let Some(sources) = &self.sources {
+            if path.as_str().len() > 8192 || path.as_str().chars().any(char::is_control) {
+                return Err(companions::invalid("invalid companion import path"));
+            }
+            let mut packet = companions::packet(
+                session.id(),
+                1,
+                &serde_json::json!({"path":path,"text":self.text.map(WireText::from),
+                "companions":sources.iter().map(WireSource::from).collect::<Vec<_>>(),"startTicks":self.range.map(ImportRange::start_ticks),"endTicks":self.range.map(ImportRange::end_ticks)}),
+            )?;
+            session.request(Request::Companions, &mut packet)?;
+            let reply: SourceReply = companions::reply(&packet, session.id(), 1)?;
+            if reply.owner == 0
+                || !reply.pending
+                || reply.cancelled
+                || reply.progress.is_some()
+                || reply.result.is_some()
+            {
+                return Err(companions::invalid("invalid source import admission"));
+            }
+            self.source_owner = Some(reply.owner);
+            return Ok(());
+        }
         let mut packet = import_packet(session.id(), path.as_str())?;
         if let Some(text) = self.text {
             text.encode(&mut packet)?;
@@ -175,6 +209,12 @@ impl PendingImport {
         session: &mut RemoteSession,
         stopping: bool,
     ) -> Option<Result<ImportReport, Error>> {
+        if let Some(owner) = self.source_owner {
+            return match self.advance_sources(session, owner, stopping) {
+                Ok(step) => step,
+                Err(error) => Some(Err(error)),
+            };
+        }
         let result = (|| {
             let mut packet = import_packet(session.id(), "")?;
             let command: u32 = if stopping || self.cancellation.load(Ordering::Acquire) {
@@ -201,6 +241,30 @@ impl PendingImport {
             Err(error) => Some(Err(error)),
         }
     }
+    fn advance_sources(
+        &self,
+        session: &mut RemoteSession,
+        owner: u64,
+        stopping: bool,
+    ) -> Result<Option<Result<ImportReport, Error>>, Error> {
+        let command = if stopping || self.cancellation.load(Ordering::Acquire) {
+            3
+        } else {
+            2
+        };
+        let mut packet =
+            companions::packet(session.id(), command, &serde_json::json!({"owner":owner}))?;
+        session.request(Request::Companions, &mut packet)?;
+        let reply = companions::reply(&packet, session.id(), command)?;
+        match source_step(reply, owner)? {
+            SourceStep::Progress(progress) => {
+                self.progress.send_replace(progress);
+                Ok(None)
+            }
+            SourceStep::Complete(report) => Ok(Some(Ok(report))),
+            SourceStep::Cancelled => Ok(Some(Err(Error::Cancelled))),
+        }
+    }
 }
 
 fn decode_progress(packet: &[u8]) -> Result<ImportProgress, Error> {
@@ -212,6 +276,7 @@ fn decode_progress(packet: &[u8]) -> Result<ImportProgress, Error> {
         records_dispatched: fields.get_u64_le(),
         bytes_read: fields.get_u64_le(),
         total_bytes: fields.get_u64_le(),
+        companion_heads_excluded: 0,
     };
     if progress.records_dispatched > progress.lines_read
         || progress.bytes_read > progress.total_bytes
@@ -228,7 +293,8 @@ fn decode_progress(packet: &[u8]) -> Result<ImportProgress, Error> {
 ///
 /// Dispatch counts describe transport, not plugin acceptance. A plugin can catch its own errors;
 /// inspect its diagnostics before treating these totals as a validated gameplay analysis.
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImportReport {
     /// File records read, including empty records.
     pub lines_read: u64,
@@ -242,6 +308,8 @@ pub struct ImportReport {
     pub damage: i64,
     /// Allied healing across those encounters, using plugin-registered categories.
     pub healed: i64,
+    /// Known rejected heads only; unread companion suffix records are not counted.
+    pub companion_heads_excluded: u64,
 }
 
 pub(crate) fn import_packet(session: u64, path: &str) -> Result<BytesMut, Error> {
@@ -287,10 +355,75 @@ pub(crate) fn decode_import(packet: &[u8]) -> Result<ImportReport, Error> {
         combatants,
         damage,
         healed,
+        companion_heads_excluded: 0,
     })
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct SourceReply {
+    owner: u64,
+    pending: bool,
+    cancelled: bool,
+    progress: Option<ImportProgress>,
+    result: Option<ImportReport>,
+}
+enum SourceStep {
+    Progress(ImportProgress),
+    Complete(ImportReport),
+    Cancelled,
+}
+fn source_step(reply: SourceReply, owner: u64) -> Result<SourceStep, Error> {
+    if reply.owner != owner || owner == 0 {
+        return Err(companions::invalid("source import owner mismatch"));
+    }
+    match (reply.pending, reply.cancelled, reply.progress, reply.result) {
+        (true, false, Some(progress), None) => {
+            validate_source_counts(
+                progress.lines_read,
+                progress.records_dispatched,
+                progress.companion_heads_excluded,
+            )?;
+            if progress.bytes_read > progress.total_bytes || progress.total_bytes > i64::MAX as u64
+            {
+                return Err(companions::invalid("invalid source byte progress"));
+            }
+            Ok(SourceStep::Progress(progress))
+        }
+        (false, false, None, Some(report)) => {
+            validate_source_counts(
+                report.lines_read,
+                report.records_dispatched,
+                report.companion_heads_excluded,
+            )?;
+            if report.encounters > i32::MAX as u32 || report.combatants > i32::MAX as u32 {
+                return Err(companions::invalid("invalid source graph counts"));
+            }
+            Ok(SourceStep::Complete(report))
+        }
+        (false, true, None, None) => Ok(SourceStep::Cancelled),
+        _ => Err(companions::invalid("contradictory source import reply")),
+    }
+}
+fn validate_source_counts(lines: u64, dispatched: u64, excluded: u64) -> Result<(), Error> {
+    if lines > i64::MAX as u64
+        || dispatched > lines
+        || excluded > 64
+        || excluded > lines - dispatched
+    {
+        return Err(companions::invalid("invalid source import counters"));
+    }
+    Ok(())
+}
+
 impl HostHandle {
+    pub async fn import_sources(
+        &self,
+        path: impl AsRef<Utf8Path>,
+        options: crate::SourceImportOptions,
+    ) -> Result<ImportReport, Error> {
+        self.start_import_sources(path, options).await?.wait().await
+    }
     /// Reparse the selected inclusive time range through initialized plugins.
     /// Stops at the first later timestamp; same-time rows remain distinct. Shares the full import
     /// reader, cancellation, partial-result retention and live-state restoration contracts.
@@ -316,6 +449,53 @@ impl HostHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn owned_source_steps_reject_stale_contradictory_or_unbounded_replies() {
+        let progress = serde_json::json!({"owner":1,"pending":true,"cancelled":false,"progress":{
+            "linesRead":3,"recordsDispatched":2,"bytesRead":10,"totalBytes":20,"companionHeadsExcluded":1},"result":null});
+        let decode = |value| source_step(serde_json::from_value(value).expect("wire step"), 1);
+        assert!(matches!(
+            decode(progress.clone()),
+            Ok(SourceStep::Progress(_))
+        ));
+        for (field, value) in [
+            ("owner", serde_json::json!(2)),
+            ("cancelled", serde_json::json!(true)),
+            ("pending", serde_json::json!(false)),
+        ] {
+            let mut bad = progress.clone();
+            bad[field] = value;
+            assert!(matches!(
+                decode(bad),
+                Err(Error::InvalidCompanionRequest(_))
+            ));
+        }
+        for (field, value) in [
+            ("recordsDispatched", 4),
+            ("companionHeadsExcluded", 65),
+            ("bytesRead", 21),
+        ] {
+            let mut bad = progress.clone();
+            bad["progress"][field] = serde_json::json!(value);
+            assert!(matches!(
+                decode(bad),
+                Err(Error::InvalidCompanionRequest(_))
+            ));
+        }
+        let complete = serde_json::json!({"owner":1,"pending":false,"cancelled":false,"progress":null,
+            "result":{"linesRead":3,"recordsDispatched":2,"encounters":1,"combatants":2,"damage":-1,"healed":0,"companionHeadsExcluded":1}});
+        assert!(matches!(
+            decode(complete.clone()),
+            Ok(SourceStep::Complete(_))
+        ));
+        let mut bad = complete;
+        bad["result"]["combatants"] = serde_json::json!(u32::MAX);
+        assert!(matches!(
+            decode(bad),
+            Err(Error::InvalidCompanionRequest(_))
+        ));
+    }
 
     #[test]
     fn source_ranges_validate_inclusive_wall_clock_bounds() {

@@ -94,9 +94,11 @@ internal static class CompanionAbiChecks
             var next = Call(1, new CompanionRequest(Path: main, Companions: [new("side")])).GetProperty("owner").GetUInt64();
             Reject(3, JsonSerializer.Serialize(new CompanionRequest(Owner: owner), HostJson.Options));
             Check(Call(3, new CompanionRequest(Owner: next)).GetProperty("cancelled").GetBoolean(), "owned cancel");
-            var live = Call(4, new CompanionRequest(Path: main, Companions: [new("side")], ClockWaitMilliseconds: 1000));
+            var live = Call(4, new CompanionRequest(Path: main, Companions: [new("SIDE")], ClockWaitMilliseconds: 1000));
             var liveOwner = live.GetProperty("owner").GetUInt64();
             Check(live.GetProperty("sources").GetArrayLength() == 2 && live.GetProperty("clockWaitMilliseconds").GetInt32() == 1000, "live snapshot");
+            Check(live.GetProperty("sources")[1].GetProperty("selectedName").GetString() == "SIDE" &&
+                live.GetProperty("sources")[1].GetProperty("name").GetString() == "side", "exact selection and physical casing");
             Reject(4, JsonSerializer.Serialize(new CompanionRequest(Path: main, Companions: []), HostJson.Options));
             Check(Call(5, new CompanionRequest(Owner: liveOwner)).GetProperty("owner").GetUInt64() == liveOwner, "invalid open replaced live owner");
             var plain = Call(4, new CompanionRequest(Owner: liveOwner, Path: main, Companions: [], Text: new()));

@@ -71,15 +71,18 @@ internal sealed partial class PluginSession
     private byte[] EncodeLive(ulong owner)
     {
         RequireLiveOwner(owner);
+        var request = liveRequest!;
         var sources = Host().ReadLiveLogSources().Select(source =>
         {
             var length = Math.Min(source.LastError.Length, 2048);
             if (length != 0 && char.IsHighSurrogate(source.LastError[length - 1])) length--;
-            return new LiveSourceReply(source.Name, source.Path, source.State, source.Queued, source.PendingTime?.Ticks,
+            // Keep request identity exact while the catalog retains physical filename casing.
+            var selectedName = source.Name.Length == 0 ? "" : request.Companions!.Single(selected =>
+                string.Equals(selected.Name, source.Name, StringComparison.OrdinalIgnoreCase)).Name;
+            return new LiveSourceReply(selectedName, source.Name, source.Path, source.State, source.Queued, source.PendingTime?.Ticks,
                 source.Generation, source.Dropped, source.LastError[..length], length != source.LastError.Length);
         }).ToArray();
         RequireLiveOwner(owner);
-        var request = liveRequest!;
         return HostJson.Encode(new LiveSelectionReply(owner, request.Path!, request.Text, request.Companions!, request.GetCurrentZone ?? false,
             request.ClockWaitMilliseconds ?? 30000, sources));
     }

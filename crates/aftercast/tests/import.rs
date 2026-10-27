@@ -39,6 +39,7 @@ async fn imports_drain_actions_and_recover_after_input_and_plugin_failures(deplo
         combatants: 2,
         damage: 400,
         healed: 0,
+        companion_heads_excluded: 0,
     };
     let mut job = host
         .start_import(&log)

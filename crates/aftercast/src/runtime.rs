@@ -60,4 +60,5 @@ pub(crate) enum Request {
     Timers,
     History,
     Tables,
+    Companions,
 }

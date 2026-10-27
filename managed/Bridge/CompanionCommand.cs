@@ -79,7 +79,7 @@ internal sealed record CompanionRequest(ulong Owner = 0, string? Path = null, Im
     }
 }
 internal sealed record SourceImportReply(ulong Owner, bool Pending = false, bool Cancelled = false, ImportProgress? Progress = null, ImportResult? Result = null);
-internal sealed record LiveSourceReply(string Name, string Path, string State, int Queued, long? PendingTicks,
+internal sealed record LiveSourceReply(string SelectedName, string Name, string Path, string State, int Queued, long? PendingTicks,
     long Generation, long Dropped, string LastError, bool ErrorTruncated);
 internal sealed record LiveSelectionReply(ulong Owner, string Path, ImportTextOptions? Text, ImportCompanion[] Companions,
     bool GetCurrentZone, int ClockWaitMilliseconds, LiveSourceReply[] Sources);
