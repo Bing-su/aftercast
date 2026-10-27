@@ -27,8 +27,6 @@ namespace Advanced_Combat_Tracker
         public bool IsActClosing { get; private set; }
         public bool InitActDone { get; private set; }
         public Version GetVersion() => typeof(FormActMain).Assembly.GetName().Version!;
-        public void NotificationAdd(string title, string message, EventHandler? showCallback = null, object? senderObject = null) =>
-            throw new NotSupportedException("ACT notification windows are not implemented");
         internal void SetInitializationComplete(bool complete) => InitActDone = complete && !IsActClosing;
         internal void BeginClosing() { IsActClosing = true; InitActDone = false; ConfigureSpeech(false); ConfigureSound(false); }
         public ActPluginData? PluginGetSelfData(IActPluginV1? plugin) =>

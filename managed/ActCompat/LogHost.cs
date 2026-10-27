@@ -261,7 +261,7 @@ public partial class FormActMain
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { EnsureCanWaitForLogReader(); BeginCombatShutdown(); }
+        if (disposing) { EnsureCanWaitForLogReader(); BeginCombatShutdown(); CloseNotifications(); }
         try { if (disposing) StopLogFollower(); }
         finally
         {

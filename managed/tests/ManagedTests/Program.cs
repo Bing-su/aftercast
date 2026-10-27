@@ -511,6 +511,7 @@ internal static class Program
         ParentSettingsChecks.Run();
         CustomTriggerChecks.Run();
         TriggerManagementChecks.Run();
+        NotificationChecks.Run();
         DataCorrectionChecks.Run();
         EncounterArchiveChecks.Run();
         EncounterLogChecks.Run();
