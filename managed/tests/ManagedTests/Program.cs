@@ -46,6 +46,7 @@ internal static class Program
         {
             case "bridge": Bridge(); break;
             case "contracts": Contracts(); break;
+            case "source-capture": Platform.Prepare(); HistorySourceCaptureChecks.Run(); break;
             case "log-load": LogLoadChecks.Run(); break;
             case "query-load": CombatQueryLoadChecks.Run(); break;
             case "archive-load": ArchiveLoadChecks.Run(); break;
@@ -524,6 +525,7 @@ internal static class Program
         EncounterArchiveChecks.Run();
         HistoryDiscoveryChecks.Run();
         HistorySourceChecks.Run();
+        HistorySourceCaptureChecks.Run();
         HistoryLifecycleChecks.Run();
         EncounterLogChecks.Run();
         RootCombatStateChecks.Run();

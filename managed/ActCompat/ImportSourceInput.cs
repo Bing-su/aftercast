@@ -16,7 +16,7 @@ namespace Advanced_Combat_Tracker
     internal readonly record struct ImportSourceRecord(string Line, DateTime Time, string Path, string Name, int Source, bool BeyondMain = false);
 
     // One record per source is exposed to the owner. Timestamp callbacks never run on the disk task.
-    internal sealed class ImportSourceInput(string path, Encoding encoding, bool detectBom, ImportCompanion[] selected, Action<string> warning)
+    internal sealed class ImportSourceInput(string path, Encoding encoding, bool detectBom, ImportCompanion[] selected, Action<string> warning, CapturedImportSource[]? captured = null)
     {
         private sealed class Source
         {
@@ -42,13 +42,20 @@ namespace Advanced_Combat_Tracker
         {
             try
             {
-                var catalog = CompanionLogCatalog.Discover(path);
+                var catalog = captured is null ? CompanionLogCatalog.Discover(path) : Array.Empty<CompanionLogSource>();
+                if (captured is not null && captured.Length != sources.Length) throw new InvalidOperationException("Captured source count mismatch");
                 var identities = new HashSet<LogFileIdentity>();
                 for (var index = 0; index < sources.Length; index++)
                 {
                     cancellation.ThrowIfCancellationRequested();
                     var source = sources[index];
                     var text = index == 0 ? null : selected[index - 1].Text;
+                    if (captured is not null)
+                    {
+                        var image = captured[index]; source.Path = image.Path; source.Name = image.Name;
+                        source.Reader = new ImportLogReader(image.Image.OpenReader(), image.Encoding, image.DetectBom) { RequireCompleteRecords = index != 0 };
+                        totalBytes = checked(totalBytes + source.Reader.TotalBytes); continue;
+                    }
                     if (index == 0) source.Path = path;
                     else
                     {

@@ -48,6 +48,13 @@ public partial class FormActMain
     {
         if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() == true)
             throw new InvalidOperationException("Archive operations require the owner thread outside dispatched callbacks");
+        EnsureSourceCaptureIdle();
+        if (Interlocked.CompareExchange(ref sourceArchiveBusy, 1, 0) != 0) throw new InvalidOperationException("Archive operation is already active");
+        try { return await RunArchiveOperationAsync(command, text, id, compressed, asynchronous, selection); }
+        finally { Volatile.Write(ref sourceArchiveBusy, 0); }
+    }
+    private async Task<int> RunArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool asynchronous, Aftercast.ActCompat.HistorySelection? selection)
+    {
         EnsureCanWaitForLogReader();
         using var logs = SuspendLogReading(false, wait: !asynchronous);
         // Yield while admitted callbacks/actions settle; native owner messages keep running between checks.

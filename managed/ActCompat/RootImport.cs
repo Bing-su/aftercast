@@ -62,13 +62,16 @@ namespace Advanced_Combat_Tracker
             }
         }
 
-        internal void BeginImport(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null)
+        internal void BeginImport(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null,
+            CapturedImportSource[]? captured = null, string? character = null)
         {
             ArgumentException.ThrowIfNullOrEmpty(path);
             if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("An absolute import path is required", nameof(path));
             if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() == true)
                 throw new InvalidOperationException("Import must start outside a dispatched callback on the owner thread");
-            var encoding = text?.Resolve() ?? ImportTextOptions.Validate(LogEncoding);
+            if (captured is null) EnsureSourceCaptureIdle();
+            if (Volatile.Read(ref sourceArchiveBusy) != 0) throw new InvalidOperationException("Archive operation is active");
+            var encoding = captured is { Length: > 0 } ? ImportTextOptions.Validate(captured[0].Encoding) : text?.Resolve() ?? ImportTextOptions.Validate(LogEncoding);
             var companionSnapshot = companions?.ToArray() ?? [];
             if (companionSnapshot.Length > 64) throw new ArgumentException("At most 64 companions can be imported");
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -85,7 +88,7 @@ namespace Advanced_Combat_Tracker
             {
                 EnsureCombatOpen();
                 if (inCombat) throw new InvalidOperationException("End live combat before importing a log file");
-                activeImport = new ImportOperation(this, path, range, encoding, text?.DetectBom ?? true, companionSnapshot);
+                activeImport = new ImportOperation(this, path, range, encoding, text?.DetectBom ?? true, companionSnapshot, captured, character);
             }
             try { activeImport.Start(); }
             catch
@@ -101,8 +104,35 @@ namespace Advanced_Combat_Tracker
         internal ImportResult? AdvanceImport(bool cancel)
         {
             var operation = activeImport ?? throw new InvalidOperationException("No active import");
+            if (operation.Advancing) throw new InvalidOperationException("Import advance cannot be reentered");
+            operation.Advancing = true;
             try { return operation.Advance(cancel); }
-            finally { if (operation.Completed) lock (CombatGate) activeImport = null; }
+            finally { operation.Advancing = false; if (operation.Completed) lock (CombatGate) activeImport = null; }
+        }
+
+        internal bool EnsureCapturedImportShutdownAllowed()
+        {
+            if (activeImport is not { HasCapturedSources: true } operation) return false;
+            if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() == true || operation.Advancing)
+                throw new InvalidOperationException("Captured import shutdown requires its owner outside callbacks/advance");
+            EnsureCanWaitForCombatActions(); return true;
+        }
+        internal void CancelCapturedImportForShutdown()
+        {
+            if (!EnsureCapturedImportShutdownAllowed()) return;
+            var errors = new List<Exception>();
+            while (activeImport is not null)
+            {
+                try { AdvanceImport(true); }
+                catch (OperationCanceledException) { }
+                catch (Exception error) { errors.Add(error); }
+                if (activeImport is not null)
+                {
+                    try { PumpOwnerCallbacks(); } catch (Exception error) { errors.Add(error); }
+                    Thread.Sleep(1);
+                }
+            }
+            if (errors.Count != 0) throw new AggregateException("Captured import ended with errors during shutdown", errors);
         }
 
         internal ImportResult ImportLog(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null)
@@ -118,10 +148,11 @@ namespace Advanced_Combat_Tracker
             }
         }
 
-        private sealed class ImportOperation(FormActMain root, string path, ImportRange? range, Encoding encoding, bool detectBom, ImportCompanion[] companions)
+        private sealed class ImportOperation(FormActMain root, string path, ImportRange? range, Encoding encoding, bool detectBom, ImportCompanion[] companions, CapturedImportSource[]? captured, string? character)
         {
             internal int OwnerThread { get; } = Environment.CurrentManagedThreadId;
-            internal bool Exclusive;
+            internal bool Exclusive, Advancing;
+            internal bool HasCapturedSources => captured is not null;
             internal Exception? Failure;
             internal bool Completed;
             private bool canceled, ending, prepared;
@@ -169,6 +200,7 @@ namespace Advanced_Combat_Tracker
                     root.currentZone = "Import Zone";
                     root.lastKnownTime = DateTime.MinValue;
                     root.lastKnownStamp = Stopwatch.GetTimestamp();
+                    if (!string.IsNullOrEmpty(character)) ActGlobals.charName = character;
                     root.importingLogs = true;
                     root.ReadThreadLock = true;
                 }
@@ -176,7 +208,7 @@ namespace Advanced_Combat_Tracker
                 // Only the input task owns the reader; parsing and ACT callbacks stay on the owner thread.
                 if (companions.Length != 0)
                 {
-                    sourceInput = new(path, encoding, detectBom, companions, message => root.WriteHostWarning(message, "Companion import"));
+                    sourceInput = new(path, encoding, detectBom, companions, message => root.WriteHostWarning(message, "Companion import"), captured);
                     reading = sourceInput.Start(cancellation.Token);
                 }
                 else reading = Task.Run(async () =>
@@ -184,7 +216,8 @@ namespace Advanced_Combat_Tracker
                     var batch = new List<string>();
                     try
                     {
-                        using var reader = new ImportLogReader(path, encoding, detectBom);
+                        using var reader = captured is null ? new ImportLogReader(path, encoding, detectBom)
+                            : new ImportLogReader(captured[0].Image.OpenReader(), captured[0].Encoding, captured[0].DetectBom);
                         Interlocked.Exchange(ref totalBytes, reader.TotalBytes);
                         var characters = 0;
                         while (await reader.ReadAsync(cancellation.Token).ConfigureAwait(false) is { } line)
@@ -222,7 +255,11 @@ namespace Advanced_Combat_Tracker
             internal void AbortStart()
             {
                 try { if (live is not null) lock (root.CombatGate) live.Restore(); }
-                finally { Exclusive = false; suspension?.Dispose(); cancellation.Dispose(); }
+                finally
+                {
+                    try { if (captured is not null) CapturedImportSource.DisposeAll(captured); }
+                    finally { Exclusive = false; suspension?.Dispose(); cancellation.Dispose(); }
+                }
             }
 
             internal ImportResult? Advance(bool cancel)
@@ -296,6 +333,14 @@ namespace Advanced_Combat_Tracker
                 // Keep diagnostics responsive while an already accepted action callback is finishing.
                 if (!root.actionsIdle.IsSet || !root.combatTransitionsIdle.IsSet) return null;
                 if (sourceInput?.Failure is { } sourceError && !failures.Contains(sourceError)) failures.Add(sourceError);
+                if (canceled && sourceInput is null && input.Reader.Completion.IsFaulted)
+                {
+                    // Explicit cancellation must not hide an already recorded producer error. Normal
+                    // range completion still ignores decoder failures in unconsumed bytes after cutoff.
+                    try { input.Reader.Completion.GetAwaiter().GetResult(); }
+                    catch (OperationCanceledException) when (cancellation.IsCancellationRequested) { }
+                    catch (Exception error) { if (!failures.Contains(error)) failures.Add(error); }
+                }
                 return Finish();
             }
 
@@ -384,6 +429,8 @@ namespace Advanced_Combat_Tracker
                 finally
                 {
                     Completed = true;
+                    if (captured is not null) foreach (var source in captured)
+                        try { source.Image.Dispose(); } catch (Exception error) { failures.Add(error); }
                     Exclusive = false;
                     suspension?.Dispose();
                     cancellation.Dispose();

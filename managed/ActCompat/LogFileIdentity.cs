@@ -35,19 +35,21 @@ internal readonly record struct LogFileIdentity(ulong Volume, ulong Low, ulong H
             throw new IOException("Source must be a regular file without a final symbolic link");
         if (OperatingSystem.IsLinux())
         {
-            const uint required = 0x3c1; // type, inode, size, modification and change timestamps.
             if (StatxPath(-100, path, 0x100, 0x7ff, out var info) != 0) throw Failure();
-            if ((info.Mask & required) != required) throw new NotSupportedException("Source filesystem lacks required version metadata");
-            if ((info.Mode & 0xf000) != 0x8000) throw new IOException("Source is not a regular file");
-            var modified = checked(DateTime.UnixEpoch.Ticks + info.ModifiedSeconds * TimeSpan.TicksPerSecond + info.ModifiedNanos / 100);
-            if (modified < 0 || modified > DateTime.MaxValue.Ticks || info.ModifiedNanos >= 1000000000 || info.ChangeNanos >= 1000000000)
-                throw new IOException("Source timestamps are outside the supported range");
-            return new(new(((ulong)info.DeviceMajor << 32) | info.DeviceMinor, info.Inode, 0),
-                checked((long)info.Length), modified, info.ChangeSeconds, info.ChangeNanos);
+            return ObserveLinux(info);
+        }
+        using var handle = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+        return Observe(handle);
+    }
+    internal static LogFileObservation Observe(SafeFileHandle handle)
+    {
+        if (OperatingSystem.IsLinux())
+        {
+            if (Statx(handle, "", 0x1000, 0x7ff, out var info) != 0) throw Failure();
+            return ObserveLinux(info);
         }
         if (OperatingSystem.IsWindows())
         {
-            using var handle = File.OpenHandle(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             if (GetFileType(handle) != 1) throw new IOException("Source is not a disk file");
             if (!GetFileInformationByHandleEx(handle, 0, out WindowsBasicInfo info, 40)) throw Failure();
             if ((info.Attributes & (uint)(FileAttributes.Directory | FileAttributes.ReparsePoint | FileAttributes.Device)) != 0)
@@ -55,6 +57,17 @@ internal readonly record struct LogFileIdentity(ulong Volume, ulong Low, ulong H
             return new(Read(handle), RandomAccess.GetLength(handle), DateTime.FromFileTimeUtc(info.Modified).Ticks, info.Changed, 0);
         }
         throw new PlatformNotSupportedException("Source observation requires Linux or Windows file identities");
+    }
+
+    private static LogFileObservation ObserveLinux(LinuxStatx info)
+    {
+        const uint required = 0x3c1;
+        if ((info.Mask & required) != required) throw new NotSupportedException("Source filesystem lacks required version metadata");
+        if ((info.Mode & 0xf000) != 0x8000) throw new IOException("Source is not a regular file");
+        var modified = checked(DateTime.UnixEpoch.Ticks + info.ModifiedSeconds * TimeSpan.TicksPerSecond + info.ModifiedNanos / 100);
+        if (modified < 0 || modified > DateTime.MaxValue.Ticks || info.ModifiedNanos >= 1000000000 || info.ChangeNanos >= 1000000000)
+            throw new IOException("Source timestamps are outside the supported range");
+        return new(new(((ulong)info.DeviceMajor << 32) | info.DeviceMinor, info.Inode, 0), checked((long)info.Length), modified, info.ChangeSeconds, info.ChangeNanos);
     }
 
     private static IOException Failure() => new("Cannot read log file identity", new Win32Exception(Marshal.GetLastPInvokeError()));

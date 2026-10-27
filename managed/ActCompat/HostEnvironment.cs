@@ -186,6 +186,11 @@ namespace Aftercast.ActCompat
         public ImportResult? AdvanceImport(bool cancel) => main.AdvanceImport(cancel);
         public TablePageData? ReadTable(TableQuery query) => main.ReadTable(query);
         public TableColumnCatalog ReadTableColumns(TableLevel level) => main.ReadTableColumns(level);
+        public Task<HistorySourceCapture> CaptureHistorySourceAsync(HistorySourceSnapshot snapshot, string path, ImportTextOptions? text = null,
+            IReadOnlyList<ImportCompanion>? companions = null, long maximumBytes = 4L * 1024 * 1024 * 1024, CancellationToken cancellation = default) =>
+            main.CaptureHistorySourceAsync(snapshot, path, text, companions, maximumBytes, cancellation);
+        public HistoryCaptureProgress HistoryCaptureProgress => main.CurrentHistoryCaptureProgress;
+        public void BeginCapturedHistoryImport(HistorySourceCapture capture) => main.BeginCapturedHistoryImport(capture);
         public HistorySourceSnapshot ReadHistorySources(HistorySelection selection, HistorySourceQuery query, HistorySourceSnapshot? previous = null) =>
             main.ReadHistorySourcesAsync(selection, query, previous, false).GetAwaiter().GetResult();
         public Task<HistorySourceSnapshot> ReadHistorySourcesAsync(HistorySelection selection, HistorySourceQuery query, HistorySourceSnapshot? previous = null, CancellationToken cancellation = default) =>
@@ -252,11 +257,19 @@ namespace Aftercast.ActCompat
         public void EndCombat() => main.RunWithLogReadingSuspended(() => main.EndCombat(true));
         public void StopLogReading() => main.StopLogFollower();
         public void AdvanceTimers() => timers.Advance();
+        private void EnsureShutdownCanStart()
+        {
+            // Reject unsafe callbacks before any shutdown side effect. Once admitted, collect
+            // terminal import errors while still releasing readers, UI/runtime and ACT globals.
+            if (!main.EnsureCapturedImportShutdownAllowed()) EnsureCanStop();
+        }
         public void StopProcessing()
         {
-            EnsureCanStop();
-            main.BeginCombatShutdown();
+            EnsureShutdownCanStart();
             var errors = new List<Exception>();
+            try { main.CloseHistorySourceCapture(); } catch (Exception error) { errors.Add(error); }
+            try { main.CancelCapturedImportForShutdown(); } catch (Exception error) { errors.Add(error); }
+            try { main.BeginCombatShutdown(); } catch (Exception error) { errors.Add(error); }
             // Drain both producers while their plugin callbacks and ACT globals are still valid.
             try { main.StopLogFollower(); } catch (Exception error) { errors.Add(error); }
             try { main.StopCombatProcessing(); } catch (Exception error) { errors.Add(error); }
@@ -271,7 +284,7 @@ namespace Aftercast.ActCompat
         {
             // A previous environment may be disposed again after another host has acquired the globals.
             if (disposed) return;
-            EnsureCanStop();
+            EnsureShutdownCanStart();
             disposed = true;
             main.BeginClosing();
             var errors = new List<Exception>();

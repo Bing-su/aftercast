@@ -318,16 +318,17 @@ public partial class FormActMain
 
     protected override void Dispose(bool disposing)
     {
-        if (disposing) { EnsureCanWaitForLogReader(); BeginCombatShutdown(); CloseNotifications(); }
-        try { if (disposing) StopLogFollower(); }
-        finally
-        {
-            try { if (disposing) StopCombatProcessing(); }
-            finally
-            {
-                try { if (disposing) DisposePluginSettingsWindow(); }
-                finally { base.Dispose(disposing); }
-            }
-        }
+        if (!disposing) { base.Dispose(false); return; }
+        if (!EnsureCapturedImportShutdownAllowed()) EnsureCanWaitForLogReader();
+        var errors = new List<Exception>();
+        try { CloseHistorySourceCapture(); } catch (Exception error) { errors.Add(error); }
+        try { CancelCapturedImportForShutdown(); } catch (Exception error) { errors.Add(error); }
+        try { BeginCombatShutdown(); } catch (Exception error) { errors.Add(error); }
+        try { CloseNotifications(); } catch (Exception error) { errors.Add(error); }
+        try { StopLogFollower(); } catch (Exception error) { errors.Add(error); }
+        try { StopCombatProcessing(); } catch (Exception error) { errors.Add(error); }
+        try { DisposePluginSettingsWindow(); } catch (Exception error) { errors.Add(error); }
+        try { base.Dispose(true); } catch (Exception error) { errors.Add(error); }
+        if (errors.Count != 0) throw new AggregateException("ACT root disposal failed", errors);
     }
 }
