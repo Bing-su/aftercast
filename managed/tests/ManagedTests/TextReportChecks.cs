@@ -30,10 +30,10 @@ internal static class TextReportChecks
             CombatantData.ExportVariables["name"]=new("name","","",(actor,_)=>{Own(actor);return actor.Name;});
             CombatantData.ExportVariables["extra"]=new("extra","","",(actor,extra)=>{Own(actor);return extra;});
             CombatantData.ExportVariables["n"]=new("n","","",(_,_)=>"\n");
-            EncounterData.ExportVariables["group"]=new("group","","",(encounter,allies,_)=>{Check(ReferenceEquals(encounter,Encounter)&&allies.All(actor=>Encounter.Items.Values.Contains(actor)),"original encounter/allies");return allies.Count.ToString(CultureInfo.InvariantCulture);});
+            EncounterData.ExportVariables["group"]=new("group","","",(encounter,allies,_)=>{Check(ReferenceEquals(encounter,Encounter)&&allies.All(actor=>Encounter.Items.Values.Any(known=>ReferenceEquals(known,actor))),"original encounter/allies");return allies.Count.ToString(CultureInfo.InvariantCulture);});
             Id=Host.ListEncounters(0,16).Items.Single().Id;
         }
-        private void Own(CombatantData actor) {Check(Environment.CurrentManagedThreadId==owner&&Encounter.Items.Values.Contains(actor),"owner thread/original object");Calls++;}
+        private void Own(CombatantData actor) {Check(Environment.CurrentManagedThreadId==owner&&Encounter.Items.Values.Any(known=>ReferenceEquals(known,actor)),"owner thread/original object");Calls++;}
         internal TextReport Read(TextReportOptions options) =>Host.ReadTextReport(Id,Host.ReadTextReportCatalog().Revision,options)??throw new Exception("missing selected encounter");
         public void Dispose(){try{Host.Dispose();}finally{directory.Delete(true);}}
     }
@@ -71,8 +71,8 @@ internal static class TextReportChecks
         selective.Items.Add("ALPHA",new CombatantData("Alpha",selective));selective.Items.Add("ZED",new CombatantData("Zed",selective));
         selective.SetAllies([selective.Items["ALPHA"]]);
         var owner=Environment.CurrentManagedThreadId;
-        CombatantData.ColumnDefs["Name"].SortComparer=(left,right)=>{Check(Environment.CurrentManagedThreadId==owner&&selective.Items.Values.Contains(left)&&selective.Items.Values.Contains(right),"selective original owner objects");return string.CompareOrdinal(left.Name,right.Name);};
-        CombatantData.ExportVariables["name"].GetExportString=(actor,_)=>{Check(selective.Items.Values.Contains(actor),"selected original actor");return actor.Name;};
+        CombatantData.ColumnDefs["Name"].SortComparer=(left,right)=>{Check(Environment.CurrentManagedThreadId==owner&&selective.Items.Values.Any(known=>ReferenceEquals(known,left))&&selective.Items.Values.Any(known=>ReferenceEquals(known,right)),"selective original owner objects");return string.CompareOrdinal(left.Name,right.Name);};
+        CombatantData.ExportVariables["name"].GetExportString=(actor,_)=>{Check(selective.Items.Values.Any(known=>ReferenceEquals(known,actor)),"selected original actor");return actor.Name;};
         var selected=f.Host.ListEncounters(0,16).Items.Single().Id;
         var options=Options("{name}",true,true,"group:{group};");
         EncounterData.ExportVariables["group"].GetExportString=(_,allies,_)=>allies.Count.ToString(CultureInfo.InvariantCulture);
