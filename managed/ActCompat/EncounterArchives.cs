@@ -117,7 +117,7 @@ public partial class FormActMain
                     return ExpandEncounterFile(payload);
                 });
                 List<EncounterData> items;
-                lock (CombatGate) items = DecodeEncounterFile(bytes);
+                lock (CombatGate) items = DecodeEncounterFile(bytes, history: true);
                 if (items.Count != 1) throw new InvalidDataException("Expected one encounter per history archive");
                 restored.Add((items[0], entry));
             }
@@ -163,11 +163,11 @@ public partial class FormActMain
         stream.ReadExactly(result);
         return result;
     }
-    private List<EncounterData> DecodeEncounterFile(byte[] bytes)
+    private List<EncounterData> DecodeEncounterFile(byte[] bytes, bool history = false)
     {
         var xml = ExpandEncounterFile(bytes);
         using var input = new MemoryStream(xml);
-        return XmlToEncounters(input);
+        return ReadEncounterXml(input, history);
     }
 
     private byte[] ExpandEncounterFile(byte[] bytes) =>

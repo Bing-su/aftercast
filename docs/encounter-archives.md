@@ -56,6 +56,17 @@ let page = restarted.encounters(0, 16).await?;
 ACT interchange retains ACT's second-resolution timestamps and display-form damage,
 which can lose the underlying numeric value of a custom damage label. Private
 payloads add numeric attributes and round-trip timestamps to avoid that loss.
+Their root carries `AftercastHistoryVersion="1"`; each saved log retains its
+`GlobalTimeSorter` in `AftercastTimeSorter`, alongside the swing
+`TimeSorter`. These values preserve the existing action/log relation within each
+encounter, including distinct lines at the same timestamp. Restoration does not
+advance the live session sorter or invent links for absent or ambiguous logs.
+Unversioned/unknown private payloads and missing or invalid sorter attributes
+are rejected before attaching encounters. There is no automatic migration or
+deletion; old private payloads need a fresh checkpoint from the original graph
+or reimport of the source logs. ACT interchange XML retains its existing format
+and sequential log-sorter reconstruction; it does not promise this identity
+round trip.
 Category/column registrations and arbitrary combatant/encounter/category tags are
 not serialized; derived totals depend on the initialized parser's definitions.
 

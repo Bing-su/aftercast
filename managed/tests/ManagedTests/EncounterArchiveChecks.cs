@@ -1,4 +1,5 @@
 using System.Runtime.Serialization;
+using System.Security.Cryptography;
 using System.Text;
 using System.Xml;
 using Advanced_Combat_Tracker;
@@ -40,17 +41,19 @@ internal static class EncounterArchiveChecks
                 Check(root.EncDatabase.Count == 1 && root.ZoneDatabase.Count == 1);
                 root.EncDatabase.Clear(); root.ZoneDatabase.Clear();
                 root.ChangeZone("Fixture Zone"); root.SetEncounter(epoch, "Source", "Target");
-                var action = new MasterSwing(1, true, "Special", new Dnum(1234, "label"), epoch.AddSeconds(2), 1, "Strike", "Source", "Physical", "Target");
+                var action = new MasterSwing(1, true, "Special", new Dnum(1234, "label"), epoch.AddSeconds(2), 42, "Strike", "Source", "Physical", "Target");
                 action.Tags["unicode"] = "한글 & <test>";
                 root.AddCombatAction(action); host.EndCombat();
                 var encounter = root.ActiveZone.ActiveEncounter!;
-                encounter.LogLines.Add(new(epoch, "raw log", 12, 17));
+                encounter.LogLines.Add(new(epoch.AddSeconds(2), "other log", 12, 17));
+                encounter.LogLines.Add(new(epoch.AddSeconds(2), "raw log", 12, 42));
                 var id = host.ListEncounters(0, 16).Items.Single().Id;
                 Check(host.ArchiveOperation(2, output, id, true) == 1);
                 var exported = File.ReadAllBytes(output);
                 var xmlOutput = Path.Combine(directory.FullName, "export.xml");
                 Check(host.ArchiveOperation(2, xmlOutput, id, false) == 1);
                 Check(File.ReadAllBytes(xmlOutput).SequenceEqual(root.MemDecompressGzip(exported)));
+                Check(!File.ReadAllText(xmlOutput).Contains("Aftercast", StringComparison.Ordinal));
                 Throws<IOException>(() => host.ArchiveOperation(2, output, id, true));
                 Check(File.ReadAllBytes(output).SequenceEqual(exported));
                 for (var missing = 1; missing <= 8; missing++)
@@ -58,6 +61,12 @@ internal static class EncounterArchiveChecks
                 Check(host.ArchiveOperation(3, "", 0, false) == 1);
                 Check(host.ArchiveOperation(3, "", 0, false) == 1);
                 saved = File.ReadAllText(index);
+                PrepareInvalidHistory(directory, saved, document => document.DocumentElement!.RemoveAttribute("AftercastHistoryVersion"));
+                PrepareInvalidHistory(directory, saved, document => document.DocumentElement!.SetAttribute("AftercastHistoryVersion", "2"));
+                PrepareInvalidHistory(directory, saved, document => ((XmlElement)document.SelectSingleNode("//LogLine")!).RemoveAttribute("AftercastTimeSorter"));
+                PrepareInvalidHistory(directory, saved, document => ((XmlElement)document.SelectSingleNode("//LogLine")!).SetAttribute("AftercastTimeSorter", "2147483648"));
+                PrepareInvalidHistory(directory, saved, document => ((XmlElement)document.SelectSingleNode("//Swing")!).RemoveAttribute("TimeSorter"));
+                PrepareInvalidHistory(directory, saved, document => ((XmlElement)document.SelectSingleNode("//Swing")!).SetAttribute("TimeSorter", "invalid"));
                 var manual = new EncounterData("Source", "Fixture Zone", root.ActiveZone);
                 manual.Items["GHOST"] = new CombatantData("Ghost", manual);
                 root.ActiveZone.Items.Add(manual);
@@ -88,19 +97,25 @@ internal static class EncounterArchiveChecks
                 Check(host.ArchiveOperation(1, output, 0, false) == 1);
                 Check(host.ListEncounters(0, 16).Total == before + 1);
             }
+            CheckInvalidHistories(directory);
             using (var restarted = new HostEnvironment(directory.FullName))
             {
                 CombatFixture.ConfigureCategories();
                 Check(restarted.ListEncounters(0, 16).Total == 0);
                 Check(restarted.ArchiveOperation(4, "no match", 0, false) == 0);
+                ActGlobals.oFormActMain!.GlobalTimeSorter = 900;
                 Check(restarted.ArchiveOperation(4, "FIXTURE", 0, false) == 1);
+                Check(ActGlobals.oFormActMain!.GlobalTimeSorter == 900);
                 Check(restarted.ArchiveOperation(4, "", 0, false) == 0);
                 var root = ActGlobals.oFormActMain!;
                 var encounter = root.ZoneList[0].Items.Single();
                 var action = encounter.GetCombatant("Source")!.AllOut["All"].Items.Single();
                 Check(action.Damage.Number == 1234 && action.Damage.ToString() == "label" && action.Time == epoch.AddSeconds(2));
                 Check(encounter.StartTimes.Single() == epoch.AddSeconds(2) && encounter.ZoneName == "Fixture Zone");
-                Check((string)action.Tags["unicode"] == "한글 & <test>" && encounter.LogLines.Single().LogLine == "raw log");
+                Check((string)action.Tags["unicode"] == "한글 & <test>" && encounter.LogLines.Count == 2);
+                Check(encounter.LogLines.Select(line => line.GlobalTimeSorter).SequenceEqual(new[] { 17, 42 }));
+                Check(encounter.LogLines.All(line => line.Time == action.Time));
+                Check(encounter.LogLines.Single(line => line.GlobalTimeSorter == action.TimeSorter).LogLine == "raw log");
                 Check(restarted.ListEncounters(0, 16).Items.Single().Damage == 1234);
                 Check(restarted.ArchiveOperation(3, "", 0, false) == 1);
                 var corrupt = Directory.GetFiles(Path.Combine(directory.FullName, "history"), "*.act").First();
@@ -141,6 +156,38 @@ internal static class EncounterArchiveChecks
             Console.WriteLine("ACT XML/gzip imports, atomic history checkpoints, filtered restart restoration and corruption boundaries passed.");
         }
         finally { directory.Delete(true); }
+    }
+
+    private static void PrepareInvalidHistory(DirectoryInfo source, string index, Action<XmlDocument> mutate)
+    {
+        // Give malformed private payloads valid hashes, e.g. format checks must run beyond integrity checks.
+        var directory = Directory.CreateDirectory(Path.Combine(source.FullName, "invalid-" + Guid.NewGuid()));
+        var history = Directory.CreateDirectory(Path.Combine(directory.FullName, "history"));
+        var document = new XmlDocument();
+        var root = ActGlobals.oFormActMain!;
+        var original = Directory.GetFiles(Path.Combine(source.FullName, "history"), "*.act").Single();
+        document.LoadXml(Encoding.UTF8.GetString(root.MemDecompressGzip(File.ReadAllBytes(original))));
+        mutate(document);
+        var payload = root.MemCompressGZip(Encoding.UTF8.GetBytes(document.OuterXml));
+        var file = Convert.ToHexStringLower(SHA256.HashData(payload)) + ".act";
+        File.WriteAllBytes(Path.Combine(history.FullName, file), payload);
+        document.LoadXml(index);
+        ((XmlElement)document.SelectSingleNode("/Records/Record")!).SetAttribute("Archive", file);
+        document.Save(Path.Combine(history.FullName, "index.xml"));
+    }
+
+    private static void CheckInvalidHistories(DirectoryInfo source)
+    {
+        foreach (var directory in source.GetDirectories("invalid-*"))
+        {
+            using var host = new HostEnvironment(directory.FullName);
+            CombatFixture.ConfigureCategories();
+            var root = ActGlobals.oFormActMain!;
+            root.GlobalTimeSorter = 900;
+            try { host.ArchiveOperation(4, "", 0, false); throw new Exception("Invalid private history accepted"); }
+            catch (Exception error) when (error is XmlException or FormatException or OverflowException) { }
+            Check(host.ListEncounters(0, 16).Total == 0 && root.GlobalTimeSorter == 900);
+        }
     }
 
     private static void CheckGzip(FormActMain root)

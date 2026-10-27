@@ -19,6 +19,7 @@ public partial class FormActMain
         var format = history ? "O" : "s";
         using var writer = XmlWriter.Create(stream, new XmlWriterSettings { Encoding = new UTF8Encoding(false), Indent = true, CloseOutput = false });
         writer.WriteStartDocument(); writer.WriteStartElement("Encounters");
+        if (history) writer.WriteAttributeString("AftercastHistoryVersion", "1");
         foreach (var encounter in encounters)
         {
             writer.WriteStartElement("Encounter");
@@ -57,6 +58,7 @@ public partial class FormActMain
                 foreach (var line in encounter.LogLines)
                 {
                     writer.WriteStartElement("LogLine");
+                    if (history) Attribute("AftercastTimeSorter", line.GlobalTimeSorter);
                     Attribute("Type", line.Type); Attribute("Time", line.Time.ToString(format, CultureInfo.InvariantCulture)); Attribute("Line", line.LogLine);
                     writer.WriteEndElement();
                 }
@@ -66,13 +68,18 @@ public partial class FormActMain
         writer.WriteEndElement(); writer.WriteEndDocument();
     }
 
-    public List<EncounterData> XmlToEncounters(Stream stream)
+    public List<EncounterData> XmlToEncounters(Stream stream) => ReadEncounterXml(stream, false);
+
+    private List<EncounterData> ReadEncounterXml(Stream stream, bool history)
     {
         using var reader = XmlReader.Create(stream, new XmlReaderSettings
         { DtdProcessing = DtdProcessing.Prohibit, XmlResolver = null, MaxCharactersInDocument = ArchiveLimit, CloseInput = true });
         var document = new XmlDocument { XmlResolver = null };
         document.Load(reader);
         if (document.DocumentElement?.Name != "Encounters") throw new XmlException("Expected Encounters root");
+        // Legacy private payloads lost log identities; reject them rather than inventing action links.
+        if (history && document.DocumentElement.GetAttribute("AftercastHistoryVersion") != "1")
+            throw new XmlException("Unsupported aftercast history version; expected 1");
         var result = new List<EncounterData>();
         var tagsSerializer = SwingTags();
         var sorter = GlobalTimeSorter;
@@ -96,7 +103,8 @@ public partial class FormActMain
                             item.HasAttribute("AftercastNumber") ? new Dnum(long.Parse(item.GetAttribute("AftercastNumber"), CultureInfo.InvariantCulture), item.HasAttribute("AftercastLabel") ? item.GetAttribute("AftercastLabel") : null)
                                 { DamageString2 = item.HasAttribute("AftercastSuffix") ? item.GetAttribute("AftercastSuffix") : null }
                                 : ParseArchiveDamage(RequiredAttribute(item, "Damage")), ParseArchiveTime(RequiredAttribute(item, "Time")),
-                            int.TryParse(item.GetAttribute("TimeSorter"), out var timeSorter) ? timeSorter : 0, RequiredAttribute(item, "AttackType"),
+                            history ? int.Parse(RequiredAttribute(item, "TimeSorter"), CultureInfo.InvariantCulture)
+                                : int.TryParse(item.GetAttribute("TimeSorter"), out var timeSorter) ? timeSorter : 0, RequiredAttribute(item, "AttackType"),
                             RequiredAttribute(item, "Combatant"), RequiredAttribute(item, "DamageType"), RequiredAttribute(item, "Victim"));
                         var tagCount = 0;
                         foreach (XmlNode tag in item.ChildNodes)
@@ -114,7 +122,8 @@ public partial class FormActMain
                     case "LogLine":
                         var text = RequiredAttribute(item, "Line");
                         var time = item.HasAttribute("Time") ? ParseArchiveTime(item.GetAttribute("Time")) : GetDateTimeFromLog(text);
-                        encounter.LogLines.Add(new(time, text, int.Parse(RequiredAttribute(item, "Type"), CultureInfo.InvariantCulture), checked(++sorter)));
+                        var logSorter = history ? int.Parse(RequiredAttribute(item, "AftercastTimeSorter"), CultureInfo.InvariantCulture) : checked(++sorter);
+                        encounter.LogLines.Add(new(time, text, int.Parse(RequiredAttribute(item, "Type"), CultureInfo.InvariantCulture), logSorter));
                         break;
                     case "Ally": break;
                     default: throw new XmlException("Unexpected encounter child: " + item.Name);
@@ -125,7 +134,7 @@ public partial class FormActMain
             if (allies.Count > 0) encounter.SetAllies(allies);
             result.Add(encounter);
         }
-        GlobalTimeSorter = sorter;
+        if (!history) GlobalTimeSorter = sorter;
         return result;
     }
 
