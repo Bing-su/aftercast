@@ -31,7 +31,7 @@ public class ColumnsPlugin : IActPluginV1
             (left, right) => { Own(); return left.Damage.CompareTo(right.Damage); }) { GetCellForeColor = _ => { Own(); return Color.Red; } };
         CombatantData.ColumnDefs["bad"] = new("Bad fixture", false, "TEXT", "value", _ => throw new InvalidOperationException("synthetic table callback failure"), _ => "sql", (_, _) => throw new InvalidOperationException("synthetic sort failure"));
         CombatantData.ColumnDefs["null"] = new("Null fixture", false, "TEXT", "value", _ => null!, _ => "sql", (_, _) => 0);
-        CombatantData.ColumnDefs["probe"] = new("Probe fixture", false, "TEXT", "value", _ => { Own(); return (++reads).ToString(CultureInfo.InvariantCulture); }, _ => "sql", (_, _) => 0);
+        CombatantData.ColumnDefs["probe"] = new("Actor fixture", false, "TEXT", "value", _ => { Own(); return (++reads).ToString(CultureInfo.InvariantCulture); }, _ => "sql", (_, _) => 0);
         CombatantData.ColumnDefs["mutate"] = new("Mutate fixture", false, "TEXT", "value", _ => { Own(); CombatantData.ColumnDefs.Remove("mutate"); return "removed"; }, _ => "sql", (_, _) => 0);
         DamageTypeData.ColumnDefs["fixture"] = new("Category fixture", true, "TEXT", "value", value => { Own(); return value.Damage.ToString(CultureInfo.InvariantCulture); }, _ => "sql");
         AttackType.ColumnDefs["fixture"] = new("Attack fixture", true, "TEXT", "value", value => { Own(); return value.Damage.ToString(CultureInfo.InvariantCulture); }, _ => "sql", (left, right) => left.Damage.CompareTo(right.Damage));

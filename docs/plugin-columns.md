@@ -50,7 +50,7 @@ catalog tests, not native plugin UI or callback-value execution tests.
 | C1 Catalog                               | Managed catalog and session-owned Bridge/Rust discovery are implemented.                                                                                                                                                                                                                           |
 | C2 Values and sort                       | Implemented managed scoped cells/colors and bounded stable sort with callback errors, registration invalidation and scope-membership checks; see C2 contract below. Cross-worker session ownership belongs to C3.                                                                                  |
 | C3 Rust transport and GUI                | Session-owned metadata/value API is implemented; existing Rust/UI/Chorale table integration remains pending, checked columns and reordering by stable registry key, supported primary/secondary sort, explicit unavailable cells. Reconcile additions/removals using the reference behavior above. |
-| C4 Preferences and end-to-end regression | Pending: atomic local configuration save/reload for column order/selection/sort; preserve drafts on failure, reject stale replies during plugin/session changes; use synthetic plugin/controller tests and final whole checks. Native clicks remain Windows QA.                                    |
+| C4 Preferences and end-to-end regression | Settings backend now validates and atomically persists key-based order/visibility/sort. Runtime draft reconciliation, GUI save acknowledgement/stale-response handling and renderer/controller regressions remain pending. Native clicks remain Windows QA.                                        |
 
 Managed C1/C2 delivery does not complete plugin-column support. Existing typed
 aggregate/action APIs remain the current displayed data until the GUI and C4 are connected.
@@ -134,3 +134,32 @@ separate synthetic managed formatter deliberately waits forever; shutdown timeou
 pending-call failure and a fresh worker/state lease are checked. This does not
 establish recovery from arbitrary native/kernel hangs. GUI and saved selection,
 column order and sort preferences remain the next C3/C4 unit; native UI is untested.
+
+## Saved column settings backend (GUI not yet connected)
+
+Optional config tables use the row-level names encounter, combatant, category,
+attack and action. Each stores `order` (all known registered keys), `visible`
+(selected keys), optional `primary`/`secondary` and `descending`. Hidden keys remain
+in order so an explicitly all-hidden layout differs from untouched defaults.
+Display labels, transient catalog revisions, worker IDs and row ordinals are never
+saved. Selected query keys follow order regardless of visible-list input order.
+
+Validation rejects unknown row levels, duplicate/empty/NUL/oversized keys, more than
+256 ordered or 32 visible columns, unknown visibility/sort keys and a secondary sort
+without a primary key. The existing annotated TOML save path writes to a temporary
+file, syncs it and atomically replaces config.toml. Removing a layout or clearing
+sort selections removes the corresponding persisted fields; unrelated settings and
+existing value comments are preserved. Invalid data/I/O failures do not replace the
+existing config. Runtime callbacks do not write preferences implicitly.
+
+Six backend tests cover validation, annotations, reset/removal, failed validation
+and failed I/O, plus an actual Host with equal-label/different-key fixture columns,
+disable/fresh-enable and worker restart. Saved keys remain unchanged when the
+plugin disappears; applying/pruning missing keys, new defaults, sort capability
+changes and explicit save/reload acknowledgement are the next GUI unit. Current
+fixed analysis tables do not yet consume these saved preferences.
+
+Chorale 0.2.3 supports row-aware custom renderers but ColumnId requires a static
+string. The renderer must map at most 32 currently selected keys to fixed slot IDs,
+without leaking/interning arbitrary plugin keys; preferences continue to use real
+registry keys. Plugin comparison must stay on the Host, not Chorale text sorting.

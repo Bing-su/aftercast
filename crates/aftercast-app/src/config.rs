@@ -13,6 +13,7 @@ pub struct Settings {
     pub schema_version: u32,
     pub ui: UiSettings,
     pub host: HostSettings,
+    pub tables: BTreeMap<String, crate::table_settings::Preferences>,
 }
 
 impl Default for Settings {
@@ -21,6 +22,7 @@ impl Default for Settings {
             schema_version: 1,
             ui: UiSettings::default(),
             host: HostSettings::default(),
+            tables: BTreeMap::new(),
         }
     }
 }
@@ -105,6 +107,17 @@ impl Settings {
             return Err(miette!(
                 "Duplicate configured plugin path; each entry must have a unique path"
             ));
+        }
+        for (level, preferences) in &self.tables {
+            if !crate::table_settings::LEVELS
+                .iter()
+                .any(|(key, _)| *key == level)
+            {
+                return Err(miette!("Unknown plugin table level: {level}"));
+            }
+            preferences
+                .validate()
+                .map_err(|error| miette!("tables.{level}: {error}"))?;
         }
         Ok(())
     }
@@ -194,6 +207,7 @@ impl ConfigFile {
                 value(type_name),
             );
         }
+        save_tables(&mut self.document, &settings.tables)?;
         let path = root.join("config.toml");
         let mut temporary = tempfile::NamedTempFile::new_in(root).into_diagnostic()?;
         temporary
@@ -207,6 +221,66 @@ impl ConfigFile {
             .wrap_err_with(|| format!("Save {path}"))?;
         Ok(self)
     }
+}
+
+fn save_tables(
+    document: &mut DocumentMut,
+    preferences: &BTreeMap<String, crate::table_settings::Preferences>,
+) -> Result<()> {
+    use toml_edit::{Item, Table};
+    if preferences.is_empty() && !document.as_table().contains_key("tables") {
+        return Ok(());
+    }
+    let tables = document
+        .as_table_mut()
+        .entry("tables")
+        .or_insert(Item::Table(Table::new()))
+        .as_table_like_mut()
+        .ok_or_else(|| miette!("tables must be a TOML table"))?;
+    let removed = tables
+        .iter()
+        .filter(|(key, _)| !preferences.contains_key(*key))
+        .map(|(key, _)| key.to_owned())
+        .collect::<Vec<_>>();
+    for key in removed {
+        tables.remove(&key);
+    }
+    for (level, preferences) in preferences {
+        let table = tables
+            .entry(level)
+            .or_insert(Item::Table(Table::new()))
+            .as_table_like_mut()
+            .ok_or_else(|| miette!("tables.{level} must be a TOML table"))?;
+        for (key, values) in [
+            ("order", &preferences.order),
+            ("visible", &preferences.visible),
+        ] {
+            set(
+                table.entry(key).or_insert(Item::None),
+                value(
+                    values
+                        .iter()
+                        .map(String::as_str)
+                        .collect::<toml_edit::Array>(),
+                ),
+            );
+        }
+        set(
+            table.entry("descending").or_insert(Item::None),
+            value(preferences.descending),
+        );
+        for (key, selected) in [
+            ("primary", &preferences.primary),
+            ("secondary", &preferences.secondary),
+        ] {
+            if let Some(selected) = selected {
+                set(table.entry(key).or_insert(Item::None), value(selected));
+            } else {
+                table.remove(key);
+            }
+        }
+    }
+    Ok(())
 }
 
 fn set(item: &mut toml_edit::Item, mut replacement: toml_edit::Item) {

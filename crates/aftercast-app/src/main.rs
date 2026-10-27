@@ -3,6 +3,7 @@ mod components;
 mod config;
 mod runtime_bundle;
 mod session;
+mod table_settings;
 
 use std::path::PathBuf;
 
