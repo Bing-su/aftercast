@@ -1,9 +1,9 @@
 use super::*;
 use bytes::Buf;
 use std::collections::HashSet;
-struct Reader<'a>(&'a [u8]);
+pub(crate) struct Reader<'a>(pub(crate) &'a [u8]);
 impl Reader<'_> {
-    fn take(&mut self, count: usize) -> Result<&[u8], Error> {
+    pub(crate) fn take(&mut self, count: usize) -> Result<&[u8], Error> {
         let (value, rest) = self
             .0
             .split_at_checked(count)
@@ -11,27 +11,27 @@ impl Reader<'_> {
         self.0 = rest;
         Ok(value)
     }
-    fn u32(&mut self) -> Result<u32, Error> {
+    pub(crate) fn u32(&mut self) -> Result<u32, Error> {
         Ok(self.take(4)?.get_u32_le())
     }
-    fn u64(&mut self) -> Result<u64, Error> {
+    pub(crate) fn u64(&mut self) -> Result<u64, Error> {
         Ok(self.take(8)?.get_u64_le())
     }
-    fn boolean(&mut self) -> Result<bool, Error> {
+    pub(crate) fn boolean(&mut self) -> Result<bool, Error> {
         match self.u32()? {
             0 => Ok(false),
             1 => Ok(true),
             _ => Err(invalid("invalid table presence flag")),
         }
     }
-    fn optional_int(&mut self) -> Result<Option<i32>, Error> {
+    pub(crate) fn optional_int(&mut self) -> Result<Option<i32>, Error> {
         if self.boolean()? {
             Ok(Some(self.u32()?.cast_signed()))
         } else {
             Ok(None)
         }
     }
-    fn optional_text(&mut self, maximum: usize) -> Result<Option<String>, Error> {
+    pub(crate) fn optional_text(&mut self, maximum: usize) -> Result<Option<String>, Error> {
         let count = self.u32()?;
         if count == u32::MAX {
             return Ok(None);
@@ -45,11 +45,11 @@ impl Reader<'_> {
         }
         Ok(Some(text.to_owned()))
     }
-    fn text(&mut self, maximum: usize) -> Result<String, Error> {
+    pub(crate) fn text(&mut self, maximum: usize) -> Result<String, Error> {
         self.optional_text(maximum)?
             .ok_or_else(|| invalid("missing required table text"))
     }
-    fn level(&mut self) -> Result<TableLevel, Error> {
+    pub(crate) fn level(&mut self) -> Result<TableLevel, Error> {
         match self.u32()? {
             0 => Ok(TableLevel::Encounter),
             1 => Ok(TableLevel::Combatant),
@@ -71,7 +71,7 @@ impl Reader<'_> {
             value,
         })
     }
-    fn columns(&mut self, maximum: u32) -> Result<Vec<TableColumn>, Error> {
+    pub(crate) fn columns(&mut self, maximum: u32) -> Result<Vec<TableColumn>, Error> {
         let count = self.u32()?;
         if count > maximum {
             return Err(invalid("too many table columns"));
@@ -124,7 +124,7 @@ impl Reader<'_> {
             error,
         })
     }
-    fn finish(&self) -> Result<(), Error> {
+    pub(crate) fn finish(&self) -> Result<(), Error> {
         if self.0.is_empty() {
             Ok(())
         } else {

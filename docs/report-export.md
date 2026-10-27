@@ -84,7 +84,8 @@ probe are separate evidence, not a claim of native UI execution on Linux.
 3. The first managed [current-table XML/static HTML slice](table-reports.md) now
    captures original rows/parents and registered columns, uses SQL names/values for
    the four ACT table-XML roots, and escaped cell values for static HTML. Its
-   Bridge/Rust/GUI/save integration remains separate. Full HTML hierarchy/depth,
+   Bridge/Rust typed table-report selection and isolated-worker synthetic tests are connected.
+   GUI/save integration remains separate. Full HTML hierarchy/depth,
    checked encounter sets and graph/image dimensions are still unfinished;
    unsupported choices and security differences are explicit before I/O.
 4. L7c synthetic ODBC/schema/sink work and the shared L9d output preference audit

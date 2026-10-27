@@ -42,9 +42,13 @@ pub use process::{run_child_if_requested, run_child_if_requested_with_audio};
 mod reports;
 mod snapshots;
 mod speech;
+mod table_reports;
 mod tables;
 pub use reports::{
     TextReport, TextReportCatalog, TextReportOptions, TextReportPreset, TextReportRevision,
+};
+pub use table_reports::{
+    TableReport, TableReportCatalog, TableReportFormat, TableReportOptions, TableReportSelection,
 };
 mod timers;
 pub use tables::{

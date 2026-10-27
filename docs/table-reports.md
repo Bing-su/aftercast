@@ -1,4 +1,4 @@
-# Owned current-table reports: first managed slice
+# Owned current-table reports: managed core and worker API
 
 ## Original ACT evidence and scope
 
@@ -89,9 +89,45 @@ selection threshold, SQL getter use and HTML table/resource structure. No native
 ACT exporter or browser is executed on Linux; this is contract evidence, not a
 claim of Windows execution or byte-identical full HTML output.
 
-This checkpoint is managed-only. Bridge/Rust typed session/revision binding,
-actual isolated-worker report tests, GUI/table selection and no-overwrite file
-save are subsequent slices. Full HTML encounter/zone hierarchy, checked encounter
+The managed core and Bridge/Rust typed session/revision binding are connected,
+with actual isolated-worker synthetic report tests. GUI/table selection and
+no-overwrite file save are subsequent slices. Full HTML encounter/zone hierarchy, checked encounter
 sets, depth options and graph/image dimensions remain in the finite L7b plan.
 Archive XML/gzip and ordinary text reports retain their existing separate paths.
 No clipboard provider, upload, real database or user data was accessed.
+
+## Bridge/Rust transport (current API slice)
+
+`HostHandle::table_report_catalog(&scope)` captures one of the four table scopes.
+Its opaque `TableReportSelection` binds the originating session, report-only
+revision, scope and original row count. It cannot be substituted with a table
+query or ordinary-text-report revision. Catalog descriptors use `TableRow` with
+empty cells: discovery invokes no value/color callback. Caller edits to the public
+row/column vectors do not alter the private selection or the worker's capture.
+`table_report(&selection, &options)` renders once; it does not retry a revision or
+probe response capacity by rerunning callbacks. Stop/restart rejects older
+selection/session IDs, and a newer capture (including absent-scope discovery)
+retires the earlier worker capture.
+
+The Bridge command uses strict UTF-8 JSON requests (256 KiB maximum, unique keys,
+known fields, validated owner/header/command/reserved fields before dispatch) and
+bounded binary responses. Catalog responses reserve 56 MiB before capture: this
+covers 16384 descriptors with three 1024-byte keys plus row fields and 256 columns
+with four bounded strings. Render responses reserve 16 MiB + 20 bytes: revision,
+format, row count, UTF-8 byte length and the unescaped original content. Thus XML
+entities and Unicode are not escaped a second time into JSON, and a maximum-size
+report fits below the existing 128 MiB worker frame bound. Serialization still
+enforces the managed 16 MiB output limit. Header/length, scope, revision, row
+ordinals/descriptors, column flags/keys, format, output count, UTF-8, NUL and
+trailing bytes are checked on Rust receipt. A malformed reply is an error, not a
+new selection. Bounded inner callback causes (including sort failures) survive the
+Bridge diagnostic boundary; errors never become a success-looking empty report.
+
+Synthetic isolated-worker coverage uses original owner-thread plugin objects,
+all four roots, hidden SQL columns versus display callbacks, caption CRLF/Unicode,
+zero/one/multiple XML selection, explicit sort and failure, escaped static HTML,
+callback counts, registry changes, invalid values/limits, recapture, Stop and
+restart. These are Linux worker/contract tests, not native ACT exporter execution.
+GUI/table selection and no-overwrite save remain the next slices; the full HTML
+hierarchy/depth/graph tasks remain unfinished. No clipboard provider or external
+resource execution is added.

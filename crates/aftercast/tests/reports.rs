@@ -1,4 +1,6 @@
 mod common;
+#[path = "reports/table_reports.rs"]
+mod table_reports;
 use aftercast::{Error, Host, PluginConfig, TextReportOptions};
 use camino::Utf8Path;
 use common::{Deployment, deployment};

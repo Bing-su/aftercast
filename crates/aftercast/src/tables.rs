@@ -2,7 +2,7 @@
 use crate::{EncounterId, Error, HostHandle, runtime::Request};
 use bytes::{BufMut, BytesMut};
 use serde::Serialize;
-mod decode;
+pub(crate) mod decode;
 const HEADER: usize = 32;
 const CATALOG_CAPACITY: usize = 4 * 1024 * 1024;
 const ROW_CAPACITY: usize = 16 * 1024 * 1024;
@@ -83,7 +83,7 @@ impl TableScope {
             Self::Actions { .. } => TableLevel::Action,
         }
     }
-    fn parts(
+    pub(crate) fn parts(
         &self,
     ) -> (
         Option<EncounterId>,

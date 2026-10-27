@@ -39,6 +39,7 @@ internal sealed partial class PluginSession
         return HostJson.Encode(request.Options is null ? host.ReadTextReportCatalog() :
             (object?)host.ReadTextReport(request.EncounterId, request.Revision, request.Options)!);
     });
+    internal byte[] TableReportOperation(TableReportRequest request, int capacity) => OnOwner(() => TableReportEncoding.Encode(Host(), request, capacity));
     internal byte[] TableOperation(TableRequest request, int capacity) => OnOwner(() => TableEncoding.Encode(Host(), request, capacity));
     internal ArraySegment<byte> QueryCombat(int mode, ulong id, int offset, int limit) =>
         OnOwner(() => CombatQueryEncoding.Encode(environment, mode, id, offset, limit));

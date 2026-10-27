@@ -62,4 +62,5 @@ pub(crate) enum Request {
     Tables,
     Companions,
     Reports,
+    TableReports,
 }

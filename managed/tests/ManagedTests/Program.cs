@@ -291,6 +291,7 @@ internal static class Program
             TimerAbiChecks.Run(session);
             TableAbiChecks.Run(session);
             TextReportAbiChecks.Run(session);
+            TableReportAbiChecks.Run(session);
             HistoryAbiChecks.Run(session);
             NotificationAbiChecks.Run(session);
             LogAbiChecks.Run(session);
