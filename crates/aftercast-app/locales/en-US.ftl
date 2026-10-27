@@ -352,3 +352,21 @@ notifications-count-unknown = Unread count is not available yet
 notifications-snapshot-help = These actions affect all retained entries through this page's last refresh, including other pages. Newer arrivals are kept. Clear read does not count as omitted history.
 
 updating-notifications = Updating notification history…
+
+import-text-title = Source log decoding
+import-text-help = Applies to full-file import and source range reparse. It does not change checkpoint restoration or live capture. BOM detection can select a Unicode encoding; strict decoding remains strict.
+import-text-encoding = Source encoding
+import-text-plugin = Inherit plugin LogEncoding
+import-text-invalid = Invalid source bytes
+import-text-strict = Strict: stop at invalid bytes
+import-text-replace = ACT-style standard replacement
+import-text-bom = Detect other Unicode BOMs
+import-text-plugin-help = Uses the plugin's encoding and fallback at admission. The root defaults to strict UTF-8 unless a plugin changes it. Choose UTF-8 explicitly to override the plugin with the selected byte policy.
+import-text-replace-help = Replacement can change source text. Strict mode reports the invalid record and retains earlier imported results.
+import-text-session-help = These choices are session drafts, shared by both import routes. They survive errors, cancellation, tab changes and Host restart. Restarting the app restores plugin inheritance; Save settings does not persist these choices.
+import-text-invalid-choice = Unsupported decoding choice. The previous draft was kept.
+import-text-picking = Choose a source file. The decoding draft is captured; cancel the dialog to edit it.
+
+selecting-import = Selecting import source…
+
+import-text-bom-help = The selected encoding's own preamble is consumed even when detection of other Unicode BOMs is off.

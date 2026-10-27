@@ -125,6 +125,7 @@ pub(super) fn AnalysisPane() -> Element {
 #[component]
 pub(super) fn ImportPane() -> Element {
     let mut state = use_context::<Signal<AppState>>();
+    let text_view = state.read().text_view();
     rsx! {
         section { class: "max-w-5xl p-8",
             h1 { class: "text-2xl font-semibold", {tr("import")} }
@@ -136,12 +137,13 @@ pub(super) fn ImportPane() -> Element {
                 id: "log-path".to_owned(),
                 value: state.read().import_path.clone(),
                 placeholder: tr("log-path-hint"),
-                disabled: state.read().phase == Phase::Importing,
-                oninput: move |event: FormEvent| state.write().import_path = event.value(),
+                disabled: state.read().phase == Phase::Importing || state.read().import_text.active(),
+                oninput: move |event: FormEvent| state.write().edit_import_path(text_view, event.value()),
             }
+            super::import_text::TextControls {}
             div { class: "my-5 flex gap-3",
                 Button {
-                    disabled: state.read().phase != Phase::Ready || state.read().plugins.is_empty(),
+                    disabled: !state.read().can_full_import(),
                     onclick: move |_| import_log(state),
                     icons::FileUp {}
                     {tr("import-log")}

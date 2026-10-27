@@ -87,7 +87,7 @@ async fn fixture(host: &Host, ui: &mut AppState) {
     });
 }
 fn request(ui: &AppState) -> Request {
-    ui.reparse.draft.compile(&ui.root).expect("range draft")
+    ui.compile_reparse().expect("range draft")
 }
 async fn execute(host: &Host, ui: &mut AppState) -> Token {
     let request = request(ui);
@@ -102,7 +102,17 @@ async fn execute(host: &Host, ui: &mut AppState) -> Token {
         ui.begin_reparse(request.clone()).is_none(),
         "duplicate request"
     );
-    let result = host.import_log_range(&request.path, request.range).await;
+    let result = match super::super::import_text::start(
+        host,
+        &request.path,
+        Some(request.range),
+        request.text,
+    )
+    .await
+    {
+        Ok(job) => job.wait().await,
+        Err(error) => Err(error),
+    };
     assert!(ui.receive_reparse(token, result, "reparsed", "canceled"));
     token
 }
@@ -170,6 +180,7 @@ async fn reparse_ui_contract_preserves_drafts_and_session_owned_partial_results(
     ui.selected = Some(id);
     ui.detail_loading = true;
     failures(&host, &mut ui, &input).await;
+    encoding_policy(&host, &mut ui, &input).await;
     signal_loop(&host, &ui, &input).await;
     cancel_and_shutdown(host, &mut ui, &input).await;
     let next = Host::start(config()).await.expect("clean restart");
@@ -337,4 +348,88 @@ async fn signal_loop(host: &Host, ui: &AppState, input: &Utf8Path) {
     );
     assert_eq!(signal.read().progress, aftercast::ImportProgress::default());
     assert!(signal.read().phase == Phase::Stopping);
+}
+
+async fn encoding_policy(host: &Host, ui: &mut AppState, input: &Utf8Path) {
+    assert!(
+        ui.edit_import_text(ui.text_view(), "encoding", "cp949")
+            .expect("encoding edit")
+    );
+    let selected = ui.import_text.options();
+    std::fs::write(input,b"0|100|\xc7\xd1\xb1\xdb\n1|200|\xc7\xd1\xb1\xdb\n1|300|\xc7\xd1\xb1\xdb\n2|400|\xc7\xd1\xb1\xdb\n3|999\n").expect("Korean range");
+    let compiled = request(ui);
+    assert_eq!(compiled.text, selected);
+    let token = ui.begin_reparse(compiled.clone()).expect("range admission");
+    assert!(
+        !ui.edit_import_text(ui.text_view(), "encoding", "ascii")
+            .expect("busy edit rejected")
+    );
+    ui.screen = "analysis";
+    let result =
+        super::super::import_text::start(host, &compiled.path, Some(compiled.range), compiled.text)
+            .await
+            .expect("range start")
+            .wait()
+            .await;
+    assert!(ui.receive_reparse(token, result, "reparsed", "cancelled"));
+    assert_eq!(ui.message, "reparsed · 3 / 5 · 1");
+    assert_eq!(ui.screen, "analysis");
+    assert_eq!(ui.import_text.options(), selected);
+    let graph = host.encounters(0, 256).await.expect("graph");
+    let last = graph.items.last().expect("Korean encounter");
+    let logs = host
+        .encounter_logs(last.id, 0, 16)
+        .await
+        .expect("logs")
+        .expect("scope");
+    assert_eq!(
+        logs.page.items.first().expect("first source").text,
+        "1|200|한글"
+    );
+    encoded_partial_failure(host, ui, input).await;
+    assert!(
+        ui.edit_import_text(ui.text_view(), "invalid", "strict")
+            .expect("strict reset")
+    );
+    assert!(
+        ui.edit_import_text(ui.text_view(), "encoding", "plugin")
+            .expect("inherit reset")
+    );
+}
+async fn encoded_partial_failure(host: &Host, ui: &mut AppState, input: &Utf8Path) {
+    assert!(
+        ui.edit_import_text(ui.text_view(), "encoding", "utf8")
+            .expect("explicit UTF8")
+    );
+    let selected = ui.import_text.options();
+    let draft = ui.reparse.draft.clone();
+    std::fs::write(input, b"1|100|valid\n1|200|\xff\n3|0|stop\n").expect("bad range source");
+    let before = host.encounters(0, 256).await.expect("before").total;
+    execute(host, ui).await;
+    assert!(ui.error.is_some());
+    assert_eq!(ui.reparse.draft, draft);
+    assert_eq!(ui.import_text.options(), selected);
+    let graph = host.encounters(before, 1).await.expect("partial");
+    assert_eq!(graph.items.first().expect("partial encounter").damage, 100);
+    assert!(
+        ui.edit_import_text(ui.text_view(), "invalid", "replace")
+            .expect("replace edit")
+    );
+    execute(host, ui).await;
+    assert!(ui.error.is_none());
+    let graph = host.encounters(before + 1, 1).await.expect("replacement");
+    let id = graph.items.first().expect("replaced encounter").id;
+    let logs = host
+        .encounter_logs(id, 0, 16)
+        .await
+        .expect("logs")
+        .expect("scope");
+    assert!(
+        logs.page
+            .items
+            .get(1)
+            .expect("replaced source")
+            .text
+            .contains('\u{fffd}')
+    );
 }

@@ -22,7 +22,7 @@ probe on Linux, not execution of ACT's native import dialog or Windows Framework
 Omitting options snapshots the plugin-selected `FormActMain.LogEncoding`; the
 replacement root defaults to strict UTF-8. The existing Bridge/Rust full/range
 routes inherit a plugin's selection. Explicit Bridge/Rust options are connected
-below; GUI selection remains a subsequent connection unit.
+below, together with shared GUI selection and draft ownership.
 
 | Code page     | Explicit encoding          |
 | ------------- | -------------------------- |
@@ -95,14 +95,40 @@ fresh Host. A synthetic KoreanEncodingPlugin separately proves omitted-option
 inheritance, explicit UTF-8 override, preserved plugin defaults and restoration of
 strict UTF-8 after deinitialization. No user files or live capture are involved.
 
-## Remaining connection and validation
+## Import and range GUI
 
-Import/reparse GUI choice, draft/session ownership and restart policy remain
-pending. Existing requests retain their prior defaults. Companion registration/
-dispatch and source matching remain separate finite tasks. Windows native import,
-legacy Framework code-page equivalence and actual plugin/UI behavior remain
-unexecuted. This does not claim arbitrary .NET encodings or live-follower encoding
-parity. The existing LogFollower forward reader and backward zone-context search
-both hardcode strict UTF-8, unlike ACT's LogEncoding-based live reader. This is a
-confirmed Linux-capable follow-up after import GUI, requiring its own append,
+The existing Rust/UI Label/Button pattern and native selects expose a shared
+source-decoding draft above full-file and explicit-range import. Inherit plugin
+LogEncoding is the initial choice; its help explains the strict UTF-8 root default
+and plugin override. Explicit selection exposes strict/standard-replacement and
+other-BOM detection. Inherited mode hides those inapplicable draft controls rather
+than showing an apparently effective strict policy. Selected preamble behavior,
+replacement text changes and partial-result retention are explained alongside them.
+Checkpoint restore and live capture do not consume these choices.
+
+| Boundary            | GUI behavior                                                                                                                                                                                                                               |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Full-file selection | Reserve a session/generation token synchronously before the file dialog. Duplicate clicks cannot open another picker. The request owns its draft before the dialog; selection errors/cancel release only that matching reservation.        |
+| Native admission    | Recheck Host readiness and initialized plugins. Dispatch the captured options by value, including the range path. Editing is disabled and guarded while choosing/importing; changing model state cannot rewrite an accepted request.       |
+| Completion          | App-owned cleanup survives tab navigation. Match the pending token/session before publishing; duplicate/old replies cannot clear a newer request. Refresh the graph after both success and failure so partial results remain discoverable. |
+| Draft lifetime      | Keep encoding, byte policy, BOM choice and entered paths after errors/cancellation/navigation/Host restart. Invalid choices retain the previous draft. Switching back to explicit selection retains its last visible policy.               |
+| App restart         | Recreate the draft as plugin inheritance. These per-log choices are deliberately outside Settings/config.toml and Save settings; no implicit cross-app decoding policy is introduced.                                                      |
+
+Actual synthetic Host controller tests exercise Korean plugin inheritance vs explicit
+UTF-8 strict, full/range dispatch through the production helper, equal-time source
+rows, malformed suffix/retained originals and damage, replacement, BOM toggle,
+missing paths, request snapshots, duplicate selection/admission, selection cancel,
+new requests, late old picker/worker responses, navigation, cancellation, Host
+restart and new-App defaults. Headless contracts do not exercise the OS picker or
+screen input. A Windows desktop scenario is prepared/discovered, not executed on
+Linux. The .NET encoding probe and existing native Windows QA remain separate.
+
+## Remaining validation and follow-up
+
+Companion registration/dispatch and source matching remain separate finite tasks.
+Windows native import, legacy Framework code-page equivalence and actual plugin/UI
+behavior remain unexecuted. This does not claim arbitrary .NET encodings or
+live-follower encoding parity. The existing LogFollower forward reader and backward
+zone-context search both hardcode strict UTF-8, unlike ACT's LogEncoding-based live
+reader. This is a confirmed Linux-capable follow-up requiring its own append,
 rotation, partial-record and context-search regressions; it is not implemented here.

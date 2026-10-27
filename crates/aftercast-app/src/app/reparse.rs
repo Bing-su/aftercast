@@ -15,6 +15,7 @@ struct Request {
     path: Utf8PathBuf,
     range: ImportRange,
     bounds: String,
+    text: Option<aftercast::ImportTextOptions>,
 }
 impl Draft {
     fn compile(&self, root: &Utf8Path) -> Result<Request, &'static str> {
@@ -35,6 +36,7 @@ impl Draft {
             path: crate::config::resolve(root, path),
             range,
             bounds: format!("{} — {}", self.start, self.end),
+            text: None,
         })
     }
 }
@@ -62,6 +64,11 @@ impl ReparseState {
     }
 }
 impl AppState {
+    fn compile_reparse(&self) -> Result<Request, &'static str> {
+        let mut request = self.reparse.draft.compile(&self.root)?;
+        request.text = self.import_text.options();
+        Ok(request)
+    }
     fn reparse_view(&self) -> Token {
         Token {
             session: self.revision.session,
@@ -75,6 +82,8 @@ impl AppState {
         self.phase == Phase::Ready
             && !self.loading
             && !self.reparse.active()
+            && !self.import_text.active()
+            && !self.exit_requested
             && self
                 .plugins
                 .iter()
@@ -85,6 +94,7 @@ impl AppState {
             return None;
         }
         self.reparse.generation += 1;
+        self.import_text.invalidate_view();
         let token = Token {
             session: self.revision.session,
             generation: self.reparse.generation,
@@ -129,6 +139,7 @@ impl AppState {
             return false;
         }
         self.reparse.pending = None;
+        self.import_text.invalidate_view();
         self.phase = Phase::Ready;
         self.invalidate_restored_context();
         match result {
@@ -151,7 +162,7 @@ fn submit(mut state: Signal<AppState>, view: Token) {
     let Some(handle) = state.read().handle() else {
         return;
     };
-    let request = state.read().reparse.draft.compile(&state.read().root);
+    let request = state.read().compile_reparse();
     let request = match request {
         Ok(request) => request,
         Err(key) => {
@@ -166,7 +177,14 @@ fn submit(mut state: Signal<AppState>, view: Token) {
     let canceled = tr("import-cancelled");
     // The app owns accepted cleanup, e.g. leaving Import must not abandon a partially parsed graph.
     spawn_forever(async move {
-        let result = match handle.start_import_range(request.path, request.range).await {
+        let result = match super::import_text::start(
+            &handle,
+            &request.path,
+            Some(request.range),
+            request.text,
+        )
+        .await
+        {
             Ok(job) => super::wait_import(state, job, token.session).await,
             Err(error) => Err(error),
         };
@@ -184,6 +202,7 @@ fn edit(mut state: Signal<AppState>, view: Token, field: &str, value: String) {
         || current.reparse.active()
         || !matches!(current.phase, Phase::Idle | Phase::Ready)
         || current.loading
+        || current.import_text.active()
     {
         return;
     }
@@ -203,7 +222,8 @@ pub(super) fn ReparseControls() -> Element {
     let pending = current.reparse.pending.clone();
     let blocked = current.reparse.active()
         || !matches!(current.phase, Phase::Idle | Phase::Ready)
-        || current.loading;
+        || current.loading
+        || current.import_text.active();
     let can_submit = current.can_reparse();
     let canceling = current.cancel_import;
     drop(current);

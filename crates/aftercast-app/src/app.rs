@@ -1,6 +1,7 @@
 mod analysis;
 mod encounter_context;
 mod history;
+mod import_text;
 mod log_window;
 mod notifications;
 mod plugin_tables;
@@ -27,7 +28,6 @@ use dioxus::desktop::{
 use dioxus::prelude::*;
 use dioxus_i18n::prelude::*;
 use dioxus_i18n::unic_langid::langid;
-use miette::{IntoDiagnostic, Result};
 
 use crate::{
     ApplicationRoot,
@@ -43,6 +43,7 @@ enum Phase {
     Initializing,
     Ready,
     Importing,
+    SelectingImport,
     Archiving,
     ReadingHistory,
     ReadingTables,
@@ -62,6 +63,7 @@ impl Phase {
             Self::Initializing => "initializing",
             Self::Ready => "ready",
             Self::Importing => "importing",
+            Self::SelectingImport => "selecting-import",
             Self::Archiving => "archiving",
             Self::ReadingHistory => "reading-history",
             Self::ReadingTables => "reading-tables",
@@ -120,6 +122,7 @@ struct AppState {
     revision: Revision,
     cancel_import: bool,
     import_path: String,
+    import_text: import_text::State,
     reparse: reparse::ReparseState,
     progress: ImportProgress,
     message: String,
@@ -192,6 +195,7 @@ impl AppState {
             revision: Revision::default(),
             cancel_import: false,
             import_path: String::new(),
+            import_text: Default::default(),
             reparse: Default::default(),
             progress: ImportProgress::default(),
             message: String::new(),
@@ -284,6 +288,7 @@ pub fn App() -> Element {
                     Phase::Ready
                     | Phase::Initializing
                     | Phase::Importing
+                    | Phase::SelectingImport
                     | Phase::Archiving
                     | Phase::ReadingHistory
                     | Phase::ReadingTables
@@ -513,6 +518,7 @@ fn stop(mut state: Signal<AppState>) {
         state.history = Default::default();
         state.plugin_tables.reset_session();
         state.reparse.reset_session();
+        state.import_text.reset_session();
         state.notifications = Default::default();
         state.plugin_ui_pending = false;
         state.loading = false;
@@ -606,78 +612,61 @@ async fn load_encounter(
 }
 
 fn import_log(mut state: Signal<AppState>) {
-    if state.read().phase != Phase::Ready || state.read().plugins.is_empty() {
+    let Some(selection) = state.write().select_full_import() else {
         return;
-    }
+    };
     let language = i18n();
-    // Imports belong to the app, e.g. changing tabs must not cancel cleanup and leave Phase::Importing stuck.
+    let configured = state.peek().import_path.trim().to_owned();
+    // Own file selection and cleanup at App scope; duplicate clicks cannot open another picker.
     spawn_forever(async move {
-        let session = state.read().revision.session;
-        let configured = state.peek().import_path.trim().to_owned();
+        let current = state.read().current_full_selection(selection.token);
+        if !current {
+            state.write().abandon_full_selection(selection.token);
+            return;
+        }
+
         let path = if configured.is_empty() {
             let Some(file) = rfd::AsyncFileDialog::new().pick_file().await else {
+                state.write().abandon_full_selection(selection.token);
                 return;
             };
             match Utf8PathBuf::from_path_buf(file.path().to_owned()) {
                 Ok(path) => path,
                 Err(path) => {
-                    state
-                        .write()
-                        .fail(format!("Non-UTF-8 path: {}", path.display()));
+                    state.write().reject_full_selection(
+                        selection.token,
+                        format!("Non-UTF-8 path: {}", path.display()),
+                    );
                     return;
                 }
             }
         } else {
             resolve(&state.peek().root, &configured)
         };
-        if state.read().phase != Phase::Ready || state.read().revision.session != session {
-            return;
-        }
-        state.write().import_path = path.to_string();
-        let Some(handle) = state.read().handle() else {
+        let handle = state.read().handle();
+        let Some(handle) = handle else {
+            state.write().abandon_full_selection(selection.token);
             return;
         };
-        state.write().plugin_tables.invalidate();
-        state.write().phase = Phase::Importing;
-        state.write().cancel_import = false;
-        let result = run_import(state, handle, path, session).await;
-        if state.read().revision.session != session {
+        let admission = state.write().admit_full_path(selection.token, path.clone());
+        let Some(request) = admission else {
+            state.write().abandon_full_selection(selection.token);
             return;
+        };
+        let result = match import_text::start(&handle, &path, None, request.options()).await {
+            Ok(job) => wait_import(state, job, selection.token.session).await,
+            Err(error) => Err(error),
+        };
+        let received = state.write().receive_full_import(
+            selection.token,
+            result,
+            &language.translate("import-complete"),
+            &language.translate("import-cancelled"),
+        );
+        if received {
+            refresh(state, 0);
         }
-        state.write().plugin_tables.invalidate();
-        state.write().phase = Phase::Ready;
-        match result {
-            Ok(report) => {
-                state.write().message = format!(
-                    "{} · {} / {} · {}",
-                    language.translate("import-complete"),
-                    report.records_dispatched,
-                    report.lines_read,
-                    report.encounters
-                )
-            }
-            Err(error)
-                if matches!(
-                    error.downcast_ref::<aftercast::Error>(),
-                    Some(aftercast::Error::Cancelled)
-                ) =>
-            {
-                state.write().message = language.translate("import-cancelled")
-            }
-            Err(error) => state.write().fail_report(error),
-        }
-        refresh(state, 0);
     });
-}
-
-async fn run_import(
-    state: Signal<AppState>,
-    handle: HostHandle,
-    path: Utf8PathBuf,
-    session: u64,
-) -> Result<aftercast::ImportReport> {
-    let job = handle.start_import(path).await.into_diagnostic()?;
-    wait_import(state, job, session).await.into_diagnostic()
 }
 
 async fn wait_import(

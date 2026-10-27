@@ -42,7 +42,7 @@ pub(super) fn Header() -> Element {
                     variant: ButtonVariant::Ghost,
                     aria_label: tr("import-log"),
                     class: "px-2".to_owned(),
-                    disabled: phase != Phase::Ready || state.read().plugins.is_empty(),
+                    disabled: !state.read().can_full_import(),
                     onclick: move |_| import_log(state),
                     icons::FileUp {}
                 }

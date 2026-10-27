@@ -352,3 +352,21 @@ notifications-count-unknown = 아직 읽지 않은 알림 수를 확인하지 �
 notifications-snapshot-help = 다른 페이지를 포함해 이 페이지를 마지막으로 새로 고쳤을 때의 전체 기록까지 적용합니다. 이후 들어온 알림은 보존합니다. 읽은 알림 정리는 누락 건수에 포함하지 않습니다.
 
 updating-notifications = 알림 기록 갱신 중…
+
+import-text-title = 원본 로그 디코딩
+import-text-help = 전체 파일 가져오기와 원본 범위 재파싱에 적용합니다. 체크포인트 복원이나 실시간 수집은 바꾸지 않습니다. BOM으로 Unicode 인코딩이 선택될 수 있으며 strict 정책은 유지됩니다.
+import-text-encoding = 원본 인코딩
+import-text-plugin = 플러그인 LogEncoding 상속
+import-text-invalid = 잘못된 원본 바이트
+import-text-strict = Strict: 잘못된 바이트에서 중단
+import-text-replace = ACT 방식의 표준 대체
+import-text-bom = 다른 Unicode BOM 감지
+import-text-plugin-help = 요청 수락 시 플러그인의 인코딩과 오류 정책을 사용합니다. 플러그인이 바꾸지 않으면 strict UTF-8입니다. UTF-8을 직접 선택하면 플러그인 설정 대신 선택한 오류 정책을 적용합니다.
+import-text-replace-help = 대체 정책은 원본 문자를 바꿀 수 있습니다. Strict는 잘못된 행을 보고하고 앞서 가져온 결과를 유지합니다.
+import-text-session-help = 두 가져오기 경로가 공유하는 실행 중 초안입니다. 오류·취소·탭 이동·Host 재시작 후에도 유지합니다. 앱을 다시 시작하면 플러그인 상속으로 돌아가며 설정 저장에는 포함하지 않습니다.
+import-text-invalid-choice = 지원하지 않는 디코딩 선택입니다. 이전 초안을 유지했습니다.
+import-text-picking = 원본 파일을 선택하세요. 디코딩 초안을 고정했으며, 바꾸려면 대화상자를 취소하세요.
+
+selecting-import = 가져올 원본 선택 중…
+
+import-text-bom-help = 다른 Unicode BOM 감지를 꺼도 선택한 인코딩 자체의 preamble은 소비합니다.
