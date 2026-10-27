@@ -16,7 +16,7 @@ internal sealed class PluginRecord(string path, IActPluginV1 plugin)
 }
 
 // EntryPoint serializes calls; mark states before callbacks so failures are never implicitly retried.
-internal sealed class PluginSession
+internal sealed partial class PluginSession
 {
     private readonly Dictionary<long, PluginRecord> plugins = new();
     private readonly List<long> initialized = new();
@@ -113,7 +113,11 @@ internal sealed class PluginSession
         Host().BeginImport(path, range, text);
         return 0;
     });
-    internal ImportResult? AdvanceImport(bool cancel) => OnOwner(() => Host().AdvanceImport(cancel));
+    internal ImportResult? AdvanceImport(bool cancel) => OnOwner(() =>
+    {
+        if (sourceImportOwner != 0) throw new InvalidOperationException("Source import requires its owned continuation");
+        return Host().AdvanceImport(cancel);
+    });
     internal ImportProgress ImportProgress => OnOwner(() => Host().ImportProgress);
     private Task<int>? archive;
     internal void BeginArchive(int command, string text, ulong id, bool compressed) => OnOwner(() =>
@@ -342,6 +346,7 @@ internal sealed class PluginSession
         plugins.Clear();
         initialized.Clear();
         directory = null;
+        sourceImportOwner = liveSourceOwner = 0; liveRootGeneration = 0; liveRequest = null;
         speechEnabled = false;
         soundEnabled = false;
         soundVolume = ttsVolume = 100;

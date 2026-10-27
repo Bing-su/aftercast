@@ -168,7 +168,16 @@ namespace Aftercast.ActCompat
         public Tuple<long, string[]> DiagnosticsSnapshot => main.DiagnosticsSnapshot;
         public ImportResult ImportLog(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null) => main.ImportLog(path, range, text, companions);
         public void BeginImport(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null) => main.BeginImport(path, range, text, companions);
-        public void OpenLogWithCompanions(IReadOnlyList<ImportCompanion> companions, bool getCurrentZone = false, TimeSpan? maxClockWait = null) => main.OpenLogWithCompanions(getCurrentZone, companions, maxClockWait);
+        public void OpenLogWithCompanions(IReadOnlyList<ImportCompanion> companions, bool getCurrentZone = false, TimeSpan? maxClockWait = null, ImportTextOptions? mainText = null) => main.OpenLogWithCompanions(getCurrentZone, companions, maxClockWait, mainText);
+        public long LiveLogGeneration => main.LiveLogGeneration;
+        public long OpenLiveLog(string path, IReadOnlyList<ImportCompanion> companions, bool getCurrentZone, TimeSpan maxClockWait, ImportTextOptions? text)
+        {
+            main.EnsureCanWaitForLogReader();
+            main.LogFilePath = path;
+            main.OpenLogWithCompanions(getCurrentZone, companions, maxClockWait, text);
+            return main.LiveLogGeneration;
+        }
+        public void CloseLiveLog(long generation) => main.CloseLiveLog(generation);
         public LiveLogSourceStatus[] ReadLiveLogSources() => main.ReadLiveLogSources();
         public ImportProgress ImportProgress => main.CurrentImportProgress;
         public ImportResult? AdvanceImport(bool cancel) => main.AdvanceImport(cancel);

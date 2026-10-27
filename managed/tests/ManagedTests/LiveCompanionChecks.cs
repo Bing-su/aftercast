@@ -187,7 +187,7 @@ internal static class LiveCompanionChecks
         fixture.Root.BeforeLogLineRead -= switcher;
         Append(fixture.Main, "0|new-main\n");
         Wait(() => fixture.Seen.Count == 1, "new reader after callback reopen");
-        Check(fixture.Seen.Single().Line == "0|new-main" && fixture.Host.ReadLiveLogSources().Length == 0, "stale group dispatched after reentrant replacement");
+        Check(fixture.Seen.Single().Line == "0|new-main" && fixture.Host.ReadLiveLogSources() is [{ Name: "" }], "stale group dispatched after reentrant replacement");
         fixture.Host.OpenLogWithCompanions([new("side")]);
         var import = Path.Combine(fixture.Directory.FullName, "import.log");
         var before = fixture.Seen.Count;

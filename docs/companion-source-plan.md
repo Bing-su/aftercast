@@ -126,8 +126,9 @@ is connected below; C3 transport/UI remains pending.
 uses the explicitly configured main LogFilePath and a copied, name-sorted source
 selection. It reuses ImportCompanion(Name, Text) for the source codec descriptor;
 this does not start an import. Ordinary ACT OpenLog stays a single-source path.
-`ReadLiveLogSources()` returns managed status snapshots for the current group;
-Bridge/Rust/GUI selection and status transport are **not connected** yet.
+`ReadLiveLogSources()` returns managed status snapshots for the current reader selection, including ordinary single-main following.
+The Bridge endpoint is connected below; Rust/GUI selection and status transport
+are **not connected** yet.
 
 Every main/companion reader opens before the dispatcher starts and seeks its
 initial EOF. Existing history is not replayed; the initial zone snapshot belongs
@@ -196,3 +197,45 @@ exclusive-lock test reaches FileStream open **after main and an earlier companio
 reader started**, then verifies earlier handle release, old dispatcher exit and
 ordinary/group retry. Native ACT companion execution, Windows filesystem/UI
 interaction and live game capture have not been run.
+
+## C3a Bridge checkpoint (Rust binding pending)
+
+CompanionCommand is a separate bounded ABI; the existing 64-byte import operation
+and ordinary OpenLog defaults remain unchanged. Each call supplies a 32-byte
+version-1/session header and exactly 512 KiB reply capacity, reserved before any
+callback or mutation. Input JSON is 2..128 KiB, strict UTF-8, at most depth 16,
+object-only, rejects duplicate/unknown keys, and validates command-specific
+fields. Main paths are absolute, control-free, at most 8192 UTF-8 bytes. Source
+name/codec/count, inclusive ticks and positive clock timeout <=300000 ms are
+validated before admission. Output diagnostics are capped to 2048 UTF-16 units
+with an ErrorTruncated marker; path/count limits bound the rest of the reply.
+
+| Command                     | Ownership and response                                                                                                                                                                                                                                                               |
+| --------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| 1 Begin source import       | Explicit main Path, nullable Text, explicit Companions array (empty means single source), optional paired inclusive StartTicks/EndTicks. Returns a new opaque owner ID; no native pointer or caller object is retained.                                                              |
+| 2 Advance / 3 Cancel import | Require that exact active owner ID. Reply contains pending progress, final result or cancellation, always tagged with that owner. Progress/result carry CompanionHeadsExcluded. Completion/failure/cancel retires the ID. Legacy continuation cannot advance an owned source import. |
+| 4 Open/replace live         | Owner=0 opens a fresh selection; replacing requires the current owner. Path, Text, Companions, GetCurrentZone and per-open ClockWaitMilliseconds are captured. Main explicit decoding does not overwrite plugin LogEncoding. Returns the captured selection and owned source status. |
+| 5 Live status               | Require current live owner and the root generation captured at open, checked again after snapshot creation. A plugin's external OpenLog invalidates that native selection; merely changing a draft path does not redirect an owned reader.                                           |
+| 6 Close live                | Require the exact current owner/generation, join readers without shutting down the Host or combat engine, then retire the owner. Reopening is a new explicit request, never implicit handle reuse.                                                                                   |
+
+Owner IDs are monotonic within the PluginSession and commands also require the
+active outer session header. Import and live IDs are distinct allocations.
+Invalid option/schema/capacity requests preserve an active live selection. An
+attempt that reaches a failing open retires the old capture according to existing
+OpenLog semantics and leaves no new live owner; a fresh Owner=0 request can retry.
+Session stop clears import/live ownership. Current-group status exposes source
+name/path, state, queue count, pending ticks, per-image generation, dropped head
+records and bounded diagnostic text. Single-main status now exposes its owned
+path, image generation and last diagnostic too. Source image generation alone is
+not a session or selection authority.
+
+CompanionAbiChecks calls the actual managed entry point with native buffers and
+a synthetic initialized parser. It covers short buffers/reserved/session fields,
+malformed UTF-8/schema/duplicate JSON, invalid codecs/ranges/options, owner-bound
+import completion/exclusion/cancel, caller snapshot independence, stale IDs,
+empty-companion single-source mode, external plugin reopen and a later locked
+source's real partial-open failure/cleanup/retry. Managed full checks pass.
+These tests are in-process ABI tests, **not isolated Rust-worker coverage**.
+Rust Request/delegate binding, typed session-owned handles, actual worker
+regressions and GUI remain pending next C3 units. Native ACT thread timing and
+Windows execution are still unverified.

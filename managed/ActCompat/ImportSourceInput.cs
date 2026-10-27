@@ -5,7 +5,10 @@ using Aftercast.ActCompat;
 namespace Aftercast.ActCompat
 {
     // Explicit companion selection is copied at admission; null Text inherits the admitted main codec.
-    public sealed record ImportCompanion(string Name, ImportTextOptions? Text = null);
+    public sealed record ImportCompanion(string Name, ImportTextOptions? Text = null)
+    {
+        public void Validate() { Advanced_Combat_Tracker.CompanionLogCatalog.ValidateName(Name); _ = new UTF8Encoding(false, true).GetByteCount(Name); Text?.Validate(); }
+    }
 }
 
 namespace Advanced_Combat_Tracker

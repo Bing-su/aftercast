@@ -46,7 +46,7 @@ namespace Advanced_Combat_Tracker
 
         internal LiveCompanionGroup(string path, Encoding encoding, ImportCompanion[] selected, TimeSpan maxClockWait,
             Func<string, DateTime> timestamp, Func<DateTime> clock, Func<bool> paused,
-            Action<string, string, string, DateTime, Func<bool>> dispatch, Action<Exception> report)
+            Action<string, string, string, DateTime, Func<bool>> dispatch, Action<Exception> report, bool mainDetectBom = true)
         {
             this.timestamp = timestamp; this.clock = clock; this.paused = paused;
             this.dispatch = dispatch; this.report = report; this.maxClockWait = maxClockWait;
@@ -65,7 +65,7 @@ namespace Advanced_Combat_Tracker
                     var text = index == 0 ? null : selected[index - 1].Text;
                     if (index != 0) RejectLinks(source.Path);
                     source.Reader = new(source.Path, line => Enqueue(source, line), error => ReaderError(source, error), () => false,
-                        true, text?.Resolve() ?? encoding, () => ImageChanged(source), text?.DetectBom ?? true);
+                        true, text?.Resolve() ?? encoding, () => ImageChanged(source), index == 0 ? mainDetectBom : text?.DetectBom ?? true);
                     if (!identities.Add(source.Reader.Identity)) throw new InvalidDataException("Live sources alias the same file");
                     if (index != 0)
                     {

@@ -37,9 +37,10 @@ public partial class FormActMain
 
     public void OpenLog(bool getCurrentZone, bool getCharNameFromFile) => OpenLogCore(getCurrentZone, getCharNameFromFile, [], TimeSpan.FromSeconds(30));
 
-    internal void OpenLogWithCompanions(bool getCurrentZone, IReadOnlyList<Aftercast.ActCompat.ImportCompanion> companions, TimeSpan? maxClockWait)
+    internal void OpenLogWithCompanions(bool getCurrentZone, IReadOnlyList<Aftercast.ActCompat.ImportCompanion> companions, TimeSpan? maxClockWait, Aftercast.ActCompat.ImportTextOptions? mainText = null)
     {
         ArgumentNullException.ThrowIfNull(companions);
+        mainText?.Validate();
         var selected = companions.ToArray();
         if (selected.Length > 8) throw new ArgumentException("At most eight live companions can be followed");
         var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -52,19 +53,23 @@ public partial class FormActMain
         }
         var wait = maxClockWait ?? TimeSpan.FromSeconds(30);
         if (wait <= TimeSpan.Zero || wait > TimeSpan.FromMinutes(5)) throw new ArgumentOutOfRangeException(nameof(maxClockWait));
-        OpenLogCore(getCurrentZone, false, selected.OrderBy(source => source.Name, StringComparer.OrdinalIgnoreCase).ToArray(), wait);
+        OpenLogCore(getCurrentZone, false, selected.OrderBy(source => source.Name, StringComparer.OrdinalIgnoreCase).ToArray(), wait, mainText);
     }
 
     internal Aftercast.ActCompat.LiveLogSourceStatus[] ReadLiveLogSources()
     {
-        LiveCompanionGroup? group;
-        lock (logGate) group = follower as LiveCompanionGroup;
-        return group?.ReadStatus() ?? [];
+        LogReader? current;
+        bool paused;
+        lock (logGate) { current = follower; paused = ReadThreadLock || logPauseDepth != 0; }
+        if (current is LiveCompanionGroup group) return group.ReadStatus();
+        if (current is LogFollower single) return [new("", single.SourcePath, !single.IsAlive ? "failed" : paused ? "paused" : "following", 0,
+            null, single.ImageVersion, single.Dropped, single.LastDiagnostic)];
+        return [];
     }
 
-    private void OpenLogCore(bool getCurrentZone, bool getCharNameFromFile, Aftercast.ActCompat.ImportCompanion[] companions, TimeSpan maxClockWait)
+    private void OpenLogCore(bool getCurrentZone, bool getCharNameFromFile, Aftercast.ActCompat.ImportCompanion[] companions, TimeSpan maxClockWait, Aftercast.ActCompat.ImportTextOptions? mainText = null)
     {
-        var encoding = Aftercast.ActCompat.ImportTextOptions.Validate(LogEncoding);
+        var encoding = mainText?.Resolve() ?? Aftercast.ActCompat.ImportTextOptions.Validate(LogEncoding);
         EnsureCanWaitForLogReader();
         if (getCharNameFromFile)
             throw new PlatformNotSupportedException("Character-name discovery from log filenames is not implemented");
@@ -95,11 +100,11 @@ public partial class FormActMain
                 if (logHostStopped || generation != logGeneration) return;
                 next = companions.Length == 0
                     ? new LogFollower(path, line => ReceiveLogLine(generation, path, line),
-                        error => WriteExceptionLog(error, "Log follower"), () => ReadThreadLock || IsLogDeliveryPaused(generation), initialSnapshot: true, encoding: encoding)
+                        error => WriteExceptionLog(error, "Log follower"), () => ReadThreadLock || IsLogDeliveryPaused(generation), initialSnapshot: true, encoding: encoding, imageChanged: null, detectBom: mainText?.DetectBom ?? true)
                     : new LiveCompanionGroup(path, encoding, companions, maxClockWait, GetLiveTimestamp,
                         () => LastEstimatedTime, () => ReadThreadLock || IsLogDeliveryPaused(generation),
                         (source, name, line, time, valid) => ReceiveLogLine(generation, source, line, name, time, valid),
-                        error => WriteExceptionLog(error, "Live companion"));
+                        error => WriteExceptionLog(error, "Live companion"), mainText?.DetectBom ?? true);
                 follower = next;
             }
             var snapshot = getCurrentZone ? next.ReadInitialZone(ZoneChangeRegex, () =>
@@ -134,6 +139,21 @@ public partial class FormActMain
             try { callback(false, path); }
             catch (Exception error) { WriteExceptionLog(error, "LogFileChanged subscriber"); }
         }
+    }
+
+    internal long LiveLogGeneration { get { lock (logGate) return logGeneration; } }
+    internal void CloseLiveLog(long expectedGeneration)
+    {
+        EnsureCanWaitForLogReader();
+        LogReader? previous;
+        lock (logGate)
+        {
+            if (logHostStopped || logGeneration != expectedGeneration) throw new InvalidOperationException("Live selection is stale");
+            ++logGeneration; readyGeneration = 0;
+            previous = follower; follower = null;
+            if (previous is not null) retiredFollowers.Add(previous);
+        }
+        if (previous is not null) DisposeRetiredFollower(previous);
     }
 
     private bool IsCurrentLog(long generation)

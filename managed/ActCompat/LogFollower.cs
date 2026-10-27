@@ -26,7 +26,8 @@ internal sealed class LogFollower : LogReader
     private Exception? reportingFailure;
     private readonly Action? imageChanged;
     private readonly bool detectBom;
-    private long observedPosition;
+    private long observedPosition, imageVersion = 1, dropped;
+    private string lastDiagnostic = "";
     private long InitialPosition { get; }
     internal override bool IsAlive => worker.IsAlive;
     internal override bool CallbackActive { get { lock (gate) return callbackActive; } }
@@ -106,6 +107,7 @@ internal sealed class LogFollower : LogReader
                     stream.Seek(0, SeekOrigin.Begin);
                     decoder.Reset();
                     Interlocked.Exchange(ref observedPosition, 0);
+                    Interlocked.Increment(ref imageVersion);
                     imageChanged?.Invoke();
                 }
                 var count = stream.Read(bytes, 0, bytes.Length);
@@ -118,6 +120,7 @@ internal sealed class LogFollower : LogReader
                         if (decoder.HasPending) Report(new InvalidDataException("Log replacement discarded an incomplete source record"));
                         decoder.Reset();
                         Interlocked.Exchange(ref observedPosition, 0);
+                        Interlocked.Increment(ref imageVersion);
                         imageChanged?.Invoke();
                         continue;
                     }
@@ -196,6 +199,10 @@ internal sealed class LogFollower : LogReader
         finally { candidate?.Dispose(); }
     }
 
+    internal string SourcePath => path;
+    internal long ImageVersion => Interlocked.Read(ref imageVersion);
+    internal long Dropped => Interlocked.Read(ref dropped);
+    internal string LastDiagnostic => Volatile.Read(ref lastDiagnostic);
     internal LogFileIdentity Identity { get { lock (gate) return identity; } }
     internal bool IsCurrentImage()
     {
@@ -241,6 +248,8 @@ internal sealed class LogFollower : LogReader
     private void Report(Exception error)
     {
         lock (gate) { if (disposed) return; }
+        Volatile.Write(ref lastDiagnostic, error.Message);
+        if (error is DecoderFallbackException or InvalidDataException) Interlocked.Increment(ref dropped);
         try { onError(error); }
         catch (Exception callbackError)
         {
