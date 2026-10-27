@@ -42,6 +42,9 @@ is promised. The managed compatibility entry point remains synchronous.
 
 Inclusive source date windows are available through `ImportRange`,
 `start_import_range` and `import_log_range`; see [source range contracts](source-range-import.md).
+The desktop Import / Export pane exposes a separate original-source range form;
+checkpoint restoration stays separate. Drafts survive errors/cancellation/host stop,
+and accepted import cleanup continues across navigation.
 Companion files, encodings other than strict UTF-8 and remaining ACT import UI
 options are unsupported.
 The public ACT data graph remains mutable for compatibility; direct concurrent

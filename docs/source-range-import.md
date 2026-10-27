@@ -49,9 +49,20 @@ ImportJob, and `import_log_range(path, range)` awaits its result.
 The real-worker import regression verifies matching inclusive/equal-time rows,
 retained action/log identity, empty range, malformed prefix/suffix, progress,
 partial results, cancellation/reuse, shutdown and stale-handle rejection.
-GUI source-path/range controls are the next unit. They must distinguish inclusive
-reparse bounds from exclusive metadata search bounds and reject stale session/UI
-responses. Native file dialog/input and Windows execution remain separate QA.
+The existing Import / Export pane now has a separate Rust/UI source-reparse
+section with an explicit path and required inclusive start/end. Calendar dates
+include the whole end day; exact timestamps include all matching boundary rows.
+Drafts remain after validation, I/O failure, cancellation and host stop. Checkpoint
+restore remains a distinct action with its own metadata search semantics.
+
+Controller regressions use an actual Host for duplicate admission, missing paths,
+partial encoding failure, empty ranges, navigation/cancellation, new partial
+encounter identity, shutdown and stale responses. A VirtualDom-owned Signal drives
+the actual shared ImportJob wait loop to check UI cancellation propagation and
+stale progress exclusion after session change. Shared civil parsing also covers
+DateTime's maximum day and 100 ns precision without timezone conversion.
+The Windows desktop scenario is discoverable but unexecuted on ser7; native
+clicks, focus and Windows runtime/input remain separate QA.
 
 ## Remaining ACT compatibility assessment
 

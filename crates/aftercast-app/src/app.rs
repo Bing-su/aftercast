@@ -5,6 +5,7 @@ mod log_window;
 mod notifications;
 mod plugins;
 mod preferences;
+mod reparse;
 mod shell;
 mod timers;
 mod triggers;
@@ -113,6 +114,7 @@ struct AppState {
     revision: Revision,
     cancel_import: bool,
     import_path: String,
+    reparse: reparse::ReparseState,
     progress: ImportProgress,
     message: String,
     error: Option<String>,
@@ -172,6 +174,7 @@ impl AppState {
             revision: Revision::default(),
             cancel_import: false,
             import_path: String::new(),
+            reparse: Default::default(),
             progress: ImportProgress::default(),
             message: String::new(),
             error: None,
@@ -487,6 +490,7 @@ fn stop(mut state: Signal<AppState>) {
         state.triggers = Default::default();
         state.timers = Default::default();
         state.history = Default::default();
+        state.reparse.reset_session();
         state.notifications = Default::default();
         state.plugin_ui_pending = false;
         state.loading = false;
@@ -613,7 +617,7 @@ fn import_log(mut state: Signal<AppState>) {
         };
         state.write().phase = Phase::Importing;
         state.write().cancel_import = false;
-        let result = run_import(state, handle, path).await;
+        let result = run_import(state, handle, path, session).await;
         if state.read().revision.session != session {
             return;
         }
@@ -643,15 +647,26 @@ fn import_log(mut state: Signal<AppState>) {
 }
 
 async fn run_import(
-    mut state: Signal<AppState>,
+    state: Signal<AppState>,
     handle: HostHandle,
     path: Utf8PathBuf,
+    session: u64,
 ) -> Result<aftercast::ImportReport> {
-    let mut job = handle.start_import(path).await.into_diagnostic()?;
-    let session = state.peek().revision.session;
+    let job = handle.start_import(path).await.into_diagnostic()?;
+    wait_import(state, job, session).await.into_diagnostic()
+}
+
+async fn wait_import(
+    mut state: Signal<AppState>,
+    mut job: aftercast::ImportJob,
+    session: u64,
+) -> std::result::Result<aftercast::ImportReport, aftercast::Error> {
+    if state.peek().revision.session != session || state.peek().cancel_import {
+        job.cancel();
+    }
     loop {
         tokio::select! {
-            result = &mut job => return result.into_diagnostic(),
+            result = &mut job => return result,
             () = dioxus_sdk::time::sleep(Duration::from_millis(100)) => {
                 if state.peek().cancel_import || state.peek().revision.session != session { job.cancel(); }
                 if state.peek().revision.session == session { state.write().progress = job.progress(); }

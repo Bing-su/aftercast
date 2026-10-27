@@ -1,0 +1,340 @@
+use super::*;
+use aftercast::{Host, HostConfig, PluginConfig, extract_bridge};
+
+#[test]
+fn source_range_drafts_keep_inclusive_dates_and_reject_invalid_input() {
+    let root = Utf8Path::new("/isolated");
+    let valid = Draft {
+        path: " source.log ".into(),
+        start: "1970-01-01".into(),
+        end: "1970-01-01".into(),
+    };
+    let request = valid.compile(root).expect("inclusive day");
+    assert_eq!(request.path, root.join("source.log"));
+    assert_eq!(
+        request.range.end_ticks() - request.range.start_ticks(),
+        864_000_000_000 - 1
+    );
+    let exact = Draft {
+        start: "1970-01-01T00:00:01.0000001".into(),
+        end: "1970-01-01T00:00:01.0000001".into(),
+        ..valid.clone()
+    };
+    let request = exact.compile(root).expect("equal timestamps");
+    assert_eq!(request.range.start_ticks(), request.range.end_ticks());
+    for draft in [
+        Draft {
+            path: String::new(),
+            ..valid.clone()
+        },
+        Draft {
+            path: "bad\0path".into(),
+            ..valid.clone()
+        },
+        Draft {
+            start: String::new(),
+            ..valid.clone()
+        },
+        Draft {
+            end: "2025-02-29".into(),
+            ..valid.clone()
+        },
+        Draft {
+            end: "1970-01-01T00:00:60".into(),
+            ..valid.clone()
+        },
+        Draft {
+            start: "1970-01-02".into(),
+            ..valid.clone()
+        },
+    ] {
+        let saved = draft.clone();
+        draft.compile(root).expect_err("invalid draft");
+        assert_eq!(draft, saved);
+    }
+    let maximum = Draft {
+        start: "9999-12-31".into(),
+        end: "9999-12-31".into(),
+        ..valid
+    };
+    assert_eq!(
+        maximum
+            .compile(root)
+            .expect("maximum full day")
+            .range
+            .end_ticks(),
+        3_155_378_975_999_999_999
+    );
+}
+async fn fixture(host: &Host, ui: &mut AppState) {
+    let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let id = host
+        .create_plugin(
+            PluginConfig::builder()
+                .path(path.clone())
+                .type_name("Aftercast.PluginFixture.ImportPlugin")
+                .build(),
+        )
+        .await
+        .expect("parser");
+    let status = host.initialize_plugin(id).await.expect("initialize");
+    ui.plugins.push(super::super::LoadedPlugin {
+        path: path.into_string(),
+        id,
+        status,
+        info: host.plugin_status(id).await.expect("status"),
+    });
+}
+fn request(ui: &AppState) -> Request {
+    ui.reparse.draft.compile(&ui.root).expect("range draft")
+}
+async fn execute(host: &Host, ui: &mut AppState) -> Token {
+    let request = request(ui);
+    let view = ui.reparse_view();
+    assert!(ui.current_reparse_view(view));
+    let token = ui.begin_reparse(request.clone()).expect("admission");
+    assert!(
+        !ui.current_reparse_view(view),
+        "old rendered submit cannot start another import"
+    );
+    assert!(
+        ui.begin_reparse(request.clone()).is_none(),
+        "duplicate request"
+    );
+    let result = host.import_log_range(&request.path, request.range).await;
+    assert!(ui.receive_reparse(token, result, "reparsed", "canceled"));
+    token
+}
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and synthetic fixture; run mise run test:gui-state"]
+async fn reparse_ui_contract_preserves_drafts_and_session_owned_partial_results() {
+    let temporary = tempfile::tempdir().expect("isolated reparse controller");
+    let root = Utf8Path::from_path(temporary.path()).expect("UTF8 path");
+    let bridge = root.join("bridge");
+    extract_bridge(&bridge).expect("bridge");
+    let executable = std::env::current_exe().expect("test binary");
+    let application = executable
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("target")
+        .join("examples")
+        .join(format!("test-application{}", std::env::consts::EXE_SUFFIX));
+    let config = || {
+        HostConfig::builder()
+            .dotnet_root(std::env::var("DOTNET_ROOT").expect("dotnet"))
+            .bridge_directory(bridge.clone())
+            .data_directory(root.join("state"))
+            .application_executable(
+                camino::Utf8PathBuf::try_from(application.clone()).expect("UTF8 executable"),
+            )
+            .build()
+    };
+    let host = Host::start(config()).await.expect("host");
+    let mut ui = AppState::new(root.to_owned());
+    ui.phase = Phase::Ready;
+    ui.revision.session = 1;
+    ui.reparse.draft = Draft {
+        path: "source.log".into(),
+        start: "1970-01-01T00:00:01".into(),
+        end: "1970-01-01T00:00:02".into(),
+    };
+    assert!(
+        ui.begin_reparse(request(&ui)).is_none(),
+        "initialized parser required"
+    );
+    fixture(&host, &mut ui).await;
+    let input = root.join("source.log");
+    std::fs::write(&input, "0|100\n1|200\n1|300\n2|400\n3|999\n").expect("source");
+    let draft = ui.reparse.draft.clone();
+    ui.loading = true;
+    assert!(
+        ui.begin_reparse(request(&ui)).is_none(),
+        "wait for active Analysis read"
+    );
+    ui.loading = false;
+    let generation = ui.log_windows.generation();
+    let token = execute(&host, &mut ui).await;
+    assert_eq!(ui.log_windows.generation(), generation + 2);
+    assert_eq!(ui.message, "reparsed · 3 / 5 · 1");
+    assert_eq!(ui.reparse.draft, draft);
+    assert!(!ui.receive_reparse(
+        token,
+        Err(aftercast::Error::Cancelled),
+        "duplicate",
+        "duplicate"
+    ));
+    let graph = host.encounters(0, 16).await.expect("graph");
+    let id = graph.items.first().expect("range encounter").id;
+    assert_eq!(graph.items.first().expect("range encounter").damage, 900);
+    ui.selected = Some(id);
+    ui.detail_loading = true;
+    failures(&host, &mut ui, &input).await;
+    signal_loop(&host, &ui, &input).await;
+    cancel_and_shutdown(host, &mut ui, &input).await;
+    let next = Host::start(config()).await.expect("clean restart");
+    next.shutdown().await.expect("restart shutdown");
+}
+async fn failures(host: &Host, ui: &mut AppState, input: &Utf8Path) {
+    let saved = ui.reparse.draft.clone();
+    ui.reparse.draft.path = "missing.log".into();
+    execute(host, ui).await;
+    assert!(ui.error.is_some());
+    assert_eq!(ui.reparse.draft.path, "missing.log");
+    assert!(ui.selected.is_none());
+    assert!(!ui.detail_loading);
+    ui.reparse.draft = saved.clone();
+    std::fs::write(input, [b"1|100\n".as_slice(), &[255, 10]].concat()).expect("malformed source");
+    let before = host.encounters(0, 16).await.expect("before failure").total;
+    execute(host, ui).await;
+    assert!(ui.error.is_some());
+    assert_eq!(ui.reparse.draft, saved);
+    let graph = host.encounters(0, 16).await.expect("partial graph");
+    assert_eq!(graph.total, before + 1);
+    assert!(
+        graph.items.iter().any(
+            |row| row.status == aftercast::EncounterStatus::PartialImport && row.damage == 100
+        )
+    );
+    ui.reparse.draft.start = "1970-01-02".into();
+    ui.reparse.draft.end = "1970-01-02".into();
+    std::fs::write(input, "1|100\n").expect("empty range source");
+    execute(host, ui).await;
+    assert_eq!(ui.message, "reparsed · 0 / 1 · 0");
+    ui.reparse.draft = saved;
+}
+async fn cancel_and_shutdown(host: Host, ui: &mut AppState, input: &Utf8Path) {
+    std::fs::write(input, "1|1\n".repeat(100_000)).expect("long source");
+    let request = request(ui);
+    let before = host
+        .encounters(0, 100)
+        .await
+        .expect("admitted graph")
+        .items
+        .into_iter()
+        .map(|row| row.id)
+        .collect::<Vec<_>>();
+    let token = ui.begin_reparse(request.clone()).expect("cancel request");
+    let job = host
+        .start_import_range(input, request.range)
+        .await
+        .expect("job");
+    let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+    while job.progress().records_dispatched == 0 {
+        host.diagnostics().await.expect("responsive");
+        assert!(std::time::Instant::now() < deadline, "progress deadline");
+        tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+    }
+    ui.progress = job.progress();
+    assert!(ui.progress.bytes_read <= ui.progress.total_bytes);
+    ui.screen = "history";
+    assert!(ui.cancel_reparse(token));
+    assert!(!ui.cancel_reparse(token));
+    job.cancel();
+    assert!(ui.receive_reparse(token, job.wait().await, "reparsed", "canceled"));
+    assert_eq!(ui.message, "canceled");
+    let graph = host.encounters(0, 100).await.expect("canceled graph");
+    let added = graph
+        .items
+        .iter()
+        .filter(|row| !before.contains(&row.id))
+        .collect::<Vec<_>>();
+    assert_eq!(added.len(), 1);
+    let partial = added.first().expect("this canceled range encounter");
+    assert_eq!(partial.status, aftercast::EncounterStatus::PartialImport);
+    assert!(partial.damage > 0);
+    assert_eq!(ui.screen, "history");
+    assert!(ui.phase == Phase::Ready);
+    stale_and_shutdown(host, ui, input, token).await;
+}
+
+async fn stale_and_shutdown(host: Host, ui: &mut AppState, input: &Utf8Path, token: Token) {
+    let request = request(ui);
+    // The completed response must not cancel or acknowledge the next request in this session.
+    let current = ui.begin_reparse(request.clone()).expect("next request");
+    assert!(!ui.cancel_reparse(token));
+    assert!(!ui.receive_reparse(token, Err(aftercast::Error::Cancelled), "late", "late"));
+    assert!(ui.reparse.active());
+    let job = host
+        .start_import_range(input, request.range)
+        .await
+        .expect("shutdown import");
+    let generation = ui.log_windows.generation();
+    let draft = ui.reparse.draft.clone();
+    ui.revision.session += 1;
+    ui.reparse.reset_session();
+    ui.phase = Phase::Stopping;
+    host.shutdown().await.expect("drained shutdown");
+    assert!(!ui.receive_reparse(current, job.wait().await, "late", "late"));
+    assert!(!ui.cancel_reparse(current));
+    assert_eq!(ui.reparse.draft, draft);
+    assert_eq!(ui.log_windows.generation(), generation);
+    assert!(ui.phase == Phase::Stopping);
+}
+
+async fn signal_loop(host: &Host, ui: &AppState, input: &Utf8Path) {
+    let dom = VirtualDom::new(|| rsx! {});
+    let mut signal = dom.in_scope(ScopeId::ROOT, || {
+        let mut state = AppState::new(ui.root.clone());
+        state.plugins = ui.plugins.clone();
+        state.phase = Phase::Ready;
+        state.revision.session = ui.revision.session;
+        state.reparse.draft = ui.reparse.draft.clone();
+        Signal::new(state)
+    });
+    std::fs::write(input, "1|1\n".repeat(100_000)).expect("signal source");
+    let request = request(&signal.read());
+    let token = signal
+        .write()
+        .begin_reparse(request.clone())
+        .expect("signal admission");
+    let job = host
+        .start_import_range(input, request.range)
+        .await
+        .expect("signal job");
+    let cancel = async move {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        signal.write().screen = "analysis";
+        assert!(signal.write().cancel_reparse(token));
+    };
+    let (result, ()) = tokio::join!(
+        super::super::wait_import(signal, job, token.session),
+        cancel
+    );
+    assert!(matches!(result, Err(aftercast::Error::Cancelled)));
+    assert!(
+        signal
+            .write()
+            .receive_reparse(token, result, "reparsed", "canceled")
+    );
+    assert_eq!(signal.read().message, "canceled");
+    assert_eq!(signal.read().screen, "analysis");
+    let token = signal
+        .write()
+        .begin_reparse(request.clone())
+        .expect("second signal request");
+    let job = host
+        .start_import_range(input, request.range)
+        .await
+        .expect("second signal job");
+    let replace = async move {
+        tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+        let mut state = signal.write();
+        state.revision.session += 1;
+        state.reparse.reset_session();
+        state.phase = Phase::Stopping;
+        state.progress = Default::default();
+    };
+    let (result, ()) = tokio::join!(
+        super::super::wait_import(signal, job, token.session),
+        replace
+    );
+    assert!(matches!(result, Err(aftercast::Error::Cancelled)));
+    assert!(
+        !signal
+            .write()
+            .receive_reparse(token, result, "late", "late")
+    );
+    assert_eq!(signal.read().progress, aftercast::ImportProgress::default());
+    assert!(signal.read().phase == Phase::Stopping);
+}

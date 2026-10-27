@@ -143,7 +143,7 @@ pub(super) fn ImportPane() -> Element {
                     icons::FileUp {}
                     {tr("import-log")}
                 }
-                if state.read().phase == Phase::Importing {
+                if state.read().phase == Phase::Importing && !state.read().reparse.active() {
                     Button {
                         variant: ButtonVariant::Outline,
                         disabled: state.read().cancel_import,
@@ -168,6 +168,7 @@ pub(super) fn ImportPane() -> Element {
                     }
                 }
             }
+            super::reparse::ReparseControls {}
             div { class: "my-5 flex flex-wrap gap-3",
                 Button {
                     variant: ButtonVariant::Outline,
