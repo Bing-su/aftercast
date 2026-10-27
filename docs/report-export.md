@@ -21,8 +21,8 @@ still the separately configured Windows step of `test:text-exports`.
 Original text export also has native font/tabulation, RTF and additional output /
 selective-export preference branches. This first bounded slice does not add those
 missing compatibility overloads or claim their options are implemented. The catalog now copies the actual built-in default and registered
-`TextExportFormats` in registration order; GUI selection and L9d output preferences
-still need explicit mapping. Do not invent presets from column labels.
+`TextExportFormats` in registration order, with selection copied into explicit GUI
+drafts. L9d output preferences remain separate. Do not invent presets from column labels.
 
 ## First managed text-report slice
 
@@ -77,17 +77,56 @@ probe are separate evidence, not a claim of native UI execution on Linux.
    worker fixture cover dynamic variables/sort keys, original owner/object callbacks,
    descending order, Unicode, callback/invalid UTF-8/output-limit errors, registry
    mutation, removed selection, recovery, shutdown and stale IDs after restart.
-2. Connect existing Rust/UI controls for explicit encounter/template/options,
-   draft/preview ownership and new-file export. Test synthetic temporary paths,
-   byte encoding, refusal of overwrite, atomic failure/cancel and late replies.
-   No real clipboard route is part of this work.
+2. Existing Rust/UI controls now connect explicit encounter/template/options,
+   draft/preview ownership and new-file export. Synthetic temporary-path tests
+   cover byte encoding, no-overwrite, failure/cancel boundaries and late replies.
+   Native clicks and Windows execution remain pending. No clipboard route is added.
 3. Implement the existing L7b HTML/table-XML scopes and depth options in separate
    bounded slices; compare synthetic output against original contracts. Graph
    image/native differences and unsupported choices must be explicit before I/O.
 4. L7c synthetic ODBC/schema/sink work and the shared L9d output preference audit
    remain separate. No external upload/service/real database has been accessed.
 
-L7b is **not complete** at the Bridge/Rust checkpoint. No GUI report editor, file
-export, HTML/table-XML serializer or ODBC writer is claimed yet.
+The ordinary text GUI/new-file flow is connected; L7b as a whole is **not complete**.
+HTML/table-XML serializers, native font/RTF variants and the L7c ODBC writer remain separate.
 L6b OS clipboard provider remains approval-blocked and has not been retried;
 WinForms bridge remains plan-only.
+
+## Text report GUI and new-file save
+
+Analysis now contains a text-report accordion using the existing Rust/UI-adapted
+Accordion, Button, Input and Label components, plus a multiline companion to the
+same Input adapter. Dioxus owns the controller; no JavaScript/clipboard bridge is
+introduced. Load the catalog, copy the ACT default or a registered preset into the
+draft, edit explicit templates/options, then generate for the selected encounter.
+Preset pages expose 16 entries at a time. Reload preserves an explicit draft.
+
+The generated preview owns its report, template/options, encounter/title and
+session/selection token. Draft edits clear it. Selection changes, restored context,
+panel navigation, cancellation and Stop invalidate pending UI results. A canceled
+plugin callback is not preempted; the existing worker/process boundary handles
+shutdown. A pending operation retains admission until its response is retired, so
+cancel does not permit overlapping owner operations. Empty templates preserve the
+ACT LF-only report; missing exact selections show an unavailable error.
+
+Only an explicitly entered destination can be reviewed and confirmed. Saving uses
+the generated report bytes, UTF-8 without BOM and unchanged LF, independent of any
+later draft. A same-directory temporary file is written, flushed and file-synced,
+then published with `persist_noclobber`; existing or concurrently created files are
+never replaced. No directories are created. Failures before publication and
+cancellation clean the temporary file. Platform/filesystem publication failures
+are surfaced, not treated as a durability guarantee; no OS-crash/disk-failure
+promise or directory-sync policy is added.
+
+Cancellation, leaving and Stop can win an atomic permit before publication begins.
+Once publication is admitted, the explicit save may complete after Stop, and late
+UI replies remain ignored. This boundary is stated beside the save action. A
+completed file is not deleted to simulate cancellation. Failed saves preserve the
+preview and path for retry. Callback/render failures preserve the draft and never
+save a partial result. Real clipboard access, upload and HTML/table XML are absent.
+
+Synthetic file tests inject write/flush failures and publication races; actual
+isolated-Host controller tests exercise preset copy, Unicode bytes, repeated save,
+no-overwrite, missing directory, stale confirmation, cancel, panel/selection/session
+changes, failed/empty/missing results, and Stop before/after publication. Native
+click/focus/dialog behavior and Windows execution remain unverified on ser7.

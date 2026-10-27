@@ -13,6 +13,7 @@ mod plugin_tables;
 mod plugins;
 mod preferences;
 mod reparse;
+mod reports;
 mod shell;
 mod timers;
 mod triggers;
@@ -53,6 +54,7 @@ enum Phase {
     Archiving,
     ReadingHistory,
     ReadingTables,
+    MakingReport,
     UpdatingTriggers,
     UpdatingTimers,
     ShowingNotification,
@@ -75,6 +77,7 @@ impl Phase {
             Self::Archiving => "archiving",
             Self::ReadingHistory => "reading-history",
             Self::ReadingTables => "reading-tables",
+            Self::MakingReport => "making-report",
             Self::UpdatingTriggers => "updating-triggers",
             Self::UpdatingTimers => "updating-timers",
             Self::ShowingNotification => "showing-notification",
@@ -134,6 +137,7 @@ struct AppState {
     import_path: String,
     import_text: import_text::State,
     interchange: interchange::State,
+    reports: reports::State,
     companions: companions::State,
     reparse: reparse::ReparseState,
     clipboard: clipboard_import::State,
@@ -212,6 +216,7 @@ impl AppState {
             import_path: String::new(),
             import_text: Default::default(),
             interchange: Default::default(),
+            reports: Default::default(),
             companions: Default::default(),
             reparse: Default::default(),
             clipboard: Default::default(),
@@ -318,6 +323,7 @@ pub fn App() -> Element {
                     | Phase::Archiving
                     | Phase::ReadingHistory
                     | Phase::ReadingTables
+                    | Phase::MakingReport
                     | Phase::ChangingSources
                     | Phase::ChangingPlugins
                     | Phase::UpdatingTimers
@@ -551,6 +557,7 @@ fn stop(mut state: Signal<AppState>) {
         state.clipboard.reset_session();
         state.import_text.reset_session();
         state.interchange.stop();
+        state.reports.stop();
         state.companions.reset_session();
         state.notifications = Default::default();
         state.plugin_ui_pending = false;

@@ -362,6 +362,7 @@ impl AppState {
     }
     pub(super) fn invalidate_restored_context(&mut self) {
         self.plugin_tables.invalidate();
+        self.reports.leave();
         self.log_windows.invalidate();
         self.revision.selection += 1;
         self.selected = None;

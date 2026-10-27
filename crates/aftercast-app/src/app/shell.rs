@@ -33,6 +33,7 @@ pub(super) fn Header() -> Element {
                             if state.read().screen != screen {
                                 super::history_sources::leave(state);
                                 state.write().interchange.leave();
+                                state.write().reports.leave();
                                 state.write().screen = screen;
                             }
                         },

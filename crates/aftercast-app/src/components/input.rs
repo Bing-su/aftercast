@@ -27,3 +27,24 @@ pub fn Input(
         }
     }
 }
+
+// Multiline companion to the existing Rust/UI Input adapter, sharing its palette and focus behavior.
+#[component]
+pub fn TextArea(
+    id: String,
+    value: String,
+    #[props(default)] disabled: bool,
+    #[props(default = 3)] rows: u32,
+    oninput: EventHandler<FormEvent>,
+) -> Element {
+    rsx! {
+        textarea {
+            id,
+            value,
+            disabled,
+            rows,
+            class: "w-full resize-y rounded-md border border-input bg-background p-3 text-sm text-foreground disabled:opacity-45 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-ring",
+            oninput,
+        }
+    }
+}

@@ -8,7 +8,7 @@ mod separator;
 pub use accordion::Accordion;
 pub use badge::Badge;
 pub use button::{Button, ButtonVariant};
-pub use input::Input;
+pub use input::{Input, TextArea};
 pub use label::Label;
 pub use progress::Progress;
 pub use separator::Separator;

@@ -31,6 +31,7 @@ pub(super) fn AnalysisPane() -> Element {
                     }
                 }
             }
+            super::reports::Panel {}
             super::plugin_tables::PluginTablesPane {}
             if let Some(detail) = detail {
                 div { class: "summary-strip mb-6 flex flex-wrap gap-x-9 gap-y-3 border-y border-border py-4 tabular-nums [&_span]:text-xs [&_span]:text-muted-foreground [&_strong]:ml-3 [&_strong]:text-sm [&_strong]:font-medium",
