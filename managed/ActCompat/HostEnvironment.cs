@@ -189,6 +189,26 @@ namespace Aftercast.ActCompat
         // Quiesce file callbacks before the boundary so an admitted line cannot race encounter finalization.
         public NotificationPage ReadNotifications(ulong after, int limit) => main.ReadNotifications(after, limit);
         public NotificationItem ShowNotification(ulong id) => main.ShowNotification(id);
+        public object TimerOperation(int command,ulong revision,string? previousKey,TimerDefinition? definition,
+            string? key,int offset,int limit)
+        {
+            var path = Path.Combine(main.AppDataFolder.FullName,"SpellTimers.xml");
+            return command switch
+            {
+                1 => timers.ReadTimerDefinitions(offset,limit),
+                2 => SaveTimer(path,revision,previousKey,definition ?? throw new ArgumentException("Missing timer definition")),
+                3 => timers.DeleteTimerDefinition(path,revision,key ?? throw new ArgumentException("Missing timer key")),
+                4 => timers.ReloadTimerDefinitions(path,revision),
+                _ => throw new ArgumentException("Unknown timer operation")
+            };
+        }
+        private SavedTimer SaveTimer(string path,ulong revision,string? previousKey,TimerDefinition definition)
+        {
+            var next = timers.SaveTimerDefinition(path,revision,previousKey,definition);
+            // Return the managed identity: ACT key casing follows this worker's culture, not Rust's lowercase rules.
+            var key = definition.ToData().Key;
+            return new(next,new TimerItem(key,TimerDefinition.FromData(timers.TimerDefs[key])));
+        }
         public object TriggerOperation(int command, ulong revision, string? previousKey, TriggerDefinition? definition,
             string? key, int offset, int limit, bool originalLines, bool processImports, ulong after) => command switch
         {

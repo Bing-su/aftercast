@@ -76,6 +76,7 @@ public sealed record TimerDefinition
 }
 
 public sealed record TimerItem(string Key, TimerDefinition Definition);
+public sealed record SavedTimer(ulong Revision, TimerItem Item);
 public sealed record TimerPage(ulong Revision, int Total, int RetainedFrames, TimerItem[] Items);
 
 [XmlRoot("SpellTimers")]

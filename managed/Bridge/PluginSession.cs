@@ -59,6 +59,15 @@ internal sealed class PluginSession
         }
         return HostJson.Encode(result);
     });
+    internal byte[] TimerOperation(int command, TimerRequest request) => OnOwner(() =>
+    {
+        var host = Host();
+        object? result = null;
+        void Execute() => result = host.TimerOperation(command,request.Revision,request.PreviousKey,request.Definition,
+            request.Key,request.Offset,request.Limit);
+        if (command == 1) Execute(); else host.RunWithLogReadingSuspended(Execute);
+        return HostJson.Encode(result!);
+    });
     internal byte[] NotificationOperation(int command, ulong id, int limit) => OnOwner(() =>
         HostJson.Encode(command == 1 ? (object)Host().ReadNotifications(id, limit) : Host().ShowNotification(id)));
     internal void EndCombat() => OnOwner(() => { environment?.EndCombat(); return 0; });

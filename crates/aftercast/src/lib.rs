@@ -23,8 +23,10 @@ mod runtime;
 pub use process::{run_child_if_requested, run_child_if_requested_with_audio};
 mod snapshots;
 mod speech;
+mod timers;
 mod triggers;
 pub use speech::AudioSettings;
+pub use timers::{SavedTimer, TimerDefinition, TimerItem, TimerPage, TimerRevision};
 pub use triggers::TriggerResultCursor;
 pub use triggers::{
     TriggerCapture, TriggerDefinition, TriggerItem, TriggerPage, TriggerResult, TriggerResultPage,
@@ -51,6 +53,8 @@ pub use snapshots::{CombatRevision, CombatSnapshot, CombatSnapshotStatus, Combat
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("invalid timer request or response: {0}")]
+    InvalidTimerRequest(String),
     #[error("invalid notification request or response: {0}")]
     InvalidNotificationRequest(String),
     #[error("invalid trigger request or response: {0}")]
