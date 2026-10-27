@@ -592,6 +592,33 @@ test('notification Show follows host ownership across navigation and restart', a
   await page.getByRole('button', { name: 'Start host', exact: true }).click();
   await expect(entry('repeat').getByText('Unread', { exact: true })).toBeVisible();
   await expect(entry('shown')).toHaveCount(0);
+  const badge = () => page.getByTestId('notification-badge');
+  await expect(badge()).toHaveText('5');
+  const blink = () => page.getByRole('button', { name: 'Notification badge blinks', exact: true });
+  await expect(blink()).toHaveAttribute('aria-pressed', 'true');
+  await blink().click();
+  await expect(badge().locator('.notification-count-blink')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+  await expect.poll(() => fs.readFile(path.join(directory, 'config.toml'), 'utf8')).toContain('notification_blink = false');
+  await page.getByRole('button', { name: 'Mark all as read', exact: true }).evaluate((button: HTMLButtonElement) => {
+    button.click(); button.click();
+    [...document.querySelectorAll('button')].find(item => item.textContent?.trim() === 'Settings')?.click();
+  });
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(badge()).toHaveCount(0);
+  await open();
+  await expect(entry('repeat').getByText('Read', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Clear read', exact: true }).click();
+  await expect(page.getByText('No notifications on this page.', { exact: true })).toBeVisible();
+  await expect(page.getByText(/Omitted notifications:/)).toHaveText('Omitted notifications: 0');
+  await quit();
+  await start();
+  await page.getByRole('button', { name: 'Start host', exact: true }).click();
+  await open();
+  await expect(blink()).toHaveAttribute('aria-pressed', 'false');
+  await expect(badge()).toHaveText('5');
+  await expect(badge().locator('.notification-count-blink')).toHaveCount(0);
+  expect(browserErrors).toEqual([]);
   await quit();
 });
 

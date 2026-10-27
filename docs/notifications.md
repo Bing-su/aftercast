@@ -38,17 +38,29 @@ The Notifications tab uses the existing Rust/UI Button, Badge and Accordion comp
 It displays receipt time, text, per-entry read state, Show availability/failure and the
 cumulative omission count. First-page refresh and previous/next paging retain owned
 records. A full final page can lead to an empty next page; Previous remains available.
-Refresh is explicit; this pane does not poll or claim a global unread count.
+List refresh is explicit. An App-owned one-second model-only status poll updates
+the whole retained-history unread badge even while another tab is open. It runs
+only when the Host is ready and other reads/actions do not own admission. Zero
+unread hides the badge, 1–9 shows the number, and 10+ shows the capped indicator
+with the exact count in its title. An unavailable count is shown as unknown,
+not zero; errors remain visible in Notifications. Blinking defaults to true,
+respects reduced motion, and can be disabled without hiding the count. The draft
+previews immediately; explicit Save settings persists `ui.notification_blink` using
+the existing atomic annotated-TOML path. Save failure preserves the draft and the
+last acknowledged ConfigFile. Accepted disk writes survive navigation and Stop.
 
-The controller admits one request at a time. An explicit Show blocks other host mutations
+The controller owns one current request token; a user action may supersede a model-only status read and discard its late reply. An explicit Show blocks other host mutations
 until completion but remains independent of pane lifetime. Navigating away does not cancel
 or repeat the action, and completion does not change the selected screen. Stop/quit
 invalidates the UI session and clears history; replies from older sessions cannot update
 new state or clear a newer request. A successful Show remains available for a later
 intentional click. An acknowledged Show is never automatically retried after an error.
 
-Mark-all and clear-read now have managed/Bridge/Rust APIs described below; GUI controls
-and badge-blinking preference are the next connection unit. Native callback effects remain platform-dependent;
+Mark-all and clear-read controls use the managed/Bridge/Rust APIs described below.
+Buttons bind the rendered page's whole-history upper bound, not a later poll's
+count snapshot. The scope help explains that other pages are included and newer
+arrivals are preserved. Success acknowledges the returned first page and resets
+pagination; errors retain the old page for explicit refresh without automatic retry. Native callback effects remain platform-dependent;
 the partial WinForms rendering bridge is still planning only.
 
 Synthetic managed tests cover owner identity, original sender/fresh event arguments,
@@ -91,5 +103,13 @@ foreign-session bounds. No new cancellation or callback preemption is introduced
 Synthetic managed and actual worker regressions cover whole-history vs page scope,
 new arrivals between observation and mutation, repeated calls, errors before
 mutation, preserved Show callbacks, cleared/old-session IDs, empty histories,
-counts and monotonic IDs. GUI duplicate/stale responses, badge refresh and durable
-blink preference remain pending; an API passing these tests does not complete UI parity.
+counts and monotonic IDs. Actual synthetic Host controller regressions cover duplicate admissions, stale
+same-session and old-session replies, late status vs bulk acknowledgement, screen
+navigation, Stop, clear pagination reset, expired Show IDs, overflow vs explicit
+clear, callback-generated counts, and failed settings writes/retry/config reload.
+A headless Signal test runs the polling future across a Quit tick and cancellation;
+it does not inject an actual shutdown failure. Request tokens include session and
+serial; a user action supersedes a background count read and rejects its late reply.
+Polling skips pending Quit without ending permanently, since a failed shutdown can
+keep the same App alive. The Windows desktop scenario covers badge/bulk/blink and
+restart, but is only prepared/discovered on Linux; actual screen/input is unverified.

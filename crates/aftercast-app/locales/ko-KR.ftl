@@ -341,3 +341,14 @@ table-missing-scope = 이 표의 문맥은 더 이상 존재하지 않습니다.
 table-sort-failed = 플러그인 정렬에 실패해 원래 순서를 표시합니다. 저장 전에 정렬을 해제하세요.
 table-all-encounters = 보존된 개별 전투
 table-retained-encounter = 보존된 전투 문맥
+
+notifications-mark-all = 모두 읽음으로 표시
+notifications-clear-read = 읽은 알림 정리
+notifications-marked = 읽음 처리한 알림
+notifications-cleared = 정리한 읽은 알림
+notifications-blink = 알림 배지 점멸
+notifications-blink-draft = 점멸 설정이 저장되지 않았습니다. 재시작 후에도 유지하려면 설정을 저장하세요.
+notifications-count-unknown = 아직 읽지 않은 알림 수를 확인하지 못했습니다
+notifications-snapshot-help = 다른 페이지를 포함해 이 페이지를 마지막으로 새로 고쳤을 때의 전체 기록까지 적용합니다. 이후 들어온 알림은 보존합니다. 읽은 알림 정리는 누락 건수에 포함하지 않습니다.
+
+updating-notifications = 알림 기록 갱신 중…

@@ -60,3 +60,9 @@
   --chorale-button-disabled-bg: var(--catppuccin-color-mantle);
   --chorale-error: var(--catppuccin-color-red);
 }
+
+/* Keep unread counts visible while signalling new history; respect reduced motion. */
+@media (prefers-reduced-motion: no-preference) {
+  .notification-count-blink { animation: notification-count-blink 1s step-end infinite; }
+  @keyframes notification-count-blink { 50% { opacity: 0.3; } }
+}

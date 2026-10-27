@@ -49,6 +49,7 @@ enum Phase {
     UpdatingTriggers,
     UpdatingTimers,
     ShowingNotification,
+    UpdatingNotifications,
     ChangingPlugins,
     Stopping,
 }
@@ -67,6 +68,7 @@ impl Phase {
             Self::UpdatingTriggers => "updating-triggers",
             Self::UpdatingTimers => "updating-timers",
             Self::ShowingNotification => "showing-notification",
+            Self::UpdatingNotifications => "updating-notifications",
             Self::ChangingPlugins => "changing-plugins",
             Self::Stopping => "stopping",
         }
@@ -145,6 +147,17 @@ impl AppState {
         file.settings = self.settings.clone();
         self.saving = true;
         Some((self.root.clone(), file))
+    }
+
+    fn receive_settings_save(&mut self, result: miette::Result<ConfigFile>, message: String) {
+        self.saving = false;
+        match result {
+            Ok(file) => {
+                self.file = Some(file);
+                self.message = message;
+            }
+            Err(error) => self.fail_report(error),
+        }
     }
 
     fn new(root: Utf8PathBuf) -> Self {
@@ -256,6 +269,7 @@ pub fn App() -> Element {
         }
     });
     use_future(move || load_settings(state, i18n()));
+    use_future(move || notifications::poll(state));
     use_future(move || {
         let window = window.clone();
         async move {
@@ -276,7 +290,8 @@ pub fn App() -> Element {
                     | Phase::ChangingPlugins
                     | Phase::UpdatingTimers
                     | Phase::UpdatingTriggers
-                    | Phase::ShowingNotification => {
+                    | Phase::ShowingNotification
+                    | Phase::UpdatingNotifications => {
                         stop(state);
                     }
                     Phase::Idle if !state.read().saving => {
@@ -779,15 +794,10 @@ fn save_settings(mut state: Signal<AppState>) {
     // Settings belong to the app: changing panes must not cancel I/O and strand the global saving flag.
     spawn_forever(async move {
         let result = tokio::task::spawn_blocking(move || file.save(&root)).await;
-        state.write().saving = false;
-        match result {
-            Ok(Ok(file)) => {
-                state.write().file = Some(file);
-                state.write().message = saved_message;
-            }
-            Ok(Err(error)) => state.write().fail_report(error),
-            Err(error) => state.write().fail(error),
-        }
+        let result = result
+            .map_err(|error| miette::miette!(error))
+            .and_then(|result| result);
+        state.write().receive_settings_save(result, saved_message);
     });
 }
 

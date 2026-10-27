@@ -27,8 +27,13 @@ pub(super) fn Header() -> Element {
                         "aria-current": if state.read().screen == screen { "page" } else { "false" },
                         disabled: false,
                         title: tr(screen),
+                        "aria-label": tr(screen),
+                        "aria-describedby": (screen == "notifications").then_some("notification-unread-status"),
                         onclick: move |_| state.write().screen = screen,
                         {tr(screen)}
+                        if screen == "notifications" {
+                            super::notifications::UnreadBadge {}
+                        }
                     }
                 }
             }

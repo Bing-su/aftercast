@@ -341,3 +341,14 @@ table-missing-scope = This table scope no longer exists. Select a retained encou
 table-sort-failed = Plugin sorting failed; original order is shown. Clear sorting before saving.
 table-all-encounters = Retained individual encounters
 table-retained-encounter = Retained encounter context
+
+notifications-mark-all = Mark all as read
+notifications-clear-read = Clear read
+notifications-marked = Notifications marked read
+notifications-cleared = Read notifications cleared
+notifications-blink = Notification badge blinks
+notifications-blink-draft = Blinking preference is not saved. Save settings to keep it after restart.
+notifications-count-unknown = Unread count is not available yet
+notifications-snapshot-help = These actions affect all retained entries through this page's last refresh, including other pages. Newer arrivals are kept. Clear read does not count as omitted history.
+
+updating-notifications = Updating notification history…
