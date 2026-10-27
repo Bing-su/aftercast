@@ -109,10 +109,7 @@ pub(super) fn PluginsPane() -> Element {
                             rsx! {
                                 Button {
                                     variant: ButtonVariant::Outline,
-                                    disabled: !matches!(state.read().phase, Phase::Idle | Phase::Ready)
-                                                                                                                || state.read().saving || state.read().file.is_none() || state.read().plugin_ui_pending
-                                        || state.read().file.is_none() || state.read().plugin_ui_pending
-                                        || state.read().file.is_none() || state.read().plugin_ui_pending,
+                                    disabled: !state.read().can_toggle_plugin(),
                                     aria_pressed: enabled,
                                     onclick: move |_| toggle_plugin(state, &path),
                                     {tr(if enabled { "disable-plugin" } else { "enable-plugin" })}
@@ -207,11 +204,7 @@ fn set_enabled(state: &mut AppState, path: &str, enabled: bool) {
 
 fn toggle_plugin(mut state: Signal<AppState>, path: &str) {
     let current = state.read();
-    if !matches!(current.phase, Phase::Idle | Phase::Ready)
-        || current.saving
-        || current.plugin_ui_pending
-        || current.file.is_none()
-    {
+    if !current.can_toggle_plugin() {
         return;
     }
     let enabled = current

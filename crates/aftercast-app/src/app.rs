@@ -104,6 +104,13 @@ struct AppState {
 }
 
 impl AppState {
+    fn can_toggle_plugin(&self) -> bool {
+        matches!(self.phase, Phase::Idle | Phase::Ready)
+            && !self.saving
+            && !self.plugin_ui_pending
+            && self.file.is_some()
+    }
+
     fn can_save_settings(&self) -> bool {
         !self.saving && self.file.is_some() && self.phase != Phase::ChangingPlugins
     }
