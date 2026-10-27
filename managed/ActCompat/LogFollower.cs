@@ -1,13 +1,11 @@
 using System.Text;
 using Aftercast.ActCompat;
-using System.Runtime.InteropServices;
 
 namespace Advanced_Combat_Tracker;
 
 // Follow only appended complete lines; decoding state belongs to this single reader thread.
 internal sealed class LogFollower : IDisposable
 {
-    private const int MaximumLineLength = 8 * 1024 * 1024;
     private readonly object gate = new();
     private FileStream stream;
     private readonly string path;
@@ -133,59 +131,7 @@ internal sealed class LogFollower : IDisposable
     {
         ArgumentNullException.ThrowIfNull(canceled);
         if (regex is null) return null;
-        // Search complete records backwards so large files do not require a full forward replay.
-        var position = InitialPosition;
-        var bytes = new byte[4096];
-        var reverseLine = new List<byte>();
-        var encoding = new UTF8Encoding(false, true);
-        var skipTail = true;
-        var oversized = false;
-        string? MatchLine(bool atStart = false)
-        {
-            if (oversized) return null;
-            reverseLine.Reverse();
-            try
-            {
-                var text = encoding.GetString(CollectionsMarshal.AsSpan(reverseLine)).TrimEnd('\r');
-                if (atStart && text.StartsWith('\uFEFF')) text = text[1..];
-                var match = regex.Match(text);
-                return match.Success && match.Groups["zone"].Success ? match.Groups["zone"].Value : null;
-            }
-            catch (DecoderFallbackException error)
-            {
-                Report(new InvalidDataException("Skipping invalid UTF-8 zone snapshot record", error));
-                return null;
-            }
-        }
-        while (position > 0)
-        {
-            // A large history search must not delay shutdown or a newer file selection.
-            if (canceled()) return null;
-            var count = (int)Math.Min(position, bytes.Length);
-            position -= count;
-            if (!ReadInitialBytes(bytes, count, position)) return null;
-            for (var index = count - 1; index >= 0; index--)
-            {
-                if (bytes[index] == (byte)'\n')
-                {
-                    if (!skipTail && MatchLine() is { } zone) return zone;
-                    skipTail = false;
-                    reverseLine.Clear();
-                    oversized = false;
-                }
-                else if (!skipTail && !oversized)
-                {
-                    if (reverseLine.Count == MaximumLineLength)
-                    {
-                        oversized = true;
-                        reverseLine.Clear();
-                        Report(new InvalidDataException("Zone snapshot record exceeds 8 MiB"));
-                    }
-                    else reverseLine.Add(bytes[index]);
-                }
-            }
-        }
-        return !skipTail ? MatchLine(atStart: true) : null;
+        return InitialZoneReader.Find(InitialPosition, ReadInitialBytes, regex, canceled, Report);
     }
 
     private FileStream Open() => new(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);

@@ -55,6 +55,35 @@ public static class LogEncodingProbe
             if (reader.ReadLine() != "zone:한글" || reader.CurrentEncoding.CodePage != 65001)
                 throw new Exception("Default zone reader inherited plugin encoding");
         }
+        ProbeZoneReader();
         return "Log encodings";
+    }
+    private static void ProbeZoneReader()
+    {
+        // Constructor/framing contracts inspected in FindZoneName; not the native UI-dependent search itself.
+        foreach (var codePage in new[] { 65001, 1200, 1201, 12000, 12001 })
+        foreach (var separator in new[] { "\r", "\n", "\r\n" })
+        {
+            var encoding = Encoding.GetEncoding(codePage);
+            var bytes = encoding.GetPreamble().Concat(encoding.GetBytes("zone:한글" + separator + "tail")).ToArray();
+            using var reader = new StreamReader(new MemoryStream(bytes));
+            if (reader.ReadLine() != "zone:한글" || reader.ReadLine() != "tail" || reader.CurrentEncoding.CodePage != codePage)
+                throw new Exception("Default zone reader BOM/CR/EOF policy changed");
+        }
+        using (var reader = new StreamReader(new MemoryStream(Encoding.UTF8.GetBytes("zone:unterminated"))))
+            if (reader.ReadLine() != "zone:unterminated") throw new Exception("Default zone reader EOF policy changed");
+        using (var reader = new StreamReader(new MemoryStream(new byte[] { 0xff, 10 })))
+            if (reader.ReadLine() != "\uFFFD") throw new Exception("Default zone replacement policy changed");
+        using (var source = new MemoryStream())
+        {
+            source.Write(Encoding.UTF8.GetBytes("history\n"));
+            var tail = source.Position;
+            source.Write(Encoding.Unicode.GetPreamble());
+            source.Write(Encoding.Unicode.GetBytes("wide\n"));
+            source.Position = tail;
+            using var reader = new StreamReader(source, Encoding.UTF8);
+            if (reader.ReadLine() != "wide" || reader.CurrentEncoding.CodePage != 1200)
+                throw new Exception("Initial tail BOM detection changed");
+        }
     }
 }

@@ -38,11 +38,31 @@ historical records are discarded until their first encoded delimiter; they are
 never replayed. Strict fallback survives BOM override, unlike ACT StreamReader's
 replacement fallback reset. No encoding is guessed.
 
-`ReadInitialZone` still uses bounded positional reverse UTF-8/LF scans. The test
-selecting forward Korean code page 949 while finding a UTF-8 historical Korean zone
-proves the policies are independent. Wide BOM zone history, CR-only reverse records
-and ACT default-reader replacement parity remain follow-up work in F3. Forward
-support does not claim these reverse-search cases are complete.
+`ReadInitialZone` uses the default StreamReader text policy: UTF-8 replacement
+without a BOM, or UTF-8/UTF-16 LE/BE/UTF-32 LE/BE selected by a byte-zero BOM.
+It never inherits plugin LogEncoding or import options. Reverse scans frame CR,
+LF and CRLF at aligned code units, skip empty/encounter-annotation records, and
+choose the newest complete matching record before the captured offset. Incomplete
+final records/code units are excluded. Each retained record is bounded to 8 MiB
+source bytes; oversize records are reported and skipped. The same owned handle is
+used across rename/replacement, and snapshot release/cancellation/truncation remain
+explicit outcomes. A new reader starts with a fresh header policy.
+
+### Reference differences and execution limits
+
+| Behavior                 | ACT evidence                                                                                                                                                                         | aftercast policy                                                                                                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Encoding                 | Inspected FindZoneName constructs default StreamReader without LogEncoding. Constructor/BOM/CR/replacement contracts pass against the pinned binary's reference probe.               | Same default replacement codec family, independent of forward selection.                                                                                                                          |
+| Incomplete EOF record    | Default ReadLine returns the last unterminated fragment. The inspected search can consume it when its stream-position loop admits that read.                                         | Preserve the existing completed-record snapshot contract; exclude it so an unfinished zone cannot change current state.                                                                           |
+| Large-file BOM           | Inspected search initially seeks backward by 250000 bytes; the reader may begin beyond the original header. Its underlying-stream-position loop also depends on buffered read-ahead. | Read the actual byte-zero header once, then scan aligned reverse blocks. Do not reproduce window-dependent BOM/read-ahead artifacts or claim exact window parity.                                 |
+| BOM at nonzero live tail | The selected StreamReader at a nonzero initial position detects a newly appended Unicode BOM; a focused tail probe verifies this.                                                    | Keep the existing generation-start-only BOM rule. A mid-file BOM is content, preventing an appended marker from silently changing the active codec. This remains an explicit compatibility limit. |
+
+An attempted invocation of the pinned ACT private FindZoneName failed with
+TypeLoadException because the existing Linux headless Forms shim does not define
+System.Windows.Forms.Application. Its native search/UI was **not executed**.
+The failing exploratory probe was removed rather than expanding the shim; tests
+exercise the inspected constructor/framing contracts and actual aftercast search.
+No Windows native parity is claimed.
 
 | Unit                                | Required completion evidence                                                                                                                                                                                                                                                                                                                           |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
@@ -65,3 +85,9 @@ check original decoded strings, encoding snapshot ownership, rejected admission
 preserving the old reader, and independent initial zone decoding. The reference
 LogEncodingProbe additionally checks StreamReader at a nonzero tail and the default
 zone reader after seek; it does not invoke ACT native reader threads or FindZoneName.
+
+The initial-zone regression matrix includes five Unicode BOM encodings, all three
+line separators, split reverse-block boundaries, malformed Unicode replacement,
+BOM-only/empty/nonmatching histories, incomplete trailing code units, oversized
+records, cancellation, captured-end append exclusion, owned-handle rotation,
+truncation failure, disposed/released snapshot rejection and fresh-reader reset.
