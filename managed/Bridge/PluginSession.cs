@@ -338,6 +338,9 @@ internal sealed partial class PluginSession
         EnsureCanStop();
         OnOwner(() => { environment?.BeginClosing(); return 0; });
         var errors = new List<Exception>();
+        // Cancel bounded source I/O before plugin callbacks and retain every release failure.
+        try { ReleaseCapture(); } catch (Exception error) { errors.Add(error); }
+        try { ReleaseProposal(); } catch (Exception error) { errors.Add(error); }
         // Drain file callbacks while plugin state is still valid, before invoking any DeInitPlugin.
         try { environment?.StopProcessing(); } catch (Exception error) { errors.Add(error); }
         for (var index = initialized.Count - 1; index >= 0; index--)

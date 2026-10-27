@@ -123,6 +123,7 @@ internal static class CompanionAbiChecks
             var retry = Call(4, new CompanionRequest(Path: main, Companions: [new("side")])).GetProperty("owner").GetUInt64();
             Check(Call(6, new CompanionRequest(Owner: retry)).GetBoolean(), "close live selection");
             Reject(5, JsonSerializer.Serialize(new CompanionRequest(Owner: retry), HostJson.Options));
+            HistorySourceAbiChecks.Run(session, shared, directory.FullName);
             Console.WriteLine("Companion ABI bounds/JSON/session, owned import/cancel, live snapshots, external revision and partial-open stale handles passed.");
         }
         finally { shared.Stop(); Marshal.FreeHGlobal(memory); directory.Delete(true); }

@@ -25,8 +25,21 @@ public static partial class EntryPoint
             Marshal.Copy(output,0,buffer+header,output.Length); Marshal.WriteInt32(buffer,24,output.Length);
             return 0;
         }
-        if (command is < 1 or > 2 || length is < 2 or > 128 * 1024) throw new ArgumentException("Invalid history command fields");
+        if (command is < 1 or > 9 || length is < 2 or > 128 * 1024) throw new ArgumentException("Invalid history command fields");
         var bytes = new byte[length]; Marshal.Copy(buffer+header,bytes,0,length);
+        if (command >= 3)
+        {
+            var json = new UTF8Encoding(false, true).GetString(bytes);
+            using var document = JsonDocument.Parse(json, new JsonDocumentOptions { MaxDepth = 16 });
+            if (document.RootElement.ValueKind != JsonValueKind.Object) throw new ArgumentException("Source request must be an object");
+            Unique(document.RootElement);
+            var source = JsonSerializer.Deserialize<HistorySourceRequest>(json, HostJson.Options) ?? throw new ArgumentException("Missing source request");
+            source.Validate(command);
+            var output = plugins.Value.HistorySourceOperation(command, source);
+            if (output.Length > capacity) throw new InvalidOperationException("Source reply exceeds bounded capacity");
+            Marshal.Copy(output, 0, buffer + header, output.Length); Marshal.WriteInt32(buffer, 24, output.Length);
+            return 0;
+        }
         var request = JsonSerializer.Deserialize<HistoryRequest>(new UTF8Encoding(false,true).GetString(bytes),HostJson.Options)
             ?? throw new ArgumentException("Missing history request");
         if (command == 1 ? request.Query is null || request.Selection is not null : request.Selection is null || request.Query is not null)

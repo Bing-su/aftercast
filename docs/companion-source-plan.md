@@ -458,3 +458,21 @@ This remains a **managed backend**. Bridge/Rust Begin/Advance transport, typed
 capture/proposal IDs, actual isolated-worker coverage of S1/S2 and GUI selection
 are subsequent units. Native Windows filesystem/disposal behavior, real screen
 clicks and ACT history/companion native thread timing remain unverified.
+
+### S1/S2 managed Bridge checkpoint
+
+`HistoryOperation` commands 3–9 use the existing fixed 4 MiB reply / 128 KiB request envelope and session header. They return immediate JSON responses; command 0 remains exclusively the checkpoint query/restore continuation. These commands do not yet have a Rust delegate/client or GUI.
+
+| Command            | Admission / ownership                                                                                | Result                                                                             |
+| ------------------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
+| 3 propose          | Exactly one history selection and explicitly bounded paths/roots                                     | New proposal owner, pending                                                        |
+| 4 proposal poll    | Current proposal owner                                                                               | Pending or metadata-only snapshot; no historical byte identity claim               |
+| 5 proposal release | Current proposal owner, no captured request                                                          | Cancel/join discovery and retire owner, including faulted tasks                    |
+| 6 capture          | Ready proposal owner, selected path, explicit companion/codec options and optional lower byte budget | Distinct capture owner, pending                                                    |
+| 7 capture poll     | Current capture owner                                                                                | Progress or captured file lengths/digests and inclusive history range              |
+| 8 capture release  | Current capture owner                                                                                | Cancel/join and dispose image, retire owner even when reporting an earlier failure |
+| 9 reparse          | Ready capture owner and initialized parser                                                           | One-shot transfer to existing companion import owner/Advance/cancel commands       |
+
+Ready images survive failed import preflight; any consumed image is retired even if admission fails. Shutdown cancels and joins pending source I/O before plugin teardown, collecting release failures while continuing cleanup. A dropped client request alone is not cancellation: the managed session retains one proposal and one capture until explicit release, replay transfer or Stop. Rust request-future/drop handling and isolated-worker tests remain the next unit.
+
+The in-process ABI regression uses temporary synthetic files to check stale owners, budget failure/pending polling and release, frozen bytes after original replacement, both inclusive range endpoints, and repeated transfer rejection. It exercises the real ABI/session boundary, **not** the isolated worker transport, actual GUI, Windows runtime or native ACT scheduling.
