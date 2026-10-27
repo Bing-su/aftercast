@@ -525,6 +525,7 @@ internal static class Program
         RootActionChecks.Run();
         HitRateColumnChecks.Run();
         ImportLogReaderChecks.Run();
+        HostLifetimeChecks.RunBounded(TableColumnChecks.Run);
         ImportChecks.Run();
         OriginalLogCaptureChecks.Run();
         LogBufferChecks.Run();

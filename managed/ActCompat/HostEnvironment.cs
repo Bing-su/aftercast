@@ -170,6 +170,7 @@ namespace Aftercast.ActCompat
         public void BeginImport(string path, ImportRange? range = null) => main.BeginImport(path, range);
         public ImportProgress ImportProgress => main.CurrentImportProgress;
         public ImportResult? AdvanceImport(bool cancel) => main.AdvanceImport(cancel);
+        public TableColumnCatalog ReadTableColumns(TableLevel level) => main.ReadTableColumns(level);
         public HistoryPage ReadHistory(HistoryQuery query) => main.ReadHistoryAsync(query,false).GetAwaiter().GetResult();
         public Task<HistoryPage> ReadHistoryAsync(HistoryQuery query) => main.ReadHistoryAsync(query);
         public int RestoreSelectedHistory(HistorySelection selection) => main.RestoreSelectedHistoryAsync(selection,false).GetAwaiter().GetResult();
