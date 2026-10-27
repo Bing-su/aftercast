@@ -45,5 +45,6 @@ internal static class TextExportChecks
         }
         finally { directory.Delete(true); }
         Console.WriteLine("Text format registration, empty output and callback failure checks passed.");
+        TextReportChecks.Run();
     }
 }

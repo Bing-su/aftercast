@@ -23,51 +23,61 @@ public partial class FormActMain
 
     public string GetTextExport(EncounterData encounter, TextExportFormatOptions format)
     {
-        try
-        {
-            var playerFormat = format.PlayerFormat;
-            var alliesFormat = format.AlliesFormat;
-            var sorting = format.Sorting;
-            var onlyAllies = format.ShowOnlyAllies;
-            var alliedInfo = format.ShowAlliedInfo;
-            List<CombatantData> actors;
-            try { actors = new(encounter.Items.Values); }
-            catch { return string.Empty; }
-            try { actors.Sort(new CombatantData.DualComparison(sorting, sorting)); actors.Reverse(); }
-            catch (Exception error) { WriteExceptionLog(error, "Export Sorting"); }
-            var allies = onlyAllies || alliedInfo
-                ? encounter.GetIsSelective() && encounter.GetIgnoreEnemies() ? new(encounter.Items.Values) : encounter.GetAllies()
-                : new List<CombatantData>();
-            var output = new StringBuilder();
-            if (alliedInfo && allies.Count > 0)
-                Append(alliesFormat, (key, extra) => EncounterData.ExportVariables.TryGetValue(key, out var formatter)
+        try { return BuildTextExport(encounter, format, null); }
+        catch (Exception error) { WriteExceptionLog(error, string.Empty); return string.Empty; }
+    }
+    // The public ACT API retains its best-effort behavior; owned reports reuse framing with explicit limits/errors.
+    private string BuildTextExport(EncounterData encounter, TextExportFormatOptions format, TextReportExecution? execution)
+    {
+        var playerFormat = format.PlayerFormat;
+        var alliesFormat = format.AlliesFormat;
+        var sorting = format.Sorting;
+        var onlyAllies = format.ShowOnlyAllies;
+        var alliedInfo = format.ShowAlliedInfo;
+        List<CombatantData> actors;
+        try { actors = new(encounter.Items.Values); }
+        catch when (execution is null) { return string.Empty; }
+        execution?.ValidateActors(actors.Count);
+        try { actors.Sort(execution is null ? new CombatantData.DualComparison(sorting, sorting) : execution); actors.Reverse(); }
+        catch (Exception error) when (execution is null) { WriteExceptionLog(error, "Export Sorting"); }
+        var allies = onlyAllies || alliedInfo
+            ? encounter.GetIsSelective() && encounter.GetIgnoreEnemies() ? new(encounter.Items.Values) : encounter.GetAllies()
+            : new List<CombatantData>();
+        if(onlyAllies||alliedInfo) execution?.BindAllies(allies,encounter.GetIsSelective()&&encounter.GetIgnoreEnemies());
+        execution?.Check();
+        var output = new StringBuilder();
+        if (alliedInfo && allies.Count > 0)
+            Append(alliesFormat, (key, extra) => execution is not null ? execution.Allied(key, encounter, allies, extra)
+                : EncounterData.ExportVariables.TryGetValue(key, out var formatter)
                     ? formatter.GetExportString(encounter, allies, extra) : TextExportFormatterCap1 + key + TextExportFormatterCap2);
-            foreach (var actor in actors)
-            {
-                if (actor.Name == "Unknown" || onlyAllies && allies.Count > 0 && !allies.Contains(actor)) continue;
-                Append(playerFormat, (key, extra) => CombatantData.ExportVariables.TryGetValue(key, out var formatter)
+        foreach (var actor in actors)
+        {
+            execution?.Check();
+            if (actor.Name == "Unknown" || onlyAllies && allies.Count > 0 && !allies.Contains(actor)) continue;
+            Append(playerFormat, (key, extra) => execution is not null ? execution.Player(key, actor, extra)
+                : CombatantData.ExportVariables.TryGetValue(key, out var formatter)
                     ? formatter.GetExportString(actor, extra) : TextExportFormatterCap1 + key + TextExportFormatterCap2);
-            }
-            // ACT retains at most 256 LF-delimited entries, e.g. empty output becomes "\n" and "a\n" becomes "a\n\n".
-            var lines = 0;
-            var length = 0;
-            foreach (var chunk in output.GetChunks())
-                foreach (var character in chunk.Span)
-                {
-                    length++;
-                    if (character == '\n' && ++lines == 256) return output.ToString(0, length);
-                }
-            return output.Append('\n').ToString();
-
-            void Append(string template, Func<string, string, string> expand)
+        }
+        // ACT retains at most 256 LF-delimited entries, including trailing empty entries.
+        var lines = 0; var length = 0;
+        foreach (var chunk in output.GetChunks())
+            foreach (var character in chunk.Span)
             {
-                foreach (Match match in TextExportFormatterRegex.Matches(template))
-                {
-                    var key = match.Groups["formatter"].Value;
-                    output.Append(key.Length == 0 ? match.Groups["text"].Value : expand(key, match.Groups["extra"].Value));
-                }
+                length++;
+                if (character == '\n' && ++lines == 256) return output.ToString(0, length);
+            }
+        execution?.Append("\n");
+        return output.Append('\n').ToString();
+
+        void Append(string template, Func<string, string, string> expand)
+        {
+            foreach (Match match in (execution?.Parser ?? TextExportFormatterRegex).Matches(template))
+            {
+                execution?.Check();
+                var key = match.Groups["formatter"].Value;
+                var value = key.Length == 0 ? match.Groups["text"].Value : expand(key, match.Groups["extra"].Value);
+                execution?.Append(value); output.Append(value);
             }
         }
-        catch (Exception error) { WriteExceptionLog(error, string.Empty); return string.Empty; }
     }
 }

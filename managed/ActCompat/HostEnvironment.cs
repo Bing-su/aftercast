@@ -187,6 +187,8 @@ namespace Aftercast.ActCompat
         public ImportProgress ImportProgress => main.CurrentImportProgress;
         public ImportResult? AdvanceImport(bool cancel) => main.AdvanceImport(cancel);
         public TablePageData? ReadTable(TableQuery query) => main.ReadTable(query);
+        public TextReportCatalog ReadTextReportCatalog() => main.ReadTextReportCatalog();
+        public TextReport? ReadTextReport(ulong encounterId, ulong revision, TextReportOptions options) => main.ReadTextReport(encounterId, revision, options);
         public TableColumnCatalog ReadTableColumns(TableLevel level) => main.ReadTableColumns(level);
         public Task<HistorySourceCapture> CaptureHistorySourceAsync(HistorySourceSnapshot snapshot, string path, ImportTextOptions? text = null,
             IReadOnlyList<ImportCompanion>? companions = null, long maximumBytes = 4L * 1024 * 1024 * 1024, CancellationToken cancellation = default) =>

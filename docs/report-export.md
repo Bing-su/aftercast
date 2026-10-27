@@ -1,0 +1,76 @@
+# Report export: finite L7b/L7c slices
+
+## Verified formats and selected scope
+
+The reference is the pinned ACT 3.8.5.288 artifact with SHA-256
+`934fc00d0a3c8325b0f7445358860b4c013c5dab3d8fff012512acf6502dd657`.
+The new `OriginalReference report-export-policy` probe reads actual method IL;
+it executes no form, clipboard, original file exporter or database operation.
+`TextExportProbe` supplies the existing hard-coded formatting vectors. Linux runs
+those vectors against aftercast; the native original text-export comparison is
+still the separately configured Windows step of `test:text-exports`.
+
+| ACT route / evidence                                                                                               | Contract / finite implementation slice                                                                                                                                                                                                                                                                                                            |
+| ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| GetTextExport(Encounter, ExportFormatting) forwards null font / default max-lines; core uses 256 when MaxLines < 1 | Ordinary text without font-based column alignment. A selected encounter, player/group templates, registered sort key, ShowOnlyAllies and ShowAlliedInfo are distinct choices. Unknown actor is excluded; missing variables retain the configured caps and discard the extra suffix. The current shared core preserves these established defaults. |
+| Core Sort then Reverse, selective GetIsSelective + GetIgnoreEnemies bypass, GetAllies, LF Split                    | Descending ACT sort/fallback, allies semantics and trailing empty LF entries are not CSV/HTML or an actor-display filter. Current default keeps at most 256 LF-delimited entries.                                                                                                                                                                 |
+| cmiEDExportXML_Click constructs EncounterTable / Row and column-name elements                                      | Table XML is not ACT encounter-interchange XML. The current-table selection/cell headings and the task-tab hierarchical data-depth options need their own serializers and acceptance vectors. Existing L7a interchange must not be relabeled as table XML.                                                                                        |
+| ThreadExportHTML reads checked encounters or one selected encounter, tvHTMLExport choices, nudExportGraphX/Y       | HTML table/graph hierarchy and image dimensions are separate options. Reuse plugin table values; implement explicit supported depth/scope and escaping before output. Current absence of native graph/image rendering cannot be disguised with a placeholder or silent ignored option.                                                            |
+| SQL names/types on registered columns                                                                              | These are metadata, not an ODBC writer. L7c offline schema/value/validation/sink contract follows L7b; real drivers, credentials, connections and writes remain an external authorization boundary.                                                                                                                                               |
+
+Original text export also has native font/tabulation, RTF and additional output /
+selective-export preference branches. This first bounded slice does not add those
+missing compatibility overloads or claim their options are implemented. Registered
+TextExportFormats/default preset selection and L9d output preferences still need
+explicit API/GUI mapping; do not invent equivalents from column labels.
+
+## First managed text-report slice
+
+`HostEnvironment.ReadTextReportCatalog()` returns a caller-owned catalog of
+player/group variable keys and sortable **registration keys**, with a revision.
+`ReadTextReport(encounterId, revision, TextReportOptions)` returns an owned text
+result with the original encounter ID/revision, or null if that exact selection
+is absent. No file is created by this API. It does not automatically select a
+replacement encounter or conflate a registration key with its label/SQL name.
+
+The public ACT `GetTextExport` API retains its best-effort behavior, including
+caught formatter/sort errors, the empty-output LF and missing-sort fallback.
+The report API shares its formatting/framing core but reports failures explicitly
+and uses these aftercast request boundaries (not original ACT limits):
+
+| Boundary            | Meaning                                                                                                                                                                                                                                                                                                                                                                                                                      |
+| ------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Templates           | Each at most 16 KiB of well-formed UTF-8; immutable options are copied by value. Sort key is at most 256 UTF-8 bytes without control characters. No file/clipboard encoding guess is involved.                                                                                                                                                                                                                               |
+| Registries/parser   | At most 1024 variables per player/group registry, variable keys at most 256 UTF-8 bytes, parser pattern at most 16 KiB and combined missing-variable caps at most 1024 bytes. Catalog revision changes on dictionary/definition/delegate/parser/cap/sort-column changes. Public ACT registries remain unchanged by these host-only validation rules.                                                                         |
+| Scope               | At most 16384 zone/encounter slots scanned and 16384 actors. Original zone/encounter/actor collection references, slot/count, actor key+reference, selected character/title/zone and actual used allies membership are checked around callbacks and at completion. Same-name clones do not count as the original actor. Selective IgnoreEnemies uses all actors as in ACT.                                                   |
+| Work/output         | 1 MiB UTF-8 aggregate rendering budget including final LF, checked before appending each callback value; this is a work budget before the normal 256-LF framing, so oversized intermediate rendering fails even if a later line cap would shorten it. Regex matches use a 100 ms timeout; a cooperative two-second budget is checked between operations/callbacks.                                                           |
+| Callback lifetime   | Run original delegates on the original owner thread and objects under the existing read-only table/combat guard. Reject reentrant report/table/Root mutation and unsafe Dispose. Registry and selected-scope changes cause no report to be returned; body and post-validation errors are retained together. Owner-thread WriteExceptionLog cannot become a success-looking report. The guard is released on failure/timeout. |
+| Limits of isolation | A synchronous native/plugin callback that never returns cannot be interrupted by these cooperative checks; a plugin may allocate before returning. Existing worker/process isolation is the boundary. Public ACT objects remain mutable: checks establish selected identity/topology and registered delegates, not a deep immutable copy of every metric/action field or rollback of arbitrary plugin side effects.          |
+
+`TextReportChecks` uses only synthetic objects and temporary Host directories.
+It checks fixed formatting vectors and the unchanged legacy API, owner/original
+object references, selected/missing/removed scope, catalog-array ownership,
+revision replacement, callback/reentry/Dispose/reported errors, sort re-registration,
+body+post-validation failures, output/template/registry boundaries, regex and
+cooperative timeout recovery, direct scope changes, same-name cloned allies and
+selective IgnoreEnemies behavior. Original TextExportProbe and the IL policy
+probe are separate evidence, not a claim of native UI execution on Linux.
+
+## Remaining delivery stages
+
+1. Expose request-owned catalog/selection/render via Bridge and typed Rust API,
+   with actual isolated worker tests for session/revision/stale input and replies.
+2. Connect existing Rust/UI controls for explicit encounter/template/options,
+   draft/preview ownership and new-file export. Test synthetic temporary paths,
+   byte encoding, refusal of overwrite, atomic failure/cancel and late replies.
+   No real clipboard route is part of this work.
+3. Implement the existing L7b HTML/table-XML scopes and depth options in separate
+   bounded slices; compare synthetic output against original contracts. Graph
+   image/native differences and unsupported choices must be explicit before I/O.
+4. L7c synthetic ODBC/schema/sink work and the shared L9d output preference audit
+   remain separate. No external upload/service/real database has been accessed.
+
+L7b is **not complete** at the managed checkpoint. No Rust report route, GUI report
+editor, file export, HTML/table-XML serializer or ODBC writer is claimed yet.
+L6b OS clipboard provider remains approval-blocked and has not been retried;
+WinForms bridge remains plan-only.

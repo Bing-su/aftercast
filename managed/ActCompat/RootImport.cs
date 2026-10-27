@@ -128,6 +128,8 @@ namespace Advanced_Combat_Tracker
 
         internal bool EnsureCapturedImportShutdownAllowed()
         {
+            // Reports reuse the read-only table guard: reject before Host.Dispose marks closing or saves files.
+            if (activeTableQuery) throw new InvalidOperationException("Shutdown is not permitted during read-only plugin callbacks");
             if (activeImport is not { HasCapturedSources: true } operation) return false;
             if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() == true || operation.Advancing)
                 throw new InvalidOperationException("Captured import shutdown requires its owner outside callbacks/advance");

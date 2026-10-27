@@ -50,6 +50,7 @@ internal static class Program
             var unexpectedFailures = args[2] switch
             {
                 "import-policy" when args.Length == 3 => ImportPolicyMode(actPath),
+                "report-export-policy" when args.Length == 3 => ReportExportPolicyMode(actPath),
                 "values" when args.Length == 3 => DnumValues.Run(act),
                 "actions" when args.Length == 3 => AggregateValues.Run(act),
                 "contracts" when args.Length == 4 => RunContracts(args[3]),
@@ -101,6 +102,11 @@ internal static class Program
             new { zone = Read(encounter, "ZoneName"), title = Read(encounter, "Title") });
         Console.WriteLine(JsonSerializer.Serialize(new { failures }));
         return failures == 0 ? 0 : 1;
+    }
+
+    private static int ReportExportPolicyMode(string path)
+    {
+        Probe("Original report export policy",()=>ReportExportPolicy.Run(path));return 0;
     }
 
     private static int ImportPolicyMode(string path)
