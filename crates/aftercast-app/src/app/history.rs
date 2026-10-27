@@ -51,7 +51,7 @@ fn shape(value: &str, clock: bool) -> bool {
         _ => byte.is_ascii_digit(),
     })
 }
-fn bound(value: &str, end: bool) -> Result<Option<u64>, &'static str> {
+pub(super) fn bound(value: &str, end: bool) -> Result<Option<u64>, &'static str> {
     let value = value.trim().replace(' ', "T");
     if value.is_empty() {
         return Ok(None);
@@ -82,12 +82,10 @@ fn bound(value: &str, end: bool) -> Result<Option<u64>, &'static str> {
     if !(1..=9999).contains(&datetime.year()) {
         return Err("history-invalid-date");
     }
-    // UTC is a numeric origin for civil coordinates here, never an inferred offset for stored local times.
+    // Civil duration avoids timezone conversion and Timestamp's narrower upper boundary near year 9999.
     let nanos = datetime
-        .to_zoned(jiff::tz::TimeZone::UTC)
-        .map_err(|_error| "history-invalid-date")?
-        .timestamp()
-        .as_nanosecond();
+        .duration_since(jiff::civil::date(1970, 1, 1).at(0, 0, 0, 0))
+        .as_nanos();
     let ticks = u64::try_from(nanos / 100 + 621_355_968_000_000_000)
         .map_err(|_error| "history-invalid-date")?;
     if ticks > MAX_TICKS {

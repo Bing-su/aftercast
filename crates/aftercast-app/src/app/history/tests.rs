@@ -16,6 +16,14 @@ fn civil_date_bounds_preserve_whole_days_precision_and_validation() {
         bound("9999-12-31", true).expect("maximum date"),
         Some(MAX_TICKS + 1)
     );
+    assert_eq!(
+        bound("9999-12-31", false).expect("maximum start day"),
+        Some(MAX_TICKS + 1 - 864_000_000_000)
+    );
+    assert_eq!(
+        bound("9999-12-31T23:59:59.9999999", false).expect("maximum exact time"),
+        Some(MAX_TICKS)
+    );
     for invalid in [
         "2025-02-29",
         "0000-01-01",
