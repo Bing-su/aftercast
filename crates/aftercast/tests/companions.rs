@@ -56,6 +56,7 @@ async fn explicit_import_merges_sources_and_preserves_single_source_defaults(
         .import_sources(
             &main,
             SourceImportOptions {
+                viewpoint: None,
                 companions: vec![CompanionSource {
                     name: "Alpha".into(),
                     text: None,
@@ -488,6 +489,7 @@ async fn case_preserving_live_mapping_and_extensionless_range_import(deployment:
     let ticks = 621_355_968_000_000_000 + 30_000_000;
     let range = aftercast::ImportRange::new(ticks, ticks).expect("inclusive same-time boundary");
     let options = SourceImportOptions {
+        viewpoint: None,
         range: Some(range),
         companions,
         ..Default::default()

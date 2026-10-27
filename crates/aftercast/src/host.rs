@@ -194,7 +194,7 @@ impl HostHandle {
     /// Starts an import with explicit cancellation and coalesced progress.
     /// Inherits the plugin's LogEncoding at admission; without a plugin override this is strict UTF-8.
     pub async fn start_import(&self, path: impl AsRef<Utf8Path>) -> Result<ImportJob, Error> {
-        self.start_import_request(path.as_ref(), None, None, None)
+        self.start_import_request(path.as_ref(), None, None, None, None)
             .await
     }
     /// Starts an observable source reparse with inclusive ACT wall-clock bounds.
@@ -204,7 +204,7 @@ impl HostHandle {
         path: impl AsRef<Utf8Path>,
         range: ImportRange,
     ) -> Result<ImportJob, Error> {
-        self.start_import_request(path.as_ref(), Some(range), None, None)
+        self.start_import_request(path.as_ref(), Some(range), None, None, None)
             .await
     }
     /// Starts a whole-file import with an explicit, request-owned decoding policy.
@@ -213,7 +213,7 @@ impl HostHandle {
         path: impl AsRef<Utf8Path>,
         text: ImportTextOptions,
     ) -> Result<ImportJob, Error> {
-        self.start_import_request(path.as_ref(), None, Some(text), None)
+        self.start_import_request(path.as_ref(), None, Some(text), None, None)
             .await
     }
     /// Starts an inclusive range import using the same decoding policy as the whole-file path.
@@ -223,7 +223,7 @@ impl HostHandle {
         range: ImportRange,
         text: ImportTextOptions,
     ) -> Result<ImportJob, Error> {
-        self.start_import_request(path.as_ref(), Some(range), Some(text), None)
+        self.start_import_request(path.as_ref(), Some(range), Some(text), None, None)
             .await
     }
     /// Starts an owned multi-source reparse. An empty explicit selection reads only the main file.
@@ -238,6 +238,7 @@ impl HostHandle {
             options.range,
             options.text,
             Some(options.companions),
+            options.viewpoint,
         )
         .await
     }
@@ -249,8 +250,31 @@ impl HostHandle {
     ) -> Result<ImportJob, Error> {
         let content = content.as_ref();
         crate::import::validate_clipboard(content)?;
-        self.admit_import(ImportInput::Clipboard(content.to_owned()), None, None, None)
-            .await
+        self.admit_import(
+            ImportInput::Clipboard(content.to_owned()),
+            None,
+            None,
+            None,
+            None,
+        )
+        .await
+    }
+    /// Explicit character choice for a supplied Unicode snapshot. Does not access an OS clipboard.
+    pub async fn start_clipboard_import_with_viewpoint(
+        &self,
+        content: impl AsRef<str>,
+        viewpoint: crate::ImportCharacter,
+    ) -> Result<ImportJob, Error> {
+        let content = content.as_ref();
+        crate::import::validate_clipboard(content)?;
+        self.admit_import(
+            ImportInput::Clipboard(content.to_owned()),
+            None,
+            None,
+            None,
+            Some(viewpoint),
+        )
+        .await
     }
     async fn start_import_request(
         &self,
@@ -258,12 +282,19 @@ impl HostHandle {
         range: Option<ImportRange>,
         text: Option<ImportTextOptions>,
         sources: Option<Vec<crate::CompanionSource>>,
+        viewpoint: Option<crate::ImportCharacter>,
     ) -> Result<ImportJob, Error> {
-        self.admit_import(ImportInput::File(path.to_owned()), range, text, sources)
-            .await
+        self.admit_import(
+            ImportInput::File(path.to_owned()),
+            range,
+            text,
+            sources,
+            viewpoint,
+        )
+        .await
     }
     pub(crate) async fn start_captured_import(&self, owner: u64) -> Result<ImportJob, Error> {
-        self.admit_import(ImportInput::Captured(owner), None, None, None)
+        self.admit_import(ImportInput::Captured(owner), None, None, None, None)
             .await
     }
     async fn admit_import(
@@ -272,6 +303,7 @@ impl HostHandle {
         range: Option<ImportRange>,
         text: Option<ImportTextOptions>,
         sources: Option<Vec<crate::CompanionSource>>,
+        viewpoint: Option<crate::ImportCharacter>,
     ) -> Result<ImportJob, Error> {
         let cancellation = Arc::new(AtomicBool::new(false));
         let (progress, updates) = watch::channel(ImportProgress::default());
@@ -281,6 +313,7 @@ impl HostHandle {
             text,
             sources,
             source_owner: None,
+            viewpoint,
             cancellation: cancellation.clone(),
             progress,
             complete,

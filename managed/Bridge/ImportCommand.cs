@@ -9,21 +9,30 @@ public static partial class EntryPoint
     public static int ImportOperation(nint buffer, int sizeBytes) => Run(() =>
     {
         const int maximumClipboardBytes = 8 * 1024 * 1024;
-        if (buffer == 0 || sizeBytes < 64 || sizeBytes > 64 + maximumClipboardBytes)
+        if (buffer == 0 || sizeBytes < 64 || sizeBytes > 64 + maximumClipboardBytes + 1024)
             throw new ArgumentException("Import operation exceeds bounded packet capacity");
         ValidateHeader(buffer, sizeBytes, "Import operation ABI mismatch");
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
         var command = Marshal.ReadInt32(buffer, 56);
-        if (command == 5)
+        if (command is 5 or 6)
         {
             var length = Marshal.ReadInt32(buffer, 20);
-            if (Marshal.ReadInt32(buffer, 16) != 64 || length <= 0 || length != sizeBytes - 64 ||
-                Marshal.ReadInt64(buffer, 24) != 0 || Marshal.ReadInt64(buffer, 32) != 0 ||
+            var nameLength = Marshal.ReadInt32(buffer, 24);
+            if (nameLength is < 0 or > 1024 || command == 5 && nameLength != 0 ||
+                Marshal.ReadInt32(buffer, 16) != 64 + nameLength || length <= 0 || length > maximumClipboardBytes || length != sizeBytes - 64 - nameLength ||
+                Marshal.ReadInt32(buffer, 28) != 0 || Marshal.ReadInt64(buffer, 32) != 0 ||
                 Marshal.ReadInt64(buffer, 40) != 0 || Marshal.ReadInt64(buffer, 48) != 0 || Marshal.ReadInt32(buffer, 60) != 0)
                 throw new ArgumentException("Invalid clipboard import fields");
-            var bytes = new byte[length]; Marshal.Copy(buffer + 64, bytes, 0, length);
-            var content = new UTF8Encoding(false, true).GetString(bytes);
-            plugins.Value.BeginClipboardImport(content);
+            var utf8 = new UTF8Encoding(false, true);
+            Aftercast.ActCompat.ImportCharacterOptions? viewpoint = null;
+            if (command == 6)
+            {
+                var name = new byte[nameLength]; Marshal.Copy(buffer + 64, name, 0, nameLength);
+                viewpoint = new(utf8.GetString(name)); viewpoint.Validate();
+            }
+            var bytes = new byte[length]; Marshal.Copy(buffer + 64 + nameLength, bytes, 0, length);
+            var content = utf8.GetString(bytes);
+            plugins.Value.BeginClipboardImport(content, viewpoint);
             return 1;
         }
         if (sizeBytes > 65536) throw new ArgumentException("File import requires 64..65536 bytes");

@@ -29,11 +29,25 @@ internal static class ClipboardAbiChecks
             }
             Reset(); Reject(null, "bounded packet", 63);
             // Oversize validation must precede even reading the fixed header or its claimed payload.
-            Reset(); Reject(null, "bounded packet", 64 + 8 * 1024 * 1024 + 1);
+            Reset(); Reject(null, "bounded packet", 64 + 8 * 1024 * 1024 + 1024 + 1);
+            Reset(); Reject(() => { size = 64 + 8 * 1024 * 1024 + 1; Marshal.WriteInt32(memory,0,size); Marshal.WriteInt32(memory,20,size-64); }, "clipboard import fields");
             foreach (var field in new[] { 24, 32, 40, 44, 48, 52, 60 })
             { Reset(); Reject(() => Marshal.WriteInt32(memory, field, 1), "clipboard import fields"); }
             foreach (var (field, value) in new[] { (16,63), (16,65), (20,0), (20,-1), (20,int.MaxValue) })
             { Reset(); Reject(() => Marshal.WriteInt32(memory, field, value), "clipboard import fields"); }
+            // Explicit-choice command keeps the name prefix separate from text, even for empty current choice.
+            foreach (var name in new[] { "", "Target", "手動 이름", "bad\nname", "bad\uffff" })
+            {
+                Reset(); var prefix = Encoding.UTF8.GetBytes(name); var content = Encoding.UTF8.GetBytes("1|1");
+                size = 64 + prefix.Length + content.Length;
+                Marshal.WriteInt32(memory, 0, size); Marshal.WriteInt32(memory, 16, 64 + prefix.Length);
+                Marshal.WriteInt32(memory, 24, prefix.Length); Marshal.WriteInt32(memory, 56, 6);
+                Marshal.Copy(prefix, 0, memory + 64, prefix.Length); Marshal.Copy(content, 0, memory + 64 + prefix.Length, content.Length);
+                Reject(null, name.StartsWith("bad", StringComparison.Ordinal) ? (name.Contains('\n') ? "control-free" : "invalid character") : "requires an initialized plugin");
+            }
+            Reset(); Reject(() => { Marshal.WriteInt32(memory, 56, 6); Marshal.WriteInt32(memory, 24, 1025); }, "clipboard import fields");
+            Reset(); Reject(() => { Marshal.WriteInt32(memory, 56, 6); Marshal.WriteInt32(memory, 28, 1); }, "clipboard import fields");
+            Reset(); Reject(() => { Marshal.WriteInt32(memory,56,6); Marshal.WriteInt32(memory,24,1); Marshal.WriteInt32(memory,16,65); Marshal.WriteInt32(memory,20,2); Marshal.WriteByte(memory,64,255); }, "translate");
             Reset(); Reject(() => Marshal.WriteInt32(memory, 0, size + 1), "ABI mismatch");
             Reset(); Reject(() => Marshal.WriteInt32(memory, 4, 2), "ABI mismatch");
             Reset(); Reject(() => Marshal.WriteInt64(memory, 8, session + 1), "does not own");

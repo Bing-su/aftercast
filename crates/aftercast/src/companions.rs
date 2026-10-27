@@ -34,6 +34,8 @@ pub struct CompanionSource {
 }
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct SourceImportOptions {
+    /// None preserves the existing programmatic identity; Some(current()) applies ACT UI rules.
+    pub viewpoint: Option<crate::ImportCharacter>,
     pub range: Option<ImportRange>,
     pub text: Option<ImportTextOptions>,
     pub companions: Vec<CompanionSource>,

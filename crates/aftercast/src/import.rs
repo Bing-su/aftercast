@@ -80,6 +80,37 @@ impl ImportTextOptions {
     }
 }
 
+/// Explicit ACT UI character choice. Empty uses the admitted current name; omitted options
+/// preserve legacy programmatic identity. ACT applies its UTF-16 length fallback in the worker.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+pub struct ImportCharacter {
+    name: String,
+}
+impl ImportCharacter {
+    pub fn new(name: impl Into<String>) -> Result<Self, Error> {
+        let name = name.into();
+        if name.len() > 1024
+            || name
+                .chars()
+                .any(|c| c.is_control() || matches!(c, '\u{fffe}' | '\u{ffff}'))
+        {
+            return Err(Error::InvalidImportRequest(
+                "character must be valid XML text without controls, at most 1024 UTF-8 bytes"
+                    .into(),
+            ));
+        }
+        Ok(Self { name })
+    }
+    pub fn current() -> Self {
+        Self {
+            name: String::new(),
+        }
+    }
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+}
+
 /// Inclusive source wall-clock bounds for ACT history reparse, in 100 ns ticks since year 0001.
 /// No timezone conversion is performed. Extension is explicit and defaults to false.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -189,6 +220,7 @@ pub(crate) struct PendingImport {
     pub(crate) text: Option<ImportTextOptions>,
     pub(crate) sources: Option<Vec<CompanionSource>>,
     pub(crate) source_owner: Option<u64>,
+    pub(crate) viewpoint: Option<ImportCharacter>,
     pub(crate) cancellation: Arc<AtomicBool>,
     pub(crate) progress: watch::Sender<ImportProgress>,
     pub(crate) complete: oneshot::Sender<Result<ImportReport, Error>>,
@@ -213,7 +245,7 @@ impl PendingImport {
                 return Ok(());
             }
             ImportInput::Clipboard(content) => {
-                let mut packet = clipboard_packet(session.id(), &content)?;
+                let mut packet = clipboard_packet(session.id(), &content, self.viewpoint.as_ref())?;
                 session.request(Request::ImportOperation, &mut packet)?;
                 return Ok(());
             }
@@ -228,7 +260,7 @@ impl PendingImport {
                 session.id(),
                 1,
                 &serde_json::json!({"path":path,"text":self.text.map(WireText::from),
-                "companions":sources.iter().map(WireSource::from).collect::<Vec<_>>(),"startTicks":self.range.map(ImportRange::start_ticks),"endTicks":self.range.map(ImportRange::end_ticks),"extendToCombatEnd":self.range.map(ImportRange::extend_to_combat_end)}),
+                "viewpoint":self.viewpoint,"companions":sources.iter().map(WireSource::from).collect::<Vec<_>>(),"startTicks":self.range.map(ImportRange::start_ticks),"endTicks":self.range.map(ImportRange::end_ticks),"extendToCombatEnd":self.range.map(ImportRange::extend_to_combat_end)}),
             )?;
             session.request(Request::Companions, &mut packet)?;
             let reply: SourceReply = companions::reply(&packet, session.id(), 1)?;
@@ -369,13 +401,18 @@ pub struct ImportReport {
     pub companion_heads_excluded: u64,
 }
 
-fn clipboard_packet(session: u64, content: &str) -> Result<BytesMut, Error> {
+fn clipboard_packet(
+    session: u64,
+    content: &str,
+    viewpoint: Option<&ImportCharacter>,
+) -> Result<BytesMut, Error> {
     validate_clipboard(content)?;
+    let name = viewpoint.map_or("", ImportCharacter::name);
     let mut packet = import_packet(session, "")?;
     packet
         .get_mut(..4)
         .ok_or(Error::Closed)?
-        .copy_from_slice(&((64 + content.len()) as u32).to_le_bytes());
+        .copy_from_slice(&((64 + name.len() + content.len()) as u32).to_le_bytes());
     packet
         .get_mut(20..24)
         .ok_or(Error::Closed)?
@@ -383,7 +420,16 @@ fn clipboard_packet(session: u64, content: &str) -> Result<BytesMut, Error> {
     packet
         .get_mut(56..60)
         .ok_or(Error::Closed)?
-        .copy_from_slice(&5_u32.to_le_bytes());
+        .copy_from_slice(&(if viewpoint.is_some() { 6_u32 } else { 5_u32 }).to_le_bytes());
+    packet
+        .get_mut(16..20)
+        .ok_or(Error::Closed)?
+        .copy_from_slice(&((64 + name.len()) as u32).to_le_bytes());
+    packet
+        .get_mut(24..28)
+        .ok_or(Error::Closed)?
+        .copy_from_slice(&(name.len() as u32).to_le_bytes());
+    packet.extend_from_slice(name.as_bytes());
     packet.extend_from_slice(content.as_bytes());
     Ok(packet)
 }
@@ -550,14 +596,16 @@ mod tests {
     #[test]
     fn clipboard_packets_bound_utf8_and_preserve_text_instead_of_path_rules() {
         for text in ["한글日本語😀\0\r\n", "\u{feff}line", " "] {
-            let packet = clipboard_packet(7, text).expect("Unicode snapshot");
+            let packet = clipboard_packet(7, text, None).expect("Unicode snapshot");
             assert_eq!(packet.get(64..), Some(text.as_bytes()));
             assert_eq!(packet.get(56..60), Some(5_u32.to_le_bytes().as_slice()));
             assert_eq!(packet.get(24..56), Some([0_u8; 32].as_slice()));
         }
         let maximum = "x".repeat(MAX_CLIPBOARD_IMPORT_BYTES);
         assert_eq!(
-            clipboard_packet(1, &maximum).expect("exact budget").len(),
+            clipboard_packet(1, &maximum, None)
+                .expect("exact budget")
+                .len(),
             64 + MAX_CLIPBOARD_IMPORT_BYTES
         );
         for text in [
@@ -566,10 +614,46 @@ mod tests {
             "한".repeat(MAX_CLIPBOARD_IMPORT_BYTES / 3 + 1),
         ] {
             assert!(matches!(
-                clipboard_packet(1, &text),
+                clipboard_packet(1, &text, None),
                 Err(Error::InvalidImportRequest(_))
             ));
         }
+    }
+
+    #[test]
+    fn explicit_character_names_are_owned_bounded_and_not_normalized_in_transport() {
+        for name in ["", "Al", "한글", "😀", "😀A", " Target "] {
+            let choice = ImportCharacter::new(name).expect("valid requested identity");
+            assert_eq!(choice.name(), name);
+            let packet =
+                clipboard_packet(7, "1|SELF|Target|1", Some(&choice)).expect("explicit packet");
+            assert_eq!(packet.get(56..60), Some(6_u32.to_le_bytes().as_slice()));
+            assert_eq!(packet.get(64..64 + name.len()), Some(name.as_bytes()));
+            assert_eq!(
+                packet.get(64 + name.len()..),
+                Some(b"1|SELF|Target|1".as_slice())
+            );
+        }
+        for name in [
+            "bad\nname",
+            "bad\u{85}",
+            "\u{fffe}",
+            "\u{ffff}",
+            &"x".repeat(1025),
+            &"한".repeat(342),
+        ] {
+            ImportCharacter::new(name).expect_err("invalid character choice");
+        }
+        ImportCharacter::new("x".repeat(1024)).expect("exact character budget");
+        assert_eq!(ImportCharacter::current().name(), "");
+        let name = ImportCharacter::new("x".repeat(1024)).expect("maximum name");
+        let text = "x".repeat(MAX_CLIPBOARD_IMPORT_BYTES);
+        assert_eq!(
+            clipboard_packet(1, &text, Some(&name))
+                .expect("separate budgets")
+                .len(),
+            64 + 1024 + MAX_CLIPBOARD_IMPORT_BYTES
+        );
     }
 
     #[test]

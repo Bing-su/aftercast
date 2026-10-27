@@ -35,6 +35,7 @@ impl Selection {
         host.start_import_sources(
             path,
             SourceImportOptions {
+                viewpoint: None,
                 range,
                 text,
                 companions: self.sources.clone(),

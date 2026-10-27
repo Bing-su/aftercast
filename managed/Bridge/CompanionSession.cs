@@ -19,7 +19,7 @@ internal sealed partial class PluginSession
         {
             RequireSourceParser();
             var owner = NewSourceOwner();
-            Host().BeginImport(request.Path!, request.Range, request.Text, request.Companions);
+            Host().BeginImport(request.Path!, request.Range, request.Text, request.Companions, request.Viewpoint);
             sourceImportOwner = owner;
             return HostJson.Encode(new SourceImportReply(owner, true));
         }

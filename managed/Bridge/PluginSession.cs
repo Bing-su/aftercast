@@ -113,11 +113,11 @@ internal sealed partial class PluginSession
         Host().BeginImport(path, range, text);
         return 0;
     });
-    internal void BeginClipboardImport(string content) => OnOwner(() =>
+    internal void BeginClipboardImport(string content, ImportCharacterOptions? viewpoint = null) => OnOwner(() =>
     {
         if (!plugins.Values.Any(plugin => plugin.State == PluginState.Initialized))
             throw new InvalidOperationException("Clipboard import requires an initialized plugin");
-        Host().BeginClipboardImport(content);
+        Host().BeginClipboardImport(content, viewpoint);
         return 0;
     });
     internal ImportResult? AdvanceImport(bool cancel) => OnOwner(() =>

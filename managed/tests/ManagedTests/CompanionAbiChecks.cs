@@ -88,6 +88,12 @@ internal static class CompanionAbiChecks
                 Reject(4, JsonSerializer.Serialize(new CompanionRequest(Path: main, Companions: [], ExtendToCombatEnd: extend), HostJson.Options));
                 Reject(7, JsonSerializer.Serialize(new CompanionRequest(Path: main, ExtendToCombatEnd: extend), HostJson.Options));
             }
+            // Isolate the option restriction: every other field has that command's valid shape.
+            foreach (var command in new[] { 2, 3, 5, 6 })
+                Reject(command, JsonSerializer.Serialize(new CompanionRequest(Owner: 1, Viewpoint: new("")), HostJson.Options));
+            Reject(4, JsonSerializer.Serialize(new CompanionRequest(Path: main, Companions: [], Viewpoint: new("")), HostJson.Options));
+            Reject(7, JsonSerializer.Serialize(new CompanionRequest(Path: main, Viewpoint: new("")), HostJson.Options));
+            Reject(1, JsonSerializer.Serialize(new CompanionRequest(Path: main, Companions: [], Viewpoint: new("bad\nname")), HostJson.Options));
             Reject(1, valid); // Validation succeeds, but no parser may be implicitly initialized.
             shared.Configure(directory.FullName);
             var plugin = new Plugin(); shared.Initialize(shared.Add(main, plugin));
@@ -95,6 +101,8 @@ internal static class CompanionAbiChecks
             var owner = Call(1, request).GetProperty("owner").GetUInt64();
             request.Companions![0] = new("missing"); // Native bytes and admitted options no longer borrow caller objects.
             Reject(2, JsonSerializer.Serialize(new CompanionRequest(Owner: owner + 1), HostJson.Options));
+            foreach (var command in new[] { 2, 3 })
+                Reject(command, JsonSerializer.Serialize(new CompanionRequest(Owner: owner, Viewpoint: new("")), HostJson.Options));
             Reject(2, JsonSerializer.Serialize(new CompanionRequest(Owner: owner, ExtendToCombatEnd: true), HostJson.Options));
             Reject(3, JsonSerializer.Serialize(new CompanionRequest(Owner: owner, ExtendToCombatEnd: false), HostJson.Options));
             JsonElement result;
@@ -108,6 +116,8 @@ internal static class CompanionAbiChecks
             Check(Call(3, new CompanionRequest(Owner: next)).GetProperty("cancelled").GetBoolean(), "owned cancel");
             var live = Call(4, new CompanionRequest(Path: main, Companions: [new("SIDE")], ClockWaitMilliseconds: 1000));
             var liveOwner = live.GetProperty("owner").GetUInt64();
+            foreach (var command in new[] { 5, 6 })
+                Reject(command, JsonSerializer.Serialize(new CompanionRequest(Owner: liveOwner, Viewpoint: new("")), HostJson.Options));
             Check(live.GetProperty("sources").GetArrayLength() == 2 && live.GetProperty("clockWaitMilliseconds").GetInt32() == 1000, "live snapshot");
             Check(live.GetProperty("sources")[1].GetProperty("selectedName").GetString() == "SIDE" &&
                 live.GetProperty("sources")[1].GetProperty("name").GetString() == "side", "exact selection and physical casing");

@@ -99,6 +99,7 @@ async fn companion_extension_keeps_accepted_heads_and_next_request_strict(deploy
             .import_sources(
                 &main,
                 SourceImportOptions {
+                    viewpoint: None,
                     range: Some(range(extend)),
                     companions: vec![CompanionSource {
                         name: "Alpha".into(),
@@ -131,6 +132,7 @@ async fn cancel_and_extended_decoder_failure_retain_partial_graph_and_release_jo
         host.start_import_sources(
             &main,
             SourceImportOptions {
+                viewpoint: None,
                 range: Some(range(true)),
                 ..Default::default()
             },
@@ -165,6 +167,7 @@ async fn cancel_and_extended_decoder_failure_retain_partial_graph_and_release_jo
         host.import_sources(
             &main,
             SourceImportOptions {
+                viewpoint: None,
                 range: Some(range(true)),
                 ..Default::default()
             },

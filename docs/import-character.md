@@ -49,13 +49,38 @@ failure/cancel/missing-file restoration, companions, supplied text, private
 restart and exact saved-character capture replay. The ordinary managed contracts
 run includes these checks.
 
+## Bridge / Rust checkpoint
+
+`ImportCharacter::new(name)` owns a validated, control-free XML string of at most
+1024 UTF-8 bytes; `ImportCharacter::current()` is the explicit empty choice.
+`SourceImportOptions.viewpoint: None` retains the existing exact programmatic
+identity. `Some(choice)` applies the managed ACT UI rules. Rust does not trim or
+pre-normalize UTF-16 length. Whole/range imports, decoder choices and companions
+share the existing owned source-import lifecycle, with selection copied at Begin.
+Live opens, catalog/continuation commands and history captures reject overrides.
+
+`start_clipboard_import_with_viewpoint(text, choice)` accepts already supplied
+Unicode text without reading the OS clipboard. Legacy `start_clipboard_import`
+and `import_clipboard_text` continue to omit the choice. Binary command 6 encodes
+a separate 0..1024-byte UTF-8 name prefix before the 1..8MiB text payload; command
+5 retains its old layout and independent text budget. Both are validated before
+admission, borrow no native memory, and reuse existing Advance/cancel/drain.
+Malformed names, lengths, reserved fields, owner and continuation fields fail
+without starting a job. No new capture override or live-file policy is introduced.
+
+`import_character` runs actual isolated-worker synthetic tests for file/range,
+codec and companion choices, caller option copies, Unicode self aliases,
+omitted short-name versus explicit-current fallback, cancellation/partial
+failure/retry restoration and saved identity metadata across worker restart.
+Managed ABI checks cover malformed name prefixes and import-only option use;
+Rust packet tests cover the simultaneous 8MiB text + 1024-byte name boundary.
+These are contract/synthetic execution evidence, not native ACT UI execution.
+
 ## Remaining L6c work
 
-1. Add bounded Bridge/Rust request-owned character selection without changing
-   default file/range/text callers or allowing overrides of captured history.
-2. Reuse existing Rust/UI controls for current/manual choice, explaining effective
+1. Reuse existing Rust/UI controls for current/manual choice, explaining effective
    selection and keeping draft versus admitted context distinct; test actual
    isolated Host/controller behavior, stale sessions, failure/cancel and restart.
-3. Native ACT progress UI, Windows focus/input and live game/parser integration
+2. Native ACT progress UI, Windows focus/input and live game/parser integration
    remain unverified. L6b OS provider code/wiring remains independently on hold;
    this checkpoint does not retry or bypass that approval blocker.

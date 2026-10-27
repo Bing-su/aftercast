@@ -48,7 +48,7 @@ public static partial class EntryPoint
 }
 internal sealed record CompanionRequest(ulong Owner = 0, string? Path = null, ImportTextOptions? Text = null,
     ImportCompanion[]? Companions = null, long? StartTicks = null, long? EndTicks = null,
-    bool? GetCurrentZone = null, int? ClockWaitMilliseconds = null, bool? ExtendToCombatEnd = null)
+    bool? GetCurrentZone = null, int? ClockWaitMilliseconds = null, bool? ExtendToCombatEnd = null, ImportCharacterOptions? Viewpoint = null)
 {
     internal ImportRange? Range => StartTicks is { } start && EndTicks is { } end ? new(new(start), new(end), ExtendToCombatEnd == true) : null;
     internal void Validate(int command)
@@ -60,7 +60,7 @@ internal sealed record CompanionRequest(ulong Owner = 0, string? Path = null, Im
             if (command == 7)
             {
                 if (Owner != 0 || Text is not null || Companions is not null || StartTicks is not null || EndTicks is not null ||
-                    GetCurrentZone is not null || ClockWaitMilliseconds is not null || ExtendToCombatEnd is not null) throw new ArgumentException("Invalid companion catalog fields");
+                    GetCurrentZone is not null || ClockWaitMilliseconds is not null || ExtendToCombatEnd is not null || Viewpoint is not null) throw new ArgumentException("Invalid companion catalog fields");
                 return;
             }
             if (Companions is null || Companions.Length > (command == 1 ? 64 : 8)) throw new ArgumentException("Invalid companion selection count");
@@ -75,13 +75,13 @@ internal sealed record CompanionRequest(ulong Owner = 0, string? Path = null, Im
             {
                 if (Owner != 0 || GetCurrentZone is not null || ClockWaitMilliseconds is not null || StartTicks.HasValue != EndTicks.HasValue || ExtendToCombatEnd is not null && StartTicks is null)
                     throw new ArgumentException("Invalid source import fields");
-                _ = Range;
+                _ = Range; Viewpoint?.Validate();
             }
-            else if (StartTicks is not null || EndTicks is not null || ExtendToCombatEnd is not null || ClockWaitMilliseconds is <= 0 or > 300000)
+            else if (Viewpoint is not null || StartTicks is not null || EndTicks is not null || ExtendToCombatEnd is not null || ClockWaitMilliseconds is <= 0 or > 300000)
                 throw new ArgumentException("Invalid live companion options");
         }
         else if (Owner == 0 || Path is not null || Text is not null || Companions is not null || StartTicks is not null || EndTicks is not null ||
-            GetCurrentZone is not null || ClockWaitMilliseconds is not null || ExtendToCombatEnd is not null) throw new ArgumentException("Invalid companion continuation fields");
+            GetCurrentZone is not null || ClockWaitMilliseconds is not null || ExtendToCombatEnd is not null || Viewpoint is not null) throw new ArgumentException("Invalid companion continuation fields");
     }
 }
 internal sealed record SourceImportReply(ulong Owner, bool Pending = false, bool Cancelled = false, ImportProgress? Progress = null, ImportResult? Result = null);
