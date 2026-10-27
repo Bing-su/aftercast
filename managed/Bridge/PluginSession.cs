@@ -22,6 +22,7 @@ internal sealed class PluginSession
     private string? directory;
     private HostEnvironment? environment;
     private OwnerContext? context;
+    private bool recordEncounterLogs = true, originalLoglineViewLogs;
     private bool speechEnabled;
     private bool soundEnabled;
     private int soundVolume = 100, ttsVolume = 100;
@@ -105,6 +106,7 @@ internal sealed class PluginSession
             ?? throw new InvalidOperationException("Host data directory has not been configured"),
             context is null ? null : () => context.Pump(),
             context is null ? null : () => context.IsDispatching);
+        host.ConfigureRecording(recordEncounterLogs, originalLoglineViewLogs);
         host.OriginalLogRecordRead += logs.Capture;
         host.ConfigureSpeech(speechEnabled);
         host.ConfigureSound(soundEnabled);
@@ -123,7 +125,7 @@ internal sealed class PluginSession
             try { resource.Dispose(); } catch (Exception error) { errors.Add(error); }
         if (errors.Count != 0) throw new AggregateException("Host control disposal failed", errors);
     }
-    internal void Configure(string path)
+    internal void Configure(string path, bool recordLogs = true, bool originalLogs = false)
     {
         if (directory is not null) throw new InvalidOperationException("Host environment is already configured");
         if (!Path.IsPathFullyQualified(path) || !Directory.Exists(path))
@@ -131,6 +133,8 @@ internal sealed class PluginSession
         // ACT plugins save settings beneath AppDataFolder/Config, e.g. FFXIV_ACT_Plugin.config.xml.
         Directory.CreateDirectory(Path.Combine(path, "Config"));
         directory = path;
+        recordEncounterLogs = recordLogs;
+        originalLoglineViewLogs = originalLogs;
         // Both platforms dispatch on the caller's thread; Windows also pumps its native messages.
         context = new(error => ActGlobals.oFormActMain?.WriteExceptionLog(error, "Posted owner callback"));
     }

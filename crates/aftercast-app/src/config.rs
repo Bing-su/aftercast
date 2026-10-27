@@ -47,6 +47,8 @@ pub struct HostSettings {
     pub dotnet_root: String,
     pub plugins: Vec<String>,
     pub plugin_types: BTreeMap<String, String>,
+    pub record_encounter_logs: bool,
+    pub original_logline_view_logs: bool,
 }
 
 impl Default for HostSettings {
@@ -55,6 +57,8 @@ impl Default for HostSettings {
             dotnet_root: "dotnet".into(),
             plugins: Vec::new(),
             plugin_types: BTreeMap::new(),
+            record_encounter_logs: true,
+            original_logline_view_logs: false,
         }
     }
 }
@@ -133,6 +137,14 @@ impl ConfigFile {
             &mut self.document["host"]["dotnet_root"],
             value(&settings.host.dotnet_root),
         );
+        set(
+            &mut self.document["host"]["record_encounter_logs"],
+            value(settings.host.record_encounter_logs),
+        );
+        set(
+            &mut self.document["host"]["original_logline_view_logs"],
+            value(settings.host.original_logline_view_logs),
+        );
         let plugins = settings
             .host
             .plugins
@@ -172,6 +184,9 @@ fn set(item: &mut toml_edit::Item, mut replacement: toml_edit::Item) {
                 old.value() == new.value()
             }
             (toml_edit::Value::Integer(old), toml_edit::Value::Integer(new)) => {
+                old.value() == new.value()
+            }
+            (toml_edit::Value::Boolean(old), toml_edit::Value::Boolean(new)) => {
                 old.value() == new.value()
             }
             (toml_edit::Value::Array(old), toml_edit::Value::Array(new)) => old
@@ -224,6 +239,31 @@ mod tests {
         assert_eq!(
             resolve(root, "plugins/parser.dll"),
             root.join("plugins/parser.dll")
+        );
+    }
+
+    #[test]
+    fn recording_options_keep_comments_and_defaults_across_restart() {
+        let temp = tempfile::tempdir().expect("app");
+        let root = Utf8Path::from_path(temp.path()).expect("UTF-8 root");
+        let source = "schema_version = 1\n[host]\nrecord_encounter_logs = true # retain annotation\ncustom = 42\n";
+        fs::write(root.join("config.toml"), source).expect("config");
+        let mut file = ConfigFile::load(root).expect("load defaults");
+        assert!(file.settings.host.record_encounter_logs);
+        assert!(!file.settings.host.original_logline_view_logs);
+        file.settings.host.record_encounter_logs = false;
+        file.settings.host.original_logline_view_logs = true;
+        file.save(root).expect("save recording policy");
+        let saved = fs::read_to_string(root.join("config.toml")).expect("saved text");
+        assert!(saved.contains("record_encounter_logs = false # retain annotation"));
+        assert!(saved.contains("custom = 42"));
+        let reloaded = ConfigFile::load(root).expect("reload");
+        assert!(!reloaded.settings.host.record_encounter_logs);
+        assert!(reloaded.settings.host.original_logline_view_logs);
+        reloaded.save(root).expect("unchanged save");
+        assert_eq!(
+            fs::read_to_string(root.join("config.toml")).expect("unchanged"),
+            saved
         );
     }
 

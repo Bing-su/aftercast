@@ -48,3 +48,22 @@ public class LiveCombatPlugin : ImportPlugin
 {
     protected override bool Live => true;
 }
+
+// Mutate text after parsing so host-start recording policy can be checked independently of aggregation.
+public class RecordingPlugin : IActPluginV1
+{
+    private readonly ImportPlugin parser = new();
+    private FormActMain? root;
+    public void InitPlugin(TabPage tab, Label status)
+    {
+        parser.InitPlugin(tab, status);
+        root = ActGlobals.oFormActMain!;
+        root.BeforeLogLineRead += Transform;
+    }
+    private static void Transform(bool import, LogLineEventArgs info) => info.logLine = "processed:" + info.logLine;
+    public void DeInitPlugin()
+    {
+        root!.BeforeLogLineRead -= Transform;
+        parser.DeInitPlugin();
+    }
+}

@@ -178,6 +178,11 @@ namespace Aftercast.ActCompat
         public CombatPage<AttackSummaryData>? ReadEncounterAttacks(ulong id, int offset, int limit) => main.ReadEncounterAttacks(id, offset, limit);
         public CombatPage<EncounterActionData>? ReadEncounterActions(ulong id, int offset, int limit) => main.ReadEncounterActions(id, offset, limit);
         public EncounterLogPageData? ReadEncounterLogs(ulong id, int offset, int limit) => main.ReadEncounterLogs(id, offset, limit);
+        public void ConfigureRecording(bool enabled, bool original)
+        {
+            main.RecordEncounterLogs = enabled;
+            main.OriginalLoglineViewLogs = original;
+        }
         public void EnsureCanStop() => main.EnsureCanWaitForLogReader();
         // Quiesce file callbacks before the boundary so an admitted line cannot race encounter finalization.
         public void EndCombat() => main.RunWithLogReadingSuspended(() => main.EndCombat(true));

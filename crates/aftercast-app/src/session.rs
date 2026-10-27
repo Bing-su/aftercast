@@ -12,6 +12,10 @@ pub struct RunningHost {
 impl RunningHost {
     pub async fn start(root: Utf8PathBuf, settings: Settings) -> Result<Self> {
         let deploy_root = root.clone();
+        let recording = (
+            settings.host.record_encounter_logs,
+            settings.host.original_logline_view_logs,
+        );
         let (deployment, dotnet_root) = tokio::task::spawn_blocking(move || {
             let runtime = if settings.host.dotnet_root == "dotnet" {
                 crate::runtime_bundle::ensure(&deploy_root)?
@@ -30,6 +34,8 @@ impl RunningHost {
                 .dotnet_root(dotnet_root)
                 .bridge_directory(bridge)
                 .data_directory(root.join("state"))
+                .record_encounter_logs(recording.0)
+                .original_logline_view_logs(recording.1)
                 .build(),
         )
         .await

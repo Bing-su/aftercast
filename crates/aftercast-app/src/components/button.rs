@@ -18,6 +18,7 @@ pub fn Button(
     #[props(default)] class: String,
     #[props(default)] id: String,
     #[props(default)] aria_label: Option<String>,
+    #[props(default)] aria_pressed: Option<bool>,
     #[props(default)] onclick: EventHandler<MouseEvent>,
     children: Element,
 ) -> Element {
@@ -39,6 +40,7 @@ pub fn Button(
             class,
             r#type: "button",
             "aria-label": aria_label,
+            "aria-pressed": aria_pressed.map(|pressed| pressed.to_string()),
             disabled,
             onclick,
             {children}

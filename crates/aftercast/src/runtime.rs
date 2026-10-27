@@ -15,6 +15,12 @@ pub struct HostConfig {
     pub(crate) bridge_directory: Utf8PathBuf,
     #[builder(into)]
     pub(crate) data_directory: Utf8PathBuf,
+    /// Retain bounded encounter logs from the first parser callback. Default matches ACT: enabled.
+    #[builder(default = true)]
+    pub(crate) record_encounter_logs: bool,
+    /// Keep original input rather than parser-processed text. Applies when recording is enabled.
+    #[builder(default)]
+    pub(crate) original_logline_view_logs: bool,
     /// Defaults to the current application executable. Override for an embedding test harness or launcher.
     #[builder(into)]
     pub(crate) application_executable: Option<Utf8PathBuf>,

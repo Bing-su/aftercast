@@ -95,14 +95,14 @@ public static partial class EntryPoint
         if (!BitConverter.IsLittleEndian || Marshal.ReadInt32(buffer, 0) != sizeBytes || Marshal.ReadInt32(buffer, 4) != 1)
             throw new ArgumentException(message, nameof(buffer));
     }
-    private static (string Path, string TypeName) Request(nint buffer, int sizeBytes)
+    private static (string Path, string TypeName) Request(nint buffer, int sizeBytes, bool clearResult = true)
     {
         if (buffer == 0 || sizeBytes < 40 || sizeBytes > 65536)
             throw new ArgumentException("Plugin request must contain 40..65536 bytes", nameof(buffer));
         if (!BitConverter.IsLittleEndian) throw new InvalidOperationException("Plugin ABI requires little-endian execution");
         if (Marshal.ReadInt32(buffer, 0) != sizeBytes || Marshal.ReadInt32(buffer, 4) != 1)
             throw new ArgumentException("Plugin ABI size/version mismatch", nameof(buffer));
-        Marshal.WriteInt64(buffer, 32, 0);
+        if (clearResult) Marshal.WriteInt64(buffer, 32, 0);
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
         string ReadText(int offsetField, int lengthField)
         {
@@ -133,8 +133,10 @@ public static partial class EntryPoint
     });
     public static int ConfigureHost(nint buffer, int sizeBytes) => Run(() =>
     {
-        var (path, _) = Request(buffer, sizeBytes);
-        plugins.Value.Configure(path);
+        var (path, _) = Request(buffer, sizeBytes, clearResult: false);
+        var flags = unchecked((ulong)Marshal.ReadInt64(buffer, 32));
+        if ((flags & ~3UL) != 0) throw new ArgumentException("Unknown host recording flags");
+        plugins.Value.Configure(path, (flags & 1) == 0, (flags & 2) != 0);
         return 0;
     });
     public static int PluginCommand(nint buffer, int sizeBytes) => Run(() =>

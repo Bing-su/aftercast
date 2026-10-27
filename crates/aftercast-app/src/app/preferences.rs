@@ -79,6 +79,59 @@ pub(super) fn SettingsPane() -> Element {
                 p { class: "mt-2 text-xs text-muted-foreground", {tr("runtime-description")} }
             }
             Separator { class: "my-6".to_owned() }
+            div { class: "space-y-4",
+                h2 { class: "text-sm font-semibold", {tr("encounter-recording")} }
+                div { class: "flex flex-wrap items-center justify-between gap-3",
+                    Label { html_for: "record-encounter-logs", {tr("record-encounter-logs")} }
+                    Button {
+                        id: "record-encounter-logs".to_owned(),
+                        variant: ButtonVariant::Outline,
+                        aria_label: tr("record-encounter-logs"),
+                        aria_pressed: state.read().settings.host.record_encounter_logs,
+                        disabled: disabled || state.read().phase != Phase::Idle,
+                        onclick: move |_| {
+                            let enabled = state.peek().settings.host.record_encounter_logs;
+                            state.write().settings.host.record_encounter_logs = !enabled;
+                        },
+                        {
+                            tr(
+                                if state.read().settings.host.record_encounter_logs {
+                                    "enabled"
+                                } else {
+                                    "disabled"
+                                },
+                            )
+                        }
+                    }
+                }
+                div { class: "flex flex-wrap items-center justify-between gap-3",
+                    Label { html_for: "original-logline-view-logs", {tr("original-logline-view-logs")} }
+                    Button {
+                        id: "original-logline-view-logs".to_owned(),
+                        variant: ButtonVariant::Outline,
+                        aria_label: tr("original-logline-view-logs"),
+                        aria_pressed: state.read().settings.host.original_logline_view_logs,
+                        disabled: disabled || state.read().phase != Phase::Idle,
+                        onclick: move |_| {
+                            let original = state.peek().settings.host.original_logline_view_logs;
+                            state.write().settings.host.original_logline_view_logs = !original;
+                        },
+                        {
+                            tr(
+                                if state.read().settings.host.original_logline_view_logs {
+                                    "enabled"
+                                } else {
+                                    "disabled"
+                                },
+                            )
+                        }
+                    }
+                }
+                p { class: "text-xs leading-6 text-muted-foreground",
+                    {tr("recording-settings-help")}
+                }
+            }
+            Separator { class: "my-6".to_owned() }
             div { class: "flex gap-2",
                 Button {
                     id: "save-settings",

@@ -167,3 +167,61 @@ async fn archives_survive_restart_and_round_trip_through_public_apis(deployment:
     );
     restarted.shutdown().await.expect("stop archive host");
 }
+
+#[rstest::rstest]
+#[case(true, false)]
+#[case(true, true)]
+#[case(false, false)]
+#[case(false, true)]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
+async fn recording_policy_applies_before_parsing_and_survives_host_restart(
+    deployment: Deployment,
+    #[case] record: bool,
+    #[case] original: bool,
+) {
+    let path = deployment.directory().join("recording.log");
+    std::fs::write(&path, "0|100\n").expect("fixture");
+    let plugin = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    for _ in 0..2 {
+        let host = Host::start(
+            aftercast::HostConfig::builder()
+                .application_executable(common::application())
+                .dotnet_root(std::env::var("DOTNET_ROOT").expect("runtime"))
+                .bridge_directory(&deployment.bridge)
+                .data_directory(&deployment.state)
+                .record_encounter_logs(record)
+                .original_logline_view_logs(original)
+                .build(),
+        )
+        .await
+        .expect("recording host");
+        let id = host
+            .create_plugin(
+                PluginConfig::builder()
+                    .path(&plugin)
+                    .type_name("Aftercast.PluginFixture.RecordingPlugin")
+                    .build(),
+            )
+            .await
+            .expect("plugin");
+        host.initialize_plugin(id).await.expect("initialize parser");
+        assert_eq!(host.import_log(&path).await.expect("import").damage, 100);
+        let id = host.encounters(0, 1).await.expect("encounters").items[0].id;
+        let logs = host
+            .encounter_logs(id, 0, 1)
+            .await
+            .expect("logs")
+            .expect("encounter");
+        assert_eq!(logs.page.total, u32::from(record));
+        assert_eq!(logs.dropped, 0);
+        if record {
+            assert_eq!(
+                logs.page.items[0].text,
+                if original { "0|100" } else { "processed:0|100" }
+            );
+        }
+        host.shutdown().await.expect("shutdown");
+    }
+}

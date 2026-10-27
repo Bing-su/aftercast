@@ -52,6 +52,15 @@ internal static class CombatQueryAbiChecks
             Reset(56);
             Check(EntryPoint.QueryCombat(memory, 56) == 0 && Marshal.ReadInt32(memory, 36) == 8);
             Check(Marshal.ReadInt64(memory, 48) == 0);
+            // Reject unknown startup flags before configuring a host or constructing any plugin.
+            var directoryBytes = System.Text.Encoding.UTF8.GetBytes(directory.FullName);
+            var configureSize = 40 + directoryBytes.Length;
+            Reset(configureSize);
+            Marshal.WriteInt32(memory, 16, 40); Marshal.WriteInt32(memory, 20, directoryBytes.Length);
+            Marshal.WriteInt32(memory, 24, configureSize); Marshal.WriteInt32(memory, 28, 0);
+            Marshal.WriteInt64(memory, 32, 4);
+            Marshal.Copy(directoryBytes, 0, memory + 40, directoryBytes.Length);
+            Check(EntryPoint.ConfigureHost(memory, configureSize) == -1);
             shared.Configure(directory.FullName);
             _ = shared.OnOwner(() => typeof(PluginSession).GetMethod("Host", BindingFlags.NonPublic | BindingFlags.Instance)!.Invoke(shared, null));
             var root = ActGlobals.oFormActMain!;

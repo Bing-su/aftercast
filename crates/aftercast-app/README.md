@@ -15,6 +15,12 @@ This first executable implements the aggregate workflow from the
 Attack pages are read asynchronously in chunks of 256 and discarded when the
 session or encounter selection changes. Parser categories and ACT `All` rows
 remain separate: summing overlapping categories would double-count actions.
+Recording options are saved under `[host]` as `record_encounter_logs` (true by
+default) and `original_logline_view_logs` (false by default). Edit them in Settings
+while the host is stopped; save to keep them after app restart. The next host
+applies them before plugin construction. They control retained encounter context,
+not the independent raw subscription or the vendor disk writer.
+
 Imports belong to the application and continue across tab navigation; returning
 to the import pane exposes the current progress and cancellation action.
 The graph remains a contribution overview; it does not invent a damage time series

@@ -83,17 +83,24 @@ test('locale, theme and annotated TOML survive restart beside the executable', a
   await page.locator('#language').selectOption('en-US');
   await expect(page.getByRole('heading', { name: 'Settings', exact: true, level: 1 })).toBeVisible();
   await page.locator('#theme').selectOption('latte');
+  await page.getByRole('button', { name: 'Record encounter logs', exact: true }).click();
+  await page.getByRole('button', { name: 'Keep original log text', exact: true }).click();
   await page.getByRole('button', { name: 'Save settings', exact: true }).click();
   await expect(page.getByRole('status').last()).toHaveText('Settings saved');
   const saved = await fs.readFile(path.join(directory, 'config.toml'), 'utf8');
   expect(saved).toContain('# preserve this note');
   expect(saved).toContain('custom = 42');
   expect(saved).toContain('language = "en-US"');
+  expect(saved).toContain('record_encounter_logs = false');
+  expect(saved).toContain('original_logline_view_logs = true');
   await page.screenshot({ path: path.join(target, 'gui-settings-light.png') });
   await quit();
   await start();
   await expect(page.locator('.app-shell')).toHaveAttribute('data-theme', 'latte');
   await expect(page.getByRole('heading', { name: 'Analysis', exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Record encounter logs', exact: true })).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.getByRole('button', { name: 'Keep original log text', exact: true })).toHaveAttribute('aria-pressed', 'true');
   await quit();
 });
 

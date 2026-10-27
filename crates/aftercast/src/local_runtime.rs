@@ -129,6 +129,12 @@ impl ManagedSession {
         }
         let data_directory = canonicalize(&config.data_directory)?;
         let mut request = plugin_packet(host.session, data_directory.as_str(), None)?;
+        let recording_flags = u64::from(!config.record_encounter_logs)
+            | (u64::from(config.original_logline_view_logs) << 1);
+        request
+            .get_mut(32..40)
+            .ok_or_else(|| Error::InvalidPluginRequest("missing host recording flags".into()))?
+            .copy_from_slice(&recording_flags.to_le_bytes());
         host.request(Request::ConfigureHost, &mut request)?;
         tracing::debug!(session = host.session, "managed host started");
         Ok(host)

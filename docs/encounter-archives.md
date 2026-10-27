@@ -113,7 +113,12 @@ page, including duplicates outside that page. The GUI rechecks this status and
 the selected sorter before highlighting a source. Session IDs do not survive restart.
 The Analysis pane exposes these pages using Rust/UI-derived Button/Accordion
 components; Import/Export exposes checkpoint save/restore and clears old selections
-after restoration. Persistence of recording options remains separate work. Vendor disk-writer
+after restoration. The desktop persists `host.record_encounter_logs` (default true) and
+`host.original_logline_view_logs` (default false) in executable-adjacent
+`config.toml`. Change them while the host is stopped; they apply before any plugin
+construction in the next host session. Saving settings keeps them across app
+restart. Library consumers select the same values through `HostConfig`'s builder;
+there is no mid-session mutation API for these startup settings. Vendor disk-writer
 queue/flush/rotation guarantees are unchanged. The recording-order evidence was
 read from the pinned ACT binary with ILSpy 11.1.0.9782; new runtime regressions
 exercise aftercast on Linux, not ACT's full Windows application.
