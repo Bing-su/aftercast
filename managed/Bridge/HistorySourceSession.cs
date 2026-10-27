@@ -31,6 +31,7 @@ internal sealed partial class PluginSession
     private ulong proposalOwner, captureOwner;
     private Task<HistorySourceSnapshot>? proposal;
     private Task<HistorySourceCapture>? capture;
+    private ImportCompanion[] captureSelections = [];
     private CancellationTokenSource? proposalCancellation, captureCancellation;
 
     internal byte[] HistorySourceOperation(int command, HistorySourceRequest request) => OnOwner(() =>
@@ -68,6 +69,7 @@ internal sealed partial class PluginSession
             try { capture = host.CaptureHistorySourceAsync(snapshot, request.Path!, request.Text, request.Companions,
                 request.MaximumBytes ?? 4L * 1024 * 1024 * 1024, cancellation.Token); }
             catch { cancellation.Dispose(); throw; }
+            captureSelections = request.Companions!.ToArray();
             captureCancellation = cancellation;
             captureOwner = NewSourceOwner();
             return HostJson.Encode(new { Owner = captureOwner, Pending = true });
@@ -85,7 +87,9 @@ internal sealed partial class PluginSession
             return HostJson.Encode(new { Owner = captureOwner, Pending = true, Progress = host.HistoryCaptureProgress });
         }
         var image = capture.GetAwaiter().GetResult();
-        if (command == 7) return HostJson.Encode(new { Owner = captureOwner, Pending = false, Files = image.Files,
+        if (command == 7) return HostJson.Encode(new { Owner = captureOwner, Pending = false, Files = image.Files.Select(file => new { file.Path, file.Name, file.Length, file.Sha256, file.Text,
+                SelectedName = file.Name.Length == 0 ? "" : captureSelections.Single(selected =>
+                    string.Equals(selected.Name, file.Name, StringComparison.OrdinalIgnoreCase)).Name }),
             StartTicks = image.Range.Start.Ticks, EndTicks = image.Range.End.Ticks });
         RequireSourceParser();
         var importOwner = NewSourceOwner();
@@ -97,7 +101,7 @@ internal sealed partial class PluginSession
     });
     private void ForgetCapture()
     {
-        capture = null; captureOwner = 0;
+        capture = null; captureOwner = 0; captureSelections = [];
         captureCancellation?.Dispose(); captureCancellation = null;
     }
     private void ReleaseCapture()

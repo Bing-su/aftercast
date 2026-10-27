@@ -380,9 +380,9 @@ hard-link aliases, bounded nonmatching entries/candidates, nested paths not sear
 character/folder hints not used as roots, same-size same-mtime rewrite, replacement,
 rename/deletion refresh, immutable output/caller input snapshots, stale history,
 foreign scope/owner/thread, cancellation, missing/non-directory/linked roots and
-Linux FIFO rejection. This unit is **managed metadata backend only**: Bridge/Rust
-proposal transport, GUI selection and owned source/companion range reparse admission
-remain subsequent S1/S2 units. Existing explicit manual reparse stays unchanged.
+Linux FIFO rejection. This was the managed metadata checkpoint; the subsequent S2a,
+Bridge and Rust checkpoints below complete captured replay and transport. GUI
+selection remains subsequent. Existing explicit manual reparse stays unchanged.
 
 ## S2a managed captured-byte replay checkpoint
 
@@ -454,14 +454,15 @@ and deterministic partial-write/flush/adapter-cleanup fault injection with actua
 scratch descriptor cleanup. Fault injection does **not** claim a real full-disk
 or Windows I/O failure was exercised. All files are disposable synthetic inputs.
 
-This remains a **managed backend**. Bridge/Rust Begin/Advance transport, typed
-capture/proposal IDs, actual isolated-worker coverage of S1/S2 and GUI selection
-are subsequent units. Native Windows filesystem/disposal behavior, real screen
-clicks and ACT history/companion native thread timing remain unverified.
+This section records the managed backend checkpoint. Bridge/Rust transport,
+typed capture/proposal handles and actual isolated-worker coverage were completed
+in the checkpoints below; GUI selection remains subsequent. Native Windows
+filesystem/disposal behavior, real screen clicks and ACT history/companion native
+thread timing remain unverified.
 
 ### S1/S2 managed Bridge checkpoint
 
-`HistoryOperation` commands 3–9 use the existing fixed 4 MiB reply / 128 KiB request envelope and session header. They return immediate JSON responses; command 0 remains exclusively the checkpoint query/restore continuation. These commands do not yet have a Rust delegate/client or GUI.
+`HistoryOperation` commands 3–9 use the existing fixed 4 MiB reply / 128 KiB request envelope and session header. They return immediate JSON responses; command 0 remains exclusively the checkpoint query/restore continuation. This was the managed-only checkpoint; the Rust client is described below and GUI remains subsequent.
 
 | Command            | Admission / ownership                                                                                | Result                                                                             |
 | ------------------ | ---------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- |
@@ -473,6 +474,24 @@ clicks and ACT history/companion native thread timing remain unverified.
 | 8 capture release  | Current capture owner                                                                                | Cancel/join and dispose image, retire owner even when reporting an earlier failure |
 | 9 reparse          | Ready capture owner and initialized parser                                                           | One-shot transfer to existing companion import owner/Advance/cancel commands       |
 
-Ready images survive failed import preflight; any consumed image is retired even if admission fails. Shutdown cancels and joins pending source I/O before plugin teardown, collecting release failures while continuing cleanup. A dropped client request alone is not cancellation: the managed session retains one proposal and one capture until explicit release, replay transfer or Stop. Rust request-future/drop handling and isolated-worker tests remain the next unit.
+Ready images survive failed import preflight; any consumed image is retired even if admission fails. Shutdown cancels and joins pending source I/O before plugin teardown, collecting release failures while continuing cleanup. A dropped client request alone is not cancellation: the managed session retains one proposal and one capture until explicit release, replay transfer or Stop. The subsequent Rust checkpoint below covers request-future/drop handling and isolated-worker tests.
 
 The in-process ABI regression uses temporary synthetic files to check stale owners, budget failure/pending polling and release, frozen bytes after original replacement, both inclusive range endpoints, and repeated transfer rejection. It exercises the real ABI/session boundary, **not** the isolated worker transport, actual GUI, Windows runtime or native ACT scheduling.
+
+### S1/S2 Rust and isolated-worker checkpoint
+
+The Rust API reuses `Request::History` / `HistoryOperation` commands 3–9 across the existing authenticated worker transport. No second native ABI or import scheduler is introduced. Captured replay is admitted as the existing Host `ImportJob`, using owned companion import continuation commands for progress/cancel and normal shutdown drain.
+
+| Rust object / operation        | Contract                                                                                                                                                                                                                                                                 |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `HistorySourceProposal`        | Private session + proposal owner, selected history revision/ID/range and normalized authorized search scope; poll exposes metadata only                                                                                                                                  |
+| `HistorySourceCapture`         | Separate private session + capture owner; poll exposes captured file SHA-256/length/codec and the selected inclusive range                                                                                                                                               |
+| Source paths/roots             | Absolute lexical normalization before admission, without filesystem canonicalization; missing files can remain explicit candidates                                                                                                                                       |
+| Ready capture replay           | Mutable handle preserves failed preflight; successful transfer retires its owner and cannot replay again                                                                                                                                                                 |
+| Proposal/capture release       | Mutable handle preserves Busy/foreign-session pre-dispatch rejection; successful acknowledgement retires it                                                                                                                                                              |
+| Faulted capture release        | Managed release retires ownership before reporting the original fault; a subsequent stale-owner reply is expected                                                                                                                                                        |
+| Handle or response future drop | Does not automatically cancel or free managed resources. One proposal/capture remains bounded and Host-owned until explicit release, replay transfer or shutdown. A dropped admission response may require Host shutdown because the client did not receive the owner ID |
+
+Capture replies echo the exact selected companion name separately from the physical filename component. Rust verifies selected names/codecs, sibling-directory association, counts, hashes, budgets, envelope/session/owner and history range. ACT/.NET case-insensitive prefix/extension matching stays in the managed catalog, so physical `MAIN.Alpha.LOG` is accepted for selected `main.log` + `ALPHA`; Unicode casing is not approximated by a Rust filename reconstruction.
+
+Actual isolated-worker tests use only temporary synthetic sources/history and cover frozen main/companion replay after replacement/deletion, inclusive bounds, one-shot transfer, legacy import afterward, budget faults/release/reopen, stale history preflight, foreign and restarted sessions, cancel/drop/shutdown, parser failure with partial graph and recovery, and dropped capture-admission responses. Unit tests reject malformed envelopes, unknown/contradictory response shapes, out-of-scope candidates, wrong owners/ranges/path-name associations/codecs and unbounded counters. These tests do not establish native ACT thread timing, Windows UI behavior or a stronger historical/atomic filesystem identity guarantee. GUI source matching/capture/reparse remains the next unit.

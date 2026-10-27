@@ -246,6 +246,20 @@ impl HostHandle {
         text: Option<ImportTextOptions>,
         sources: Option<Vec<crate::CompanionSource>>,
     ) -> Result<ImportJob, Error> {
+        self.admit_import(path, range, text, sources, None).await
+    }
+    pub(crate) async fn start_captured_import(&self, owner: u64) -> Result<ImportJob, Error> {
+        self.admit_import(Utf8Path::new(""), None, None, None, Some(owner))
+            .await
+    }
+    async fn admit_import(
+        &self,
+        path: &Utf8Path,
+        range: Option<ImportRange>,
+        text: Option<ImportTextOptions>,
+        sources: Option<Vec<crate::CompanionSource>>,
+        capture_owner: Option<u64>,
+    ) -> Result<ImportJob, Error> {
         let cancellation = Arc::new(AtomicBool::new(false));
         let (progress, updates) = watch::channel(ImportProgress::default());
         let (complete, result) = oneshot::channel();
@@ -254,6 +268,7 @@ impl HostHandle {
             text,
             sources,
             source_owner: None,
+            capture_owner,
             cancellation: cancellation.clone(),
             progress,
             complete,

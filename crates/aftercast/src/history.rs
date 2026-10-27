@@ -50,14 +50,16 @@ impl HistoryQuery {
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HistoryRevision {
-    session: u64,
-    digest: String,
+    pub(crate) session: u64,
+    pub(crate) digest: String,
 }
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct HistoryId {
-    session: u64,
-    digest: String,
-    file: String,
+    pub(crate) session: u64,
+    pub(crate) digest: String,
+    pub(crate) file: String,
+    pub(crate) start_ticks: u64,
+    pub(crate) end_ticks: u64,
 }
 #[derive(Debug, Clone)]
 pub struct HistoryEntry {
@@ -146,6 +148,8 @@ impl HostHandle {
                     session: self.session,
                     digest: revision.digest.clone(),
                     file: item.id,
+                    start_ticks: item.start_ticks,
+                    end_ticks: item.end_ticks,
                 },
                 title: item.title,
                 zone: item.zone,
@@ -237,7 +241,7 @@ pub(crate) fn poll_packet(session: u64) -> BytesMut {
     packet.resize(HEADER + CAPACITY, 0);
     packet
 }
-fn valid_digest(value: &str) -> bool {
+pub(crate) fn valid_digest(value: &str) -> bool {
     value.len() == 64
         && value
             .bytes()

@@ -147,6 +147,7 @@ pub(crate) struct PendingImport {
     pub(crate) text: Option<ImportTextOptions>,
     pub(crate) sources: Option<Vec<CompanionSource>>,
     pub(crate) source_owner: Option<u64>,
+    pub(crate) capture_owner: Option<u64>,
     pub(crate) cancellation: Arc<AtomicBool>,
     pub(crate) progress: watch::Sender<ImportProgress>,
     pub(crate) complete: oneshot::Sender<Result<ImportReport, Error>>,
@@ -158,6 +159,17 @@ impl PendingImport {
         session: &mut RemoteSession,
         path: &Utf8Path,
     ) -> Result<(), Error> {
+        if let Some(owner) = self.capture_owner {
+            let mut packet = crate::history_sources::packet(
+                session.id(),
+                9,
+                &serde_json::json!({"owner":owner}),
+            )?;
+            session.request(Request::History, &mut packet)?;
+            let reply: SourceReply = crate::history_sources::reply(&packet, session.id(), 9)?;
+            self.source_owner = Some(admission_owner(reply)?);
+            return Ok(());
+        }
         let path = canonicalize(path)?;
         if let Some(sources) = &self.sources {
             if path.as_str().len() > 8192 || path.as_str().chars().any(char::is_control) {
@@ -171,15 +183,7 @@ impl PendingImport {
             )?;
             session.request(Request::Companions, &mut packet)?;
             let reply: SourceReply = companions::reply(&packet, session.id(), 1)?;
-            if reply.owner == 0
-                || !reply.pending
-                || reply.cancelled
-                || reply.progress.is_some()
-                || reply.result.is_some()
-            {
-                return Err(companions::invalid("invalid source import admission"));
-            }
-            self.source_owner = Some(reply.owner);
+            self.source_owner = Some(admission_owner(reply)?);
             return Ok(());
         }
         let mut packet = import_packet(session.id(), path.as_str())?;
@@ -367,6 +371,17 @@ struct SourceReply {
     cancelled: bool,
     progress: Option<ImportProgress>,
     result: Option<ImportReport>,
+}
+fn admission_owner(reply: SourceReply) -> Result<u64, Error> {
+    if reply.owner == 0
+        || !reply.pending
+        || reply.cancelled
+        || reply.progress.is_some()
+        || reply.result.is_some()
+    {
+        return Err(companions::invalid("invalid source import admission"));
+    }
+    Ok(reply.owner)
 }
 enum SourceStep {
     Progress(ImportProgress),

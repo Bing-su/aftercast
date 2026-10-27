@@ -17,9 +17,15 @@ pub use companions::{
 };
 mod diagnostics;
 mod history;
+mod history_sources;
 mod host;
 pub use history::{
     HistoryEntry, HistoryId, HistoryPage, HistoryQuery, HistoryRevision, HistorySearchScope,
+};
+pub use history_sources::{
+    CapturedHistoryFile, HistoryCaptureOptions, HistoryCaptureProgress, HistorySourceCandidate,
+    HistorySourceCapture, HistorySourceChange, HistorySourceDiagnostic, HistorySourceProposal,
+    HistorySourceQuery, HistorySourceSnapshot, HistorySourceState,
 };
 mod import;
 mod local_runtime;
