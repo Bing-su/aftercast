@@ -186,6 +186,10 @@ namespace Aftercast.ActCompat
         public ImportResult? AdvanceImport(bool cancel) => main.AdvanceImport(cancel);
         public TablePageData? ReadTable(TableQuery query) => main.ReadTable(query);
         public TableColumnCatalog ReadTableColumns(TableLevel level) => main.ReadTableColumns(level);
+        public HistorySourceSnapshot ReadHistorySources(HistorySelection selection, HistorySourceQuery query, HistorySourceSnapshot? previous = null) =>
+            main.ReadHistorySourcesAsync(selection, query, previous, false).GetAwaiter().GetResult();
+        public Task<HistorySourceSnapshot> ReadHistorySourcesAsync(HistorySelection selection, HistorySourceQuery query, HistorySourceSnapshot? previous = null, CancellationToken cancellation = default) =>
+            main.ReadHistorySourcesAsync(selection, query, previous, true, cancellation);
         public HistoryPage ReadHistory(HistoryQuery query) => main.ReadHistoryAsync(query,false).GetAwaiter().GetResult();
         public Task<HistoryPage> ReadHistoryAsync(HistoryQuery query) => main.ReadHistoryAsync(query);
         public int RestoreSelectedHistory(HistorySelection selection) => main.RestoreSelectedHistoryAsync(selection,false).GetAwaiter().GetResult();

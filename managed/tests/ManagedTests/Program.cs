@@ -523,6 +523,7 @@ internal static class Program
         DataCorrectionChecks.Run();
         EncounterArchiveChecks.Run();
         HistoryDiscoveryChecks.Run();
+        HistorySourceChecks.Run();
         HistoryLifecycleChecks.Run();
         EncounterLogChecks.Run();
         RootCombatStateChecks.Run();

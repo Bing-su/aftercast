@@ -23,13 +23,13 @@ expansion or Windows validation is implied by constructor/path probes.
 
 ## Current gap and bounded work units
 
-| Unit                                | Deliverable and completion evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | State                                                                                         |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
-| C1 Names and candidate catalog      | Public ACT path API; literal, top-level sibling discovery, case-insensitive unique names, deterministic order; reject linked/malformed/ambiguous candidates and fail explicitly above 64 companions/4096 directory entries. Synthetic path/name/link/bounds regressions and original pure API comparison.                                                                                                                                                                                                                         | Implemented; explicit managed import and live admission reuse the catalog.                    |
-| C2 Managed readers and dispatch     | Open selected main/companion handles together at admission, capture identity/length/encoding, retain handles rather than reopening catalog paths. Reuse parser/owner dispatch; populate companionLogName and each record's actual source path, distinct sorter and action/log identity. Test same timestamps, undated/empty/partial lines, range boundaries, malformed bytes, rotation/truncation, pause/cancel/stop and one-source failure with partial results. Specify stable ordering without claiming ACT thread tie parity. | Managed import/live connected; Rust source transport verified; GUI pending.                   |
-| C3 Bridge/Rust and existing UI      | Expose bounded request-owned companion choices/catalog and source status through existing import flow. Preserve explicit encoding snapshot, revisions/session ownership, draft/error/cancel/navigation/duplicate request behavior and controller tests. Do not present discovery alone as synchronized-import completion.                                                                                                                                                                                                         | Explicit catalog/selection/status GUI connected; synthetic Host regressions verified.         |
-| S1 Bounded history source proposals | Reuse selected history snapshot/time bounds. Inspect only explicit paths, recorded source references, or individually allowed roots; no parent climbing, recursive scan or external lookup. FolderHint/CharName/LastWriteTime are advisory. Return missing/ambiguous/changed outcomes; require explicit user selection when identity is not established.                                                                                                                                                                          | Pending. Current history metadata contains hints, not a trusted exact original-file identity. |
-| S2 Selection and reparse wiring     | Bind chosen source and file identity to the owned request, revalidate at admission and retain open handle. Connect to existing source-range import separately from checkpoint restore. Preserve selection drafts and reject stale history/catalog/session responses, changed files and duplicate requests. Synthetic Host/API/controller tests.                                                                                                                                                                                   | Pending.                                                                                      |
+| Unit                                | Deliverable and completion evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | State                                                                                     |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| C1 Names and candidate catalog      | Public ACT path API; literal, top-level sibling discovery, case-insensitive unique names, deterministic order; reject linked/malformed/ambiguous candidates and fail explicitly above 64 companions/4096 directory entries. Synthetic path/name/link/bounds regressions and original pure API comparison.                                                                                                                                                                                                                         | Implemented; explicit managed import and live admission reuse the catalog.                |
+| C2 Managed readers and dispatch     | Open selected main/companion handles together at admission, capture identity/length/encoding, retain handles rather than reopening catalog paths. Reuse parser/owner dispatch; populate companionLogName and each record's actual source path, distinct sorter and action/log identity. Test same timestamps, undated/empty/partial lines, range boundaries, malformed bytes, rotation/truncation, pause/cancel/stop and one-source failure with partial results. Specify stable ordering without claiming ACT thread tie parity. | Managed import/live connected; Rust source transport verified; GUI pending.               |
+| C3 Bridge/Rust and existing UI      | Expose bounded request-owned companion choices/catalog and source status through existing import flow. Preserve explicit encoding snapshot, revisions/session ownership, draft/error/cancel/navigation/duplicate request behavior and controller tests. Do not present discovery alone as synchronized-import completion.                                                                                                                                                                                                         | Explicit catalog/selection/status GUI connected; synthetic Host regressions verified.     |
+| S1 Bounded history source proposals | Reuse selected history snapshot/time bounds. Inspect only explicit paths, recorded source references, or individually allowed roots; no parent climbing, recursive scan or external lookup. FolderHint/CharName/LastWriteTime are advisory. Return missing/ambiguous/changed outcomes; require explicit user selection when identity is not established.                                                                                                                                                                          | Managed bounded metadata proposals implemented below; transport/selection wiring pending. |
+| S2 Selection and reparse wiring     | Bind chosen source and file identity to the owned request, revalidate at admission and retain open handle. Connect to existing source-range import separately from checkpoint restore. Preserve selection drafts and reject stale history/catalog/session responses, changed files and duplicate requests. Synthetic Host/API/controller tests.                                                                                                                                                                                   | Pending.                                                                                  |
 
 A catalog result is a proposal, not a file lease or a security boundary against
 concurrent path replacement. C2/S2 must validate selected files and own their
@@ -327,3 +327,59 @@ stale response invalidation and late-open shutdown. Earlier ABI/worker tests
 remain separate evidence. Source proposal/automatic matching S1/S2 stays pending.
 Native screen clicks/focus/layout, Windows filesystem/UI and native ACT companion
 thread timing have not been verified; controller tests are not visual QA.
+
+## S1a managed metadata proposal checkpoint
+
+The original `ThreadHistoryImport` (pinned decompile lines 13278–13420) walks up
+from the current log folder, recursively searches `FolderHint` / `LogFileFilter`,
+optionally filters paths by `CharName`, sorts local `LastWriteTime` and picks the
+first later than the record's `EndTime`. This is a heuristic, not an identity
+contract. Native ACT history dialogs/thread execution have not been run here.
+
+Current `history/index.xml` provides revision, record identity, inclusive source
+start/end times, character and folder hints. Private encounter XML keeps action /
+retained-log sorter identity but does **not** persist original physical paths.
+`OriginalLogRecord.Path` is an ephemeral observer field. Archive payload paths,
+FolderHint and character strings are not treated as recorded source references;
+this unit invents none and never derives new search roots from them.
+
+`HostEnvironment.ReadHistorySources[Async]` accepts exactly one selected history
+ID and its current index digest, explicit absolute files (at most 16), explicitly
+authorized roots (at most 8), and a filename-only glob. It copies inputs before
+I/O, lists only top-level entries, bounds **all** root entries to 4096 total
+(including nonmatching entries), and rejects above 64 combined candidate paths
+including exact observations revisited from a previous snapshot. No parent walk,
+recursive search, automatic fallback or automatic source selection is present.
+
+Snapshots are immutable metadata proposals bound to the managed owner, selected
+history revision/ID, inclusive times and normalized authorized scope. Refresh with
+a different owner/history/scope fails. Index changes before/during discovery fail
+without publishing a new result. Folder/character/local-write-time matches are
+advisory only. Every snapshot requires explicit selection, even with one candidate.
+
+| Observation            | Contract                                                                                                                                                                                                                   |
+| ---------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Overlap / aliases      | Exact input overlap merges provenance; device+file-ID duplicates merge aliases rather than become ambiguous independent matches. Full paths remain visible.                                                                |
+| Multiple files         | Distinct physical files remain ambiguous even with equal basenames/size/mtime; none is chosen.                                                                                                                             |
+| Refresh                | File ID, size, modification and change stamps distinguish ordinary replacement, metadata change, moved identity, missing path and unavailable observations. Moves are suggestions, never path substitution.                |
+| Missing vs unavailable | An unreadable/unsupported scope reports incomplete diagnostics; it is not a proven missing/no-match result. Missing roots/paths are explicit. A failed or linked root is not followed through old candidate paths.         |
+| Filesystem scope       | Final symlinks/devices/directories are rejected. Linux uses metadata-only `statx` and rejects FIFO before any data-stream open. Windows file-ID/basic-info observation compiles; native Windows execution remains pending. |
+| Cancellation           | Checks across catalog/root/path work throw cancellation before a snapshot is returned. Proposal work does not modify history files or encounter graphs.                                                                    |
+
+These stamps are **not content hashes, byte-equality proofs, leases or authority
+to reparse**. Change time catches ordinary same-size rewrites with restored mtime,
+but metadata resolution/filesystem behavior and concurrent writes limit it.
+A proposal does not prove a particular byte image was retained. S2 must define
+selection/admission using owned, verified read bytes (or verify consumed bytes
+with explicit partial-result/error semantics); hash-before-reparse plus an open
+descriptor alone cannot prevent concurrent in-place writes. No stronger durability
+policy or journal is added.
+
+Synthetic managed regressions cover equal-name ambiguity, explicit/root overlap,
+hard-link aliases, bounded nonmatching entries/candidates, nested paths not searched,
+character/folder hints not used as roots, same-size same-mtime rewrite, replacement,
+rename/deletion refresh, immutable output/caller input snapshots, stale history,
+foreign scope/owner/thread, cancellation, missing/non-directory/linked roots and
+Linux FIFO rejection. This unit is **managed metadata backend only**: Bridge/Rust
+proposal transport, GUI selection and owned source/companion range reparse admission
+remain subsequent S1/S2 units. Existing explicit manual reparse stays unchanged.
