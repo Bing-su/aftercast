@@ -498,7 +498,7 @@ Actual isolated-worker tests use only temporary synthetic sources/history and co
 
 ### S1/S2 History GUI checkpoint
 
-The existing History results now provide a separate **Find source logs** action, including for already restored checkpoints. Checkpoint restore stays separate from raw-source replay. The source panel uses the existing Rust/UI-derived Button/Input/Label/Badge and Chorale Accordion, existing native encoding selectors and the shared companion codec display; no UI dependency or WinForms bridge is added.
+The existing History results now provide a separate **Find source logs** action, including for already restored checkpoints. Checkpoint restore stays separate from raw-source replay. The source panel uses the existing local Rust/UI-derived Button/Input/Label/Badge/Accordion components, existing native encoding selectors and the shared companion codec display; no UI dependency or WinForms bridge is added.
 
 | User operation             | Ownership and state contract                                                                                                                                                                               |
 | -------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
