@@ -56,4 +56,5 @@ pub(crate) enum Request {
     Speech,
     Archive,
     Triggers,
+    Notifications,
 }

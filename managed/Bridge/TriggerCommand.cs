@@ -22,7 +22,7 @@ public static partial class EntryPoint
             throw new ArgumentException("Invalid trigger command fields");
         var bytes = new byte[length]; Marshal.Copy(buffer + header, bytes, 0, length);
         var text = new UTF8Encoding(false, true).GetString(bytes);
-        var request = JsonSerializer.Deserialize<TriggerRequest>(text, TriggerJson.Options)
+        var request = JsonSerializer.Deserialize<TriggerRequest>(text, HostJson.Options)
             ?? throw new ArgumentException("Missing trigger request");
         var output = plugins.Value.TriggerOperation(command, request);
         if (output.Length > capacity) throw new InvalidOperationException("Trigger reply exceeds bounded capacity");
@@ -35,7 +35,7 @@ public static partial class EntryPoint
 internal sealed record TriggerRequest(ulong Revision = 0, string? PreviousKey = null, TriggerDefinition? Definition = null,
     string? Key = null, int Offset = 0, int Limit = 16, bool OriginalLines = false, bool ProcessImports = false, ulong After = 0);
 
-internal static class TriggerJson
+internal static class HostJson
 {
     internal static readonly JsonSerializerOptions Options = new()
     {

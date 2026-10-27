@@ -57,8 +57,10 @@ internal sealed class PluginSession
                 request.Definition, request.Key, request.Offset, request.Limit, request.OriginalLines, request.ProcessImports, request.After));
             result = changed!;
         }
-        return TriggerJson.Encode(result);
+        return HostJson.Encode(result);
     });
+    internal byte[] NotificationOperation(int command, ulong id, int limit) => OnOwner(() =>
+        HostJson.Encode(command == 1 ? (object)Host().ReadNotifications(id, limit) : Host().ShowNotification(id)));
     internal void EndCombat() => OnOwner(() => { environment?.EndCombat(); return 0; });
     internal int ArchiveOperation(int command, string text, ulong id, bool compressed) => OnOwner(() =>
     {

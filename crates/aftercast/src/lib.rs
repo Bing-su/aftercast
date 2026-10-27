@@ -15,6 +15,8 @@ mod host;
 mod import;
 mod local_runtime;
 mod logs;
+mod notifications;
+pub use notifications::{Notification, NotificationCursor, NotificationId, NotificationPage};
 mod plugins;
 mod process;
 mod runtime;
@@ -49,6 +51,8 @@ pub use snapshots::{CombatRevision, CombatSnapshot, CombatSnapshotStatus, Combat
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("invalid notification request or response: {0}")]
+    InvalidNotificationRequest(String),
     #[error("invalid trigger request or response: {0}")]
     InvalidTriggerRequest(String),
     #[error("the host command queue is full or a conflicting operation is active")]

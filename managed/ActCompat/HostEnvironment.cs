@@ -186,6 +186,8 @@ namespace Aftercast.ActCompat
         public void ShowPluginSettings(TabPage tab) => main.ShowPluginSettings(tab);
         public void EnsureCanStop() => main.EnsureCanWaitForLogReader();
         // Quiesce file callbacks before the boundary so an admitted line cannot race encounter finalization.
+        public NotificationPage ReadNotifications(ulong after, int limit) => main.ReadNotifications(after, limit);
+        public NotificationItem ShowNotification(ulong id) => main.ShowNotification(id);
         public object TriggerOperation(int command, ulong revision, string? previousKey, TriggerDefinition? definition,
             string? key, int offset, int limit, bool originalLines, bool processImports, ulong after) => command switch
         {

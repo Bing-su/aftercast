@@ -281,6 +281,7 @@ internal static class Program
             ImportAbiChecks.Run(session);
             ArchiveAbiChecks.Run(session);
             TriggerAbiChecks.Run(session);
+            NotificationAbiChecks.Run(session);
             LogAbiChecks.Run(session);
             CombatSnapshotAbiChecks.Run(session);
             CombatQueryAbiChecks.Run(session);
