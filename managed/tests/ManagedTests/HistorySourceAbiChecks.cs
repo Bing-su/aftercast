@@ -72,6 +72,7 @@ internal static class HistorySourceAbiChecks
             var ready = Complete(7, capture); Check(ready.GetProperty("files")[0].GetProperty("sha256").GetString()!.Length == 64, "verified image metadata");
             Call(5, new HistorySourceRequest(Owner: owner), true);
             File.WriteAllText(path, "9|replacement\n");
+            Call(9, new { Owner = capture, ExtendToCombatEnd = true }, true);
             var replay = Call(9, new HistorySourceRequest(Owner: capture)).GetProperty("owner").GetUInt64();
             Call(9, new HistorySourceRequest(Owner: capture), true);
             var deadline = DateTime.UtcNow.AddSeconds(10);

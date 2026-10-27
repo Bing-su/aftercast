@@ -23,7 +23,8 @@ public static partial class EntryPoint
             Marshal.Copy(buffer + offset, bytes, 0, length);
             var path = new UTF8Encoding(false, true).GetString(bytes);
             if (path.Contains('\0')) throw new ArgumentException("Import path contains NUL");
-            if (Marshal.ReadInt64(buffer, 48) != 0 || Marshal.ReadInt32(buffer, 60) != 0)
+            var boundaryFlags = Marshal.ReadInt32(buffer, 60);
+            if (Marshal.ReadInt64(buffer, 48) != 0 || (boundaryFlags & ~1) != 0 || command == 1 && boundaryFlags != 0)
                 throw new ArgumentException("Nonzero reserved import fields");
             var codePage = Marshal.ReadInt32(buffer, 40);
             var flags = Marshal.ReadInt32(buffer, 44);
@@ -34,7 +35,7 @@ public static partial class EntryPoint
             Aftercast.ActCompat.ImportRange? range = null;
             if (command == 4)
                 range = new(new DateTime(Marshal.ReadInt64(buffer, 24), DateTimeKind.Unspecified),
-                    new DateTime(Marshal.ReadInt64(buffer, 32), DateTimeKind.Unspecified));
+                    new DateTime(Marshal.ReadInt64(buffer, 32), DateTimeKind.Unspecified), (boundaryFlags & 1) != 0);
             else if (Marshal.ReadInt64(buffer, 24) != 0 || Marshal.ReadInt64(buffer, 32) != 0)
                 throw new ArgumentException("Full import must not specify a time range");
             plugins.Value.BeginImport(path, range, text);

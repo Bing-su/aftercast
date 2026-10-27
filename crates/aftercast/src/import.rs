@@ -80,11 +80,12 @@ impl ImportTextOptions {
 }
 
 /// Inclusive source wall-clock bounds for ACT history reparse, in 100 ns ticks since year 0001.
-/// No timezone conversion or extension to combat end is performed.
+/// No timezone conversion is performed. Extension is explicit and defaults to false.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ImportRange {
     start_ticks: u64,
     end_ticks: u64,
+    extend_to_combat_end: bool,
 }
 impl ImportRange {
     pub fn new(start_ticks: u64, end_ticks: u64) -> Result<Self, Error> {
@@ -96,7 +97,29 @@ impl ImportRange {
         Ok(Self {
             start_ticks,
             end_ticks,
+            extend_to_combat_end: false,
         })
+    }
+    /// None selects the file beginning/end using ACT's idle-import MinValue/MaxValue bounds.
+    pub fn from_bounds(
+        start_ticks: Option<u64>,
+        end_ticks: Option<u64>,
+        extend_to_combat_end: bool,
+    ) -> Result<Self, Error> {
+        Self::new(
+            start_ticks.unwrap_or(0),
+            end_ticks.unwrap_or(3_155_378_975_999_999_999),
+        )
+        .map(|range| range.with_combat_end_extension(extend_to_combat_end))
+    }
+    /// Permit a post-end row only while combat is active before parsing that row.
+    /// Such a row can end the old encounter and start another; this is not an encounter-ID filter.
+    pub fn with_combat_end_extension(mut self, enabled: bool) -> Self {
+        self.extend_to_combat_end = enabled;
+        self
+    }
+    pub fn extend_to_combat_end(self) -> bool {
+        self.extend_to_combat_end
     }
     pub fn start_ticks(self) -> u64 {
         self.start_ticks
@@ -179,7 +202,7 @@ impl PendingImport {
                 session.id(),
                 1,
                 &serde_json::json!({"path":path,"text":self.text.map(WireText::from),
-                "companions":sources.iter().map(WireSource::from).collect::<Vec<_>>(),"startTicks":self.range.map(ImportRange::start_ticks),"endTicks":self.range.map(ImportRange::end_ticks)}),
+                "companions":sources.iter().map(WireSource::from).collect::<Vec<_>>(),"startTicks":self.range.map(ImportRange::start_ticks),"endTicks":self.range.map(ImportRange::end_ticks),"extendToCombatEnd":self.range.map(ImportRange::extend_to_combat_end)}),
             )?;
             session.request(Request::Companions, &mut packet)?;
             let reply: SourceReply = companions::reply(&packet, session.id(), 1)?;
@@ -199,6 +222,10 @@ impl PendingImport {
                 .get_mut(32..40)
                 .ok_or(Error::Closed)?
                 .copy_from_slice(&range.end_ticks.to_le_bytes());
+            packet
+                .get_mut(60..64)
+                .ok_or(Error::Closed)?
+                .copy_from_slice(&u32::from(range.extend_to_combat_end).to_le_bytes());
         }
         packet
             .get_mut(56..60)
@@ -521,6 +548,37 @@ mod tests {
         }
         ImportRange::new(2, 1).expect_err("reversed range");
         ImportRange::new(0, maximum + 1).expect_err("out of DateTime range");
+    }
+
+    #[test]
+    fn file_bounds_and_combat_extension_are_explicit_value_snapshots() {
+        let maximum = 3_155_378_975_999_999_999;
+        let full = ImportRange::from_bounds(None, None, false).expect("effective file bounds");
+        assert_eq!((full.start_ticks(), full.end_ticks()), (0, maximum));
+        assert!(!full.extend_to_combat_end());
+        let extended = full.with_combat_end_extension(true);
+        assert!(extended.extend_to_combat_end());
+        assert!(!full.extend_to_combat_end());
+        assert_eq!(extended.with_combat_end_extension(false), full);
+        assert_eq!(
+            ImportRange::from_bounds(Some(7), None, true)
+                .expect("file end")
+                .end_ticks(),
+            maximum
+        );
+        assert_eq!(
+            ImportRange::from_bounds(None, Some(7), true)
+                .expect("file start")
+                .start_ticks(),
+            0
+        );
+        ImportRange::from_bounds(Some(8), Some(7), true).expect_err("reversed bounds");
+        ImportRange::from_bounds(None, Some(maximum + 1), false).expect_err("invalid maximum");
+        assert!(
+            !ImportRange::new(0, 0)
+                .expect("equal inclusive bounds")
+                .extend_to_combat_end()
+        );
     }
 
     #[rstest::rstest]

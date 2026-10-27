@@ -67,14 +67,17 @@ internal static class ImportAbiChecks
             StepRejected(() => Marshal.WriteInt32(memory, 44, 1), "explicit import encoding");
             StepRejected(() => Marshal.WriteInt32(memory, 40, -1), "Unsupported import code page");
             StepRejected(() => Marshal.WriteInt32(memory, 40, 932), "requires an initialized plugin");
-            StepRejected(() => Marshal.WriteInt32(memory, 60, 1), "reserved");
+            StepRejected(() => Marshal.WriteInt32(memory, 60, 2), "reserved");
+            StepRejected(() => Marshal.WriteInt32(memory, 60, 1), "requires an initialized plugin");
+            StepRejected(() => { Marshal.WriteInt32(memory, 56, 1); Marshal.WriteInt32(memory, 60, 1); }, "reserved");
             StepRejected(() => { Marshal.WriteInt32(memory, 56, 1); Marshal.WriteInt64(memory, 32, 1); }, "must not specify");
             StepRejected(() => { }, "requires an initialized plugin");
+            foreach (var command in new[] { 2, 3 })
             foreach (var field in new[] { 16, 20, 24, 32, 40, 44, 48, 60 })
             {
                 Reset();
                 for (var offset = 24; offset < 64; offset += 8) Marshal.WriteInt64(memory,offset,0);
-                Marshal.WriteInt32(memory,0,64); Marshal.WriteInt32(memory,20,0); Marshal.WriteInt32(memory,56,2);
+                Marshal.WriteInt32(memory,0,64); Marshal.WriteInt32(memory,20,0); Marshal.WriteInt32(memory,56,command);
                 Marshal.WriteInt32(memory,field,1);
                 Check(EntryPoint.ImportOperation(memory,64) == -1 && Program.Diagnostic().Contains("continuation fields", StringComparison.Ordinal));
             }

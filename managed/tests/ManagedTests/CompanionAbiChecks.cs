@@ -82,6 +82,12 @@ internal static class CompanionAbiChecks
             Reject(1, JsonSerializer.Serialize(new CompanionRequest(Path: main, Text: new(1), Companions: []), HostJson.Options));
             Reject(1, JsonSerializer.Serialize(new CompanionRequest(Path: main, StartTicks: 1, EndTicks: 0, Companions: []), HostJson.Options));
             Reject(4, JsonSerializer.Serialize(new CompanionRequest(Path: main, Companions: [], ClockWaitMilliseconds: 0), HostJson.Options));
+            foreach (var extend in new[] { false, true })
+            {
+                Reject(1, JsonSerializer.Serialize(new CompanionRequest(Path: main, Companions: [], ExtendToCombatEnd: extend), HostJson.Options));
+                Reject(4, JsonSerializer.Serialize(new CompanionRequest(Path: main, Companions: [], ExtendToCombatEnd: extend), HostJson.Options));
+                Reject(7, JsonSerializer.Serialize(new CompanionRequest(Path: main, ExtendToCombatEnd: extend), HostJson.Options));
+            }
             Reject(1, valid); // Validation succeeds, but no parser may be implicitly initialized.
             shared.Configure(directory.FullName);
             var plugin = new Plugin(); shared.Initialize(shared.Add(main, plugin));
@@ -89,6 +95,8 @@ internal static class CompanionAbiChecks
             var owner = Call(1, request).GetProperty("owner").GetUInt64();
             request.Companions![0] = new("missing"); // Native bytes and admitted options no longer borrow caller objects.
             Reject(2, JsonSerializer.Serialize(new CompanionRequest(Owner: owner + 1), HostJson.Options));
+            Reject(2, JsonSerializer.Serialize(new CompanionRequest(Owner: owner, ExtendToCombatEnd: true), HostJson.Options));
+            Reject(3, JsonSerializer.Serialize(new CompanionRequest(Owner: owner, ExtendToCombatEnd: false), HostJson.Options));
             JsonElement result;
             do { result = Call(2, new CompanionRequest(Owner: owner)); if (result.GetProperty("pending").GetBoolean()) Thread.Sleep(1); }
             while (result.GetProperty("pending").GetBoolean());
