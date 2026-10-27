@@ -21,7 +21,13 @@ mod runtime;
 pub use process::{run_child_if_requested, run_child_if_requested_with_audio};
 mod snapshots;
 mod speech;
+mod triggers;
 pub use speech::AudioSettings;
+pub use triggers::TriggerResultCursor;
+pub use triggers::{
+    TriggerCapture, TriggerDefinition, TriggerItem, TriggerPage, TriggerResult, TriggerResultPage,
+    TriggerRevision,
+};
 
 pub use bridge::extract_bridge;
 use camino::Utf8PathBuf;
@@ -43,6 +49,8 @@ pub use snapshots::{CombatRevision, CombatSnapshot, CombatSnapshotStatus, Combat
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("invalid trigger request or response: {0}")]
+    InvalidTriggerRequest(String),
     #[error("the host command queue is full or a conflicting operation is active")]
     Busy,
     #[error("import canceled after retaining partial history and restoring live state")]
