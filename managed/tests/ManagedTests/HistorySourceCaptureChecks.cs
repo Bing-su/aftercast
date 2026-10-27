@@ -55,7 +55,16 @@ internal static class HistorySourceCaptureChecks
         HostLifetimeChecks.RunBounded(BudgetAndAdmission);
         HostLifetimeChecks.RunBounded(IntegrityAndPartialResults);
         HostLifetimeChecks.RunBounded(CancellationAndStop);
-        Console.WriteLine("Captured source bytes, range/companion replay, integrity, budget and ready shutdown checks passed.");
+        HostLifetimeChecks.RunBounded(WriteAndFlushFailures);
+        HostLifetimeChecks.RunBounded(ExactBudgetBoundaries);
+        HostLifetimeChecks.RunBounded(() => FailedImportShutdown(false));
+        HostLifetimeChecks.RunBounded(() => FailedImportShutdown(true));
+        foreach (var mode in new[] { "cancel", "grow", "rewrite", "replace", "history", "stop" })
+            HostLifetimeChecks.RunBounded(() => ChangeDuringCapture(mode));
+        HostLifetimeChecks.RunBounded(ActiveImportStopAndCallbackGuard);
+        HostLifetimeChecks.RunBounded(ProducerFailureDuringStop);
+        HostLifetimeChecks.RunBounded(RangeCutoffIgnoresUndispatchedSuffix);
+        Console.WriteLine("Captured source bytes, original-path-independent range/companion replay, integrity, limits, one-shot ownership and shutdown checks passed.");
     }
     private static ImportResult Drain(HostEnvironment host)
     {
@@ -136,4 +145,171 @@ internal static class HistorySourceCaptureChecks
         f.Host.StopProcessing(); Check(ready.State == HistorySourceCaptureState.Disposed, "stop retained ready bytes");
         Reject<ObjectDisposedException>(() => f.Host.CaptureHistorySourceAsync(f.Proposal(), f.Main)); f.NoScratch();
     }
+    private static void FailedImportShutdown(bool dispose)
+    {
+        using var f = new Fixture(); File.WriteAllText(f.Main, string.Concat(Enumerable.Repeat("1|1\n", 4000)), new UTF8Encoding(false));
+        var live = Path.Combine(f.Directory.FullName, "live.log"); File.WriteAllText(live, "");
+        f.Root.LogFilePath = live; f.Root.OpenLog(false, false);
+        using var capture = f.Host.CaptureHistorySourceAsync(f.Proposal(), f.Main).GetAwaiter().GetResult();
+        f.Root.BeforeLogLineRead += (_, _) => throw new InvalidDataException("synthetic-import-stop");
+        f.Host.BeginCapturedHistoryImport(capture);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (f.Host.ImportProgress.RecordsDispatched == 0)
+        { f.Host.AdvanceImport(false); Check(DateTime.UtcNow < deadline, "no accepted record before shutdown"); Thread.Sleep(1); }
+        // Force an independent settings cleanup failure; both errors must survive disposal.
+        if (dispose) { f.Root.OriginalLoglineCustomTriggers = true; System.IO.Directory.CreateDirectory(Path.Combine(f.Directory.FullName, "CustomTriggers.xml")); }
+        Exception? observed = null;
+        try { if (dispose) f.Host.Dispose(); else f.Host.StopProcessing(); } catch (Exception error) { observed = error; }
+        Check(observed is not null && observed.ToString().Contains("synthetic-import-stop", StringComparison.Ordinal), "terminal import error was hidden");
+        Check(observed is AggregateException, "shutdown stopped before collecting cleanup errors");
+        if (dispose)
+        {
+            Check(ActGlobals.oFormActMain is null && ActGlobals.oFormSpellTimers is null && ActGlobals.oFormEncounterLogs is null, "failed dispose retained ACT globals");
+            Check(((AggregateException)observed!).Flatten().InnerExceptions.Count >= 2, "independent settings error was hidden");
+        }
+        else
+        {
+            Check((bool)typeof(FormActMain).GetField("actionsStopped", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(f.Root)!, "failed stop left combat runtime running");
+            f.Host.Dispose(); Check(ActGlobals.oFormActMain is null, "failed-stop retry retained globals");
+        }
+        using var exclusive = new FileStream(live, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        f.NoScratch();
+    }
+
+    private sealed class FailingWriter(FileStream target, string mode) : Stream
+    {
+        public override bool CanWrite => true;
+        public override bool CanRead => false;
+        public override bool CanSeek => false;
+        public override long Length => throw new NotSupportedException();
+        public override long Position { get => throw new NotSupportedException(); set => throw new NotSupportedException(); }
+        public override async ValueTask WriteAsync(ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            await target.WriteAsync(mode.StartsWith("write", StringComparison.Ordinal) ? buffer[..Math.Min(31, buffer.Length)] : buffer, cancellationToken);
+            if (mode.StartsWith("write", StringComparison.Ordinal)) throw new IOException("synthetic disk write failure");
+        }
+        public override Task FlushAsync(CancellationToken cancellationToken) => mode.StartsWith("flush", StringComparison.Ordinal)
+            ? Task.FromException(new IOException("synthetic flush failure")) : target.FlushAsync(cancellationToken);
+        public override void Flush() => throw new NotSupportedException();
+        public override int Read(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+        public override void SetLength(long value) => throw new NotSupportedException();
+        protected override void Dispose(bool disposing)
+        { if (disposing && mode.EndsWith("cleanup", StringComparison.Ordinal)) throw new IOException("synthetic adapter cleanup failure"); base.Dispose(disposing); }
+    }
+    private static void WriteAndFlushFailures()
+    {
+        using var f = new Fixture(); var bytes = Encoding.UTF8.GetBytes("1|10|" + new string('x', 1024) + "\n"); File.WriteAllBytes(f.Main, bytes);
+        var type = typeof(FormActMain).Assembly.GetType("Advanced_Combat_Tracker.CapturedLogImage")!;
+        var method = type.GetMethod("CopyAsync", BindingFlags.NonPublic | BindingFlags.Static)!;
+        foreach (var mode in new[] { "write", "flush", "write-cleanup", "flush-cleanup" })
+        {
+            using var source = File.OpenRead(f.Main); Microsoft.Win32.SafeHandles.SafeFileHandle? scratch = null;
+            Func<FileStream, Stream> adapter = target => { scratch = target.SafeFileHandle; return new FailingWriter(target, mode); };
+            var task = (Task)method.Invoke(null, [source, source.Length, f.Directory.FullName, CancellationToken.None, (Action<int>)(_ => { }), adapter])!;
+            Exception? error = null; try { task.GetAwaiter().GetResult(); } catch (Exception failure) { error = failure; }
+            Check(error is not null && error.ToString().Contains(mode.StartsWith("write", StringComparison.Ordinal) ? "disk write" : "flush", StringComparison.Ordinal), "write/flush error hidden");
+            if (mode.EndsWith("cleanup", StringComparison.Ordinal)) Check(error is AggregateException aggregate && aggregate.Flatten().InnerExceptions.Count == 2, "write and cleanup errors not preserved");
+            Check(scratch is { IsClosed: true }, "failed image retained target descriptor"); f.NoScratch();
+            Check(File.ReadAllBytes(f.Main).SequenceEqual(bytes), "failed scratch write changed original source");
+        }
+    }
+    private static void ExactBudgetBoundaries()
+    {
+        using var f = new Fixture(); File.WriteAllText(f.Main, "1|10\n"); File.WriteAllText(f.Side("alpha"), "1|20\n"); var snapshot = f.Proposal();
+        var exact = new FileInfo(f.Main).Length + new FileInfo(f.Side("alpha")).Length;
+        using (var image = f.Host.CaptureHistorySourceAsync(snapshot, f.Main, companions: [new("alpha")], maximumBytes: exact).GetAwaiter().GetResult())
+            Check(image.Files.Sum(file => file.Length) == exact, "exact aggregate budget rejected");
+        Reject<InvalidDataException>(() => f.Host.CaptureHistorySourceAsync(snapshot, f.Main, companions: [new("alpha")], maximumBytes: exact - 1).GetAwaiter().GetResult());
+        Reject<ArgumentOutOfRangeException>(() => f.Host.CaptureHistorySourceAsync(snapshot, f.Main, maximumBytes: 4L * 1024 * 1024 * 1024 + 1));
+        if (OperatingSystem.IsLinux())
+        {
+            // ftruncate creates a synthetic sparse file: validate the 4 GiB bound without writing 4 GiB.
+            using (var file = File.OpenWrite(f.Main)) file.SetLength(4L * 1024 * 1024 * 1024 + 1);
+            snapshot = f.Proposal(); Reject<InvalidDataException>(() => f.Host.CaptureHistorySourceAsync(snapshot, f.Main).GetAwaiter().GetResult());
+            Check(f.Host.HistoryCaptureProgress.BytesCopied == 0, "oversized source was copied before the bound check");
+        }
+        f.NoScratch();
+    }
+
+    private static void ChangeDuringCapture(string mode)
+    {
+        using var f = new Fixture();
+        // A synthetic sparse source bounds runtime while leaving enough chunks to intervene after admission.
+        using (var file = File.Create(f.Main)) file.SetLength(64 * 1024 * 1024);
+        var initial = new FileInfo(f.Main).Length; var modified = File.GetLastWriteTimeUtc(f.Main);
+        using var cancellation = new CancellationTokenSource();
+        var task = f.Host.CaptureHistorySourceAsync(f.Proposal(), f.Main, cancellation: cancellation.Token);
+        Check(SpinWait.SpinUntil(() => f.Host.HistoryCaptureProgress.BytesCopied > 0 || task.IsCompleted, TimeSpan.FromSeconds(5)), "capture never started");
+        Check(!task.IsCompleted, "capture finished before the concurrent boundary could be exercised");
+        var old = f.Main + ".old";
+        switch (mode)
+        {
+            case "cancel": cancellation.Cancel(); break;
+            case "grow": using (var file = new FileStream(f.Main, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete)) { file.Position = file.Length; file.WriteByte(1); } break;
+            case "rewrite":
+                using (var file = new FileStream(f.Main, FileMode.Open, FileAccess.Write, FileShare.ReadWrite | FileShare.Delete)) file.WriteByte(1);
+                File.SetLastWriteTimeUtc(f.Main, modified); break;
+            case "replace":
+                File.Move(f.Main, old); using (var file = File.Create(f.Main)) file.SetLength(initial);
+                File.SetLastWriteTimeUtc(f.Main, modified); break;
+            case "history": File.AppendAllText(Path.Combine(f.Directory.FullName, "history/index.xml"), " "); break;
+            case "stop": f.Host.StopProcessing(); break;
+            default: throw new Exception("unknown capture boundary");
+        }
+        if (mode is "cancel" or "stop") Reject<OperationCanceledException>(() => task.GetAwaiter().GetResult());
+        else if (mode == "history") Reject<InvalidOperationException>(() => task.GetAwaiter().GetResult());
+        else Reject<IOException>(() => task.GetAwaiter().GetResult());
+        if (mode != "stop") Check(f.Host.HistoryCaptureProgress.BytesCopied <= initial, "growing source escaped its captured length");
+        Check(f.Host.ListEncounters(0, 16).Total == 1, "failed preparation published partial graph");
+        using var exclusive = new FileStream(mode == "replace" ? old : f.Main, FileMode.Open, FileAccess.ReadWrite, FileShare.None);
+        f.NoScratch();
+    }
+    private static void ActiveImportStopAndCallbackGuard()
+    {
+        using var f = new Fixture(); File.WriteAllText(f.Main, string.Concat(Enumerable.Repeat("1|1\n", 4000)), new UTF8Encoding(false));
+        using var image = f.Host.CaptureHistorySourceAsync(f.Proposal(), f.Main).GetAwaiter().GetResult();
+        var rejected = false;
+        LogLineEventDelegate callback = (_, _) =>
+        {
+            try { f.Host.Dispose(); } catch (InvalidOperationException) { rejected = true; }
+            Check(ReferenceEquals(ActGlobals.oFormActMain, f.Root), "reentrant dispose altered globals");
+        };
+        f.Root.OnLogLineRead += callback;
+        f.Host.BeginCapturedHistoryImport(image);
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (f.Host.ImportProgress.RecordsDispatched == 0)
+        { f.Host.AdvanceImport(false); Check(DateTime.UtcNow < deadline, "no callback"); Thread.Sleep(1); }
+        Check(rejected, "unsafe callback disposal was accepted");
+        f.Root.OnLogLineRead -= callback;
+        f.Host.StopProcessing();
+        Check(f.Host.ListEncounters(0, 16).Items.Last().Damage > 0, "normal active-stop lost accepted partial graph");
+        Check((bool)typeof(FormActMain).GetField("actionsStopped", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(f.Root)!, "active-stop did not stop runtime");
+        f.NoScratch();
+    }
+    private static void ProducerFailureDuringStop()
+    {
+        using var f = new Fixture(); File.WriteAllText(f.Main, string.Concat(Enumerable.Repeat("1|1\n", 4000)), new UTF8Encoding(false));
+        using var image = f.Host.CaptureHistorySourceAsync(f.Proposal(), f.Main).GetAwaiter().GetResult();
+        f.Host.BeginCapturedHistoryImport(image); f.Host.AdvanceImport(false);
+        // Inject the same channel terminal error that the actual input task reports on read/integrity failure.
+        var operation = typeof(FormActMain).GetField("activeImport", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(f.Root)!;
+        var input = (System.Threading.Channels.Channel<string[]>)operation.GetType().GetField("input", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(operation)!;
+        Check(input.Writer.TryComplete(new IOException("synthetic-producer-io")), "producer completed before error injection");
+        Exception? failure = null; try { f.Host.Dispose(); } catch (Exception error) { failure = error; }
+        Check(failure is AggregateException && failure.ToString().Contains("synthetic-producer-io", StringComparison.Ordinal), "cancel hid the recorded producer failure");
+        Check(ActGlobals.oFormActMain is null && ActGlobals.oFormSpellTimers is null && ActGlobals.oFormEncounterLogs is null, "producer failure stopped final disposal");
+        f.NoScratch();
+    }
+
+    private static void RangeCutoffIgnoresUndispatchedSuffix()
+    {
+        using var f = new Fixture(); File.WriteAllBytes(f.Main, [..Encoding.UTF8.GetBytes("1|10\n3|20\n4|999\n"), 0xff, 10]);
+        using var capture = f.Host.CaptureHistorySourceAsync(f.Proposal(), f.Main).GetAwaiter().GetResult();
+        f.Host.BeginCapturedHistoryImport(capture); var report = Drain(f.Host);
+        Check(report.Damage == 30 && report.RecordsDispatched == 2, "unconsumed decoder suffix escaped normal range cutoff");
+        f.NoScratch();
+    }
+
 }

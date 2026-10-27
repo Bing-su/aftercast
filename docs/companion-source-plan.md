@@ -383,3 +383,78 @@ foreign scope/owner/thread, cancellation, missing/non-directory/linked roots and
 Linux FIFO rejection. This unit is **managed metadata backend only**: Bridge/Rust
 proposal transport, GUI selection and owned source/companion range reparse admission
 remain subsequent S1/S2 units. Existing explicit manual reparse stays unchanged.
+
+## S2a managed captured-byte replay checkpoint
+
+`CaptureHistorySourceAsync` requires an explicitly selected available path/alias
+from an owner-bound S1 snapshot. It rechecks the history revision and the main
+file's observed version, copies request/codec choices, resolves only explicitly
+named sibling companions, and opens every original descriptor before copying.
+Duplicate physical inputs, missing/linked/changed files and stale history fail
+before any parser callback or encounter mutation. Capture work and ready images
+are mutually exclusive with import/archive mutation; metadata queries remain
+read-only. One pending/ready capture is owned by each managed Host.
+
+| Resource / lifetime        | Contract                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
+| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Byte budget                | Caller may lower the aggregate limit; the default and hard ceiling are 4 GiB of source bytes across main plus at most 64 companions. Subtraction checks reject even huge/sparse observed lengths before copying, without sum overflow. Growth never extends the admitted source length. This is not a filesystem quota; metadata/allocation overhead is additional.                                                                                                     |
+| Copy / verification memory | One 64 KiB copy buffer; SHA-256 for each 64 KiB chunk plus a whole-image digest. At most 65536+65 chunk hashes across the set (bounded managed object overhead in addition to digest bytes). Each opened replay reader has one 64 KiB verification buffer. Existing decoder/head limits still apply. This does not bound arbitrary plugin allocations.                                                                                                                  |
+| Temporary storage          | New private `.aftercast-source-<nonce>.tmp` files in the application data directory, CreateNew/read-write/Share.None/DeleteOnClose, Linux mode 0600 and immediate unlink. No original path is opened for writing. No archive or permanent raw-log copy is created. Capture failure, explicit ready-image Dispose, import completion/cancel/failure and Host shutdown close all owned images/handles. No durability, secure-erasure or OS-crash atomicity claim is made. |
+| Capture publication        | All selected handles are acquired and within budget before any copying. Handle/path versions are checked again across the completed set and the history digest is rechecked. Ordinary concurrent growth/rewrite/rename/replacement or index changes discard the entire preparation; no graph has been published. Cancellation closes intermediate images and originals.                                                                                                 |
+| Replay authority           | An opaque managed `HistorySourceCapture` owns the exact copied byte sequence, paths/names, decoder/BOM policies and inclusive history bounds. It is one-shot. Preflight owner/history/combat errors preserve a ready capture; once transferred, failed admission closes it rather than silently reusing an uncertain request. Disposing the observer after transfer cannot close admitted readers.                                                                      |
+
+`BeginCapturedHistoryImport` revalidates the owner/current history before transfer
+and reuses the existing import engine. The single-main batch path stays intact;
+companion replay reuses its deterministic owner timestamp/clock gate, initial zone
+context, inclusive range, EOF exclusion and retained action/log identity. Both
+paths open verified image readers, **never the original source paths**. Plugins
+still see the captured original path and companion name, not scratch names.
+The selected history character is applied for replay and the live character/parser
+context is restored afterward. Parser plugin code/settings are not themselves
+snapshotted.
+
+Each replay chunk is read, checked against its capture manifest, and returned to
+the decoder from that **same owned buffer**. Verification never rereads a path
+or checks one buffer then decodes another. This also covers range imports that
+stop before source EOF. Corrupt/truncated images fail before exposing the affected
+chunk. Previously accepted records/actions can remain as explicitly failed or
+cancelled partial results, matching existing import semantics.
+
+After a ready capture is published, original-file changes do not retarget it:
+replay uses the retained image even if the originals were moved, replaced or
+deleted. A user must explicitly capture again for new bytes. History is checked
+at admission; its immutable bounds/character then remain the admitted request,
+not an ongoing external-index lease.
+
+The guarantee is **replay of checksum-verified captured bytes**, not proof that
+the chosen file was the historical original. S1 still lacks trusted historical
+path/content references. Metadata version checks detect ordinary changes but do
+not turn concurrent reads into a filesystem transaction; a writer restoring all
+observable metadata could leave a mixed-time copied sequence. SHA-256 manifests
+describe that captured sequence. Malicious native plugin memory access, storage
+hardware failure beyond detectable reads, crash recovery and stronger journaling
+are outside this contract.
+
+Shutdown first performs a side-effect-free owner/callback/advance preflight.
+Once admitted, captured import terminal errors are collected while readers,
+combat runtime, controls and ACT globals continue through cleanup. Original input
+errors and independent cleanup errors are reported together. A recorded single
+input producer error is not lost merely because cancel arrived before the owner
+consumed its failed channel. Unsafe callback disposal remains rejected before
+changing state; legacy import stop preflight remains unchanged.
+
+Synthetic managed regressions cover frozen main/949/UTF-16 companion replay after
+original replacement/deletion, source path/character/codec restoration, chunk
+corruption with partial retention, single-use ownership, stale history, exact
+aggregate and sparse 4 GiB+1 rejection without copying 4 GiB, all-open admission
+cleanup, cancellation and six in-progress capture boundaries (cancel, growth,
+same-size/mtime rewrite, replacement, index edit, Stop), active-import Stop and
+callback rejection, input-error Stop/Dispose plus independent settings failure,
+and deterministic partial-write/flush/adapter-cleanup fault injection with actual
+scratch descriptor cleanup. Fault injection does **not** claim a real full-disk
+or Windows I/O failure was exercised. All files are disposable synthetic inputs.
+
+This remains a **managed backend**. Bridge/Rust Begin/Advance transport, typed
+capture/proposal IDs, actual isolated-worker coverage of S1/S2 and GUI selection
+are subsequent units. Native Windows filesystem/disposal behavior, real screen
+clicks and ACT history/companion native thread timing remain unverified.
