@@ -14,6 +14,7 @@ pub(super) fn Header() -> Element {
                 for screen in [
                     "analysis",
                     "triggers",
+                    "timers",
                     "notifications",
                     "plugins",
                     "import",

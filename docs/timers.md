@@ -1,8 +1,8 @@
 # Spell timer definitions and transient countdowns
 
-The managed definition foundation implements ACT 3.8.5.288 spell-timer data and
-valid `SpellTimers/Spell` XML attributes. Rust transport and the definition editor
-are not yet connected. A definition's `ActiveInList` flag controls new matching;
+The managed definition service implements ACT 3.8.5.288 spell-timer data and
+valid `SpellTimers/Spell` XML attributes, with session-owned Rust management
+operations and the Spell timers definition editor. A definition's `ActiveInList` flag controls new matching;
 it is separate from already retained frames and running countdowns.
 
 ## Definition management
@@ -48,9 +48,26 @@ all field round trips, XML escaping/boolean spellings, empty files, Unicode name
 collisions/aliases, stale revisions, corrupt/DTD inputs, write failures, live-frame
 identity, rebind order, retained duration, restart and failed-startup cleanup.
 
-Next: session-owned Bridge/Rust operations, explicit definition editing/reload GUI,
-input/draft/error state contracts and separate transient timer inspection. Reuse
-existing Rust/UI components and runtime matching; do not restore live countdowns
-from the definition file. Native spell-window input, audio and genuine timer-model
-execution remain Windows validation. The partial WinForms rendering bridge remains
-planning only.
+## Session-owned Rust API and editor
+
+| Surface                            | Contract                                                                                                                                                                                                                                                                                               |
+| ---------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `timer_definitions(offset, limit)` | Returns owned snapshots, an opaque session-owned `TimerRevision` and retained frame count. Limits are 1..16.                                                                                                                                                                                           |
+| `save_timer_definition`            | Returns `SavedTimer` with the authoritative managed key and normalized definition. Rust does not reconstruct ACT's culture-dependent keys.                                                                                                                                                             |
+| Delete/reload                      | Require the expected revision. Old-session revisions are rejected before worker dispatch. The host owns the `SpellTimers.xml` path; callers cannot provide an arbitrary persistence path.                                                                                                              |
+| Worker                             | Runs requests on the original owner context and quiesces log/action processing for mutations. Fixed ABI capacity and input are validated before writes.                                                                                                                                                |
+| Editor                             | Uses existing Rust/UI Input, Label, Button and Accordion. All 18 fields remain editable; numeric/color text is preserved even when invalid. ARGB uses #AARRGGBB including alpha. Saving never previews sound.                                                                                          |
+| Draft and conflicts                | Navigation/refresh/paging preserves dirty drafts. Selecting another row cannot discard one. A changed revision requires reviewing all saved fields before an explicit rebase, or keeping a new copy; duplicate category/name creation is rejected. Discard resets the form; Stop clears session state. |
+| Pending work                       | One request is admitted at a time; mutations block conflicting host operations. App-owned tasks survive pane unmount. Old-session replies cannot update newer drafts, clear newer busy flags or surface stale errors.                                                                                  |
+| Acknowledgment                     | Apply the managed key/definition before a follow-up read. A failed read does not turn an acknowledged save into an unsaved draft or cause an automatic retry. Write failures preserve the complete draft.                                                                                              |
+| Deletion                           | Confirm the rendered key/revision explicitly. Editing cancels pending confirmation. Deleting definitions does not cancel retained countdowns.                                                                                                                                                          |
+
+Synthetic worker and GUI-controller tests cover persistence, failed replacement,
+normalized identity, stale revisions/sessions, draft navigation, duplicates,
+reviewed conflicts, deletion, late successful replies, multiple pages and last-page
+fallback. The Windows desktop scenario is registered but has not run on Linux.
+
+Transient timer inspection/manual start/cancel and native spell-window input/audio
+remain separate timer surfaces; this editor reports the retained frame count only.
+Actual desktop clicks and genuine native timer-model execution remain Windows
+validation. The partial WinForms rendering bridge remains planning only.

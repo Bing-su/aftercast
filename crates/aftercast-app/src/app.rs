@@ -5,6 +5,7 @@ mod notifications;
 mod plugins;
 mod preferences;
 mod shell;
+mod timers;
 mod triggers;
 
 use std::time::Duration;
@@ -41,6 +42,7 @@ enum Phase {
     Importing,
     Archiving,
     UpdatingTriggers,
+    UpdatingTimers,
     ShowingNotification,
     ChangingPlugins,
     Stopping,
@@ -56,6 +58,7 @@ impl Phase {
             Self::Importing => "importing",
             Self::Archiving => "archiving",
             Self::UpdatingTriggers => "updating-triggers",
+            Self::UpdatingTimers => "updating-timers",
             Self::ShowingNotification => "showing-notification",
             Self::ChangingPlugins => "changing-plugins",
             Self::Stopping => "stopping",
@@ -88,6 +91,7 @@ struct AppState {
     log_windows: std::sync::Arc<log_window::WindowLifetime>,
     plugins: Vec<LoadedPlugin>,
     triggers: triggers::EditorState,
+    timers: timers::EditorState,
     notifications: notifications::NotificationState,
     plugin_ui_pending: bool,
     startup_failed: bool,
@@ -145,6 +149,7 @@ impl AppState {
             log_windows: Default::default(),
             plugins: Vec::new(),
             triggers: Default::default(),
+            timers: Default::default(),
             notifications: Default::default(),
             plugin_ui_pending: false,
             startup_failed: false,
@@ -254,6 +259,7 @@ pub fn App() -> Element {
                     | Phase::Importing
                     | Phase::Archiving
                     | Phase::ChangingPlugins
+                    | Phase::UpdatingTimers
                     | Phase::UpdatingTriggers
                     | Phase::ShowingNotification => {
                         stop(state);
@@ -306,6 +312,9 @@ pub fn App() -> Element {
                         },
                         "plugins" => rsx! {
                             plugins::PluginsPane {}
+                        },
+                        "timers" => rsx! {
+                            timers::TimersPane {}
                         },
                         "triggers" => rsx! {
                             triggers::TriggersPane {}
@@ -467,6 +476,7 @@ fn stop(mut state: Signal<AppState>) {
         state.encounters.clear();
         state.plugins.clear();
         state.triggers = Default::default();
+        state.timers = Default::default();
         state.notifications = Default::default();
         state.plugin_ui_pending = false;
         state.loading = false;
