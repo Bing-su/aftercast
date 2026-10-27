@@ -76,11 +76,57 @@ Managed ABI checks cover malformed name prefixes and import-only option use;
 Rust packet tests cover the simultaneous 8MiB text + 1024-byte name boundary.
 These are contract/synthetic execution evidence, not native ACT UI execution.
 
-## Remaining L6c work
+## Desktop GUI checkpoint
 
-1. Reuse existing Rust/UI controls for current/manual choice, explaining effective
-   selection and keeping draft versus admitted context distinct; test actual
-   isolated Host/controller behavior, stale sessions, failure/cancel and restart.
-2. Native ACT progress UI, Windows focus/input and live game/parser integration
-   remain unverified. L6b OS provider code/wiring remains independently on hold;
-   this checkpoint does not retry or bypass that approval blocker.
+The Import / Export pane uses the existing Rust/UI-derived `Button`, `Input`
+and `Label` components in `import_text::character::Controls`, inside the current
+Dioxus/Tailwind/Catppuccin layout. No new widget library or HTML/JavaScript bridge
+is added. Korean and English labels describe these three separate policies:
+
+| Choice                                  | Requested policy                                                                                                                                       |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Preserve current name exactly (default) | Omitted API option; keep the existing programmatic current name, including a short name.                                                               |
+| Current name (ACT rules)                | Explicit empty choice; resolve current name at worker Begin and apply ACT's short-name fallback.                                                       |
+| Enter a name                            | Preserve entered text, including whitespace; preview the UTF-16 short-name fallback to YOU. An empty manual entry is the same explicit-current policy. |
+
+The editable next-import choice and admitted request policy have separate labels.
+The display does not claim to look up a live current name or predict a plugin's
+later intentional mutation of ActGlobals. Full-file selection copies the choice
+before the file picker, while range/text admission copies their choice before
+starting the async job. Every production request dispatcher uses that copy,
+including selected companions and codecs. Controls reject edits during an active
+read/import; mode changes, import completion/cancel and Host replacement invalidate
+old rendered tokens. Tab navigation keeps admitted work app-owned until drain.
+
+Invalid manual input stays editable and visible, with a localized error and
+raw-import admission disabled. Cancel, file/admission failure and parser failure
+keep the draft. Host Stop/restart keeps it in the running app; closing/reopening
+the app resets to the omitted-option default. No viewpoint preference is written
+to config or source files. History capture replay has no manual-choice field and
+continues to use its saved exact character; changing a raw-import draft does not
+alter or block that capture policy.
+
+Four new actual isolated Host/controller tests cover full-file choices and
+picker cancel, forced independent draft versus admitted snapshot, invalid-name
+blocking, missing-file recovery, range/codec bounds, companion selection,
+provided text via an in-memory reader, partial errors, callback-gated cancel,
+duplicate requests, navigation, stale replies/edits and app/Host reset behavior.
+The existing history-source controller regression additionally replays a saved
+Source viewpoint with a distinct Target raw-import draft and verifies the saved
+aggregate/identity remains unchanged. No OS clipboard is read or written.
+
+## Verification limits
+
+The Windows WebView2 suite includes a viewpoint scenario for mode buttons,
+manual draft, import results, validation, fallback, Host Stop and app restart.
+On Linux it is collected/parsed only; it is not native click evidence. Native ACT
+progress UI, Windows focus/input and live game/parser integration remain
+unverified. ser7's existing native UI automation/accessibility limitation is not
+changed. Build/startup smoke and synthetic controllers do not establish visual,
+focus, keyboard or platform clipboard behavior.
+
+L6b OS provider code/wiring remains independently on hold after automatic
+approval review rejected it, pending the user's direct approval. This work adds
+no provider, retries no rejected operation and accesses only synthetic supplied
+text. The L6c option is wired to the supplied-text GUI path; the default build's
+OS Paste action remains unavailable under that separate L6b blocker.

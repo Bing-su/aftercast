@@ -22,12 +22,13 @@ pub(super) struct Selection {
     sources: Vec<CompanionSource>,
 }
 impl Selection {
-    pub(super) async fn start(
+    pub(super) async fn start_with_viewpoint(
         &self,
         host: &HostHandle,
         path: &Utf8Path,
         range: Option<ImportRange>,
         text: Option<ImportTextOptions>,
+        viewpoint: Option<&aftercast::ImportCharacter>,
     ) -> Result<ImportJob, aftercast::Error> {
         if path != self.path {
             return Err(aftercast::Error::InvalidCompanionRequest("Selected companions belong to a different main path; reload candidates for this source".into()));
@@ -35,7 +36,7 @@ impl Selection {
         host.start_import_sources(
             path,
             SourceImportOptions {
-                viewpoint: None,
+                viewpoint: viewpoint.cloned(),
                 range,
                 text,
                 companions: self.sources.clone(),

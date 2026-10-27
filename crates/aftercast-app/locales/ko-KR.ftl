@@ -490,3 +490,15 @@ clipboard-unsupported = 제공된 데이터가 지원하는 일반 텍스트 형
 clipboard-unavailable = 이 빌드에는 텍스트 provider가 연결되지 않았거나 사용할 수 없습니다. 이전 초안은 보존했습니다.
 clipboard-busy = 이전 provider 읽기가 아직 진행 중입니다. 완료 후 다시 읽으세요.
 clipboard-import-failed = 붙여넣기 snapshot 가져오기가 실패했습니다. 초안과 수락한 부분 전투는 보존했습니다. 파서 오류 상세는 일반 desktop 로그에 복사하지 않습니다.
+
+import-character-title = 가져오기 캐릭터 · 관점
+import-character-help = 원본 파일과 제공된 텍스트 가져오기에 적용하며, 표시할 행위자를 거르는 기능은 아닙니다. History 캡처는 저장된 캐릭터를 사용합니다. 명시적인 빈 선택은 worker Begin 시점의 현재 이름을 사용하고, ACT는 UTF-16 두 단위 이하 이름을 YOU로 바꿉니다. 공백은 제거하지 않습니다.
+import-character-choice = 캐릭터 선택 방식
+import-character-legacy = 현재 이름 그대로 유지
+import-character-current = 현재 이름 · ACT 규칙
+import-character-manual = 이름 직접 입력
+import-character-name = 캐릭터 이름
+import-character-draft = 다음 가져오기 선택
+import-character-active = 접수된 요청 선택 · 고정
+import-character-invalid = 제어 문자 없이 1024 UTF-8 바이트 이하의 올바른 이름을 입력하세요. 초안을 수정하거나 현재 이름을 선택하세요.
+import-character-session = 취소·실패·Host 재시작 후에도 앱을 닫기 전까지 선택을 유지하며 디스크에 저장하지 않습니다. 현재 이름은 worker Begin 시점에 결정됩니다. 표시값은 요청한 정책이며 실시간 이름 조회 결과가 아닙니다.

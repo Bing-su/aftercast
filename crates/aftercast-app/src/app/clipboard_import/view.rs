@@ -23,7 +23,7 @@ fn import(mut state: Signal<AppState>, view: Token) {
     let complete = tr("clipboard-complete");
     let canceled = tr("import-cancelled");
     spawn_forever(async move {
-        let result = match host.start_clipboard_import(snapshot.text.as_ref()).await {
+        let result = match snapshot.start(&host).await {
             Ok(job) => super::super::wait_import(state, job, token.session).await,
             Err(error) => Err(error),
         };

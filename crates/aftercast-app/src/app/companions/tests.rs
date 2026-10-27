@@ -61,6 +61,7 @@ async fn full(host: &Host, ui: &mut AppState, main: &Utf8Path) -> aftercast::Imp
         None,
         request.options(),
         request.sources.as_ref(),
+        request.viewpoint.as_ref(),
     )
     .await
     .expect("start")
@@ -101,7 +102,7 @@ async fn companion_ui_contract_import_selection_failure_and_stale_responses() {
     let other = root.join("other.log");
     std::fs::write(&other, "0|999\n").expect("other");
     snapshot
-        .start(&host, &other, None, None)
+        .start_with_viewpoint(&host, &other, None, None, None)
         .await
         .err()
         .expect("wrong main rejected");
@@ -116,6 +117,7 @@ async fn companion_ui_contract_import_selection_failure_and_stale_responses() {
         None,
         request.options(),
         request.sources.as_ref(),
+        request.viewpoint.as_ref(),
     )
     .await
     {
@@ -392,6 +394,7 @@ async fn companion_ui_contract_cancel_keeps_request_snapshot_and_partial_graph()
         None,
         request.options(),
         request.sources.as_ref(),
+        request.viewpoint.as_ref(),
     )
     .await
     .expect("job");

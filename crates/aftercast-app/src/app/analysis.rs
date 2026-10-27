@@ -141,6 +141,7 @@ pub(super) fn ImportPane() -> Element {
                     || state.read().clipboard.active(),
                 oninput: move |event: FormEvent| state.write().edit_import_path(text_view, event.value()),
             }
+            super::import_text::character::Controls {}
             super::import_text::TextControls {}
             super::companions::Controls {}
             div { class: "my-5 flex gap-3",

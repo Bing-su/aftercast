@@ -99,8 +99,21 @@ struct Snapshot {
     text: Arc<str>,
     preview: String,
     characters: usize,
+    viewpoint: Option<aftercast::ImportCharacter>,
 }
 impl Snapshot {
+    async fn start(
+        &self,
+        host: &aftercast::HostHandle,
+    ) -> Result<aftercast::ImportJob, aftercast::Error> {
+        match &self.viewpoint {
+            Some(choice) => {
+                host.start_clipboard_import_with_viewpoint(self.text.as_ref(), choice.clone())
+                    .await
+            }
+            None => host.start_clipboard_import(self.text.as_ref()).await,
+        }
+    }
     fn new(text: String) -> Result<Self, Failure> {
         if text.is_empty() {
             return Err(Failure::Empty);
@@ -114,6 +127,7 @@ impl Snapshot {
             text: text.into(),
             preview,
             characters,
+            viewpoint: None,
         })
     }
 }
@@ -135,6 +149,12 @@ pub(super) struct State {
     error: Option<Failure>,
 }
 impl State {
+    pub(super) fn viewpoint_snapshot(&self) -> Option<Option<aftercast::ImportCharacter>> {
+        match &self.pending {
+            Some(Pending::Import(_, snapshot)) => Some(snapshot.viewpoint.clone()),
+            _ => None,
+        }
+    }
     pub(super) fn active(&self) -> bool {
         self.pending.is_some()
     }
@@ -168,6 +188,7 @@ impl AppState {
             return None;
         }
         self.clipboard.generation += 1;
+        self.import_text.invalidate_view();
         let token = self.clipboard_view();
         self.clipboard.pending = Some(Pending::Read(token, self.phase));
         self.clipboard.error = None;
@@ -186,6 +207,7 @@ impl AppState {
         }
         self.clipboard.pending = None;
         self.clipboard.generation += 1;
+        self.import_text.invalidate_view();
         self.phase = previous;
         match result {
             Ok(snapshot) => {
@@ -215,12 +237,14 @@ impl AppState {
         self.clipboard.draft = None;
         self.clipboard.error = None;
         self.clipboard.generation += 1;
+        self.import_text.invalidate_view();
         true
     }
     fn can_import_clipboard(&self) -> bool {
         self.can_edit_clipboard()
             && self.phase == Phase::Ready
             && self.clipboard.draft.is_some()
+            && self.import_text.viewpoint().is_ok()
             && self
                 .plugins
                 .iter()
@@ -230,8 +254,10 @@ impl AppState {
         if self.clipboard_view() != view || !self.can_import_clipboard() {
             return None;
         }
-        let snapshot = self.clipboard.draft.clone()?;
+        let mut snapshot = self.clipboard.draft.clone()?;
+        snapshot.viewpoint = self.import_text.viewpoint().ok()?;
         self.clipboard.generation += 1;
+        self.import_text.invalidate_view();
         let token = self.clipboard_view();
         self.clipboard.pending = Some(Pending::Import(token, snapshot.clone()));
         self.clipboard.error = None;
@@ -267,6 +293,7 @@ impl AppState {
         }
         self.clipboard.pending = None;
         self.clipboard.generation += 1;
+        self.import_text.invalidate_view();
         self.phase = Phase::Ready;
         self.invalidate_restored_context();
         match result {

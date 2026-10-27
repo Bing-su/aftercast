@@ -490,3 +490,15 @@ clipboard-unsupported = The provider did not supply a supported plain-text forma
 clipboard-unavailable = No text provider is connected in this build, or the supplied provider is unavailable. The previous draft was kept.
 clipboard-busy = A previous provider read is still pending. Wait before reading again.
 clipboard-import-failed = Pasted snapshot import failed. The draft and accepted partial encounters were kept. Parser error details are not copied into general desktop logs.
+
+import-character-title = Import character / point of view
+import-character-help = Applies to raw file and supplied-text imports, not actor filtering. History capture replay keeps its saved character. Empty explicit choices use the current name at worker Begin; ACT replaces names of at most two UTF-16 units with YOU. Names are not trimmed.
+import-character-choice = Character selection mode
+import-character-legacy = Preserve current name exactly
+import-character-current = Current name (ACT rules)
+import-character-manual = Enter a name
+import-character-name = Character name
+import-character-draft = Next import choice
+import-character-active = Admitted request choice (fixed)
+import-character-invalid = Enter a valid name without control characters, up to 1024 UTF-8 bytes. Correct the draft or choose the current name.
+import-character-session = Choices stay in this app until you change them, including after cancel, failure or Host restart. They are not saved to disk. Current-name choices are resolved by the worker at Begin; the display is the requested policy, not a live name lookup.

@@ -156,6 +156,7 @@ async fn history_sources_ui_contract_captures_explicit_snapshots_and_releases_on
     let sides = f.root.join("CompanionLogs");
     std::fs::create_dir(&sides).expect("sides");
     std::fs::write(sides.join("main.Alpha.log"), "1|100\n3|200\n9|999\n").expect("side");
+    super::super::import_text::character::tests::choose(&mut f.ui, "manual", "Target");
     f.discover().await;
     f.ui.history_sources.choices.push(Choice {
         name: "Alpha".into(),
@@ -200,6 +201,23 @@ async fn history_sources_ui_contract_captures_explicit_snapshots_and_releases_on
             report.companion_heads_excluded
         ),
         (4, 330, 1)
+    );
+    assert!(
+        f.host
+            .encounters(0, 16)
+            .await
+            .expect("saved viewpoint graph")
+            .items
+            .iter()
+            .all(|e| e.character == "Source")
+    );
+    assert_eq!(
+        f.ui.import_text
+            .viewpoint()
+            .expect("raw draft preserved")
+            .expect("manual")
+            .name(),
+        "Target"
     );
     assert!(!f.ui.history_sources.ready);
     assert!(!f.ui.history_sources.holds_resources());

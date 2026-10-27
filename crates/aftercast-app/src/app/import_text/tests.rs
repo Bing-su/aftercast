@@ -1,9 +1,12 @@
 use super::*;
 use aftercast::{Host, HostConfig, PluginConfig};
 
-fn config(root: &Utf8Path) -> HostConfig {
+pub(super) fn config(root: &Utf8Path) -> HostConfig {
     let bridge = root.join("bridge");
-    aftercast::extract_bridge(&bridge).expect("payload");
+    // Synthetic restart tests reuse their owned deployment; extraction requires a new path.
+    if !bridge.exists() {
+        aftercast::extract_bridge(&bridge).expect("payload");
+    }
     let executable = std::env::current_exe().expect("test binary");
     let application = executable
         .parent()

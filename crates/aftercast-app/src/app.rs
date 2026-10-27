@@ -685,6 +685,7 @@ fn import_log(mut state: Signal<AppState>) {
             None,
             request.options(),
             request.sources.as_ref(),
+            request.viewpoint.as_ref(),
         )
         .await
         {

@@ -5,6 +5,7 @@ use aftercast::{
 };
 use camino::{Utf8Path, Utf8PathBuf};
 use dioxus::prelude::*;
+pub(super) mod character;
 #[cfg(test)]
 mod tests;
 mod view;
@@ -102,6 +103,7 @@ pub(super) struct FullRequest {
     pub(super) path: Option<Utf8PathBuf>,
     draft: Draft,
     pub(super) sources: Option<super::companions::Selection>,
+    pub(super) viewpoint: Option<aftercast::ImportCharacter>,
 }
 impl FullRequest {
     pub(super) fn options(&self) -> Option<ImportTextOptions> {
@@ -111,10 +113,14 @@ impl FullRequest {
 #[derive(Default)]
 pub(super) struct State {
     draft: Draft,
+    character: character::Draft,
     generation: u64,
     full: Option<FullRequest>,
 }
 impl State {
+    pub(super) fn viewpoint(&self) -> Result<Option<aftercast::ImportCharacter>, &'static str> {
+        self.character.options()
+    }
     pub(super) fn source_snapshot(&self) -> Option<super::companions::ActiveImport> {
         let request = self.full.as_ref()?;
         Some(super::companions::ActiveImport::new(
@@ -175,6 +181,7 @@ impl AppState {
     }
     pub(super) fn can_full_import(&self) -> bool {
         self.phase == Phase::Ready
+            && self.import_text.viewpoint().is_ok()
             && !self.history_sources.holds_resources()
             && !self.loading
             && !self.exit_requested
@@ -195,6 +202,7 @@ impl AppState {
             path: None,
             draft: self.import_text.draft.clone(),
             sources: self.companions.selection(),
+            viewpoint: self.import_text.viewpoint().ok()?,
         };
         self.import_text.full = Some(request.clone());
         self.phase = Phase::SelectingImport;
@@ -303,11 +311,27 @@ pub(super) async fn start_selected(
     range: Option<ImportRange>,
     text: Option<ImportTextOptions>,
     sources: Option<&super::companions::Selection>,
+    viewpoint: Option<&aftercast::ImportCharacter>,
 ) -> Result<ImportJob, aftercast::Error> {
-    match sources {
-        Some(selection) => selection.start(handle, path, range, text).await,
-        None => start(handle, path, range, text).await,
+    if let Some(selection) = sources {
+        return selection
+            .start_with_viewpoint(handle, path, range, text, viewpoint)
+            .await;
     }
+    if let Some(viewpoint) = viewpoint {
+        return handle
+            .start_import_sources(
+                path,
+                aftercast::SourceImportOptions {
+                    range,
+                    text,
+                    viewpoint: Some(viewpoint.clone()),
+                    ..Default::default()
+                },
+            )
+            .await;
+    }
+    start(handle, path, range, text).await
 }
 pub(super) async fn start(
     handle: &HostHandle,

@@ -109,6 +109,7 @@ async fn execute(host: &Host, ui: &mut AppState) -> Token {
         Some(request.range),
         request.text,
         request.sources.as_ref(),
+        request.viewpoint.as_ref(),
     )
     .await
     {
@@ -517,6 +518,7 @@ async fn companion_range_ui_contract_uses_admitted_sources_and_keeps_cancelled_d
         Some(compiled.range),
         compiled.text,
         compiled.sources.as_ref(),
+        compiled.viewpoint.as_ref(),
     )
     .await
     .expect("source range")
@@ -542,6 +544,7 @@ async fn cancel_selected_range(host: &Host, ui: &mut AppState, main: &Utf8Path) 
         Some(compiled.range),
         compiled.text,
         compiled.sources.as_ref(),
+        compiled.viewpoint.as_ref(),
     )
     .await
     .expect("cancel range job");
@@ -668,6 +671,7 @@ async fn file_and_combat_boundary_ui_contract_binds_requests_and_rejects_stale_e
             Some(compiled.range),
             compiled.text,
             compiled.sources.as_ref(),
+            compiled.viewpoint.as_ref(),
         )
         .await
         .expect("start selected path")
@@ -764,4 +768,131 @@ async fn boundary_failures_and_shutdown(
     assert!(!ui.receive_reparse(token, job.wait().await, "late", "late"));
     assert!(!ui.cancel_reparse(token));
     assert_eq!(ui.reparse.draft, draft);
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and synthetic Host; run mise run test:gui-state"]
+async fn character_range_ui_contract_binds_codec_bounds_and_cancel_state() {
+    use super::super::import_text::character::tests::{choose, fixture};
+    let temporary = tempfile::tempdir().expect("synthetic range");
+    let root = Utf8Path::from_path(temporary.path()).expect("UTF8");
+    let (host, mut ui) = fixture(root).await;
+    let path = root.join("source.log");
+    std::fs::write(&path, "1|Source|Target|100\n2|Target|Source|40\n").expect("main source");
+    ui.reparse.draft = Draft {
+        path: path.to_string(),
+        start: "1970-01-01T00:00:02".into(),
+        end: "1970-01-01T00:00:02".into(),
+        ..Default::default()
+    };
+    choose(&mut ui, "manual", "Target");
+    let view = ui.text_view();
+    let compiled = ui.compile_reparse().expect("valid choice");
+    assert_eq!(
+        compiled.viewpoint.as_ref().expect("snapshot").name(),
+        "Target"
+    );
+    let token = ui.begin_reparse(compiled.clone()).expect("begin");
+    assert!(!ui.edit_import_character(view, "name", "Source"));
+    assert_eq!(
+        ui.reparse.viewpoint_snapshot(),
+        Some(compiled.viewpoint.clone())
+    );
+    ui.screen = "analysis";
+    let report = super::super::import_text::start_selected(
+        &host,
+        &compiled.path,
+        Some(compiled.range),
+        compiled.text,
+        compiled.sources.as_ref(),
+        compiled.viewpoint.as_ref(),
+    )
+    .await
+    .expect("actual job")
+    .wait()
+    .await
+    .expect("range result");
+    assert_eq!(report.damage, 40);
+    assert_eq!(report.records_dispatched, 1);
+    assert!(ui.receive_reparse(token, Ok(report), "complete", "canceled"));
+    assert!(!ui.receive_reparse(token, Err(aftercast::Error::Closed), "late", "late"));
+    assert!(!ui.edit_import_character(view, "name", "stale"));
+    assert_eq!(ui.screen, "analysis");
+    choose(&mut ui, "manual", "bad\nname");
+    assert!(!ui.can_reparse());
+    ui.compile_reparse()
+        .expect_err("invalid character keeps range draft");
+    choose(&mut ui, "manual", "Target");
+    ui.reparse.draft.file_start = true;
+    ui.reparse.draft.file_end = true;
+    character_range_cancel_and_stale(&host, &mut ui, root, &path).await;
+    host.shutdown().await.expect("shutdown");
+}
+
+async fn character_range_cancel_and_stale(
+    host: &Host,
+    ui: &mut AppState,
+    root: &Utf8Path,
+    path: &Utf8Path,
+) {
+    std::fs::write(
+        path,
+        "1|Target|Source|40|gate\n".to_owned() + &"2|Target|Source|1\n".repeat(20_000),
+    )
+    .expect("cancel fixture");
+    let compiled = ui.compile_reparse().expect("range snapshot");
+    let token = ui.begin_reparse(compiled.clone()).expect("cancel begin");
+    let job = super::super::import_text::start_selected(
+        host,
+        &compiled.path,
+        Some(compiled.range),
+        compiled.text,
+        compiled.sources.as_ref(),
+        compiled.viewpoint.as_ref(),
+    )
+    .await
+    .expect("actual cancel job");
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        while !root.join("state/character.ready").exists() {
+            tokio::time::sleep(std::time::Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("synthetic gate");
+    assert!(ui.cancel_reparse(token));
+    assert!(!ui.cancel_reparse(token));
+    job.cancel();
+    std::fs::write(root.join("state/character.release"), "release").expect("release callback");
+    let result = job.wait().await;
+    assert!(matches!(result, Err(aftercast::Error::Cancelled)));
+    assert!(ui.receive_reparse(token, result, "complete", "canceled"));
+    assert_eq!(
+        ui.import_text
+            .viewpoint()
+            .expect("preserved draft")
+            .expect("manual")
+            .name(),
+        "Target"
+    );
+    // A later accepted result cannot revive a replaced Host or change its retained choice.
+    let compiled = ui.compile_reparse().expect("repeat");
+    let token = ui.begin_reparse(compiled.clone()).expect("repeat begin");
+    let job = super::super::import_text::start_selected(
+        host,
+        &compiled.path,
+        Some(compiled.range),
+        compiled.text,
+        compiled.sources.as_ref(),
+        compiled.viewpoint.as_ref(),
+    )
+    .await
+    .expect("repeat job");
+    job.cancel();
+    let response = job.wait().await;
+    ui.revision.session += 1;
+    ui.reparse.reset_session();
+    ui.import_text.reset_session();
+    ui.phase = Phase::Stopping;
+    assert!(!ui.receive_reparse(token, response, "late", "late"));
+    assert!(ui.phase == Phase::Stopping);
 }

@@ -20,6 +20,7 @@ struct Request {
     bounds: Draft,
     text: Option<aftercast::ImportTextOptions>,
     sources: Option<super::companions::Selection>,
+    viewpoint: Option<aftercast::ImportCharacter>,
 }
 impl Draft {
     fn compile(&self, root: &Utf8Path) -> Result<Request, &'static str> {
@@ -51,6 +52,7 @@ impl Draft {
             bounds: self.clone(),
             text: None,
             sources: None,
+            viewpoint: None,
         })
     }
 }
@@ -69,6 +71,9 @@ pub(super) struct ReparseState {
     pending: Option<(Token, Request)>,
 }
 impl ReparseState {
+    pub(super) fn viewpoint_snapshot(&self) -> Option<Option<aftercast::ImportCharacter>> {
+        Some(self.pending.as_ref()?.1.viewpoint.clone())
+    }
     pub(super) fn source_snapshot(&self) -> Option<super::companions::ActiveImport> {
         let (_, request) = self.pending.as_ref()?;
         Some(super::companions::ActiveImport::new(
@@ -90,6 +95,7 @@ impl AppState {
     fn compile_reparse(&self) -> Result<Request, &'static str> {
         let mut request = self.reparse.draft.compile(&self.root)?;
         request.text = self.import_text.options();
+        request.viewpoint = self.import_text.viewpoint()?;
         request.sources = self.companions.selection();
         Ok(request)
     }
@@ -133,6 +139,7 @@ impl AppState {
     }
     fn can_reparse(&self) -> bool {
         self.phase == Phase::Ready
+            && self.import_text.viewpoint().is_ok()
             && !self.history_sources.holds_resources()
             && !self.loading
             && !self.reparse.active()
@@ -238,6 +245,7 @@ fn submit(mut state: Signal<AppState>, view: Token) {
             Some(request.range),
             request.text,
             request.sources.as_ref(),
+            request.viewpoint.as_ref(),
         )
         .await
         {

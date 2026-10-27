@@ -262,7 +262,10 @@ async fn execute(host: &Host, ui: &mut AppState) -> Token {
     assert!(!ui.clear_clipboard_preview(ui.clipboard_view()));
     assert!(!ui.can_full_import());
     ui.screen = "history";
-    let result = host.import_clipboard_text(snapshot.text.as_ref()).await;
+    let result = match snapshot.start(host).await {
+        Ok(job) => job.wait().await,
+        Err(error) => Err(error),
+    };
     assert!(ui.receive_clipboard_import(token, result, "complete", "canceled"));
     token
 }
@@ -382,10 +385,7 @@ async fn signal_cancel(host: &Host, root: &Utf8Path, ui: &AppState) {
         .write()
         .begin_clipboard_import(view)
         .expect("import admission");
-    let job = host
-        .start_clipboard_import(snapshot.text.as_ref())
-        .await
-        .expect("actual job");
+    let job = snapshot.start(host).await.expect("actual job");
     tokio::time::timeout(Duration::from_secs(5), async {
         while !root.join("state/clipboard.ready").exists() {
             tokio::time::sleep(Duration::from_millis(1)).await;
@@ -413,10 +413,7 @@ async fn signal_cancel(host: &Host, root: &Utf8Path, ui: &AppState) {
         .write()
         .begin_clipboard_import(view)
         .expect("second admission");
-    let job = host
-        .start_clipboard_import(snapshot.text.as_ref())
-        .await
-        .expect("second job");
+    let job = snapshot.start(host).await.expect("second job");
     {
         let mut state = signal.write();
         state.revision.session += 1;
@@ -433,4 +430,114 @@ async fn signal_cancel(host: &Host, root: &Utf8Path, ui: &AppState) {
     assert!(!signal.write().cancel_clipboard_import(token));
     assert!(signal.peek().phase == Phase::Stopping);
     assert!(signal.peek().clipboard.draft.is_some());
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and synthetic Host; run mise run test:gui-state"]
+async fn character_clipboard_ui_contract_uses_in_memory_preview_and_owned_choice() {
+    use super::super::import_text::character::tests::{choose, fixture};
+    let temporary = tempfile::tempdir().expect("synthetic supplied text");
+    let root = Utf8Path::from_path(temporary.path()).expect("UTF8");
+    let (host, mut ui) = fixture(root).await;
+    choose(&mut ui, "manual", "Target");
+    let (source, calls) = adapter(Ok(Some("1|Source|Target|100\n2|Target|Source|40\n".into())));
+    let old = ui.text_view();
+    paste(&mut ui, &source).await;
+    assert!(!ui.edit_import_character(old, "name", "stale read event"));
+    let old = ui.text_view();
+    let (token, snapshot) = ui
+        .begin_clipboard_import(ui.clipboard_view())
+        .expect("explicit import");
+    assert_eq!(
+        snapshot.viewpoint.as_ref().expect("snapshot").name(),
+        "Target"
+    );
+    assert!(!ui.edit_import_character(old, "name", "Source"));
+    assert!(ui.begin_clipboard_import(ui.clipboard_view()).is_none());
+    assert_eq!(
+        ui.clipboard.viewpoint_snapshot(),
+        Some(snapshot.viewpoint.clone())
+    );
+    ui.screen = "history";
+    let report = snapshot
+        .start(&host)
+        .await
+        .expect("actual worker")
+        .wait()
+        .await
+        .expect("text result");
+    assert_eq!(report.damage, 40);
+    assert!(ui.receive_clipboard_import(token, Ok(report), "complete", "canceled"));
+    assert_eq!(
+        calls.load(Ordering::Relaxed),
+        1,
+        "only supplied memory reader was used"
+    );
+    assert!(!ui.edit_import_character(old, "name", "stale completed edit"));
+    assert!(!ui.receive_clipboard_import(token, Err(aftercast::Error::Closed), "late", "late"));
+    choose(&mut ui, "manual", "bad\nname");
+    assert!(!ui.can_import_clipboard());
+    assert!(ui.begin_clipboard_import(ui.clipboard_view()).is_none());
+    choose(&mut ui, "manual", "Target");
+    let (source, _) = adapter(Ok(Some("1|Target|Source|40\nbad timestamp\n".into())));
+    paste(&mut ui, &source).await;
+    execute(&host, &mut ui).await;
+    assert_eq!(ui.clipboard.error, Some(Failure::Import));
+    assert!(ui.error.is_none());
+    assert!(ui.clipboard.draft.is_some());
+    assert_eq!(
+        ui.import_text
+            .viewpoint()
+            .expect("retained draft")
+            .expect("manual")
+            .name(),
+        "Target"
+    );
+    character_text_cancel_and_stale(&host, &mut ui, root).await;
+    host.shutdown().await.expect("shutdown");
+}
+
+async fn character_text_cancel_and_stale(host: &Host, ui: &mut AppState, root: &Utf8Path) {
+    let (source, _) = adapter(Ok(Some(
+        "1|Target|Source|40|gate\n".to_owned() + &"2|Target|Source|1\n".repeat(20_000),
+    )));
+    paste(ui, &source).await;
+    let (token, snapshot) = ui
+        .begin_clipboard_import(ui.clipboard_view())
+        .expect("cancel import");
+    let job = snapshot.start(host).await.expect("actual text cancel job");
+    tokio::time::timeout(Duration::from_secs(5), async {
+        while !root.join("state/character.ready").exists() {
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    })
+    .await
+    .expect("synthetic gate");
+    assert!(ui.cancel_clipboard_import(token));
+    assert!(!ui.cancel_clipboard_import(token));
+    job.cancel();
+    std::fs::write(root.join("state/character.release"), "release").expect("release");
+    let result = job.wait().await;
+    assert!(matches!(result, Err(aftercast::Error::Cancelled)));
+    assert!(ui.receive_clipboard_import(token, result, "complete", "canceled"));
+    let (token, snapshot) = ui
+        .begin_clipboard_import(ui.clipboard_view())
+        .expect("repeat import");
+    let job = snapshot.start(host).await.expect("repeat worker");
+    job.cancel();
+    let result = job.wait().await;
+    ui.revision.session += 1;
+    ui.clipboard.reset_session();
+    ui.import_text.reset_session();
+    ui.phase = Phase::Stopping;
+    assert!(!ui.receive_clipboard_import(token, result, "late", "late"));
+    assert!(ui.phase == Phase::Stopping);
+    assert_eq!(
+        ui.import_text
+            .viewpoint()
+            .expect("restart draft")
+            .expect("manual")
+            .name(),
+        "Target"
+    );
 }
