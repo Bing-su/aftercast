@@ -23,13 +23,13 @@ expansion or Windows validation is implied by constructor/path probes.
 
 ## Current gap and bounded work units
 
-| Unit                                | Deliverable and completion evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | State                                                                                             |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
-| C1 Names and candidate catalog      | Public ACT path API; literal, top-level sibling discovery, case-insensitive unique names, deterministic order; reject linked/malformed/ambiguous candidates and fail explicitly above 64 companions/4096 directory entries. Synthetic path/name/link/bounds regressions and original pure API comparison.                                                                                                                                                                                                                         | Implemented; used by explicit managed companion import admission. Live admission remains pending. |
-| C2 Managed readers and dispatch     | Open selected main/companion handles together at admission, capture identity/length/encoding, retain handles rather than reopening catalog paths. Reuse parser/owner dispatch; populate companionLogName and each record's actual source path, distinct sorter and action/log identity. Test same timestamps, undated/empty/partial lines, range boundaries, malformed bytes, rotation/truncation, pause/cancel/stop and one-source failure with partial results. Specify stable ordering without claiming ACT thread tie parity. | Managed import and live groups connected with explicit selection; C3 transport/UI pending.        |
-| C3 Bridge/Rust and existing UI      | Expose bounded request-owned companion choices/catalog and source status through existing import flow. Preserve explicit encoding snapshot, revisions/session ownership, draft/error/cancel/navigation/duplicate request behavior and controller tests. Do not present discovery alone as synchronized-import completion.                                                                                                                                                                                                         | Pending.                                                                                          |
-| S1 Bounded history source proposals | Reuse selected history snapshot/time bounds. Inspect only explicit paths, recorded source references, or individually allowed roots; no parent climbing, recursive scan or external lookup. FolderHint/CharName/LastWriteTime are advisory. Return missing/ambiguous/changed outcomes; require explicit user selection when identity is not established.                                                                                                                                                                          | Pending. Current history metadata contains hints, not a trusted exact original-file identity.     |
-| S2 Selection and reparse wiring     | Bind chosen source and file identity to the owned request, revalidate at admission and retain open handle. Connect to existing source-range import separately from checkpoint restore. Preserve selection drafts and reject stale history/catalog/session responses, changed files and duplicate requests. Synthetic Host/API/controller tests.                                                                                                                                                                                   | Pending.                                                                                          |
+| Unit                                | Deliverable and completion evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | State                                                                                         |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| C1 Names and candidate catalog      | Public ACT path API; literal, top-level sibling discovery, case-insensitive unique names, deterministic order; reject linked/malformed/ambiguous candidates and fail explicitly above 64 companions/4096 directory entries. Synthetic path/name/link/bounds regressions and original pure API comparison.                                                                                                                                                                                                                         | Implemented; explicit managed import and live admission reuse the catalog.                    |
+| C2 Managed readers and dispatch     | Open selected main/companion handles together at admission, capture identity/length/encoding, retain handles rather than reopening catalog paths. Reuse parser/owner dispatch; populate companionLogName and each record's actual source path, distinct sorter and action/log identity. Test same timestamps, undated/empty/partial lines, range boundaries, malformed bytes, rotation/truncation, pause/cancel/stop and one-source failure with partial results. Specify stable ordering without claiming ACT thread tie parity. | Managed import/live connected; Rust source transport verified; GUI pending.                   |
+| C3 Bridge/Rust and existing UI      | Expose bounded request-owned companion choices/catalog and source status through existing import flow. Preserve explicit encoding snapshot, revisions/session ownership, draft/error/cancel/navigation/duplicate request behavior and controller tests. Do not present discovery alone as synchronized-import completion.                                                                                                                                                                                                         | Rust explicit selections/status verified; catalog proposal and GUI pending.                   |
+| S1 Bounded history source proposals | Reuse selected history snapshot/time bounds. Inspect only explicit paths, recorded source references, or individually allowed roots; no parent climbing, recursive scan or external lookup. FolderHint/CharName/LastWriteTime are advisory. Return missing/ambiguous/changed outcomes; require explicit user selection when identity is not established.                                                                                                                                                                          | Pending. Current history metadata contains hints, not a trusted exact original-file identity. |
+| S2 Selection and reparse wiring     | Bind chosen source and file identity to the owned request, revalidate at admission and retain open handle. Connect to existing source-range import separately from checkpoint restore. Preserve selection drafts and reject stale history/catalog/session responses, changed files and duplicate requests. Synthetic Host/API/controller tests.                                                                                                                                                                                   | Pending.                                                                                      |
 
 A catalog result is a proposal, not a file lease or a security boundary against
 concurrent path replacement. C2/S2 must validate selected files and own their
@@ -198,7 +198,7 @@ reader started**, then verifies earlier handle release, old dispatcher exit and
 ordinary/group retry. Native ACT companion execution, Windows filesystem/UI
 interaction and live game capture have not been run.
 
-## C3a Bridge checkpoint (Rust binding pending)
+## C3a Bridge checkpoint
 
 CompanionCommand is a separate bounded ABI; the existing 64-byte import operation
 and ordinary OpenLog defaults remain unchanged. Each call supplies a 32-byte
@@ -236,6 +236,50 @@ import completion/exclusion/cancel, caller snapshot independence, stale IDs,
 empty-companion single-source mode, external plugin reopen and a later locked
 source's real partial-open failure/cleanup/retry. Managed full checks pass.
 These tests are in-process ABI tests, **not isolated Rust-worker coverage**.
-Rust Request/delegate binding, typed session-owned handles, actual worker
-regressions and GUI remain pending next C3 units. Native ACT thread timing and
-Windows execution are still unverified.
+C3b now supplies Rust Request/delegate binding, typed session-owned selections
+and isolated worker tests below. GUI remains a separate pending C3 unit. Native
+ACT thread timing and Windows execution are still unverified.
+
+## C3b Rust worker checkpoint
+
+`HostHandle::start_import_sources` / `import_sources` accept an owned
+`SourceImportOptions` with an explicit companion list, optional inclusive range
+and main/reader codec snapshots. They reuse `ImportJob` progress, explicit cancel,
+partial-result retention and joined cleanup. Dropping an import observer does
+not cancel work. Host shutdown cancels the active import before worker exit.
+Legacy import entry points still use their existing 64-byte command and omit
+companions; an explicit empty list also reads only the main source. Progress and
+results expose `companion_heads_excluded` (legacy single-source results use zero).
+
+`open_live_logs`, `reopen_live_logs`, `live_logs` and `close_live_logs` use an
+opaque `LiveLogSelection` containing private session and owner IDs. The managed
+owner also binds the root generation, so an external plugin OpenLog retires old
+selections. Copying/dropping a selection does not close capture; explicit close
+joins readers while the Host remains usable. Dropping the Host requests worker
+shutdown even if cloned HostHandles remain. Invalid request preflight preserves
+a selection; actual failed replacement retires it and requires a fresh open.
+
+Each live source carries `selectedName` (exact admitted request identity) separately
+from the catalog's physical `name`/`path`. The Bridge performs .NET
+OrdinalIgnoreCase matching and Rust verifies exact selected-name membership,
+one-to-one coverage, physical name/path component structure and bounded status.
+This avoids inventing a different Unicode casing policy in Rust. The Bridge is
+trusted to resolve Unicode equivalence and the main filename's case-insensitive
+catalog prefix/extension; a second canonicalization RPC would not establish a
+new trust boundary. Malformed headers/session/owner, inconsistent source identities,
+invalid states/codecs/counts/diagnostics and contradictory import replies fail
+without publishing a typed result. This validation is not recovery from an
+arbitrarily corrupt worker after an already-mutating command.
+
+| Evidence                           | Verified scope                                                                                                                                                                                                                |
+| ---------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Rust decoder/unit tests            | Header/session/size/owner, exact selected-name pairing, physical filename component (including extensionless main), unknown state/codec, bounded counters/status and contradictory progress/results.                          |
+| Actual isolated application worker | Explicit import merge/main EOF exclusion, legacy/empty-list single source, inclusive same-time range with per-reader UTF-16 BOM, Unicode case-preserving selection and nonalphabetic request order.                           |
+| Actual isolated worker lifecycle   | Cancel with retained partial graph, observer drop, decoding error/retry, active shutdown/restart; live reopen/close/stale and foreign session; clock timeout diagnostics and explicit retry; external root generation change. |
+| Linux synthetic file locking       | Later selected source open fails after main/earlier reader opens; error returns after handle cleanup; old owner retires; fresh retry and Host drop/restart release readers/data lease.                                        |
+
+Tests use disposable files and synthetic plugins only. The actual worker checks
+exercise the subprocess IPC/delegate path, unlike the earlier in-process ABI
+checks. They do not establish Windows locking/UI behavior, native ACT companion
+thread scheduling parity or live game capture. No companion selection GUI or
+source candidate proposal/automatic matching is connected by this unit.

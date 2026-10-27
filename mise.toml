@@ -110,7 +110,7 @@ depends = ["managed:test-runner", "test:application"]
 run = [
   "dotnet build managed/tests/PluginFixture/PluginFixture.csproj -c Release -p:RestoreLockedMode=true",
   "{{vars.managed_tests}} plugins",
-  "cargo test -p aftercast --test plugins --test lifecycle --test triggers --test timers --test tables --test history --test notifications --test import --test import_text --test logs --test snapshots --test speech --test archives --test async_host --test process_isolation -- --ignored",
+  "cargo test -p aftercast --test plugins --test lifecycle --test triggers --test timers --test tables --test history --test notifications --test import --test companions --test import_text --test logs --test snapshots --test speech --test archives --test async_host --test process_isolation -- --ignored",
 ]
 
 [tasks."test:application"]
