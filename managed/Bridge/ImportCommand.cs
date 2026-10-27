@@ -8,11 +8,25 @@ public static partial class EntryPoint
     // Step commands retain no native pointers, e.g. a pending disk read outlives only managed state.
     public static int ImportOperation(nint buffer, int sizeBytes) => Run(() =>
     {
-        if (buffer == 0 || sizeBytes < 64 || sizeBytes > 65536)
-            throw new ArgumentException("Import operation requires 64..65536 bytes");
+        const int maximumClipboardBytes = 8 * 1024 * 1024;
+        if (buffer == 0 || sizeBytes < 64 || sizeBytes > 64 + maximumClipboardBytes)
+            throw new ArgumentException("Import operation exceeds bounded packet capacity");
         ValidateHeader(buffer, sizeBytes, "Import operation ABI mismatch");
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
         var command = Marshal.ReadInt32(buffer, 56);
+        if (command == 5)
+        {
+            var length = Marshal.ReadInt32(buffer, 20);
+            if (Marshal.ReadInt32(buffer, 16) != 64 || length <= 0 || length != sizeBytes - 64 ||
+                Marshal.ReadInt64(buffer, 24) != 0 || Marshal.ReadInt64(buffer, 32) != 0 ||
+                Marshal.ReadInt64(buffer, 40) != 0 || Marshal.ReadInt64(buffer, 48) != 0 || Marshal.ReadInt32(buffer, 60) != 0)
+                throw new ArgumentException("Invalid clipboard import fields");
+            var bytes = new byte[length]; Marshal.Copy(buffer + 64, bytes, 0, length);
+            var content = new UTF8Encoding(false, true).GetString(bytes);
+            plugins.Value.BeginClipboardImport(content);
+            return 1;
+        }
+        if (sizeBytes > 65536) throw new ArgumentException("File import requires 64..65536 bytes");
         if (command is 1 or 4)
         {
             var offset = Marshal.ReadInt32(buffer, 16);

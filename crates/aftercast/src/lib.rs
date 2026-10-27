@@ -66,7 +66,7 @@ pub use diagnostics::HostDiagnostics;
 pub use host::{Host, HostHandle};
 pub use import::{
     ImportEncoding, ImportInvalidBytes, ImportJob, ImportProgress, ImportRange, ImportReport,
-    ImportTextOptions,
+    ImportTextOptions, MAX_CLIPBOARD_IMPORT_BYTES,
 };
 pub use logs::{
     LogBatch, LogLoss, LogRecord, LogSubscription, LogSubscriptionConfig, LogTimeKind, LogTimestamp,

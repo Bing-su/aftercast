@@ -1,6 +1,6 @@
 use crate::companions::{self, CompanionSource, WireSource, WireText};
 use bytes::{Buf, BufMut, BytesMut};
-use camino::Utf8Path;
+use camino::{Utf8Path, Utf8PathBuf};
 use serde::{Deserialize, Serialize};
 use std::future::Future;
 use std::pin::Pin;
@@ -15,6 +15,7 @@ use crate::runtime::{Request, canonicalize};
 use crate::{Error, HostHandle};
 
 /// Latest input progress; read-ahead bytes can lead parsed records by the bounded input buffer.
+/// Clipboard byte counts measure the admitted Unicode snapshot's UTF-8 equivalent, not disk I/O.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ImportProgress {
@@ -165,12 +166,29 @@ impl Future for ImportJob {
     }
 }
 
+/// Fixed text snapshot budget, measured in UTF-8 bytes; this library never reads an OS clipboard.
+pub const MAX_CLIPBOARD_IMPORT_BYTES: usize = 8 * 1024 * 1024;
+
+pub(crate) enum ImportInput {
+    File(Utf8PathBuf),
+    Clipboard(String),
+    Captured(u64),
+}
+
+pub(crate) fn validate_clipboard(content: &str) -> Result<(), Error> {
+    if content.is_empty() || content.len() > MAX_CLIPBOARD_IMPORT_BYTES {
+        return Err(Error::InvalidImportRequest(
+            "clipboard text must be nonempty and at most 8 MiB of UTF-8 bytes".into(),
+        ));
+    }
+    Ok(())
+}
+
 pub(crate) struct PendingImport {
     pub(crate) range: Option<ImportRange>,
     pub(crate) text: Option<ImportTextOptions>,
     pub(crate) sources: Option<Vec<CompanionSource>>,
     pub(crate) source_owner: Option<u64>,
-    pub(crate) capture_owner: Option<u64>,
     pub(crate) cancellation: Arc<AtomicBool>,
     pub(crate) progress: watch::Sender<ImportProgress>,
     pub(crate) complete: oneshot::Sender<Result<ImportReport, Error>>,
@@ -180,20 +198,28 @@ impl PendingImport {
     pub(crate) fn begin(
         &mut self,
         session: &mut RemoteSession,
-        path: &Utf8Path,
+        input: ImportInput,
     ) -> Result<(), Error> {
-        if let Some(owner) = self.capture_owner {
-            let mut packet = crate::history_sources::packet(
-                session.id(),
-                9,
-                &serde_json::json!({"owner":owner}),
-            )?;
-            session.request(Request::History, &mut packet)?;
-            let reply: SourceReply = crate::history_sources::reply(&packet, session.id(), 9)?;
-            self.source_owner = Some(admission_owner(reply)?);
-            return Ok(());
-        }
-        let path = canonicalize(path)?;
+        let path = match input {
+            ImportInput::Captured(owner) => {
+                let mut packet = crate::history_sources::packet(
+                    session.id(),
+                    9,
+                    &serde_json::json!({"owner":owner}),
+                )?;
+                session.request(Request::History, &mut packet)?;
+                let reply: SourceReply = crate::history_sources::reply(&packet, session.id(), 9)?;
+                self.source_owner = Some(admission_owner(reply)?);
+                return Ok(());
+            }
+            ImportInput::Clipboard(content) => {
+                let mut packet = clipboard_packet(session.id(), &content)?;
+                session.request(Request::ImportOperation, &mut packet)?;
+                return Ok(());
+            }
+            ImportInput::File(path) => path,
+        };
+        let path = canonicalize(&path)?;
         if let Some(sources) = &self.sources {
             if path.as_str().len() > 8192 || path.as_str().chars().any(char::is_control) {
                 return Err(companions::invalid("invalid companion import path"));
@@ -343,6 +369,25 @@ pub struct ImportReport {
     pub companion_heads_excluded: u64,
 }
 
+fn clipboard_packet(session: u64, content: &str) -> Result<BytesMut, Error> {
+    validate_clipboard(content)?;
+    let mut packet = import_packet(session, "")?;
+    packet
+        .get_mut(..4)
+        .ok_or(Error::Closed)?
+        .copy_from_slice(&((64 + content.len()) as u32).to_le_bytes());
+    packet
+        .get_mut(20..24)
+        .ok_or(Error::Closed)?
+        .copy_from_slice(&(content.len() as u32).to_le_bytes());
+    packet
+        .get_mut(56..60)
+        .ok_or(Error::Closed)?
+        .copy_from_slice(&5_u32.to_le_bytes());
+    packet.extend_from_slice(content.as_bytes());
+    Ok(packet)
+}
+
 pub(crate) fn import_packet(session: u64, path: &str) -> Result<BytesMut, Error> {
     let size = 64_usize
         .checked_add(path.len())
@@ -459,6 +504,15 @@ fn validate_source_counts(lines: u64, dispatched: u64, excluded: u64) -> Result<
 }
 
 impl HostHandle {
+    /// Imports an explicit Unicode snapshot without reading a clipboard or applying file options.
+    /// Uses StringReader framing and pathless provenance within the fixed UTF-8 byte budget.
+    pub async fn import_clipboard_text(
+        &self,
+        content: impl AsRef<str>,
+    ) -> Result<ImportReport, Error> {
+        self.start_clipboard_import(content).await?.wait().await
+    }
+
     pub async fn import_sources(
         &self,
         path: impl AsRef<Utf8Path>,
@@ -467,7 +521,8 @@ impl HostHandle {
         self.start_import_sources(path, options).await?.wait().await
     }
     /// Reparse the selected inclusive time range through initialized plugins.
-    /// Stops at the first later timestamp; same-time rows remain distinct. Shares the full import
+    /// Without combat extension, stops at the first later timestamp; same-time rows remain distinct.
+    /// Shares the full import
     /// reader, cancellation, partial-result retention and live-state restoration contracts.
     pub async fn import_log_range(
         &self,
@@ -491,6 +546,31 @@ impl HostHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn clipboard_packets_bound_utf8_and_preserve_text_instead_of_path_rules() {
+        for text in ["한글日本語😀\0\r\n", "\u{feff}line", " "] {
+            let packet = clipboard_packet(7, text).expect("Unicode snapshot");
+            assert_eq!(packet.get(64..), Some(text.as_bytes()));
+            assert_eq!(packet.get(56..60), Some(5_u32.to_le_bytes().as_slice()));
+            assert_eq!(packet.get(24..56), Some([0_u8; 32].as_slice()));
+        }
+        let maximum = "x".repeat(MAX_CLIPBOARD_IMPORT_BYTES);
+        assert_eq!(
+            clipboard_packet(1, &maximum).expect("exact budget").len(),
+            64 + MAX_CLIPBOARD_IMPORT_BYTES
+        );
+        for text in [
+            String::new(),
+            maximum + "x",
+            "한".repeat(MAX_CLIPBOARD_IMPORT_BYTES / 3 + 1),
+        ] {
+            assert!(matches!(
+                clipboard_packet(1, &text),
+                Err(Error::InvalidImportRequest(_))
+            ));
+        }
+    }
 
     #[test]
     fn owned_source_steps_reject_stale_contradictory_or_unbounded_replies() {

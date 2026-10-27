@@ -20,8 +20,8 @@ without invoking its clipboard APIs or native import thread.
 
 `HostEnvironment.BeginClipboardImport(string)` accepts an immutable Unicode
 snapshot. It never reads/writes an OS clipboard, watches clipboard changes,
-creates a source file or searches for companions. Bridge/Rust admission and GUI
-are separate next units; the application will read only after an explicit user
+creates a source file or searches for companions. Bridge/Rust admission is connected as described below. GUI remains a separate
+next unit; the application will read only after an explicit user
 paste/import action through an injectable adapter. No native clipboard was used
 by this checkpoint's tests.
 
@@ -60,11 +60,44 @@ admission, both sides of the empty-row threshold, progress, partial parser
 failure, explicit cancellation/reuse, pathless callbacks, private save/restart,
 provenance and action/log identity. Managed import regressions include it.
 
+## Bridge/Rust checkpoint
+
+`HostHandle::start_clipboard_import(content)` copies a validated Unicode string
+before enqueueing; `import_clipboard_text(content)` awaits the same ImportJob.
+`MAX_CLIPBOARD_IMPORT_BYTES` exposes the fixed 8 MiB UTF-8 byte budget. Rust strings
+are already well-formed Unicode, so no encoding guess or invalid-byte policy is
+applied. File, Clipboard and Captured inputs have distinct internal enum variants;
+clipboard never passes through path canonicalization or receives raw-file options.
+
+| Wire boundary           | Contract                                                                                                                                                                                                                                              |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| ImportOperation Begin 5 | A 64-byte header followed by 1..8 MiB strict UTF-8 text. Offset 16 is exactly 64; length at 20 equals packet length minus 64. Timestamp bounds, encoding/flags, owner-output and reserved fields remain zero.                                         |
+| Admission               | Validate capacity, ABI/session, exact ranges, reserved fields and UTF-8 before owner-thread Begin. Requires an initialized plugin. Copy text before returning; the native pointer is never retained. Embedded NUL is text, not a filename terminator. |
+| Advance/Cancel 2/3      | Reuse existing 64-byte option-free import continuations, progress, cancellation and action drain. Begin cannot replace an active operation.                                                                                                           |
+| Existing file/capture   | File packet capacity stays 64 KiB, and existing file options/ranges are unchanged. Captured source owners still use the History command and owned source continuation.                                                                                |
+| Lifetime                | Observer drop and dropped queued admission responses do not cancel accepted work. Explicit cancel and Host shutdown/drop drain through the existing import operation; stale closed handles cannot submit to a restarted session.                      |
+
+The actual isolated-worker `clipboard_import` regressions use a synthetic parser
+and synchronization markers under a temporary Host directory. They cover copied
+Unicode/BOM/CR/LF text, both exact 8 MiB ASCII/multibyte requests across the binary
+transport, over-budget/empty rejection, consecutive-empty cutoffs, leading
+undated time, UTF-8-equivalent progress, original records with an empty source
+path, partial parse errors, cancel, observer/admission drop, shutdown/drop and
+restart. They also export ACT XML without the private origin marker and restore
+private history with the same log/sorter links and empty FolderHint.
+
+Managed tests separately verify that the private clipboard marker survives
+restore. The worker test verifies existing immutable archive payloads remain
+unchanged and are not deleted when resaving. Whole-archive byte identity after
+resave is not a contract: existing import-zone serialization can normalize
+`ZoneName="Import"` to `ZoneName="Import Zone"` after restore. This baseline
+representation difference does not change the tested clipboard marker or
+retained actions/logs and was not changed as part of this unit.
+
 ## Remaining L6b wiring
 
-1. Bounded Bridge/Rust Unicode admission with the existing import continuation,
-   cancellation and shutdown lifecycle; actual isolated worker regressions.
-2. Rust/UI explicit paste/import controls using an injectable clipboard adapter,
+1. Rust/UI explicit paste/import controls using an injectable clipboard adapter,
    with a snapshot independent of raw-file options and session-owned async state.
-3. OS clipboard/native UI interaction requires later Windows/native QA. No
-   clipboard access or native ACT execution is claimed by the IL probe.
+2. OS clipboard/native UI interaction requires later Windows/native QA. No
+   clipboard access or native ACT execution is claimed by the IL probe or worker
+   tests. Clipboard monitoring is outside this explicit-action feature.

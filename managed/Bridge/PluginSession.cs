@@ -113,6 +113,13 @@ internal sealed partial class PluginSession
         Host().BeginImport(path, range, text);
         return 0;
     });
+    internal void BeginClipboardImport(string content) => OnOwner(() =>
+    {
+        if (!plugins.Values.Any(plugin => plugin.State == PluginState.Initialized))
+            throw new InvalidOperationException("Clipboard import requires an initialized plugin");
+        Host().BeginClipboardImport(content);
+        return 0;
+    });
     internal ImportResult? AdvanceImport(bool cancel) => OnOwner(() =>
     {
         if (sourceImportOwner != 0) throw new InvalidOperationException("Source import requires its owned continuation");

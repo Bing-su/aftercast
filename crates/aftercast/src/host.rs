@@ -8,7 +8,9 @@ use bytes::{BufMut, BytesMut};
 use camino::{Utf8Path, Utf8PathBuf};
 use tokio::sync::{oneshot, watch};
 
-use crate::import::{ImportJob, ImportProgress, ImportRange, ImportTextOptions, PendingImport};
+use crate::import::{
+    ImportInput, ImportJob, ImportProgress, ImportRange, ImportTextOptions, PendingImport,
+};
 use crate::process::{AudioKind, RemoteSession};
 use crate::runtime::Request;
 use crate::{Error, HostConfig};
@@ -22,7 +24,7 @@ pub(crate) enum Command {
     Request(Request, BytesMut, Reply<(i32, BytesMut)>),
     EndCombat(Reply<()>),
     Audio(AudioKind, bool, Reply<()>),
-    Import(Utf8PathBuf, PendingImport, Reply<()>),
+    Import(ImportInput, PendingImport, Reply<()>),
     Canonicalize(Utf8PathBuf, Reply<Utf8PathBuf>),
 }
 
@@ -239,6 +241,17 @@ impl HostHandle {
         )
         .await
     }
+    /// Starts an explicit Unicode snapshot import, without OS clipboard access or source-path lookup.
+    /// Text is copied before admission. Dropping the returned observer does not cancel the job.
+    pub async fn start_clipboard_import(
+        &self,
+        content: impl AsRef<str>,
+    ) -> Result<ImportJob, Error> {
+        let content = content.as_ref();
+        crate::import::validate_clipboard(content)?;
+        self.admit_import(ImportInput::Clipboard(content.to_owned()), None, None, None)
+            .await
+    }
     async fn start_import_request(
         &self,
         path: &Utf8Path,
@@ -246,19 +259,19 @@ impl HostHandle {
         text: Option<ImportTextOptions>,
         sources: Option<Vec<crate::CompanionSource>>,
     ) -> Result<ImportJob, Error> {
-        self.admit_import(path, range, text, sources, None).await
+        self.admit_import(ImportInput::File(path.to_owned()), range, text, sources)
+            .await
     }
     pub(crate) async fn start_captured_import(&self, owner: u64) -> Result<ImportJob, Error> {
-        self.admit_import(Utf8Path::new(""), None, None, None, Some(owner))
+        self.admit_import(ImportInput::Captured(owner), None, None, None)
             .await
     }
     async fn admit_import(
         &self,
-        path: &Utf8Path,
+        input: ImportInput,
         range: Option<ImportRange>,
         text: Option<ImportTextOptions>,
         sources: Option<Vec<crate::CompanionSource>>,
-        capture_owner: Option<u64>,
     ) -> Result<ImportJob, Error> {
         let cancellation = Arc::new(AtomicBool::new(false));
         let (progress, updates) = watch::channel(ImportProgress::default());
@@ -268,13 +281,11 @@ impl HostHandle {
             text,
             sources,
             source_owner: None,
-            capture_owner,
             cancellation: cancellation.clone(),
             progress,
             complete,
         };
-        let path = path.to_owned();
-        self.execute(|reply| Command::Import(path, pending, reply))
+        self.execute(|reply| Command::Import(input, pending, reply))
             .await?;
         Ok(ImportJob {
             cancellation,
@@ -544,11 +555,11 @@ fn dispatch(session: &mut RemoteSession, command: Command, operations: &mut Opti
                 result => drop(reply.send(result.map(|_| ()))),
             }
         }
-        Command::Import(path, mut pending, reply) => {
+        Command::Import(input, mut pending, reply) => {
             let result = if operations.is_some() {
                 Err(Error::Busy)
             } else {
-                pending.begin(session, &path)
+                pending.begin(session, input)
             };
             if result.is_ok() {
                 *operations = Some(Operation::Import(pending));

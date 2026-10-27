@@ -83,5 +83,6 @@ internal static class ImportAbiChecks
             }
         }
         finally { Marshal.FreeHGlobal(memory); }
+        ClipboardAbiChecks.Run(session);
     }
 }

@@ -55,7 +55,7 @@ pub struct LogRecord {
     pub is_import: bool,
     pub timestamp: LogTimestamp,
     pub time_sorter: i32,
-    /// Owned immutable path; consecutive equal paths in a batch share one allocation.
+    /// Owned immutable path; empty for pathless clipboard text. Equal paths share one batch allocation.
     pub source_path: Arc<Utf8Path>,
     /// Valid UTF-8, including any embedded NUL; shares the owned batch allocation.
     pub original_line: Bytes,
