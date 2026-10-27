@@ -47,6 +47,7 @@ internal static class Program
             case "bridge": Bridge(); break;
             case "contracts": Contracts(); break;
             case "clipboard-import": Platform.Prepare(); ClipboardImportChecks.Run(); break;
+            case "import-character": Platform.Prepare(); ImportCharacterChecks.Run(); break;
             case "import-boundaries": Platform.Prepare(); ImportBoundaryChecks.Run(); break;
             case "source-capture": Platform.Prepare(); HistorySourceCaptureChecks.Run(); break;
             case "log-load": LogLoadChecks.Run(); break;

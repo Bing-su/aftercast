@@ -52,7 +52,19 @@ internal static class ImportPolicy
         Check(clip[0x0348]==OpCodes.Ldc_I4.Value&&BitConverter.ToInt32(clip,0x0349)==1000,"clipboard empty limit");
         Branch(clip,0x034d,OpCodes.Ble_S,0x0354);
         Call(clip,0x02d6,"set_LastKnownTime");Call(clip,0x032d,"get_LastKnownTime");Call(clip,0x0339,"ParseRawLogLine");
+        var character=Body("FormActMain","SetCharName",1);
+        Call(character,0x000c,"ControlGetText");Call(character,0x0011,"get_Length");
+        Check(character[0x0016]==OpCodes.Ldc_I4_2.Value,"short-name threshold");Branch(character,0x0017,OpCodes.Ble_S,0x0031);
+        Check(character[0x0031]==OpCodes.Ldstr.Value&&reader.GetUserString(MetadataTokens.UserStringHandle(BitConverter.ToInt32(character,0x0032)&0xffffff))=="YOU","short-name default");
+        Check(Name(character,0x002a)=="charName","selected character assignment");
+        Check(import[0x0013]==OpCodes.Ldarg_1.Value,"UI-driven name selection flag");Branch(import,0x0014,OpCodes.Brfalse_S,0x007b);
+        Call(import,0x0030,"IsNullOrEmpty");Branch(import,0x0035,OpCodes.Brtrue_S,0x0054);
+        Check(Name(import,0x0060)=="charName"&&import[0x006b]==OpCodes.Ldc_I4_0.Value,"empty selection inherits current/no filename parse");Call(import,0x006c,"SetCharName");
+        foreach(var (method,field)in new[]{("btnOk_Click","tbLastKnownName"),("btnLastKnownName_Click","btnLastKnownName")})
+        {
+            var button=Body("FormImportProgress",method,2);Check(Name(button,0x0002)==field&&Name(button,0x000c)=="charName","progress selection source");Call(button,0x0007,"get_Text");Call(button,0x0017,"Set");
+        }
         return new{policy="time >= begin && (time <= end || extend && InCombat before ParseRawLogLine)",fileBeginDefault=true,fileEndDefault=true,extendDefault=true,
-            idleAdmissionFileEnd="DateTime.MaxValue",activeLiveFileEnd="LastKnownTime (aftercast requires idle admission)",clipboard=new{input="Unicode StringReader",consecutiveEmptyLimit=1000,undated="LastKnownTime",clipboardAccessExecuted=false},nativeImportExecuted=false};
+            idleAdmissionFileEnd="DateTime.MaxValue",activeLiveFileEnd="LastKnownTime (aftercast requires idle admission)",clipboard=new{input="Unicode StringReader",consecutiveEmptyLimit=1000,undated="LastKnownTime",clipboardAccessExecuted=false},character=new{pointOfView="character identity",programmaticDefault="preserve current exact",emptySelection="current name",shortName="YOU when UTF-16 Length <= 2",trim=false,nativeUiExecuted=false},nativeImportExecuted=false};
     }
 }

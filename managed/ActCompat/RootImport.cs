@@ -63,17 +63,17 @@ namespace Advanced_Combat_Tracker
         }
 
         internal void BeginImport(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null,
-            CapturedImportSource[]? captured = null, string? character = null)
-            => BeginImportCore(path, range, text, companions, captured, character, null);
+            CapturedImportSource[]? captured = null, string? character = null, ImportCharacterOptions? viewpoint = null)
+            => BeginImportCore(path, range, text, companions, captured, character, null, viewpoint);
 
-        internal void BeginClipboardImport(string content)
+        internal void BeginClipboardImport(string content, ImportCharacterOptions? viewpoint = null)
         {
             _ = ImportTextReader.Validate(content);
-            BeginImportCore("", null, null, null, null, null, content);
+            BeginImportCore("", null, null, null, null, null, content, viewpoint);
         }
 
         private void BeginImportCore(string path, ImportRange? range, ImportTextOptions? text, IReadOnlyList<ImportCompanion>? companions,
-            CapturedImportSource[]? captured, string? character, string? snippet)
+            CapturedImportSource[]? captured, string? character, string? snippet, ImportCharacterOptions? viewpoint)
         {
             if (snippet is null) ArgumentException.ThrowIfNullOrEmpty(path);
             if (snippet is null && !Path.IsPathFullyQualified(path)) throw new ArgumentException("An absolute import path is required", nameof(path));
@@ -81,6 +81,12 @@ namespace Advanced_Combat_Tracker
                 throw new InvalidOperationException("Import must start outside a dispatched callback on the owner thread");
             if (captured is null) EnsureSourceCaptureIdle();
             if (Volatile.Read(ref sourceArchiveBusy) != 0) throw new InvalidOperationException("Archive operation is active");
+            if (captured is not null && viewpoint is not null) throw new ArgumentException("Captured history uses its saved character");
+            // Copy the effective identity at admission, before suspended live callbacks can change globals.
+            // Private captured metadata and omitted programmatic options stay exact; explicit
+            // point-of-view choices follow ACT's UI-driven SetCharName rules.
+            var selectedCharacter = !string.IsNullOrEmpty(character) ? character
+                : viewpoint is not null ? viewpoint.Resolve(ActGlobals.charName) : ActGlobals.charName;
             var encoding = snippet is not null ? new ImportTextOptions().Resolve() : captured is { Length: > 0 } ? ImportTextOptions.Validate(captured[0].Encoding) : text?.Resolve() ?? ImportTextOptions.Validate(LogEncoding);
             var companionSnapshot = companions?.ToArray() ?? [];
             if (companionSnapshot.Length > 64) throw new ArgumentException("At most 64 companions can be imported");
@@ -98,7 +104,7 @@ namespace Advanced_Combat_Tracker
             {
                 EnsureCombatOpen();
                 if (inCombat) throw new InvalidOperationException("End live combat before importing a log file");
-                activeImport = new ImportOperation(this, path, range, encoding, text?.DetectBom ?? true, companionSnapshot, captured, character, snippet);
+                activeImport = new ImportOperation(this, path, range, encoding, text?.DetectBom ?? true, companionSnapshot, captured, selectedCharacter, snippet);
             }
             try { activeImport.Start(); }
             catch
@@ -145,9 +151,9 @@ namespace Advanced_Combat_Tracker
             if (errors.Count != 0) throw new AggregateException("Captured import ended with errors during shutdown", errors);
         }
 
-        internal ImportResult ImportLog(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null)
+        internal ImportResult ImportLog(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null, ImportCharacterOptions? viewpoint = null)
         {
-            BeginImport(path, range, text, companions);
+            BeginImport(path, range, text, companions, viewpoint: viewpoint);
             while (true)
             {
                 var before = CurrentImportProgress;
@@ -211,7 +217,7 @@ namespace Advanced_Combat_Tracker
                     // ACT ImportClip lets a leading undated row inherit the pre-import known time.
                     if (snippet is null) root.lastKnownTime = DateTime.MinValue;
                     root.lastKnownStamp = Stopwatch.GetTimestamp();
-                    if (!string.IsNullOrEmpty(character)) ActGlobals.charName = character;
+                    ActGlobals.charName = character;
                     root.importingLogs = true;
                     root.ReadThreadLock = true;
                 }

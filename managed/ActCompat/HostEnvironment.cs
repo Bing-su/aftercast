@@ -166,10 +166,10 @@ namespace Aftercast.ActCompat
         public Tuple<long, string> Diagnostics => main.Errors;
         public string[] RecentDiagnostics => main.RecentDiagnostics;
         public Tuple<long, string[]> DiagnosticsSnapshot => main.DiagnosticsSnapshot;
-        public ImportResult ImportLog(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null) => main.ImportLog(path, range, text, companions);
-        public void BeginImport(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null) => main.BeginImport(path, range, text, companions);
+        public ImportResult ImportLog(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null, ImportCharacterOptions? viewpoint = null) => main.ImportLog(path, range, text, companions, viewpoint);
+        public void BeginImport(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null, ImportCharacterOptions? viewpoint = null) => main.BeginImport(path, range, text, companions, viewpoint: viewpoint);
         // Explicit Unicode snapshot only; this API never reads the operating-system clipboard.
-        public void BeginClipboardImport(string content) => main.BeginClipboardImport(content);
+        public void BeginClipboardImport(string content, ImportCharacterOptions? viewpoint = null) => main.BeginClipboardImport(content, viewpoint);
         public void OpenLogWithCompanions(IReadOnlyList<ImportCompanion> companions, bool getCurrentZone = false, TimeSpan? maxClockWait = null, ImportTextOptions? mainText = null) => main.OpenLogWithCompanions(getCurrentZone, companions, maxClockWait, mainText);
         public long LiveLogGeneration => main.LiveLogGeneration;
         public long OpenLiveLog(string path, IReadOnlyList<ImportCompanion> companions, bool getCurrentZone, TimeSpan maxClockWait, ImportTextOptions? text)
