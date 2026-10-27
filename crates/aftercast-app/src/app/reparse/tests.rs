@@ -8,6 +8,7 @@ fn source_range_drafts_keep_inclusive_dates_and_reject_invalid_input() {
         path: " source.log ".into(),
         start: "1970-01-01".into(),
         end: "1970-01-01".into(),
+        ..Default::default()
     };
     let request = valid.compile(root).expect("inclusive day");
     assert_eq!(request.path, root.join("source.log"));
@@ -149,6 +150,7 @@ async fn reparse_ui_contract_preserves_drafts_and_session_owned_partial_results(
         path: "source.log".into(),
         start: "1970-01-01T00:00:01".into(),
         end: "1970-01-01T00:00:02".into(),
+        ..Default::default()
     };
     assert!(
         ui.begin_reparse(request(&ui)).is_none(),
@@ -497,6 +499,7 @@ async fn companion_range_ui_contract_uses_admitted_sources_and_keeps_cancelled_d
         path: main.to_string(),
         start: "1970-01-01T00:00:01".into(),
         end: "1970-01-01T00:00:01".into(),
+        ..Default::default()
     };
     let compiled = request(&ui);
     let token = ui.begin_reparse(compiled.clone()).expect("range admission");
@@ -556,4 +559,209 @@ async fn cancel_selected_range(host: &Host, ui: &mut AppState, main: &Utf8Path) 
     assert!(ui.receive_reparse(token, result, "complete", "cancelled"));
     assert_eq!(ui.reparse.draft, draft);
     assert_eq!(ui.message, "cancelled");
+}
+
+#[test]
+fn file_boundary_choices_ignore_only_disabled_dates_and_keep_unsaved_drafts() {
+    let root = Utf8Path::new("/isolated");
+    let draft = Draft {
+        path: "source.log".into(),
+        start: "invalid retained start".into(),
+        end: "invalid retained end".into(),
+        file_start: true,
+        file_end: true,
+        extend: false,
+    };
+    let snapshot = draft
+        .compile(root)
+        .expect("file sides ignore inactive time drafts");
+    assert_eq!(snapshot.range.start_ticks(), 0);
+    assert_eq!(snapshot.range.end_ticks(), 3_155_378_975_999_999_999);
+    assert!(!snapshot.range.extend_to_combat_end());
+    assert_eq!(snapshot.bounds, draft);
+    let mut ui = AppState::new(root.to_owned());
+    ui.reparse.draft = draft.clone();
+    let view = ui.reparse_view();
+    assert!(!ui.edit_reparse(view, "reparse-start", "stale disabled input".into()));
+    assert!(ui.edit_reparse(view, "reparse-file-start", "false".into()));
+    assert_eq!(ui.reparse.draft.start, draft.start);
+    assert_eq!(
+        ui.compile_reparse().expect_err("invalid active bound"),
+        "reparse-invalid-date"
+    );
+    assert!(!ui.edit_reparse(view, "reparse-extend", "invalid".into()));
+    assert!(!ui.reparse.draft.extend);
+    ui.exit_requested = true;
+    assert!(!ui.edit_reparse(view, "reparse-extend", "true".into()));
+    ui.exit_requested = false;
+    ui.revision.session += 1;
+    ui.reparse.reset_session();
+    assert!(!ui.edit_reparse(view, "reparse-file-start", "true".into()));
+    let fresh = AppState::new(root.to_owned());
+    assert_eq!(
+        fresh.reparse.draft,
+        Draft::default(),
+        "new app does not persist drafts"
+    );
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and synthetic fixture; run mise run test:gui-state"]
+async fn file_and_combat_boundary_ui_contract_binds_requests_and_rejects_stale_events() {
+    let temporary = tempfile::tempdir().expect("isolated boundary controller");
+    let root = Utf8Path::from_path(temporary.path()).expect("UTF8 root");
+    let (host, mut ui) = boundary_fixture(root).await;
+    let input = root.join("source.log");
+    std::fs::write(&input, "0|A|7\n1|A|10\n2|A|20\n3|A|30\n4|E\n5|N\n")
+        .expect("synthetic boundary rows");
+    let base = Draft {
+        path: "source.log".into(),
+        start: "1970-01-01T00:00:01".into(),
+        end: "1970-01-01T00:00:02".into(),
+        ..Default::default()
+    };
+    ui.reparse.draft = base.clone();
+    for (file_start, file_end, extend, expected) in [
+        (false, false, false, (2, 30)),
+        (true, false, false, (3, 37)),
+        (false, true, false, (5, 60)),
+        (true, true, false, (6, 67)),
+        (false, false, true, (4, 60)),
+    ] {
+        let view = ui.reparse_view();
+        for (field, enabled) in [
+            ("reparse-file-start", file_start),
+            ("reparse-file-end", file_end),
+            ("reparse-extend", extend),
+        ] {
+            assert!(ui.edit_reparse(view, field, enabled.to_string()));
+        }
+        let compiled = request(&ui);
+        let draft = ui.reparse.draft.clone();
+        let token = ui
+            .begin_reparse(compiled.clone())
+            .expect("admit boundary snapshot");
+        assert!(
+            !ui.edit_reparse(view, "reparse-extend", (!extend).to_string()),
+            "old rendered toggle"
+        );
+        assert!(
+            !ui.edit_reparse(ui.reparse_view(), "reparse-extend", (!extend).to_string()),
+            "busy toggle"
+        );
+        assert!(ui.begin_reparse(compiled.clone()).is_none());
+        ui.screen = "history";
+        let active = ui.reparse.source_snapshot().expect("active settings");
+        assert_eq!(active.range, Some(compiled.range));
+        assert_eq!(
+            ui.reparse
+                .pending
+                .as_ref()
+                .expect("pending display")
+                .1
+                .bounds,
+            draft
+        );
+        let report = super::super::import_text::start_selected(
+            &host,
+            &compiled.path,
+            Some(compiled.range),
+            compiled.text,
+            compiled.sources.as_ref(),
+        )
+        .await
+        .expect("start selected path")
+        .wait()
+        .await
+        .expect("boundary result");
+        assert_eq!((report.records_dispatched, report.damage), expected);
+        assert_eq!(ui.reparse.source_snapshot(), Some(active));
+        assert!(ui.receive_reparse(token, Ok(report), "complete", "cancelled"));
+        assert!(!ui.receive_reparse(token, Err(aftercast::Error::Cancelled), "stale", "stale"));
+        assert!(!ui.edit_reparse(view, "reparse-file-end", (!file_end).to_string()));
+        assert_eq!(ui.reparse.draft, draft);
+        assert_eq!(ui.screen, "history");
+    }
+    boundary_failures_and_shutdown(host, &mut ui, &input, base).await;
+}
+async fn boundary_fixture(root: &Utf8Path) -> (Host, AppState) {
+    let bridge = root.join("bridge");
+    extract_bridge(&bridge).expect("bridge");
+    let executable = std::env::current_exe().expect("test binary");
+    let application = executable
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("target")
+        .join("examples")
+        .join(format!("test-application{}", std::env::consts::EXE_SUFFIX));
+    let host = Host::start(
+        HostConfig::builder()
+            .dotnet_root(std::env::var("DOTNET_ROOT").expect("dotnet"))
+            .bridge_directory(bridge)
+            .data_directory(root.join("state"))
+            .application_executable(camino::Utf8PathBuf::try_from(application).expect("UTF8 app"))
+            .build(),
+    )
+    .await
+    .expect("actual isolated Host");
+    let mut ui = AppState::new(root.to_owned());
+    ui.phase = Phase::Ready;
+    ui.revision.session = 1;
+    let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let id = host
+        .create_plugin(
+            PluginConfig::builder()
+                .path(path.clone())
+                .type_name("Aftercast.PluginFixture.BoundaryImportPlugin")
+                .build(),
+        )
+        .await
+        .expect("fixture");
+    let status = host.initialize_plugin(id).await.expect("initialize");
+    ui.plugins.push(super::super::LoadedPlugin {
+        path: path.into_string(),
+        id,
+        status,
+        info: host.plugin_status(id).await.expect("status"),
+    });
+    (host, ui)
+}
+async fn boundary_failures_and_shutdown(
+    host: Host,
+    ui: &mut AppState,
+    input: &Utf8Path,
+    base: Draft,
+) {
+    let saved = ui.reparse.draft.clone();
+    let view = ui.reparse_view();
+    assert!(ui.edit_reparse(view, "reparse-start", "bad date".into()));
+    ui.compile_reparse().expect_err("invalid active time");
+    assert!(!ui.reparse.active());
+    assert_eq!(ui.reparse.draft.start, "bad date");
+    ui.reparse.draft = saved;
+    assert!(ui.edit_reparse(ui.reparse_view(), "reparse-path", "missing.log".into()));
+    execute(&host, ui).await;
+    assert!(ui.error.is_some());
+    assert!(ui.reparse.draft.extend);
+    assert_eq!(ui.reparse.draft.path, "missing.log");
+    ui.reparse.draft = base;
+    // Existing wait_import controller covers tab-independent cancellation and session replacement.
+    ui.reparse.draft.extend = true;
+    std::fs::write(input, "1|A|1\n".repeat(100_000)).expect("cancel rows");
+    signal_loop(&host, ui, input).await;
+    let request = request(ui);
+    let token = ui.begin_reparse(request.clone()).expect("shutdown request");
+    let job = host
+        .start_import_range(&request.path, request.range)
+        .await
+        .expect("shutdown job");
+    let draft = ui.reparse.draft.clone();
+    ui.revision.session += 1;
+    ui.reparse.reset_session();
+    ui.phase = Phase::Stopping;
+    host.shutdown().await.expect("drain on stop");
+    assert!(!ui.receive_reparse(token, job.wait().await, "late", "late"));
+    assert!(!ui.cancel_reparse(token));
+    assert_eq!(ui.reparse.draft, draft);
 }

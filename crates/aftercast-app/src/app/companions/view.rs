@@ -256,6 +256,17 @@ fn ImportSnapshot(snapshot: ActiveImport) -> Element {
                     {tr("sources-range-ticks")}
                     " {range.start_ticks()} — {range.end_ticks()}"
                 }
+                p { class: "text-xs",
+                    {
+                        tr(
+                            if range.extend_to_combat_end() {
+                                "reparse-policy-extend"
+                            } else {
+                                "reparse-policy-exact"
+                            },
+                        )
+                    }
+                }
             }
             p { class: "text-xs font-semibold", {tr("sources-main")} }
             Codec { text: snapshot.text, companion: false }

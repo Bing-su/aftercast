@@ -731,6 +731,19 @@ test('source reparse keeps inclusive bounds and drafts separate from checkpoint 
   await expect(page.locator('#reparse-start')).toHaveValue('1970-01-02');
   await page.locator('#reparse-start').fill('1970-01-01T00:00:01');
   await page.locator('#reparse-end').fill('1970-01-01T00:00:02');
+  for (const id of ['reparse-file-start', 'reparse-file-end', 'reparse-extend']) {
+    await expect(page.locator(`#${id}`)).toHaveAttribute('aria-pressed', 'false');
+  }
+  await page.locator('#reparse-file-start').click();
+  await expect(page.locator('#reparse-start')).toBeDisabled();
+  await expect(page.locator('#reparse-start')).toHaveValue('1970-01-01T00:00:01');
+  await page.locator('#reparse-file-start').click();
+  await expect(page.locator('#reparse-start')).toBeEnabled();
+  await page.locator('#reparse-file-end').click();
+  await expect(page.locator('#reparse-end')).toBeDisabled();
+  await page.locator('#reparse-file-end').click();
+  await expect(page.locator('#reparse-end')).toBeEnabled();
+  await expect(page.locator('#reparse-end')).toHaveValue('1970-01-01T00:00:02');
   await action.click();
   await expect(page.getByRole('status').last()).toHaveText('Source range reparse completed · 3 / 5 · 1');
   await page.getByRole('button', { name: 'Analysis', exact: true }).click();

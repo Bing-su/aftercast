@@ -78,7 +78,31 @@ import. ABI tests reject changes on continuation and captured replay without
 consuming the owned operation. These are synthetic file/parser checks, not native
 ACT thread execution.
 
-GUI controls remain the next bounded unit. Native ACT import
-threads, Windows/native input and timing remain unverified. This checkpoint does
+## GUI checkpoint
+
+The existing raw source-reparse pane now uses Rust/UI Input, Label and
+aria-pressed Button controls inside its Dioxus accordion. Independent file
+beginning/end choices disable only their time inputs while retaining typed values.
+Both file choices and combat extension default to false, preserving the previous
+explicit-bound/strict UI behavior; this differs from the original ACT constructor
+checkbox defaults noted above. Inactive time drafts are ignored, not guessed.
+
+Admission copies the parsed effective range, boundary choices, text options and
+companion selection. The pending view and source snapshot show that accepted
+policy, not a subsequently edited draft. Busy/obsolete-session events cannot
+change it. Existing tab-independent wait/cancel/shutdown handling remains in use.
+History capture separately displays its saved exact inclusive range and never
+inherits raw-import extension. Drafts survive Host stop/tab changes but are not
+persisted across application launches.
+
+Controller tests execute against an actual isolated Host with synthetic files:
+all four file/time combinations, strict versus extension, invalid active versus
+inactive dates, busy/stale events, duplicate admission, partial/error and cancel
+paths, tab navigation, late shutdown responses and fresh-app draft defaults.
+The Windows desktop scenario now checks toggle accessibility state, disabled
+inputs and retained dates, but was not executed on Linux.
+
+Native ACT import threads, actual GUI clicks, Windows/native input and timing
+remain unverified. This checkpoint does
 not implement clipboard import, manual character/viewpoint selection or a separate
 progress window.

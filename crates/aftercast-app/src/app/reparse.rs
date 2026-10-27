@@ -9,12 +9,15 @@ pub(super) struct Draft {
     path: String,
     start: String,
     end: String,
+    file_start: bool,
+    file_end: bool,
+    extend: bool,
 }
 #[derive(Clone, Debug)]
 struct Request {
     path: Utf8PathBuf,
     range: ImportRange,
-    bounds: String,
+    bounds: Draft,
     text: Option<aftercast::ImportTextOptions>,
     sources: Option<super::companions::Selection>,
 }
@@ -24,19 +27,28 @@ impl Draft {
         if path.is_empty() || path.contains('\0') {
             return Err("reparse-invalid-path");
         }
-        let start = source_bound(&self.start, false)?.ok_or("reparse-required-range")?;
-        let end = if self.end.trim().len() == 10 {
+        let start = if self.file_start {
+            None
+        } else {
+            Some(source_bound(&self.start, false)?.ok_or("reparse-required-range")?)
+        };
+        let end = if self.file_end {
+            None
+        } else if self.end.trim().len() == 10 {
             // A date means its whole inclusive day; exact timestamps remain inclusive without subtraction.
             source_bound(&self.end, true)?.and_then(|ticks| ticks.checked_sub(1))
         } else {
             source_bound(&self.end, false)?
+        };
+        if !self.file_end && end.is_none() {
+            return Err("reparse-required-range");
         }
-        .ok_or("reparse-required-range")?;
-        let range = ImportRange::new(start, end).map_err(|_error| "reparse-invalid-range")?;
+        let range = ImportRange::from_bounds(start, end, self.extend)
+            .map_err(|_error| "reparse-invalid-range")?;
         Ok(Request {
             path: crate::config::resolve(root, path),
             range,
-            bounds: format!("{} — {}", self.start, self.end),
+            bounds: self.clone(),
             text: None,
             sources: None,
         })
@@ -80,6 +92,35 @@ impl AppState {
         request.text = self.import_text.options();
         request.sources = self.companions.selection();
         Ok(request)
+    }
+    fn can_edit_reparse(&self) -> bool {
+        !self.reparse.active()
+            && matches!(self.phase, Phase::Idle | Phase::Ready)
+            && !self.loading
+            && !self.import_text.active()
+            && !self.exit_requested
+    }
+    fn edit_reparse(&mut self, view: Token, field: &str, value: String) -> bool {
+        if !self.current_reparse_view(view) || !self.can_edit_reparse() {
+            return false;
+        }
+        match field {
+            "reparse-path" => self.reparse.draft.path = value,
+            "reparse-start" if !self.reparse.draft.file_start => self.reparse.draft.start = value,
+            "reparse-end" if !self.reparse.draft.file_end => self.reparse.draft.end = value,
+            "reparse-file-start" | "reparse-file-end" | "reparse-extend" => {
+                let Ok(enabled) = value.parse::<bool>() else {
+                    return false;
+                };
+                match field {
+                    "reparse-file-start" => self.reparse.draft.file_start = enabled,
+                    "reparse-file-end" => self.reparse.draft.file_end = enabled,
+                    _ => self.reparse.draft.extend = enabled,
+                }
+            }
+            _ => return false,
+        }
+        true
     }
     fn reparse_view(&self) -> Token {
         Token {
@@ -212,21 +253,20 @@ fn submit(mut state: Signal<AppState>, view: Token) {
     });
 }
 fn edit(mut state: Signal<AppState>, view: Token, field: &str, value: String) {
-    let mut current = state.write();
-    if !current.current_reparse_view(view)
-        || current.reparse.active()
-        || !matches!(current.phase, Phase::Idle | Phase::Ready)
-        || current.loading
-        || current.import_text.active()
-    {
-        return;
-    }
-    match field {
-        "reparse-path" => current.reparse.draft.path = value,
-        "reparse-start" => current.reparse.draft.start = value,
-        "reparse-end" => current.reparse.draft.end = value,
-        _ => {}
-    }
+    state.write().edit_reparse(view, field, value);
+}
+fn bounds_label(draft: &Draft) -> String {
+    let start = if draft.file_start {
+        tr("reparse-file-start")
+    } else {
+        draft.start.clone()
+    };
+    let end = if draft.file_end {
+        tr("reparse-file-end")
+    } else {
+        draft.end.clone()
+    };
+    format!("{start} — {end}")
 }
 #[component]
 pub(super) fn ReparseControls() -> Element {
@@ -235,10 +275,7 @@ pub(super) fn ReparseControls() -> Element {
     let view = current.reparse_view();
     let draft = current.reparse.draft.clone();
     let pending = current.reparse.pending.clone();
-    let blocked = current.reparse.active()
-        || !matches!(current.phase, Phase::Idle | Phase::Ready)
-        || current.loading
-        || current.import_text.active();
+    let blocked = !current.can_edit_reparse();
     let can_submit = current.can_reparse();
     let canceling = current.cancel_import;
     drop(current);
@@ -252,21 +289,47 @@ pub(super) fn ReparseControls() -> Element {
             },
             section { class: "space-y-4 p-4", "aria-label": tr("reparse-title"),
                 p { class: "text-sm leading-7 text-muted-foreground", {tr("reparse-help")} }
-                for (id, value) in [
-                    ("reparse-path", draft.path),
-                    ("reparse-start", draft.start),
-                    ("reparse-end", draft.end),
+                div { class: "space-y-1",
+                    Label { html_for: "reparse-path", {tr("reparse-path")} }
+                    Input {
+                        id: "reparse-path",
+                        value: draft.path,
+                        disabled: blocked,
+                        oninput: move |event: FormEvent| edit(state, view, "reparse-path", event.value()),
+                    }
+                }
+                for (id, value, toggle, file) in [
+                    ("reparse-start", draft.start, "reparse-file-start", draft.file_start),
+                    ("reparse-end", draft.end, "reparse-file-end", draft.file_end),
                 ]
                 {
-                    div { class: "space-y-1",
+                    div { class: "space-y-2",
                         Label { html_for: id.to_owned(), {tr(id)} }
-                        Input {
-                            id: id.to_owned(),
-                            value,
-                            disabled: blocked,
-                            oninput: move |event: FormEvent| edit(state, view, id, event.value()),
+                        div { class: "flex flex-wrap items-center gap-3",
+                            Button {
+                                id: toggle.to_owned(),
+                                variant: ButtonVariant::Outline,
+                                disabled: blocked,
+                                aria_pressed: file,
+                                onclick: move |_| edit(state, view, toggle, (!file).to_string()),
+                                {tr(toggle)}
+                            }
+                            Input {
+                                id: id.to_owned(),
+                                value,
+                                disabled: blocked || file,
+                                oninput: move |event: FormEvent| edit(state, view, id, event.value()),
+                            }
                         }
                     }
+                }
+                Button {
+                    id: "reparse-extend",
+                    variant: ButtonVariant::Outline,
+                    disabled: blocked,
+                    aria_pressed: draft.extend,
+                    onclick: move |_| edit(state, view, "reparse-extend", (!draft.extend).to_string()),
+                    {tr("reparse-extend")}
                 }
                 p { class: "text-xs leading-6 text-muted-foreground", {tr("reparse-boundary-help")} }
                 Button {
@@ -277,7 +340,18 @@ pub(super) fn ReparseControls() -> Element {
                 if let Some((token, request)) = pending {
                     p { role: "status", class: "break-words text-sm",
                         {tr("reparse-running")}
-                        " {request.path} · {request.bounds}"
+                        " {request.path} · "
+                        {bounds_label(&request.bounds)}
+                        " · "
+                        {
+                            tr(
+                                if request.range.extend_to_combat_end() {
+                                    "reparse-policy-extend"
+                                } else {
+                                    "reparse-policy-exact"
+                                },
+                            )
+                        }
                     }
                     Button {
                         variant: ButtonVariant::Outline,

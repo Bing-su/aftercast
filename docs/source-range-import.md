@@ -50,8 +50,11 @@ The real-worker import regression verifies matching inclusive/equal-time rows,
 retained action/log identity, empty range, malformed prefix/suffix, progress,
 partial results, cancellation/reuse, shutdown and stale-handle rejection.
 The existing Import / Export pane now has a separate Rust/UI source-reparse
-section with an explicit path and required inclusive start/end. Calendar dates
-include the whole end day; exact timestamps include all matching boundary rows.
+section with an explicit path and independent file-side or inclusive time bounds.
+File boundaries retain but disable their date drafts. Combat-end extension is an
+explicit toggle that defaults off; the admitted snapshot displays its policy.
+Calendar dates include the whole end day; exact timestamps include all matching
+boundary rows. History capture keeps exact bounds independently of these choices.
 Drafts remain after validation, I/O failure, cancellation and host stop. Checkpoint
 restore remains a distinct action with its own metadata search semantics.
 
