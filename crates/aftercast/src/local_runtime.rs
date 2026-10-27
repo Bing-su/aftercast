@@ -49,6 +49,7 @@ pub(crate) struct ManagedSession {
     notification_command: ManagedFunctionWithDefaultSignature,
     timer_command: ManagedFunctionWithDefaultSignature,
     history_operation: ManagedFunctionWithDefaultSignature,
+    table_command: ManagedFunctionWithDefaultSignature,
     session: u64,
     running: bool,
     // Keep the native library and delegate loader alive for every managed function call.
@@ -108,6 +109,7 @@ impl ManagedSession {
         let notification_command = function(pdcstr!("NotificationCommand"))?;
         let timer_command = function(pdcstr!("TimerCommand"))?;
         let history_operation = function(pdcstr!("HistoryOperation"))?;
+        let table_command = function(pdcstr!("TableCommand"))?;
         let mut host = Self {
             entry,
             read_error,
@@ -125,6 +127,7 @@ impl ManagedSession {
             notification_command,
             timer_command,
             history_operation,
+            table_command,
             session: 0,
             running: false,
             _loader: loader,
@@ -172,6 +175,7 @@ impl ManagedSession {
             Request::Notifications => (&self.notification_command, 15),
             Request::Timers => (&self.timer_command, 16),
             Request::History => (&self.history_operation, 17),
+            Request::Tables => (&self.table_command, 18),
         };
         let length = i32::try_from(packet.len())
             .map_err(|error| Error::InvalidPluginRequest(error.to_string()))?;

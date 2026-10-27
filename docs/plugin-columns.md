@@ -45,15 +45,15 @@ catalog tests, not native plugin UI or callback-value execution tests.
 
 ## Finite completion units
 
-| Unit                                     | Status / completion condition                                                                                                                                                                                                                                                |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| C1 Catalog                               | Implemented managed foundation; Bridge/Rust access remains in C3.                                                                                                                                                                                                            |
-| C2 Values and sort                       | Implemented managed scoped cells/colors and bounded stable sort with callback errors, registration invalidation and scope-membership checks; see C2 contract below. Cross-worker session ownership belongs to C3.                                                            |
-| C3 Rust transport and GUI                | Pending: session-owned metadata/value API, existing Rust/UI/Chorale table integration, checked columns and reordering by stable registry key, supported primary/secondary sort, explicit unavailable cells. Reconcile additions/removals using the reference behavior above. |
-| C4 Preferences and end-to-end regression | Pending: atomic local configuration save/reload for column order/selection/sort; preserve drafts on failure, reject stale replies during plugin/session changes; use synthetic plugin/controller tests and final whole checks. Native clicks remain Windows QA.              |
+| Unit                                     | Status / completion condition                                                                                                                                                                                                                                                                      |
+| ---------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| C1 Catalog                               | Managed catalog and session-owned Bridge/Rust discovery are implemented.                                                                                                                                                                                                                           |
+| C2 Values and sort                       | Implemented managed scoped cells/colors and bounded stable sort with callback errors, registration invalidation and scope-membership checks; see C2 contract below. Cross-worker session ownership belongs to C3.                                                                                  |
+| C3 Rust transport and GUI                | Session-owned metadata/value API is implemented; existing Rust/UI/Chorale table integration remains pending, checked columns and reordering by stable registry key, supported primary/secondary sort, explicit unavailable cells. Reconcile additions/removals using the reference behavior above. |
+| C4 Preferences and end-to-end regression | Pending: atomic local configuration save/reload for column order/selection/sort; preserve drafts on failure, reject stale replies during plugin/session changes; use synthetic plugin/controller tests and final whole checks. Native clicks remain Windows QA.                                    |
 
 Managed C1/C2 delivery does not complete plugin-column support. Existing typed
-aggregate/action APIs remain the current displayed data until C3–C4 are connected.
+aggregate/action APIs remain the current displayed data until the GUI and C4 are connected.
 
 ## C2 cell, color and sort contract
 
@@ -97,3 +97,40 @@ stable/secondary/descending sorts, inconsistent comparers, actual comparison bud
 fallback, row limits and aggregate output limits. C3 must reserve bounded reply
 space before callbacks; do not rerun formatting/sorting merely to probe capacity.
 Session-owning Rust scope/revision wrappers and actual worker tests remain C3 work.
+
+## C3 transport API (GUI remains pending)
+
+| API                       | Owned result                                                                                                                                                   |
+| ------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `table_columns(level)`    | Bounded column/category metadata and an opaque revision containing worker session, row level and catalog revision.                                             |
+| `table_rows(&TableQuery)` | Optional owned page for a typed TableScope; missing scope is None, valid empty scope is Some with zero rows. Retains per-cell errors and sort fallback status. |
+
+TableScope encodes the hierarchy explicitly and uses session-owned EncounterId.
+The Rust encoder rejects foreign scope/revision sessions, level mismatch, duplicate
+keys and invalid page/text/sort bounds before IPC. Persist keys/preferences only,
+never session revisions or row ordinals. Catalog keys, rather than display labels,
+identify selected columns and sort definitions.
+
+The appended worker command 18 dispatches through PluginSession.OnOwner.
+TableCommand validates fixed packet capacities before plugin work: 4 MiB catalog,
+16 MiB rows, each plus a 32-byte header. Input is strict UTF-8 JSON up to 256 KiB;
+reply data uses bounded little-endian binary lengths/counts, strict UTF-8 and
+explicit optional/error flags. A query runs once and owned results are encoded
+once. No capacity probe/retry repeats formatters or comparers. Oversized/invalid
+outputs fail visibly. The decoder validates level/revision, key uniqueness/order,
+category directions, scope shape, row ordinals, cell counts/errors and text limits.
+
+Like other callback-producing commands, table access returns Busy while an import,
+archive, audio or history operation owns the slot. Dropping an API future does not
+cancel accepted callback execution and does not retry it. Callbacks remain arbitrary
+trusted plugin code. No new cancellation/preemption or per-query time guarantee is
+introduced; existing Host shutdown/process retirement behavior is reused.
+
+Actual worker regressions cover cold catalog reads, five row levels, original
+actor/owner-thread callbacks, colors and errors, same-scope paging/sorting, empty vs
+missing scope, no formatter capacity replay, self-unregistration and stale revision,
+disable/fresh-enable, dropped reply reuse, Busy and cross-session rejection. A
+separate synthetic managed formatter deliberately waits forever; shutdown timeout,
+pending-call failure and a fresh worker/state lease are checked. This does not
+establish recovery from arbitrary native/kernel hangs. GUI and saved selection,
+column order and sort preferences remain the next C3/C4 unit; native UI is untested.
