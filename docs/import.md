@@ -40,7 +40,10 @@ is promised. The managed compatibility entry point remains synchronous.
 | Host category keys | The host environment provides ACT's built-in category keys; bare static defaults remain empty and registries remain plugin-owned                                   |
 | Player alias       | ACT's default `YOU`; the original parser intentionally returns `ActGlobals.charName` for its current player instead of the logged actor name                       |
 
-Date windows, companion files and ACT's import UI options are unsupported.
+Inclusive source date windows are available through `ImportRange`,
+`start_import_range` and `import_log_range`; see [source range contracts](source-range-import.md).
+Companion files, encodings other than strict UTF-8 and remaining ACT import UI
+options are unsupported.
 The public ACT data graph remains mutable for compatibility; direct concurrent
 replacement of its collections bypasses the host's coordination.
 

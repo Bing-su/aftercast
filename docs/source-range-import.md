@@ -39,8 +39,27 @@ malformed UTF-8 with retained prefix, explicit cancellation, reuse and live-stat
 restoration. Repeated boundary-at-final-queue imports check that internal producer
 cancellation is not reported as user cancellation or a read error.
 
-This first backend unit exposes optional range arguments on HostEnvironment only.
-The Bridge command, Rust async API and GUI source-path/range controls are the next
-units. They must reuse explicit import cancellation/progress, distinguish inclusive
-reparse bounds from exclusive metadata search bounds, and reject stale session/UI
+The Bridge's existing import operation adds start command 4 with inclusive ticks at
+bytes 24/32, validates DateTime bounds and reserved fields before admission, then
+uses the existing advance/cancel commands. Full import remains start command 1.
+Rust `ImportRange::new(start_ticks, end_ticks)` validates bounds before constructing
+a value; `start_import_range(path, range)` returns the same observable/cancellable
+ImportJob, and `import_log_range(path, range)` awaits its result.
+
+The real-worker import regression verifies matching inclusive/equal-time rows,
+retained action/log identity, empty range, malformed prefix/suffix, progress,
+partial results, cancellation/reuse, shutdown and stale-handle rejection.
+GUI source-path/range controls are the next unit. They must distinguish inclusive
+reparse bounds from exclusive metadata search bounds and reject stale session/UI
 responses. Native file dialog/input and Windows execution remain separate QA.
+
+## Remaining ACT compatibility assessment
+
+| Gap                       | Assessment and next boundary                                                                                                                                                                                                                                                                                  |
+| ------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Configurable LogEncoding  | A real ACT import compatibility gap, not a Windows-only limitation. Linux can implement explicit supported encoding selection, strict decoding/framing and byte-progress tests. It needs its own reader/ABI/UI unit; never silently guess or reinterpret input as UTF-8.                                      |
+| Companion logs            | A real ACT pipeline gap. Linux can test synthetic synchronized streams, cancellation/ordering, missing files and cleanup. This requires companion registration/dispatch and bounded multi-reader ownership beyond the single-file range unit. Native plugin-specific companion effects still need Windows QA. |
+| Automatic source matching | Folder/character hints do not establish identity. Keep explicit source selection for this unit; evaluate ACT's metadata-based matching separately with missing/ambiguous-file behavior.                                                                                                                       |
+
+These gaps remain tracked follow-ups; this API does not claim arbitrary ACT log
+encoding, companion-file or automatic source-location parity.

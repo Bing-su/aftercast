@@ -13,7 +13,7 @@ public static partial class EntryPoint
         ValidateHeader(buffer, sizeBytes, "Import operation ABI mismatch");
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
         var command = Marshal.ReadInt32(buffer, 56);
-        if (command == 1)
+        if (command is 1 or 4)
         {
             var offset = Marshal.ReadInt32(buffer, 16);
             var length = Marshal.ReadInt32(buffer, 20);
@@ -23,7 +23,15 @@ public static partial class EntryPoint
             Marshal.Copy(buffer + offset, bytes, 0, length);
             var path = new UTF8Encoding(false, true).GetString(bytes);
             if (path.Contains('\0')) throw new ArgumentException("Import path contains NUL");
-            plugins.Value.BeginImport(path);
+            if (Marshal.ReadInt64(buffer, 40) != 0 || Marshal.ReadInt64(buffer, 48) != 0 || Marshal.ReadInt32(buffer, 60) != 0)
+                throw new ArgumentException("Nonzero reserved import fields");
+            Aftercast.ActCompat.ImportRange? range = null;
+            if (command == 4)
+                range = new(new DateTime(Marshal.ReadInt64(buffer, 24), DateTimeKind.Unspecified),
+                    new DateTime(Marshal.ReadInt64(buffer, 32), DateTimeKind.Unspecified));
+            else if (Marshal.ReadInt64(buffer, 24) != 0 || Marshal.ReadInt64(buffer, 32) != 0)
+                throw new ArgumentException("Full import must not specify a time range");
+            plugins.Value.BeginImport(path, range);
             return 1;
         }
         if (sizeBytes != 64 || command is not (2 or 3)) throw new ArgumentException("Invalid import step");

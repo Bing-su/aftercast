@@ -49,6 +49,22 @@ internal static class ImportAbiChecks
             Rejected(() => Marshal.WriteByte(memory, 64, 255), size, "translate");
             Rejected(() => Marshal.Copy(Encoding.UTF8.GetBytes("rel"), 0, memory + 64, 3), size, "must be absolute");
             Rejected(() => { }, size, "requires an initialized plugin");
+            void StepRejected(Action change, string expected)
+            {
+                Reset();
+                for (var offset = 24; offset < 64; offset += 8) Marshal.WriteInt64(memory, offset, 0);
+                Marshal.WriteInt32(memory, 56, 4);
+                change();
+                Check(EntryPoint.ImportOperation(memory, size) == -1);
+                Check(Program.Diagnostic().Contains(expected, StringComparison.Ordinal));
+            }
+            StepRejected(() => Marshal.WriteInt64(memory, 24, -1), "ticks");
+            StepRejected(() => Marshal.WriteInt64(memory, 32, DateTime.MaxValue.Ticks + 1), "ticks");
+            StepRejected(() => Marshal.WriteInt64(memory, 24, 1), "start must not follow end");
+            StepRejected(() => Marshal.WriteInt64(memory, 40, 1), "reserved");
+            StepRejected(() => Marshal.WriteInt32(memory, 60, 1), "reserved");
+            StepRejected(() => { Marshal.WriteInt32(memory, 56, 1); Marshal.WriteInt64(memory, 32, 1); }, "must not specify");
+            StepRejected(() => { }, "requires an initialized plugin");
         }
         finally { Marshal.FreeHGlobal(memory); }
     }

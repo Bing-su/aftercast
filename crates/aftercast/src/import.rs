@@ -21,6 +21,33 @@ pub struct ImportProgress {
     pub total_bytes: u64,
 }
 
+/// Inclusive source wall-clock bounds for ACT history reparse, in 100 ns ticks since year 0001.
+/// No timezone conversion or extension to combat end is performed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ImportRange {
+    start_ticks: u64,
+    end_ticks: u64,
+}
+impl ImportRange {
+    pub fn new(start_ticks: u64, end_ticks: u64) -> Result<Self, Error> {
+        if start_ticks > end_ticks || end_ticks > 3_155_378_975_999_999_999 {
+            return Err(Error::InvalidImportRequest(
+                "invalid inclusive time range".into(),
+            ));
+        }
+        Ok(Self {
+            start_ticks,
+            end_ticks,
+        })
+    }
+    pub fn start_ticks(self) -> u64 {
+        self.start_ticks
+    }
+    pub fn end_ticks(self) -> u64 {
+        self.end_ticks
+    }
+}
+
 /// One admitted import. Dropping this handle does not cancel it; cancellation is explicit.
 pub struct ImportJob {
     pub(crate) cancellation: Arc<AtomicBool>,
@@ -58,6 +85,7 @@ impl Future for ImportJob {
 }
 
 pub(crate) struct PendingImport {
+    pub(crate) range: Option<ImportRange>,
     pub(crate) cancellation: Arc<AtomicBool>,
     pub(crate) progress: watch::Sender<ImportProgress>,
     pub(crate) complete: oneshot::Sender<Result<ImportReport, Error>>,
@@ -67,10 +95,20 @@ impl PendingImport {
     pub(crate) fn begin(&self, session: &mut RemoteSession, path: &Utf8Path) -> Result<(), Error> {
         let path = canonicalize(path)?;
         let mut packet = import_packet(session.id(), path.as_str())?;
+        if let Some(range) = self.range {
+            packet
+                .get_mut(24..32)
+                .ok_or(Error::Closed)?
+                .copy_from_slice(&range.start_ticks.to_le_bytes());
+            packet
+                .get_mut(32..40)
+                .ok_or(Error::Closed)?
+                .copy_from_slice(&range.end_ticks.to_le_bytes());
+        }
         packet
             .get_mut(56..60)
             .ok_or(Error::Closed)?
-            .copy_from_slice(&1_u32.to_le_bytes());
+            .copy_from_slice(&(if self.range.is_some() { 4_u32 } else { 1_u32 }).to_le_bytes());
         session.request(Request::ImportOperation, &mut packet)?;
         Ok(())
     }
@@ -196,6 +234,17 @@ pub(crate) fn decode_import(packet: &[u8]) -> Result<ImportReport, Error> {
 }
 
 impl HostHandle {
+    /// Reparse the selected inclusive time range through initialized plugins.
+    /// Stops at the first later timestamp; same-time rows remain distinct. Shares the full import
+    /// reader, cancellation, partial-result retention and live-state restoration contracts.
+    pub async fn import_log_range(
+        &self,
+        path: impl AsRef<Utf8Path>,
+        range: ImportRange,
+    ) -> Result<ImportReport, Error> {
+        self.start_import_range(path, range).await?.wait().await
+    }
+
     /// Imports the initial contents of a UTF-8 file through initialized plugins and drains actions.
     ///
     /// Call while live combat is idle. Live file delivery is paused and
@@ -210,6 +259,17 @@ impl HostHandle {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn source_ranges_validate_inclusive_wall_clock_bounds() {
+        let maximum = 3_155_378_975_999_999_999;
+        for (start, end) in [(0, 0), (0, maximum), (maximum, maximum)] {
+            let range = ImportRange::new(start, end).expect("valid inclusive bounds");
+            assert_eq!((range.start_ticks(), range.end_ticks()), (start, end));
+        }
+        ImportRange::new(2, 1).expect_err("reversed range");
+        ImportRange::new(0, maximum + 1).expect_err("out of DateTime range");
+    }
 
     #[rstest::rstest]
     fn requests_bound_paths_and_preserve_unicode() {

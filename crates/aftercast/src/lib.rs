@@ -45,7 +45,7 @@ pub use combat::{
 };
 pub use diagnostics::HostDiagnostics;
 pub use host::{Host, HostHandle};
-pub use import::{ImportJob, ImportProgress, ImportReport};
+pub use import::{ImportJob, ImportProgress, ImportRange, ImportReport};
 pub use logs::{
     LogBatch, LogLoss, LogRecord, LogSubscription, LogSubscriptionConfig, LogTimeKind, LogTimestamp,
 };

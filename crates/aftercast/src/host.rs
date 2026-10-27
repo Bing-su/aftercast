@@ -8,7 +8,7 @@ use bytes::{BufMut, BytesMut};
 use camino::{Utf8Path, Utf8PathBuf};
 use tokio::sync::{oneshot, watch};
 
-use crate::import::{ImportJob, ImportProgress, PendingImport};
+use crate::import::{ImportJob, ImportProgress, ImportRange, PendingImport};
 use crate::process::{AudioKind, RemoteSession};
 use crate::runtime::Request;
 use crate::{Error, HostConfig};
@@ -191,15 +191,32 @@ impl HostHandle {
     }
     /// Starts an import with explicit cancellation and coalesced progress.
     pub async fn start_import(&self, path: impl AsRef<Utf8Path>) -> Result<ImportJob, Error> {
+        self.start_import_with_range(path.as_ref(), None).await
+    }
+    /// Starts an observable source reparse with inclusive ACT wall-clock bounds.
+    pub async fn start_import_range(
+        &self,
+        path: impl AsRef<Utf8Path>,
+        range: ImportRange,
+    ) -> Result<ImportJob, Error> {
+        self.start_import_with_range(path.as_ref(), Some(range))
+            .await
+    }
+    async fn start_import_with_range(
+        &self,
+        path: &Utf8Path,
+        range: Option<ImportRange>,
+    ) -> Result<ImportJob, Error> {
         let cancellation = Arc::new(AtomicBool::new(false));
         let (progress, updates) = watch::channel(ImportProgress::default());
         let (complete, result) = oneshot::channel();
         let pending = PendingImport {
+            range,
             cancellation: cancellation.clone(),
             progress,
             complete,
         };
-        let path = path.as_ref().to_owned();
+        let path = path.to_owned();
         self.execute(|reply| Command::Import(path, pending, reply))
             .await?;
         Ok(ImportJob {
