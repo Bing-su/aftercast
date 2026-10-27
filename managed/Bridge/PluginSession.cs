@@ -10,6 +10,8 @@ internal sealed class PluginRecord(string path, IActPluginV1 plugin)
     internal readonly string Path = path;
     internal readonly IActPluginV1 Plugin = plugin;
     internal PluginState State;
+    internal bool WriterCaptureAttempted;
+    internal VendorWriterObserver? Writer;
     internal (TabPage Tab, Label Label, Label Title, CheckBox Enabled)? Controls;
 }
 
@@ -19,6 +21,7 @@ internal sealed class PluginSession
     private readonly Dictionary<long, PluginRecord> plugins = new();
     private readonly List<long> initialized = new();
     private long nextId;
+    private readonly WorkerReusePolicy workerReuse = new();
     private string? directory;
     private HostEnvironment? environment;
     private OwnerContext? context;
@@ -113,6 +116,24 @@ internal sealed class PluginSession
         host.ConfigureAudio(soundVolume, ttsVolume, timerSounds);
         return environment = host;
     }
+    private void RequireReusableWorker() => workerReuse.RequireReusable();
+    private void CaptureWriter(PluginRecord plugin)
+    {
+        if (plugin.WriterCaptureAttempted) return;
+        plugin.WriterCaptureAttempted = true;
+        try { plugin.Writer = FfxivWriterLifetime.Capture(plugin.Plugin, Host().ReportLogWriterWarning); }
+        catch { workerReuse.MarkUnsafe(); throw; }
+    }
+    private void FinishWriter(PluginRecord plugin)
+    {
+        if (plugin.Writer is not { } writer) return;
+        plugin.Writer = null;
+        WriterStopObservation observation;
+        try { observation = writer.Finish(() => context?.Pump()); }
+        catch { workerReuse.MarkUnsafe(); throw; }
+        workerReuse.Observe(observation);
+        if (observation.Failed) throw new InvalidOperationException(observation.Describe());
+    }
     private void Cleanup(PluginRecord plugin)
     {
         if (plugin.Controls is not { } controls) return;
@@ -123,10 +144,13 @@ internal sealed class PluginSession
             try { control.Dispose(); } catch (Exception error) { errors.Add(error); }
         if (plugin.Plugin is IDisposable resource && plugin.Plugin is not Control { IsDisposed: true })
             try { resource.Dispose(); } catch (Exception error) { errors.Add(error); }
+        // Plugin/container/TraceListener disposal may enqueue a final record, so inspect afterward.
+        try { FinishWriter(plugin); } catch (Exception error) { errors.Add(error); }
         if (errors.Count != 0) throw new AggregateException("Host control disposal failed", errors);
     }
     internal void Configure(string path, bool recordLogs = true, bool originalLogs = false)
     {
+        RequireReusableWorker();
         if (directory is not null) throw new InvalidOperationException("Host environment is already configured");
         if (!Path.IsPathFullyQualified(path) || !Directory.Exists(path))
             throw new ArgumentException("Host data directory must be an existing absolute directory", nameof(path));
@@ -146,6 +170,7 @@ internal sealed class PluginSession
     }
     internal object Construct(string path, string? typeName) => OnOwner(() =>
     {
+        RequireReusableWorker();
         // Plugins read ACT globals in constructors, e.g. the official sample's AppDataFolder settings path.
         _ = Host();
         environment!.SetInitializationComplete(false);
@@ -171,6 +196,7 @@ internal sealed class PluginSession
     internal string Initialize(long id) => OnOwner(() => InitializeCore(id));
     private string InitializeCore(long id)
     {
+        RequireReusableWorker();
         var plugin = Find(id);
         if (plugin.State != PluginState.Constructed)
             throw new InvalidOperationException("Plugin initialization can only be attempted once per instance");
@@ -195,6 +221,7 @@ internal sealed class PluginSession
             host.Register(data);
             var before = host.Errors.Item1;
             plugin.Plugin.InitPlugin(tab, label);
+            CaptureWriter(plugin);
             var (after, message) = host.Errors;
             if (before != after) throw new InvalidOperationException("InitPlugin reported an exception: " + message);
             plugin.State = PluginState.Initialized;
@@ -204,8 +231,10 @@ internal sealed class PluginSession
         catch (Exception error)
         {
             plugin.State = PluginState.Failed;
-            Exception failure = error;
-            try { Cleanup(plugin); } catch (Exception cleanupError) { failure = new AggregateException(error, cleanupError); }
+            var failures = new List<Exception> { error };
+            try { CaptureWriter(plugin); } catch (Exception captureError) { failures.Add(captureError); }
+            try { Cleanup(plugin); } catch (Exception cleanupError) { failures.Add(cleanupError); }
+            Exception failure = failures.Count == 1 ? error : new AggregateException(failures);
             throw new InvalidOperationException($"InitPlugin failed for {plugin.Path}: {failure.GetBaseException().Message}", failure);
         }
     }

@@ -101,6 +101,9 @@ internal static class PluginLoader
     // Constructors can register global handlers; keep assemblies process-owned across sessions.
     private static readonly Dictionary<string, (byte[] Hash, Assembly Assembly)> assemblies = new(
         OperatingSystem.IsWindows() ? StringComparer.OrdinalIgnoreCase : StringComparer.Ordinal);
+    internal static bool IsPinnedFfxiv(Assembly assembly) => assemblies.Values.Any(entry =>
+        ReferenceEquals(entry.Assembly, assembly) && Convert.ToHexStringLower(entry.Hash) ==
+        "af1031cdba8eeba8f53dd9d618e58d62d4919bfa77db9b31c568bd04cb359093");
     private static Assembly Load(string path)
     {
         byte[] hash;

@@ -83,17 +83,61 @@ are counted explicitly; unknown messages still fail with their original text.
 
 ## Original writer
 
-| Property        | Behavior                                                                                                           |
-| --------------- | ------------------------------------------------------------------------------------------------------------------ |
-| Queue           | The vendor's initial capacity of 1,000 is not a bound; sustained disk lag can grow memory                          |
-| Output          | The writer formats timestamps, sanitizes payload NULs and calculates checksums using its private sequence          |
-| Write failure   | A dequeued line is not requeued after a write or flush exception                                                   |
-| I/O diagnostics | Some failures go only to the plugin-private message sink, so host diagnostics alone do not establish writer health |
-| Flush           | Stream flush is not a durable disk synchronization                                                                 |
-| Shutdown        | Disposal flushes stream buffers, not the pending queue; the Linux correction fixes cancellation exit only          |
-| Rotation        | Healthy delivery does not poll for midnight, size or folder changes                                                |
+| Property        | Behavior                                                                                                                                                                                                                  |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Queue           | The vendor's initial capacity of 1,000 is not a bound; sustained disk lag can grow memory                                                                                                                                 |
+| Output          | The writer formats timestamps, sanitizes payload NULs and calculates checksums using its private sequence                                                                                                                 |
+| Write failure   | A dequeued line is not requeued after a write or flush exception                                                                                                                                                          |
+| I/O diagnostics | The pinned plugin observer forwards writer I/O callbacks to bounded Host diagnostics after attachment; earlier errors or a replaced callback may be missed                                                                |
+| Flush           | Stream flush is not a durable disk synchronization                                                                                                                                                                        |
+| Shutdown        | Disposal does not drain the pending queue. Host cleanup now reports observed I/O faults, pending records and active known threads; active threads permanently block new plugin construction/initialization in that worker |
+| Rotation        | Healthy delivery does not poll for midnight, size or folder changes                                                                                                                                                       |
 
 Original-log subscriptions are bounded observations of hook input. Their loss
 accounting does not describe the vendor's writer queue or recover a recording.
 Native game capture, durable recording, rotation guarantees and FF Logs acceptance
 remain unverified.
+
+### Writer failure and stop boundary (2026-10-27)
+
+The observer applies only to the inspected FFXIV SDK 3.0.3.3 plugin hash. It
+captures the actual writer, mediator and writer/scan/monitor threads after the
+initializer returns, including the caught-initialization-failure cleanup path.
+It chains the existing `ProcessException` callback and captures the owning Host,
+so a late diagnostic cannot be redirected to a later `ActGlobals` session. Host
+diagnostic failures cannot escape onto the writer thread. Observation begins at
+attachment, not before plugin initialization; it is not a complete error ledger.
+
+After DeInit and control/plugin/container disposal, a bounded owner-pumped wait
+checks known threads and reads the queue count under the vendor queue lock. A
+nonzero pending count, observed I/O failure or diagnostic failure makes cleanup
+report an error. The pending count is only a point-in-time count of records still
+in that queue; it excludes already dequeued, partially written or unacknowledged
+records. No queue mutation, automatic append/replay or user-log repair is done.
+
+If a known thread remains alive or lifecycle inspection fails, this process-owned
+PluginSession becomes permanently unsafe to reuse: Configure, Construct and
+Initialize reject further work. Stop is still permitted for cleanup. A later
+clean observation or session Stop does not clear that guard; start a new worker
+process. A stopped writer with pending records is an explicit recording failure,
+but does not by itself imply that a producer remains alive.
+
+| Fault model                                   | Evidence and limit                                                                                                                                                              |
+| --------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Healthy records and idle cancellation         | Genuine vendor bytes/order/NUL sanitation/checksums verified in temporary paths; does not establish a shutdown drain contract                                                   |
+| Open failure and recovery                     | A synthetic regular-file folder blocker fails before dequeue; removing only that blocker lets queued records be written                                                         |
+| Write failure                                 | Persistent injected stream Write failure loses the first dequeued record while later records are written; queue count can be zero despite loss                                  |
+| Flush failure                                 | Injected exception after the underlying Flush leaves all three records readable, while the caller sees an I/O error; completion is uncertain and blind retry can duplicate data |
+| Cancellation before start / after first Flush | Three / two records remain pending respectively in the corrected writer. The pristine writer's post-Flush cancellation spin remains a watchdog-reaped known failure             |
+| Disposal and active producer                  | A synthetic post-stop disposal producer enqueues one record; inspection must follow disposal. A live synthetic producer poisons worker reuse even after it subsequently stops   |
+| Restart                                       | A fresh vendor writer appends one record without replaying the old queue and restarts its private checksum index; this is not recovery of lost records                          |
+| Process crash or forced kill                  | In-memory queue and stream buffers can be lost. No durable journal/replay or complete committed-record count is provided                                                        |
+| OS crash, power loss or disk failure          | No durable-sync/transactional recovery guarantee. Vendor StreamWriter.Flush is not fsync; readable test bytes do not prove stable-media persistence                             |
+
+`test:original-writer` executes the pristine and `--patched` variants in isolated,
+watchdog-bounded child processes. Fault injection touches only that test's stream
+and temporary files. `test:linux-plugin-compat` also runs a real pinned-type
+PluginSession fixture without calling InitPlugin/StartMemory or starting game,
+network, update or vendor writer workers; it checks pending cleanup errors and
+sticky rejection of unsafe worker reuse. Synthetic producer threads are owned and
+joined by the fixture.

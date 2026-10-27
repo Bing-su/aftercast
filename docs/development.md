@@ -165,7 +165,7 @@ of the replacement implementation.
 | `mise run test:original-corpus -- <plugin-copy> <new-state> <corpus>`      | Three pinned Zeromus imports with submitted-action totals and exact subscriber loss                                                                                  |
 | `mise run test:original-log -- <plugin-copy> <new-state> <log>`            | Three local-log imports; verify actual line counts, action-derived totals, snapshots and subscriber loss; save private replay transcripts                            |
 | `mise run test:recorded-actions -- <transcript>`                           | Compare captured actions, actor totals, allies and encounter totals in both ACT implementations                                                                      |
-| `mise run test:original-writer -- <sdk-deployment>`                        | Watchdog-protected original writer child processes; characterize flush/cancellation behavior                                                                         |
+| `mise run test:original-writer -- <sdk-deployment>`                        | Watchdog-protected original writer child processes; characterize open/write/flush failures, queue leftovers, recovery, restart and observer/worker-reuse boundaries  |
 
 See [compatibility](compatibility.md) for reference inputs, Linux corrections and
 comparison limits.

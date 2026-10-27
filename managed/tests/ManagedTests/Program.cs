@@ -567,6 +567,7 @@ internal static class Program
     private static void LinuxCompatibility()
     {
         WriterCompatibilityChecks.Run();
+        VendorWriterLifecycleChecks.Run();
         ResourceCompatibilityChecks.Run("binaries/FFXIV_ACT_Plugin_SDK_3.0.3.3/SDK\\FFXIV_ACT_Plugin.Resource.dll");
         var path = "binaries/FFXIV_ACT_Plugin_SDK_3.0.3.3/SDK\\FFXIV_ACT_Plugin.Memory.dll";
         var original = File.ReadAllBytes(path);

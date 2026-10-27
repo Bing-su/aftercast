@@ -156,6 +156,7 @@ namespace Aftercast.ActCompat
             (main.TimerStartSound, main.TimerWarningSound, main.TimerExpireSound) = (timerSounds[0], timerSounds[1], timerSounds[2]);
         }
         public void SetInitializationComplete(bool complete) => main.SetInitializationComplete(complete);
+        public void ReportLogWriterWarning(string message) => main.WriteHostWarning(message, "Vendor disk writer");
         public void Unregister(IActPluginV1 plugin) => main.Unregister(plugin);
         public event Action<OriginalLogRecord> OriginalLogRecordRead
         {

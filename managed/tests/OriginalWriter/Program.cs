@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Reflection;
 using System.Runtime.Loader;
+using System.Runtime.ExceptionServices;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
@@ -32,7 +33,7 @@ try
         var path = Path.Combine(deployment.FullName, "FFXIV_ACT_Plugin.Logfile.dll");
         File.WriteAllBytes(path, LinuxPluginCompatibility.RewriteLogfile(File.ReadAllBytes(path)));
     }
-    foreach (var scenario in new[] { "success", "io-open", "cancel-after-flush" })
+    foreach (var scenario in new[] { "success", "io-open", "open-recovery", "write-failure", "flush-failure", "diagnostic-failure", "cancel-before-start", "cancel-after-flush", "dispose-enqueue", "live-producer", "callback-replacement", "restart" })
         RunIsolated(scenario, deployment.FullName, temporary.FullName, patched);
     return 0;
 }
@@ -90,7 +91,7 @@ static int RunChild(string scenario, string deployment, string output, bool patc
     using var cancellation = new CancellationTokenSource();
     var settings = Activator.CreateInstance(config.GetType("FFXIV_ACT_Plugin.Config.DataCollectionSettingsEventArgs", true)!)!;
     var folder = output;
-    if (scenario == "io-open")
+    if (scenario is "io-open" or "open-recovery")
     {
         folder = Path.Combine(output, "regular-file-not-directory");
         File.WriteAllText(folder, "block directory creation");
@@ -101,16 +102,12 @@ static int RunChild(string scenario, string deployment, string output, bool patc
     var followed = new List<string>();
     var currentPath = "";
     var flushCount = 0;
-    var mediator = Proxy(config.GetType("FFXIV_ACT_Plugin.Config.ISettingsMediator", true)!, (method, values) =>
-    {
-        if (method.Name == "get_DataCollectionSettings") return settings;
-        if (method.Name == "AddExceptionMessage")
-        {
-            lock (privateMessages) privateMessages.Add((string)values![1]!);
-            return null;
-        }
-        throw new NotSupportedException("Unexpected settings call: " + method.Name);
-    });
+    var mediator = Activator.CreateInstance(config.GetType("FFXIV_ACT_Plugin.Config.SettingsMediator", true)!)!;
+    mediator.GetType().GetProperty("DataCollectionSettings")!.SetValue(mediator, settings);
+    Action<DateTime, string> originalCallback = (_, message) => { lock (privateMessages) privateMessages.Add(message); };
+    mediator.GetType().GetProperty("ProcessException")!.SetValue(mediator, originalCallback);
+    var observedMessages = new List<string>();
+    var injected = false;
     var act = Proxy(common.GetType("FFXIV_ACT_Plugin.Common.IActWrapper", true)!, (method, values) =>
     {
         switch (method.Name)
@@ -130,7 +127,14 @@ static int RunChild(string scenario, string deployment, string output, bool patc
     var benchmark = Proxy(common.GetType("FFXIV_ACT_Plugin.Common.IBenchmarkRepository", true)!, (method, values) =>
     {
         Check(method.Name == "Measure", "Unexpected benchmark method.");
-        var result = ((Delegate)values![1]!).DynamicInvoke();
+        var operation = (Delegate)values![1]!;
+        if (!injected && (string)values[0]! == "LogLineWrite" &&
+            scenario is "write-failure" or "flush-failure" or "diagnostic-failure")
+        {
+            FaultingStream.Install(operation, scenario != "flush-failure");
+            injected = true;
+        }
+        var result = Invoke(operation);
         if ((string)values[0]! == "LogLineFlush")
         {
             Interlocked.Increment(ref flushCount);
@@ -144,6 +148,15 @@ static int RunChild(string scenario, string deployment, string output, bool patc
     });
     var writerType = logfile.GetType("FFXIV_ACT_Plugin.Logfile.LogOutput", true)!;
     var writer = Activator.CreateInstance(writerType, mediator, act, benchmark)!;
+    using var producerRelease = new ManualResetEventSlim();
+    var producer = new Thread(() => producerRelease.Wait()) { IsBackground = true, Name = "synthetic producer" };
+    if (scenario == "live-producer") producer.Start();
+    var observer = new VendorWriterObserver(writer, mediator,
+        scenario == "live-producer" ? new[] { producer } : Array.Empty<Thread>(), message =>
+        {
+            if (scenario == "diagnostic-failure") throw new IOException("Synthetic diagnostic sink failure");
+            lock (observedMessages) observedMessages.Add(message);
+        });
     var thread = (Thread)writerType.GetProperty("ScanThread")!.GetValue(writer)!;
     var write = writerType.GetMethod("WriteLine")!;
     var messageType = logfile.GetType("FFXIV_ACT_Plugin.Logfile.LogMessageType", true)!;
@@ -151,10 +164,16 @@ static int RunChild(string scenario, string deployment, string output, bool patc
     var payloads = new[] { "First", "Unicode 한글", "Nul\0payload" };
     foreach (var payload in payloads)
         write.Invoke(writer, new[] { Enum.ToObject(messageType, 0), (object)time, payload });
+    if (scenario == "cancel-before-start") cancellation.Cancel();
     thread.Start(cancellation.Token);
     try
     {
-        if (scenario == "cancel-after-flush")
+        if (scenario == "cancel-before-start")
+        {
+            Check(thread.Join(1500), "Pre-canceled writer did not stop");
+            Check(currentPath == "", "Pre-canceled writer unexpectedly opened a file");
+        }
+        else if (scenario == "cancel-after-flush")
         {
             // A deterministic cancellation point follows genuine Flush and precedes the vendor's next loop test.
             if (!patched)
@@ -164,29 +183,36 @@ static int RunChild(string scenario, string deployment, string output, bool patc
             }
             Check(SpinWait.SpinUntil(() => cancellation.IsCancellationRequested, 2000), "Patched writer did not reach Flush cancellation.");
         }
-        else if (scenario == "io-open")
+        else if (scenario is "io-open" or "open-recovery")
         {
             Check(SpinWait.SpinUntil(() => { lock (privateMessages) return privateMessages.Count != 0; }, 2000), "No private I/O diagnostic.");
             lock (privateMessages) Check(privateMessages.All(message => message.Contains("LogOutput Error writing to log file.", StringComparison.Ordinal)), "Wrong I/O sink message.");
             lock (hostMessages) Check(hostMessages.Count == 0, "I/O error unexpectedly used host error sink.");
+            lock (observedMessages) Check(observedMessages.Count != 0, "Observer failed to expose private I/O diagnostic");
+            if (scenario == "open-recovery")
+            {
+                // Only remove this scenario's synthetic blocker, never a user log or directory.
+                File.Delete(folder);
+                Directory.CreateDirectory(folder);
+                Check(SpinWait.SpinUntil(() => Volatile.Read(ref flushCount) == payloads.Length, 2000), "Open recovery did not retain queued records");
+                VerifyRecords(currentPath, payloads, time, 0);
+                WaitForIdle(thread);
+            }
         }
         else
         {
-            Check(SpinWait.SpinUntil(() => Volatile.Read(ref flushCount) == payloads.Length, 2000), "Original writer did not flush all records.");
+            var failedOperation = scenario is "write-failure" or "flush-failure" or "diagnostic-failure";
+            var expected = payloads.Length - (failedOperation ? 1 : 0);
+            Check(SpinWait.SpinUntil(() => Volatile.Read(ref flushCount) == expected, 2000), "Writer did not finish the expected successful flushes.");
             Check(followed.Count == 1, "Expected one original follow callback.");
-            var bytes = File.ReadAllBytes(followed[0]);
-            var lines = new UTF8Encoding(false, true).GetString(bytes).Split('\n', StringSplitOptions.RemoveEmptyEntries);
-            Check(lines.Length == payloads.Length && !bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble), "Unexpected encoding/BOM/record count.");
-            for (var index = 0; index < lines.Length; index++)
+            var skip = scenario is "write-failure" or "diagnostic-failure" ? 1 : 0;
+            VerifyRecords(followed[0], payloads, time, skip);
+            if (failedOperation)
             {
-                var body = $"00|{time:O}|{payloads[index].Replace('\0', ' ')}";
-                var hashInput = body + "|" + (index + 1);
-                var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(hashInput)).AsSpan(0, 8)).ToLowerInvariant();
-                Check(lines[index].TrimEnd('\r') == body + "|" + hash, "Original bytes/order/hash differed: " + lines[index]);
+                lock (privateMessages) Check(privateMessages.Count == 1, "Expected a private I/O failure");
+                lock (observedMessages) Check(observedMessages.Count == (scenario == "diagnostic-failure" ? 0 : 1), "Observer sink mismatch");
             }
-            // Observe the real empty-queue wait, avoiding the separate known cancellation race after Flush.
-            Check(SpinWait.SpinUntil(() => (thread.ThreadState & System.Threading.ThreadState.WaitSleepJoin) != 0, 2000),
-                "Original writer did not enter its empty-queue wait.");
+            WaitForIdle(thread);
         }
     }
     finally
@@ -194,7 +220,36 @@ static int RunChild(string scenario, string deployment, string output, bool patc
         cancellation.Cancel();
         Check(thread.Join(1500), "Original writer worker did not stop; parent watchdog must reap this process.");
     }
-    var pending = ((System.Collections.ICollection)writerType.GetField("_LogQueue", BindingFlags.NonPublic | BindingFlags.Instance)!.GetValue(writer)!).Count;
+    if (scenario == "dispose-enqueue")
+        new FinalLogProducer(() => write.Invoke(writer, new[] { Enum.ToObject(messageType, 0), (object)time, "final disposal record" })).Dispose();
+    Action<DateTime, string> replacement = (_, _) => { };
+    if (scenario == "callback-replacement") mediator.GetType().GetProperty("ProcessException")!.SetValue(mediator, replacement);
+    var observation = observer.Finish(() => { }, TimeSpan.Zero);
+    Check(observation.PendingRecords == (scenario switch { "io-open" or "cancel-before-start" => 3, "cancel-after-flush" => 2, "dispose-enqueue" => 1, _ => 0 }), "Wrong final pending count");
+    Check(observation.IoErrors == privateMessages.Count, "Private failure count was lost");
+    Check(observation.DiagnosticFailures == (scenario == "diagnostic-failure" ? 1 : 0), "Diagnostic failures were hidden");
+    var reuse = new WorkerReusePolicy();
+    reuse.Observe(observation);
+    if (scenario == "live-producer")
+    {
+        Check(observation.RequiresRestart, "Live producer was accepted as stopped");
+        MustReject(reuse.RequireReusable);
+        producerRelease.Set();
+        Check(producer.Join(1500), "Synthetic producer did not stop");
+        var stopped = observer.Finish(() => { });
+        Check(!stopped.RequiresRestart, "Stopped producer still appears live");
+        reuse.Observe(stopped);
+        MustReject(reuse.RequireReusable); // A later clean observation cannot un-poison this worker.
+        new WorkerReusePolicy().RequireReusable();
+    }
+    else
+    {
+        reuse.RequireReusable();
+        Check(ReferenceEquals(mediator.GetType().GetProperty("ProcessException")!.GetValue(mediator),
+            scenario == "callback-replacement" ? replacement : originalCallback), "Callback restoration overwrote a later plugin callback");
+    }
+    if (scenario == "restart") RestartWriter(writerType, mediator, act, benchmark, messageType, time, currentPath, ref flushCount);
+    var pending = observation.PendingRecords;
     // Correcting cancellation termination does not invent a vendor queue-drain guarantee.
     if (scenario == "cancel-after-flush") Check(pending == payloads.Length - 1, "Cancellation unexpectedly drained pending records.");
     Report(new
@@ -207,9 +262,61 @@ static int RunChild(string scenario, string deployment, string output, bool patc
         followedPath = currentPath,
         workerJoined = true,
         privateErrors = privateMessages.Count,
-        hostErrors = hostMessages.Count
+        hostErrors = hostMessages.Count,
+        observedIoErrors = observation.IoErrors,
+        diagnosticFailures = observation.DiagnosticFailures,
+        activeThreads = observation.ActiveThreads,
+        terminalStatus = observation.Failed ? "recording-incomplete-or-uncertain" : "no-observed-fault"
     });
     return 0;
+}
+
+static object? Invoke(Delegate operation)
+{
+    try { return operation.DynamicInvoke(); }
+    catch (TargetInvocationException error) when (error.InnerException is not null)
+    { ExceptionDispatchInfo.Capture(error.InnerException).Throw(); throw; }
+}
+
+static void MustReject(Action action)
+{
+    try { action(); }
+    catch (InvalidOperationException error) when (error.Message.Contains("cannot be reused", StringComparison.Ordinal)) { return; }
+    throw new InvalidOperationException("Unsafe worker reuse was accepted");
+}
+
+static void WaitForIdle(Thread thread) => Check(SpinWait.SpinUntil(() =>
+    (thread.ThreadState & System.Threading.ThreadState.WaitSleepJoin) != 0, 2000), "Writer did not enter its empty-queue wait");
+
+static void VerifyRecords(string path, string[] payloads, DateTime time, int skip)
+{
+    var bytes = File.ReadAllBytes(path);
+    var lines = new UTF8Encoding(false, true).GetString(bytes).Split('\n', StringSplitOptions.RemoveEmptyEntries);
+    Check(lines.Length == payloads.Length - skip && !bytes.AsSpan().StartsWith(Encoding.UTF8.Preamble), "Wrong encoding or failure-boundary record count");
+    for (var index = skip; index < payloads.Length; index++)
+    {
+        var body = $"00|{time:O}|{payloads[index].Replace('\0', ' ')}";
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(body + "|" + (index + 1))).AsSpan(0, 8)).ToLowerInvariant();
+        Check(lines[index - skip].TrimEnd('\r') == body + "|" + hash, "Original record bytes/order/hash changed");
+    }
+}
+
+static void RestartWriter(Type writerType, object mediator, object act, object benchmark, Type messageType, DateTime time, string path, ref int flushCount)
+{
+    var writer = Activator.CreateInstance(writerType, mediator, act, benchmark)!;
+    var thread = (Thread)writerType.GetProperty("ScanThread")!.GetValue(writer)!;
+    writerType.GetMethod("WriteLine")!.Invoke(writer, new[] { Enum.ToObject(messageType, 0), (object)time, "Restart" });
+    using var cancellation = new CancellationTokenSource();
+    thread.Start(cancellation.Token);
+    try
+    {
+        Check(SpinWait.SpinUntil(() => File.ReadAllLines(path).Length == 4, 2000), "Restart failed to append exactly one record");
+        WaitForIdle(thread);
+    }
+    finally { cancellation.Cancel(); Check(thread.Join(1500), "Restarted writer did not stop"); }
+    var body = $"00|{time:O}|Restart";
+    var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(body + "|1")).AsSpan(0, 8)).ToLowerInvariant();
+    Check(File.ReadAllLines(path)[3] == body + "|" + hash && flushCount == 4, "Restart changed vendor sequence semantics");
 }
 
 static object Proxy(Type contract, Func<MethodInfo, object?[]?, object?> call)
@@ -223,4 +330,9 @@ public class WriterProxy : DispatchProxy
 {
     public Func<MethodInfo, object?[]?, object?> Call = null!;
     protected override object? Invoke(MethodInfo? method, object?[]? arguments) => Call(method!, arguments);
+}
+
+internal sealed class FinalLogProducer(Action write) : IDisposable
+{
+    public void Dispose() => write();
 }
