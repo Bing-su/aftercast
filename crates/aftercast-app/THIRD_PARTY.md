@@ -8,6 +8,7 @@
 | `src/components/separator.rs` | [Rust/UI separator](https://github.com/rust-ui/ui/blob/1bf779a7b08b778f9afa9ae11ae2b824479c7437/app_crates/registry/src/ui/separator.rs) | Same                                       | Horizontal settings-group separator with explicit ARIA orientation                                        |
 | `src/components/badge.rs`     | [Rust/UI badge](https://github.com/rust-ui/ui/blob/1bf779a7b08b778f9afa9ae11ae2b824479c7437/app_crates/registry/src/ui/badge.rs)         | Same                                       | Keep the used outline variant for host/plugin status; use existing Catppuccin semantic tokens             |
 | `src/components/progress.rs`  | [Rust/UI progress](https://github.com/rust-ui/ui/blob/1bf779a7b08b778f9afa9ae11ae2b824479c7437/app_crates/registry/src/ui/progress.rs)   | Same                                       | Byte-count props, clamped bounds, accessible name, Catppuccin tokens and reduced-motion support           |
+| `src/components/accordion.rs` | [Rust/UI accordion](https://github.com/rust-ui/ui/blob/1bf779a7b08b778f9afa9ae11ae2b824479c7437/app_crates/registry/src/ui/accordion.rs) | Same | Retain disclosure styling and stable IDs; use a native button with ARIA state, Dioxus-owned expansion, existing Lucide chevron and reduced-motion support |
 
 These sources are licensed under the upstream MIT license in `RUST_UI_LICENSE`.
 Cargo dependencies retain their own licenses and notices, including Lucide icons.

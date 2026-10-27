@@ -6,8 +6,8 @@ mod shell;
 use std::time::Duration;
 
 use aftercast::{
-    EncounterDetail, EncounterId, EncounterSummary, HostHandle, ImportProgress, PluginConfig,
-    PluginId,
+    AttackSummary, EncounterDetail, EncounterId, EncounterSummary, HostHandle, ImportProgress,
+    PluginConfig, PluginId,
 };
 use camino::Utf8PathBuf;
 use dioxus::core::spawn_forever;
@@ -70,6 +70,10 @@ struct AppState {
     total: u32,
     offset: u32,
     detail: Option<EncounterDetail>,
+    detail_loading: bool,
+    attacks: Vec<AttackSummary>,
+    combatant: Option<String>,
+    category: Option<(String, bool)>,
     selected: Option<EncounterId>,
     loading: bool,
     revision: Revision,
@@ -96,6 +100,10 @@ impl AppState {
             total: 0,
             offset: 0,
             detail: None,
+            detail_loading: false,
+            attacks: Vec::new(),
+            combatant: None,
+            category: None,
             selected: None,
             loading: false,
             revision: Revision::default(),
@@ -120,6 +128,7 @@ impl AppState {
         if self.revision != stamp {
             return;
         }
+        self.detail_loading = false;
         match result {
             Ok(detail) => self.detail = detail,
             Err(error) => self.fail(error),
@@ -228,7 +237,7 @@ pub fn App() -> Element {
                     }
                 }
             }
-            div { class: "grid min-h-0 flex-1 grid-cols-[210px_minmax(0,1fr)] min-[1000px]:grid-cols-[250px_minmax(0,1fr)]",
+            div { class: "grid min-h-0 flex-1 grid-cols-[210px_minmax(0,1fr)] min-[1100px]:grid-cols-[265px_minmax(0,1fr)] min-[1280px]:grid-cols-[330px_minmax(0,1fr)]",
                 shell::Sidebar {}
                 main { class: "min-w-0 overflow-auto",
                     match state.read().screen {
@@ -237,6 +246,9 @@ pub fn App() -> Element {
                         },
                         "plugins" => rsx! {
                             plugins::PluginsPane {}
+                        },
+                        "import" => rsx! {
+                            analysis::ImportPane {}
                         },
                         _ => rsx! {
                             analysis::AnalysisPane {}
@@ -369,6 +381,10 @@ fn stop(mut state: Signal<AppState>) {
         state.revision.session += 1;
         state.selected = None;
         state.detail = None;
+        state.detail_loading = false;
+        state.attacks.clear();
+        state.combatant = None;
+        state.category = None;
         state.encounters.clear();
         state.plugins.clear();
         state.loading = false;
@@ -419,14 +435,46 @@ fn select_encounter(mut state: Signal<AppState>, id: EncounterId) {
         let mut state = state.write();
         state.selected = Some(id);
         state.detail = None;
+        state.detail_loading = true;
+        state.attacks.clear();
+        state.combatant = None;
+        state.category = None;
         state.revision.selection += 1;
         state.screen = "analysis";
         state.revision
     };
     spawn(async move {
-        let result = handle.encounter_detail(id).await;
+        let result = load_encounter(state, handle, id, stamp).await;
         state.write().receive_detail(stamp, result);
     });
+}
+
+async fn load_encounter(
+    mut state: Signal<AppState>,
+    handle: HostHandle,
+    id: EncounterId,
+    stamp: Revision,
+) -> std::result::Result<Option<EncounterDetail>, aftercast::Error> {
+    let detail = handle.encounter_detail(id).await?;
+    let mut attacks = Vec::new();
+    // Page ACT categories without blocking navigation, e.g. switching encounters cancels this read.
+    while detail.is_some() && state.read().revision == stamp {
+        let Some(page) = handle
+            .encounter_attacks(id, attacks.len() as u32, 256)
+            .await?
+        else {
+            return Ok(None);
+        };
+        let done = page.items.is_empty() || attacks.len() + page.items.len() >= page.total as usize;
+        attacks.extend(page.items);
+        if done {
+            break;
+        }
+    }
+    if state.read().revision == stamp {
+        state.write().attacks = attacks;
+    }
+    Ok(detail)
 }
 
 fn import_log(mut state: Signal<AppState>) {
@@ -550,12 +598,14 @@ mod tests {
             selection: 3,
         };
         let mut state = AppState::new(".".into());
+        state.detail_loading = true;
         state.revision = Revision {
             session: 1,
             selection: 4,
         };
         state.receive_detail(request, Err(aftercast::Error::Closed));
         assert!(state.error.is_none());
+        assert!(state.detail_loading);
         state.revision = Revision {
             session: 2,
             selection: 3,
@@ -565,6 +615,7 @@ mod tests {
         let current = state.revision;
         state.receive_detail(current, Err(aftercast::Error::Closed));
         assert!(state.error.is_some());
+        assert!(!state.detail_loading);
     }
 
     #[test]

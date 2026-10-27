@@ -1,9 +1,11 @@
+mod accordion;
 mod badge;
 mod button;
 mod input;
 mod label;
 mod progress;
 mod separator;
+pub use accordion::Accordion;
 pub use badge::Badge;
 pub use button::{Button, ButtonVariant};
 pub use input::Input;

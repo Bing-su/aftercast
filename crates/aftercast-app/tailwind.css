@@ -23,6 +23,18 @@
   * { scrollbar-color: var(--catppuccin-color-surface1) var(--catppuccin-color-mantle); scrollbar-width: thin; }
 }
 
+@layer components {
+  .workflow-tab { border-bottom: 3px solid transparent; }
+  .tree-row { display: flex; align-items: center; gap: 0.5rem; width: 100%; min-height: 36px; padding: 0.5rem; text-align: left; font-size: 14px; border-radius: 4px; }
+  .tree-row:hover, .tree-row[aria-pressed="true"] { background: var(--catppuccin-color-surface0); }
+  .tree-row[aria-pressed="true"] { color: var(--catppuccin-color-mauve); }
+  .accordion-trigger[aria-expanded="true"] .accordion-chevron { transform: rotate(90deg); }
+}
+
+/* Hide the unlocalized footer, e.g. "4 rows"; our localized pagination remains below the table. */
+.data-table .chorale-root > div:last-child { display: none !important; }
+.data-table .chorale-root { min-width: 640px; }
+
 /* Chorale's public variables keep its table aligned with the selected Catppuccin flavour. */
 .data-table {
   --chorale-surface: var(--catppuccin-color-base);

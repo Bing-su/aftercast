@@ -61,6 +61,8 @@ fn main() -> Result<()> {
         .with_cfg(
             Config::new()
                 .with_menu(None)
+                // Use an empty icon because this shell has no branding, e.g. avoid a missing favicon request.
+                .with_custom_head("<link rel=\"icon\" href=\"data:,\">".into())
                 .with_close_behaviour(WindowCloseBehaviour::WindowHides)
                 .with_window(
                     WindowBuilder::new()

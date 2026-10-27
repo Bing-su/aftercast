@@ -11,6 +11,7 @@ let app: ChildProcess;
 let browser: Browser;
 let page: Page;
 let output = '';
+let browserErrors: string[] = [];
 
 async function start() {
   const server = net.createServer();
@@ -39,6 +40,8 @@ async function start() {
   }, { timeout: 30_000 }).toBe(true);
   await expect.poll(() => browser.contexts()[0]?.pages().length || 0).toBeGreaterThan(0);
   page = browser.contexts()[0].pages()[0];
+  page.on('pageerror', error => browserErrors.push(error.message));
+  page.on('console', message => { if (message.type() === 'error') browserErrors.push(`${message.text()} at ${message.location().url}`); });
   await expect(page.locator('.app-shell')).toBeVisible();
 }
 
@@ -52,6 +55,7 @@ test.beforeEach(async () => {
   directory = await fs.mkdtemp(path.join(target, 'gui-e2e-'));
   await fs.copyFile(binary, path.join(directory, 'aftercast.exe'));
   output = '';
+  browserErrors = [];
 });
 
 test.afterEach(async ({}, info) => {
@@ -77,7 +81,7 @@ test('locale, theme and annotated TOML survive restart beside the executable', a
   await start();
   await page.getByRole('button', { name: '설정', exact: true }).click();
   await page.locator('#language').selectOption('en-US');
-  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true, level: 1 })).toBeVisible();
   await page.locator('#theme').selectOption('latte');
   await page.getByRole('button', { name: 'Save settings', exact: true }).click();
   await expect(page.getByRole('status').last()).toHaveText('Settings saved');
@@ -136,6 +140,28 @@ test('settings save and reload survive navigation away from their pane', async (
   await quit();
 });
 
+test('log import survives navigation away from the import pane', async () => {
+  const plugin = path.resolve(target, '../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll');
+  await fs.writeFile(path.join(directory, 'config.toml'), `schema_version = 1\n[ui]\nlanguage = "en-US"\n[host]\nplugins = [${JSON.stringify(plugin)}]\n[host.plugin_types]\n${JSON.stringify(plugin)} = "Aftercast.PluginFixture.ImportPlugin"\n`);
+  const log = path.join(directory, 'navigation.log');
+  // Keep a real import running long enough to navigate while its async operation owns pending work.
+  await fs.writeFile(log, Array.from({ length: 50_000 }, (_, index) => `${index}|1\n`).join(''));
+  await start();
+  await page.getByRole('button', { name: 'Start host', exact: true }).click();
+  await expect(page.getByTestId('host-status')).toHaveText('Host running', { timeout: 40_000 });
+  await page.getByRole('button', { name: 'Import / Export', exact: true }).click();
+  await page.locator('#log-path').fill(log);
+  await page.locator('main').getByRole('button', { name: 'Import log', exact: true }).click();
+  await expect(page.getByTestId('host-status')).toHaveText('Importing log…');
+  await page.getByRole('button', { name: 'Analysis', exact: true }).click();
+  await expect(page.getByTestId('host-status')).toHaveText('Host running');
+  await expect(page.getByRole('status').last()).toContainText('Import completed');
+  await page.getByRole('button', { name: 'Import / Export', exact: true }).click();
+  await expect(page.locator('main').getByRole('button', { name: 'Import log', exact: true })).toBeEnabled();
+  expect(browserErrors).toEqual([]);
+  await quit();
+});
+
 test('embedded runtime starts a real Host, imports expected totals and survives restart', async () => {
   const plugin = path.resolve(target, '../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll');
   await fs.access(plugin);
@@ -146,18 +172,79 @@ test('embedded runtime starts a real Host, imports expected totals and survives 
   await page.getByRole('button', { name: 'Start host', exact: true }).click();
   await expect(page.getByTestId('host-status')).toHaveText('Host running', { timeout: 40_000 });
   await page.getByRole('button', { name: 'Analysis', exact: true }).click();
+  await expect(page.locator('.topbar')).not.toContainText('aftercast');
+  await expect(page.getByRole('button', { name: 'Custom triggers', exact: true })).toBeDisabled();
+  await expect(page.getByRole('button', { name: 'History', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Import / Export', exact: true }).click();
   await page.locator('#log-path').fill(log);
-  await page.getByRole('button', { name: 'Import log', exact: true }).click();
+  await page.locator('main').getByRole('button', { name: 'Import log', exact: true }).click();
   await expect(page.getByRole('status').last()).toContainText('Import completed', { timeout: 30_000 });
+  await page.getByRole('button', { name: 'Analysis', exact: true }).click();
   await expect(page.locator('.encounter-item')).toHaveCount(1);
   await page.locator('.encounter-item').click();
   await expect(page.locator('.summary-strip')).toContainText('400');
   await expect(page.locator('.data-table')).toContainText('400');
   await expect(page.getByRole('alert')).toHaveCount(0);
+  await page.locator('#encounter-search').fill('missing');
+  await expect(page.locator('.encounter-item')).toHaveCount(0);
+  await page.locator('#encounter-search').fill('Target');
+  await expect(page.locator('.encounter-item')).toHaveCount(1);
+  await page.locator('#encounter-search').fill('');
+  const chartTrigger = page.locator('.contribution-panel > button');
+  const chartPanel = page.locator(`#${await chartTrigger.getAttribute('aria-controls')}`);
+  await chartTrigger.focus();
+  await chartTrigger.press('Enter');
+  await expect(chartTrigger).toHaveAttribute('aria-expanded', 'false');
+  await expect(chartPanel).toBeHidden();
+  await expect(page.locator('.data-table')).toBeVisible();
+  // Preserve the user's collapsed panel while unrelated state, e.g. search text, rerenders the shell.
+  await page.locator('#encounter-search').fill('Target');
+  await expect(chartTrigger).toHaveAttribute('aria-expanded', 'false');
+  await page.locator('#encounter-search').fill('');
+  await chartTrigger.focus();
+  await chartTrigger.press('Space');
+  await expect(chartTrigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(chartPanel).toBeVisible();
+  const zoneTrigger = page.locator('aside').getByRole('button', { name: 'Import Zone', exact: true });
+  await zoneTrigger.focus();
+  await zoneTrigger.press('Space');
+  await expect(page.locator('.encounter-item')).toBeHidden();
+  await zoneTrigger.press('Enter');
+  await expect(page.locator('.encounter-item')).toBeVisible();
+  const participantTrigger = page.locator('aside').getByRole('button', { name: 'Source', exact: true });
+  await participantTrigger.focus();
+  await participantTrigger.press('Enter');
+  await expect(participantTrigger).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('details, summary')).toHaveCount(0);
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await expect(page.locator('.contribution-panel .accordion-chevron')).toHaveCSS('transition-property', 'none');
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await page.getByRole('button', { name: 'All categories', exact: true }).first().click();
+  await expect(page.getByRole('heading', { name: 'Attack aggregates', exact: true })).toBeVisible();
+  await expect(page.locator('.data-table')).toContainText('400');
+  await page.setViewportSize({ width: 1440, height: 1024 });
+  await page.getByRole('button', { name: 'Damage Out', exact: true }).click();
+  await expect(page.locator('.data-table tbody tr')).toHaveCount(2);
+  await expect(page.locator('.data-table .chorale-root > div:last-child')).toBeHidden();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.locator('#language').selectOption('ko-KR');
+  await page.getByRole('button', { name: '분석', exact: true }).click();
+  await page.locator('main').evaluate(element => element.scrollTop = 0);
+  await page.screenshot({ path: path.join(target, 'gui-analysis-ko.png') });
+  await page.getByRole('button', { name: '설정', exact: true }).click();
+  await page.locator('#language').selectOption('en-US');
+  await page.getByRole('button', { name: 'Analysis', exact: true }).click();
+  await page.locator('main').evaluate(element => element.scrollTop = 0);
+  await page.screenshot({ path: path.join(target, 'gui-analysis-attacks.png') });
+  await page.getByRole('button', { name: 'All participants', exact: true }).click();
   await page.screenshot({ path: path.join(target, 'gui-fixture-dark.png') });
   await page.setViewportSize({ width: 850, height: 580 });
+  await page.locator('main').evaluate(element => element.scrollTop = 0);
   await expect(page.locator('.app-shell')).toBeVisible();
   await page.screenshot({ path: path.join(target, 'gui-fixture-compact.png') });
+  await expect(page.locator('main')).toBeInViewport();
+  await expect(page.locator('footer')).toBeInViewport();
+  await page.getByRole('button', { name: 'End combat', exact: true }).click();
   await page.getByRole('button', { name: 'Stop host', exact: true }).click();
   await page.setViewportSize({ width: 1280, height: 820 });
   await expect(page.getByTestId('host-status')).toHaveText('Host stopped');
@@ -170,5 +257,6 @@ test('embedded runtime starts a real Host, imports expected totals and survives 
   expect((await fs.stat(marker)).mtimeMs).toBe(timestamp);
   await page.getByRole('button', { name: 'Stop host', exact: true }).click();
   await expect(page.getByTestId('host-status')).toHaveText('Host stopped');
+  expect(browserErrors).toEqual([]);
   await quit();
 });
