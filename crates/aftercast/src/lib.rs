@@ -12,8 +12,8 @@ pub use archives::ActFormat;
 mod combat;
 mod companions;
 pub use companions::{
-    CompanionSource, LiveLogOptions, LiveLogSelection, LiveLogSnapshot, LiveLogSourceStatus,
-    LiveLogState, SourceImportOptions,
+    CompanionCandidate, CompanionCatalog, CompanionSource, LiveLogOptions, LiveLogSelection,
+    LiveLogSnapshot, LiveLogSourceStatus, LiveLogState, SourceImportOptions,
 };
 mod diagnostics;
 mod history;

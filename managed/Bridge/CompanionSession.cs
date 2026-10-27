@@ -14,6 +14,7 @@ internal sealed partial class PluginSession
     }
     internal byte[] CompanionOperation(int command, CompanionRequest request) => OnOwner(() =>
     {
+        if (command == 7) return HostJson.Encode(new { Path = request.Path!, Candidates = HostEnvironment.ReadCompanionCandidates(request.Path!) });
         if (command == 1)
         {
             RequireSourceParser();

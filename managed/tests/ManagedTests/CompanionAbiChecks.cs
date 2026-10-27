@@ -64,7 +64,7 @@ internal static class CompanionAbiChecks
             }
             Check(EntryPoint.CompanionCommand(0, Size) == -1, "null capacity accepted");
             Reject(5, "{\"owner\":1}", size: Size - 1);
-            foreach (var (offset, value) in new[] { (0, 32), (4, 2), (16, 0), (16, 7), (20, 0), (20, 131073), (24, 1), (28, 1) })
+            foreach (var (offset, value) in new[] { (0, 32), (4, 2), (16, 0), (16, 8), (20, 0), (20, 131073), (24, 1), (28, 1) })
                 Reject(5, "{\"owner\":1}", () => Marshal.WriteInt32(memory, offset, value));
             Reject(5, "{\"owner\":1}", () => Marshal.WriteInt64(memory, 8, session + 1));
             Reject(5, "{}", () => Marshal.WriteByte(memory, 32, 255));
@@ -73,6 +73,10 @@ internal static class CompanionAbiChecks
             var sideDirectory = Directory.CreateDirectory(Path.Combine(directory.FullName, "CompanionLogs"));
             var side = Path.Combine(sideDirectory.FullName, "main.side.log");
             File.WriteAllText(main, "0|main\n1|end\n"); File.WriteAllText(side, "1|side\n2|excluded\n");
+            var candidates = Call(7, new CompanionRequest(Path: main));
+            Check(candidates.GetProperty("candidates").GetArrayLength() == 1 &&
+                candidates.GetProperty("candidates")[0].GetProperty("name").GetString() == "side", "bounded catalog without parser initialization");
+            Reject(7, JsonSerializer.Serialize(new CompanionRequest(Path: main, Companions: []), HostJson.Options));
             var valid = JsonSerializer.Serialize(new CompanionRequest(Path: main, Companions: [new("side")]), HostJson.Options);
             Reject(1, valid.Replace("side", "bad.name", StringComparison.Ordinal));
             Reject(1, JsonSerializer.Serialize(new CompanionRequest(Path: main, Text: new(1), Companions: []), HostJson.Options));

@@ -179,6 +179,9 @@ namespace Aftercast.ActCompat
         }
         public void CloseLiveLog(long generation) => main.CloseLiveLog(generation);
         public LiveLogSourceStatus[] ReadLiveLogSources() => main.ReadLiveLogSources();
+        // Proposals only: no reader is opened and admission must resolve/validate again.
+        public static CompanionCandidate[] ReadCompanionCandidates(string path) => CompanionLogCatalog.Discover(path)
+            .Select(source => new CompanionCandidate(source.Name, source.Path)).ToArray();
         public ImportProgress ImportProgress => main.CurrentImportProgress;
         public ImportResult? AdvanceImport(bool cancel) => main.AdvanceImport(cancel);
         public TablePageData? ReadTable(TableQuery query) => main.ReadTable(query);

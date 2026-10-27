@@ -39,6 +39,18 @@ async fn explicit_import_merges_sources_and_preserves_single_source_defaults(
     let host = Host::start(deployment.config())
         .await
         .expect("isolated worker");
+    let catalog = host
+        .companion_candidates(&main)
+        .await
+        .expect("bounded catalog before parser");
+    assert_eq!(
+        catalog
+            .candidates
+            .iter()
+            .map(|candidate| candidate.name.as_str())
+            .collect::<Vec<_>>(),
+        ["Alpha"]
+    );
     parser(&host, false).await;
     let report = host
         .import_sources(

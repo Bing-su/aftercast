@@ -1,4 +1,10 @@
-namespace Advanced_Combat_Tracker;
+namespace Aftercast.ActCompat
+{
+    public sealed record CompanionCandidate(string Name, string Path);
+}
+
+namespace Advanced_Combat_Tracker
+{
 
 public partial class FormActMain
 {
@@ -65,4 +71,6 @@ internal static class CompanionLogCatalog
         }
         return found.Values.ToArray();
     }
+}
+
 }

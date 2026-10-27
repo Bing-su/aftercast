@@ -13,6 +13,19 @@ const HEADER: usize = 32;
 const CAPACITY: usize = 512 * 1024;
 const MAX_TICKS: u64 = 3_155_378_975_999_999_999;
 
+/// A bounded sibling catalog proposal, not an open handle or an identity lease.
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CompanionCandidate {
+    pub name: String,
+    pub path: Utf8PathBuf,
+}
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CompanionCatalog {
+    pub path: Utf8PathBuf,
+    pub candidates: Vec<CompanionCandidate>,
+}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CompanionSource {
     pub name: String,
@@ -340,6 +353,37 @@ fn live_snapshot(
     })
 }
 impl HostHandle {
+    /// Lists at most 64 matching siblings from at most 4096 entries; never recursively searches.
+    pub async fn companion_candidates(
+        &self,
+        path: impl AsRef<Utf8Path>,
+    ) -> Result<CompanionCatalog, Error> {
+        let path = self.canonicalize(path.as_ref()).await?;
+        validate_path(&path, 0)?;
+        let catalog: CompanionCatalog = self
+            .companion_call(7, &serde_json::json!({"path":path}))
+            .await?;
+        if catalog.path != path || catalog.candidates.len() > 64 {
+            return Err(invalid("invalid companion catalog"));
+        }
+        let parent = path
+            .parent()
+            .ok_or_else(|| invalid("missing main parent"))?
+            .join("CompanionLogs");
+        for (index, candidate) in catalog.candidates.iter().enumerate() {
+            validate_name(&candidate.name)?;
+            validate_path(&candidate.path, 1024)?;
+            if candidate.path.parent() != Some(parent.as_path())
+                || catalog.candidates.iter().take(index).any(|previous| {
+                    previous.name.eq_ignore_ascii_case(&candidate.name)
+                        || previous.path == candidate.path
+                })
+            {
+                return Err(invalid("invalid catalog candidate identity"));
+            }
+        }
+        Ok(catalog)
+    }
     /// Opens one explicitly selected tail group. Empty companions retain single-main behavior.
     pub async fn open_live_logs(
         &self,

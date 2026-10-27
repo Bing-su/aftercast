@@ -16,7 +16,7 @@ public static partial class EntryPoint
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
         var command = Marshal.ReadInt32(buffer, 16);
         var length = Marshal.ReadInt32(buffer, 20);
-        if (command is < 1 or > 6 || length is < 2 or > 128 * 1024 || Marshal.ReadInt64(buffer, 24) != 0)
+        if (command is < 1 or > 7 || length is < 2 or > 128 * 1024 || Marshal.ReadInt64(buffer, 24) != 0)
             throw new ArgumentException("Invalid companion command fields");
         var bytes = new byte[length]; Marshal.Copy(buffer + header, bytes, 0, length);
         var json = new UTF8Encoding(false, true).GetString(bytes);
@@ -53,10 +53,16 @@ internal sealed record CompanionRequest(ulong Owner = 0, string? Path = null, Im
     internal ImportRange? Range => StartTicks is { } start && EndTicks is { } end ? new(new(start), new(end)) : null;
     internal void Validate(int command)
     {
-        if (command is 1 or 4)
+        if (command is 1 or 4 or 7)
         {
             if (string.IsNullOrWhiteSpace(Path) || !System.IO.Path.IsPathFullyQualified(Path) || Path.Any(char.IsControl) || new UTF8Encoding(false, true).GetByteCount(Path) > 8192)
                 throw new ArgumentException("Companion main path must be absolute, control-free and at most 8192 UTF-8 bytes");
+            if (command == 7)
+            {
+                if (Owner != 0 || Text is not null || Companions is not null || StartTicks is not null || EndTicks is not null ||
+                    GetCurrentZone is not null || ClockWaitMilliseconds is not null) throw new ArgumentException("Invalid companion catalog fields");
+                return;
+            }
             if (Companions is null || Companions.Length > (command == 1 ? 64 : 8)) throw new ArgumentException("Invalid companion selection count");
             Text?.Validate();
             var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
