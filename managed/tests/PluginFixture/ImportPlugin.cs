@@ -15,6 +15,7 @@ public class ImportPlugin : IActPluginV1
     public void InitPlugin(TabPage tab, Label status)
     {
         root = ActGlobals.oFormActMain!;
+        root.TimeStampLen = 0; // Synthetic records have no display timestamp prefix.
         previousParser = root.GetDateTimeFromLog;
         root.GetDateTimeFromLog = line => DateTime.UnixEpoch.AddSeconds(int.Parse(line.Split('|')[0], CultureInfo.InvariantCulture));
         CombatFixture.ConfigureCategories();

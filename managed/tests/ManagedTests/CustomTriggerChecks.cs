@@ -26,6 +26,7 @@ internal static class CustomTriggerChecks
             {
                 host.ConfigureSpeech(true);
                 var root = ActGlobals.oFormActMain!;
+                root.TimeStampLen = 0;
                 root.CurrentZone = "Fixture Zone 2";
                 ActGlobals.charName = "Source";
                 var trigger = new CustomTrigger(@"(?<YOU>\w+) (?<value>\d+)", "fixture")
@@ -56,7 +57,7 @@ internal static class CustomTriggerChecks
                 trigger.Active = true;
                 var bad = new CustomTrigger("(a+)+$", "Bad") { SoundType = 3, SoundData = "bad" };
                 root.AddEditCustomTrigger(bad);
-                Process(root, new string('a', 10000) + "!", "");
+                Process(root, new string('a', 10000) + "!", new string('a', 10000) + "!");
                 Check(host.DiagnosticsSnapshot.Item1 == 1);
                 root.CustomTriggers.Remove(bad.Key);
 

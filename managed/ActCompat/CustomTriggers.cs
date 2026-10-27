@@ -13,7 +13,7 @@ public partial class FormActMain
     public void AddEditCustomTrigger(CustomTrigger trigger)
     {
         ArgumentNullException.ThrowIfNull(trigger);
-        lock (triggerGate) CustomTriggers[trigger.Key] = trigger;
+        lock (triggerGate) { CustomTriggers[trigger.Key] = trigger; RemoveTriggerResults(trigger.Key); }
         RebuildActiveCustomTriggers();
     }
 
@@ -29,23 +29,29 @@ public partial class FormActMain
         }
     }
 
-    internal void ProcessCustomTriggers(string original, LogLineEventArgs info, bool isImport)
+    internal void ProcessCustomTriggers(string original, LogLineEventArgs info, bool isImport) =>
+        ProcessCustomTriggerRecord(original, info, isImport, GlobalTimeSorter, info.logLine);
+
+    private void ProcessCustomTriggerRecord(string original, LogLineEventArgs info, bool isImport, int sorter, string triggerText)
     {
-        // Imports have no audio or live timer side effects; tabbed result rendering belongs to the future UI.
-        if (isImport || IsActClosing) return;
+        // ACT records tabbed results before suppressing import audio and live timer effects.
+        if (IsActClosing || isImport && !ProcessImportCustomTriggers || triggerText.Length <= TimeStampLen + 1) return;
         RebuildActiveCustomTriggers();
         CustomTrigger[] triggers;
         lock (triggerGate) triggers = ActiveCustomTriggers.Values.ToArray();
-        var text = OriginalLoglineCustomTriggers ? original : info.logLine;
+        var text = OriginalLoglineCustomTriggers ? original : triggerText[TimeStampLen..];
         foreach (var trigger in triggers)
             try
             {
                 var match = trigger.RegEx.Match(text);
                 if (!match.Success) continue;
-                var captures = trigger.RegEx.GetGroupNames().ToDictionary(name => name, name => match.Groups[name].Value);
-                if (captures.TryGetValue("YOU", out var you) && !you.ToLowerInvariant().Contains((ActGlobals.charName ?? "").ToLowerInvariant())) continue;
+                var you = match.Groups["YOU"];
+                if (you.Success && !you.Value.ToLowerInvariant().Contains((ActGlobals.charName ?? "").ToLowerInvariant())) continue;
+                if (trigger.Tabbed) RecordTriggerResult(trigger, info, text, match, isImport, sorter);
+                if (isImport) continue;
                 if (trigger.Timer)
                 {
+                    var captures = trigger.RegEx.GetGroupNames().ToDictionary(name => name, name => match.Groups[name].Value);
                     string Capture(string name) => captures.TryGetValue(name, out var value) && value.Length > 0 ? value : "None";
                     ActGlobals.oFormSpellTimers?.NotifySpell(Capture("attacker").ToLower(), trigger.TimerName, true, Capture("victim"), true, captures);
                 }

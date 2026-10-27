@@ -44,6 +44,21 @@ internal sealed class PluginSession
         OnOwner(() => { environment?.AdvanceTimers(); return 0; });
         return callbacks;
     }
+    internal byte[] TriggerOperation(int command, TriggerRequest request) => OnOwner(() =>
+    {
+        var host = Host();
+        object result;
+        if (command is 1 or 6) result = host.TriggerOperation(command, request.Revision, request.PreviousKey,
+            request.Definition, request.Key, request.Offset, request.Limit, request.OriginalLines, request.ProcessImports, request.After);
+        else
+        {
+            object? changed = null;
+            host.RunWithLogReadingSuspended(() => changed = host.TriggerOperation(command, request.Revision, request.PreviousKey,
+                request.Definition, request.Key, request.Offset, request.Limit, request.OriginalLines, request.ProcessImports, request.After));
+            result = changed!;
+        }
+        return TriggerJson.Encode(result);
+    });
     internal void EndCombat() => OnOwner(() => { environment?.EndCombat(); return 0; });
     internal int ArchiveOperation(int command, string text, ulong id, bool compressed) => OnOwner(() =>
     {

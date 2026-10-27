@@ -188,6 +188,19 @@ namespace Aftercast.ActCompat
         public void ShowPluginSettings(TabPage tab) => main.ShowPluginSettings(tab);
         public void EnsureCanStop() => main.EnsureCanWaitForLogReader();
         // Quiesce file callbacks before the boundary so an admitted line cannot race encounter finalization.
+        public object TriggerOperation(int command, ulong revision, string? previousKey, TriggerDefinition? definition,
+            string? key, int offset, int limit, bool originalLines, bool processImports, ulong after) => command switch
+        {
+            1 => main.ReadTriggers(offset, limit),
+            2 => main.SaveTrigger(revision, previousKey, definition ?? throw new ArgumentException("Missing trigger definition")),
+            3 => main.DeleteTrigger(revision, key ?? throw new ArgumentException("Missing trigger key")),
+            4 => main.SaveTriggerOptions(revision, originalLines, processImports),
+            5 => main.ReloadTriggers(revision),
+            6 => main.ReadTriggerResults(after, limit),
+            7 => ClearResults(),
+            _ => throw new ArgumentException("Unknown trigger operation")
+        };
+        private int ClearResults() { main.ClearTriggerResults(); return 0; }
         public void EndCombat() => main.RunWithLogReadingSuspended(() => main.EndCombat(true));
         public void StopLogReading() => main.StopLogFollower();
         public void AdvanceTimers() => timers.Advance();

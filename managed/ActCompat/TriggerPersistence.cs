@@ -8,17 +8,18 @@ public partial class FormActMain
     internal void LoadCustomTriggers(string path)
     {
         if (!File.Exists(path)) return;
-        var loaded = ReadCustomTriggers(path);
+        var (loaded, originalLines, processImports) = ReadCustomTriggers(path);
         // Validate the whole file before publishing any definitions, e.g. an invalid last regex preserves the old registry.
         lock (triggerGate)
         {
             CustomTriggers.Clear();
             foreach (var (key, trigger) in loaded) CustomTriggers.Add(key, trigger);
+            OriginalLoglineCustomTriggers = originalLines; ProcessImportCustomTriggers = processImports;
         }
         RebuildActiveCustomTriggers();
     }
 
-    private static SortedList<string, CustomTrigger> ReadCustomTriggers(string path)
+    private static (SortedList<string, CustomTrigger> Definitions, bool OriginalLines, bool ProcessImports) ReadCustomTriggers(string path)
     {
         // Read file streams so canonical Windows paths also work after a host restart.
         using var stream = File.OpenRead(path);
@@ -38,14 +39,23 @@ public partial class FormActMain
                 SoundData = Value("SoundData"), RestrictToCategoryZone = bool.Parse(Value("CategoryRestrict", "false")),
                 Timer = bool.Parse(Value("Timer", "false")), TimerName = Value("TimerName"), Tabbed = bool.Parse(Value("Tabbed", "false"))
             };
-            loaded[trigger.Key] = trigger;
+            loaded.Add(trigger.Key, trigger);
         }
-        return loaded;
+        return (loaded, bool.Parse(document.DocumentElement.GetAttribute("OriginalLines") is "" ? "false" : document.DocumentElement.GetAttribute("OriginalLines")),
+            bool.Parse(document.DocumentElement.GetAttribute("ProcessImports") is "" ? "false" : document.DocumentElement.GetAttribute("ProcessImports")));
     }
 
     internal void SaveCustomTriggers(string path)
     {
-        lock (triggerGate) if (CustomTriggers.Count == 0 && !File.Exists(path)) return;
+        lock (triggerGate)
+        {
+            if (CustomTriggers.Count == 0 && !File.Exists(path) && !OriginalLoglineCustomTriggers && !ProcessImportCustomTriggers) return;
+            SaveCustomTriggersFile(path, CustomTriggers.Values, OriginalLoglineCustomTriggers, ProcessImportCustomTriggers);
+        }
+    }
+
+    private static void SaveCustomTriggersFile(string path, IEnumerable<CustomTrigger> definitions, bool originalLines, bool processImports)
+    {
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
@@ -53,7 +63,11 @@ public partial class FormActMain
             {
                 using (var writer = new XmlTextWriter(stream, new UTF8Encoding(false)))
                 {
-                    SaveXmlCustomTriggers(writer);
+                    writer.WriteStartElement("CustomTriggers");
+                    writer.WriteAttributeString("OriginalLines", originalLines.ToString());
+                    writer.WriteAttributeString("ProcessImports", processImports.ToString());
+                    foreach (var trigger in definitions) WriteTrigger(writer, trigger);
+                    writer.WriteEndElement();
                     writer.Flush();
                     if (stream.Length > 4 * 1024 * 1024) throw new InvalidDataException("Trigger settings exceed the 4 MiB load limit");
                     stream.Flush(true);

@@ -276,7 +276,9 @@ namespace Advanced_Combat_Tracker
                 root.InvokeLogHandlers(root.BeforeLogLineRead, true, info);
                 root.LastLogLine = info.logLine;
                 root.RecordEncounterLog(info, sorter, wasInCombat);
+                var triggerText = info.logLine;
                 root.InvokeLogHandlers(root.OnLogLineRead, true, info);
+                root.ProcessCustomTriggerRecord(line, info, true, sorter, triggerText);
                 return true;
             }
 

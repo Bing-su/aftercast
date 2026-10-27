@@ -280,6 +280,7 @@ internal static class Program
             SpeechChecks.Abi(session);
             ImportAbiChecks.Run(session);
             ArchiveAbiChecks.Run(session);
+            TriggerAbiChecks.Run(session);
             LogAbiChecks.Run(session);
             CombatSnapshotAbiChecks.Run(session);
             CombatQueryAbiChecks.Run(session);
@@ -509,6 +510,7 @@ internal static class Program
         CombatPolicyChecks.Run();
         ParentSettingsChecks.Run();
         CustomTriggerChecks.Run();
+        TriggerManagementChecks.Run();
         DataCorrectionChecks.Run();
         EncounterArchiveChecks.Run();
         EncounterLogChecks.Run();

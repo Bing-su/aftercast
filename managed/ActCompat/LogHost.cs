@@ -219,8 +219,9 @@ public partial class FormActMain
         LastLogLine = info.logLine;
         if (!IsCurrentLog(generation)) return;
         RecordEncounterLog(info, timeSorter, wasInCombat);
+        var triggerText = info.logLine;
         InvokeLogHandlers(OnLogLineRead, false, info, generation);
-        if (IsCurrentLog(generation)) ProcessCustomTriggers(line, info, false);
+        if (IsCurrentLog(generation)) ProcessCustomTriggerRecord(line, info, false, timeSorter, triggerText);
     }
 
     private void InvokeLogHandlers(LogLineEventDelegate? handlers, bool isImport, LogLineEventArgs info, long? generation = null)
