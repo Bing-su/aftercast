@@ -3,6 +3,8 @@ use aftercast::{EncounterId, HostHandle, TextReport, TextReportCatalog, TextRepo
 use camino::Utf8PathBuf;
 use std::sync::Arc;
 mod file;
+mod table_view;
+mod tables;
 #[cfg(test)]
 mod tests;
 mod view;
@@ -18,13 +20,59 @@ struct Token {
 #[derive(Clone, Debug)]
 struct Preview {
     token: Token,
-    report: TextReport,
-    options: TextReportOptions,
+    report: Arc<Content>,
     title: String,
+}
+#[derive(Clone, Debug)]
+enum Content {
+    Text(TextReport, TextReportOptions),
+    Table(aftercast::TableReport, aftercast::TableReportOptions),
+}
+impl Content {
+    fn text(&self) -> &str {
+        match self {
+            Self::Text(report, _) => &report.text,
+            Self::Table(report, _) => &report.content,
+        }
+    }
+    fn preview_text(&self) -> &str {
+        let text = self.text();
+        let mut end = text.len().min(64 * 1024);
+        while !text.is_char_boundary(end) {
+            end -= 1;
+        }
+        text.get(..end).unwrap_or_default()
+    }
+    fn description(&self) -> String {
+        match self {
+            Self::Text(_, options) => format!("Text · {}", options.sorting),
+            Self::Table(report, options) => format!(
+                "{:?} · {} · {} · {}",
+                report.format,
+                tables::context(report.selection.scope()),
+                options.name,
+                options.sort.as_ref().map_or_else(
+                    || "—".into(),
+                    |sort| format!(
+                        "{} / {} · {}",
+                        sort.primary,
+                        sort.secondary.as_deref().unwrap_or("—"),
+                        if sort.descending { "↓" } else { "↑" }
+                    )
+                )
+            ),
+        }
+    }
 }
 #[derive(Clone, Debug)]
 enum Request {
     Catalog,
+    TableCatalog(aftercast::TableScope),
+    TableRender(
+        aftercast::TableReportSelection,
+        aftercast::TableReportOptions,
+        String,
+    ),
     Render {
         catalog: TextReportCatalog,
         options: TextReportOptions,
@@ -40,6 +88,12 @@ enum Request {
 #[derive(Debug)]
 enum Reply {
     Catalog(TextReportCatalog),
+    TableCatalog(Option<aftercast::TableReportCatalog>),
+    TableReport(
+        aftercast::TableReport,
+        aftercast::TableReportOptions,
+        String,
+    ),
     Report {
         report: Option<TextReport>,
         options: TextReportOptions,
@@ -50,6 +104,8 @@ enum Reply {
 #[derive(Default)]
 pub(super) struct State {
     epoch: u64,
+    table: tables::Draft,
+    table_catalog: Option<Arc<aftercast::TableReportCatalog>>,
     catalog: Option<TextReportCatalog>,
     draft: TextReportOptions,
     edited: bool,
@@ -73,6 +129,7 @@ impl State {
         self.leave();
         self.pending = None;
         self.catalog = None;
+        self.table_catalog = None;
         self.error = None;
     }
 }
@@ -229,6 +286,15 @@ impl AppState {
                 }
                 self.reports.catalog = Some(catalog);
             }
+            Ok(Reply::TableCatalog(Some(catalog))) => self.receive_report_table_catalog(catalog),
+            Ok(Reply::TableCatalog(None)) => self.reports.error = Some("report-unavailable".into()),
+            Ok(Reply::TableReport(report, options, title)) => {
+                self.reports.preview = Some(Preview {
+                    token,
+                    report: Arc::new(Content::Table(report, options)),
+                    title,
+                });
+            }
             Ok(Reply::Report {
                 report: Some(report),
                 options,
@@ -236,8 +302,7 @@ impl AppState {
             }) => {
                 self.reports.preview = Some(Preview {
                     token,
-                    report,
-                    options,
+                    report: Arc::new(Content::Text(report, options)),
                     title,
                 })
             }
@@ -305,6 +370,16 @@ impl AppState {
 }
 async fn perform(handle: &HostHandle, request: &Request) -> Result<Reply, String> {
     match request {
+        Request::TableCatalog(scope) => handle
+            .table_report_catalog(scope)
+            .await
+            .map(Reply::TableCatalog)
+            .map_err(|error| error.to_string()),
+        Request::TableRender(selection, options, title) => handle
+            .table_report(selection, options)
+            .await
+            .map(|report| Reply::TableReport(report, options.clone(), title.clone()))
+            .map_err(|error| error.to_string()),
         Request::Catalog => handle
             .text_report_catalog()
             .await
@@ -329,8 +404,11 @@ async fn perform(handle: &HostHandle, request: &Request) -> Result<Reply, String
             path,
             control,
         } => {
-            let (path, text, control) =
-                (path.clone(), preview.report.text.clone(), control.clone());
+            let (path, text, control) = (
+                path.clone(),
+                preview.report.text().to_owned(),
+                control.clone(),
+            );
             tokio::task::spawn_blocking(move || file::save_new(&path, &text, &control))
                 .await
                 .map_err(|error| error.to_string())?

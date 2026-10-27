@@ -90,8 +90,7 @@ ACT exporter or browser is executed on Linux; this is contract evidence, not a
 claim of Windows execution or byte-identical full HTML output.
 
 The managed core and Bridge/Rust typed session/revision binding are connected,
-with actual isolated-worker synthetic report tests. GUI/table selection and
-no-overwrite file save are subsequent slices. Full HTML encounter/zone hierarchy, checked encounter
+with actual isolated-worker synthetic report tests. The current-table GUI and explicit no-overwrite file save are connected below. Full HTML encounter/zone hierarchy, checked encounter
 sets, depth options and graph/image dimensions remain in the finite L7b plan.
 Archive XML/gzip and ordinary text reports retain their existing separate paths.
 No clipboard provider, upload, real database or user data was accessed.
@@ -128,6 +127,56 @@ all four roots, hidden SQL columns versus display callbacks, caption CRLF/Unicod
 zero/one/multiple XML selection, explicit sort and failure, escaped static HTML,
 callback counts, registry changes, invalid values/limits, recapture, Stop and
 restart. These are Linux worker/contract tests, not native ACT exporter execution.
-GUI/table selection and no-overwrite save remain the next slices; the full HTML
-hierarchy/depth/graph tasks remain unfinished. No clipboard provider or external
+The current-table GUI and explicit no-overwrite save are connected below; the full
+HTML hierarchy/depth/graph tasks remain unfinished. No clipboard provider or external
 resource execution is added.
+
+## Current-table GUI and explicit new-file save
+
+Analysis now shares one Reports panel for ordinary text and current-table reports.
+The incumbent Rust/UI-adapted Accordion, Button, Input, Label and TextArea remain
+the controls, with Dioxus owning the controller. The four row levels can be chosen
+explicitly with exact combatant/category/attack keys, or copied from the existing
+plugin-table browser (including its action drill-down). The report scope is an
+explicit draft; subsequent analysis-table navigation does not silently retarget
+it. Selecting another encounter/session invalidates the old result. Report sort
+keys/direction are explicit and independent of the analysis table's draft sort.
+
+Capture discovers the latest original row-index catalog. XML selections are
+paged in groups of 16, retain the zero/one/all and multiple/subset ACT rule, and
+are cleared on recapture because indices are not durable identities. XML always
+uses all SQL columns. HTML exports the whole scope and uses 1..32 exact display
+registration keys in explicit output order; its help states that XML row choices
+are separate. Explicit empty/missing column choices remain in the draft rather
+than silently falling back. Scope changes require a new capture. Missing scopes,
+unknown keys, sort/callback/encoding/size failures retain drafts and show errors.
+Drafts are session UI intent, not a new persisted report-preset format.
+
+A successful preview owns the report, scope, options and encounter title, separate
+from the draft. Editing either report draft clears the previous preview and save
+confirmation. Duplicate requests are blocked; accepted tasks outlive component
+navigation while their session/selection/epoch token determines whether replies
+may be displayed. Cancel retires a result without claiming to interrupt plugin
+code; admission remains held until completion. Leaving, selection changes and
+Stop reject stale replies and confirmations using the shared text-report path.
+Large immutable snapshots/catalogs are shared, and preview is at most 64 KiB on
+a UTF-8 character boundary. XML/HTML is shown only as Dioxus text inside `pre`;
+no HTML injection, browser, script/resource execution or upload is introduced.
+The complete generated UTF-8 source, including original CRLF, is saved.
+
+Saving reuses the ordinary-report same-directory temporary file + flush/sync +
+no-clobber publication. Only an explicitly entered and confirmed destination is
+used. Existing/concurrently-created files are never replaced, directories are not
+created, and failure preserves the preview/path. Cancel/leave/Stop may prevent
+publication before its atomic admission; already-admitted publication can finish
+after Stop and is not undone. No stronger OS-crash/disk-failure guarantee is added.
+
+Four actual isolated-Host controller regressions cover the four XML roots and
+saved bytes, original-index subset values, sort and HTML column order, format
+switches, text/table switching, safe source/UTF-8 preview limit versus full save,
+no-overwrite/failure/cancel, recapture, stale confirmations/replies, selection,
+navigation, Stop, empty scopes and SQL callback errors. Existing ordinary-text
+controller and file failure/race regressions remain in the suite. Native
+click/focus/visual verification and Windows execution remain unverified on ser7;
+launch smoke is not a substitute. Full hierarchical HTML, depth and graphs remain
+unfinished L7b work; archive XML/gzip is still a separate UI/API.

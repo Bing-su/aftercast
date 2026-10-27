@@ -2,7 +2,7 @@ use super::super::tr;
 use super::*;
 use crate::components::{Accordion, Button, ButtonVariant, Input, Label, TextArea};
 use dioxus::{core::spawn_forever, prelude::*};
-fn execute(mut state: Signal<AppState>, work: Option<(Token, Request)>) {
+pub(super) fn execute(mut state: Signal<AppState>, work: Option<(Token, Request)>) {
     let Some((token, request)) = work else {
         return;
     };
@@ -189,6 +189,7 @@ pub(in crate::app) fn Panel() -> Element {
                         {tr("report-generate")}
                     }
                 }
+                super::table_view::Editor {}
                 if let Some((active, _)) = pending {
                     div { class: "flex items-center gap-3", role: "status",
                         p { class: "text-sm text-muted-foreground", {tr("report-working")} }
@@ -215,10 +216,29 @@ pub(in crate::app) fn Panel() -> Element {
                         p { class: "text-sm", "{preview.title}" }
                         p { class: "text-xs text-muted-foreground",
                             {tr("report-snapshot")}
-                            ": {preview.options.sorting} · {preview.report.text.len()} UTF-8 bytes"
+                            ": {preview.report.description()} · {preview.report.text().len()} UTF-8 bytes"
+                        }
+                        if let Content::Table(snapshot, options) = preview.report.as_ref() {
+                            p { class: "break-words text-xs text-muted-foreground",
+                                "{snapshot.rows} "
+                                {tr("table-report-rows")}
+                                " · XML: {options.selected_rows.len()} · HTML: "
+                                {
+                                    options
+                                        .columns
+                                        .as_ref()
+                                        .map(|keys| keys.join(", "))
+                                        .unwrap_or_else(|| "—".into())
+                                }
+                            }
                         }
                         pre { class: "max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background p-3 text-sm",
-                            {preview.report.text.clone()}
+                            {preview.report.preview_text()}
+                        }
+                        if preview.report.preview_text().len() < preview.report.text().len() {
+                            p { class: "text-xs text-muted-foreground",
+                                {tr("report-preview-truncated")}
+                            }
                         }
                         Label { html_for: "report-output", {tr("report-output")} }
                         Input {
@@ -248,6 +268,9 @@ pub(in crate::app) fn Panel() -> Element {
                     div { class: "space-y-3 border-t border-border pt-4",
                         h3 { class: "text-sm font-semibold", {tr("report-confirm-title")} }
                         p { class: "text-sm", "{preview.title}" }
+                        p { class: "break-words text-xs text-muted-foreground",
+                            "{preview.report.description()} · {preview.report.text().len()} UTF-8 bytes"
+                        }
                         p { class: "break-all text-sm", "{path}" }
                         div { class: "flex gap-2",
                             Button {

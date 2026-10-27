@@ -85,7 +85,7 @@ probe are separate evidence, not a claim of native UI execution on Linux.
    captures original rows/parents and registered columns, uses SQL names/values for
    the four ACT table-XML roots, and escaped cell values for static HTML. Its
    Bridge/Rust typed table-report selection and isolated-worker synthetic tests are connected.
-   GUI/save integration remains separate. Full HTML hierarchy/depth,
+   The current-table GUI/source preview and shared no-overwrite save are connected. Full HTML hierarchy/depth,
    checked encounter sets and graph/image dimensions are still unfinished;
    unsupported choices and security differences are explicit before I/O.
 4. L7c synthetic ODBC/schema/sink work and the shared L9d output preference audit
@@ -127,7 +127,7 @@ Once publication is admitted, the explicit save may complete after Stop, and lat
 UI replies remain ignored. This boundary is stated beside the save action. A
 completed file is not deleted to simulate cancellation. Failed saves preserve the
 preview and path for retry. Callback/render failures preserve the draft and never
-save a partial result. Real clipboard access, upload and HTML/table XML are absent.
+save a partial result. Real clipboard access and upload are absent. Current-table HTML/XML uses the separate explicit editor in the same panel; full hierarchical HTML remains unfinished.
 
 Synthetic file tests inject write/flush failures and publication races; actual
 isolated-Host controller tests exercise preset copy, Unicode bytes, repeated save,

@@ -23,6 +23,9 @@ struct Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::new_with("TextReportPlugin", "0|100\n1|200\n").await
+    }
+    async fn new_with(name: &str, text: &str) -> Self {
         let temporary = tempfile::tempdir().expect("temporary reports");
         let root = Utf8Path::from_path(temporary.path())
             .expect("UTF8")
@@ -46,16 +49,16 @@ impl Fixture {
         )
         .await
         .expect("Host");
-        let plugin=host.create_plugin(PluginConfig::builder().path(Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll")).type_name("Aftercast.PluginFixture.TextReportPlugin").build()).await.expect("plugin");
+        let plugin=host.create_plugin(PluginConfig::builder().path(Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll")).type_name(format!("Aftercast.PluginFixture.{name}")).build()).await.expect("plugin");
         host.initialize_plugin(plugin).await.expect("initialize");
         let source = root.join("synthetic.log");
-        std::fs::write(&source, "0|100\n1|200\n").expect("source");
+        std::fs::write(&source, text).expect("source");
         host.import_log(source).await.expect("import");
         let mut ui = AppState::new(root.clone());
         ui.phase = Phase::Ready;
         ui.revision.session = 1;
         ui.encounters = host.encounters(0, 16).await.expect("encounters").items;
-        ui.selected = Some(ui.encounters[0].id);
+        ui.selected = Some(ui.encounters.first().expect("encounter").id);
         Self {
             _temporary: temporary,
             root,
@@ -107,7 +110,12 @@ async fn reports_ui_contract_snapshot_save_failure_cancel_and_stale_events() {
     let mut f = Fixture::new().await;
     f.load().await;
     f.preview().await;
-    let generated = f.ui.report_preview().expect("preview").report.text.clone();
+    let generated =
+        f.ui.report_preview()
+            .expect("preview")
+            .report
+            .text()
+            .to_owned();
     assert_eq!(generated, "Target:한글日本😀Source:한글日本😀\n");
     let (token, request) = f.save("report.txt");
     assert!(f.ui.report_confirm_save(token).is_none());
@@ -237,7 +245,7 @@ async fn reports_ui_contract_drafts_failures_catalog_refresh_and_session_retirem
         f.ui.report_preview()
             .expect("empty template report")
             .report
-            .text,
+            .text(),
         "\n"
     );
     assert!(f.ui.report_edit(f.ui.report_token(), "player", "{report-remove}".into()));
@@ -264,3 +272,6 @@ async fn reports_ui_contract_drafts_failures_catalog_refresh_and_session_retirem
     assert!(f.ui.reports.catalog.is_none());
     f.host.shutdown().await.expect("shutdown");
 }
+
+#[path = "table_tests.rs"]
+mod tables;

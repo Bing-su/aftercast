@@ -110,7 +110,7 @@ fn base_scope(state: &AppState) -> TableScope {
         _ => TableScope::Encounters,
     }
 }
-fn scope(state: &AppState) -> TableScope {
+pub(super) fn scope(state: &AppState) -> TableScope {
     let base = base_scope(state);
     if state.plugin_tables.base.as_ref() == Some(&base) {
         state.plugin_tables.scope.clone().unwrap_or(base)
