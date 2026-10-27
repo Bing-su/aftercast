@@ -252,7 +252,11 @@ impl BrowserState {
 }
 impl AppState {
     fn begin_history_query(&mut self, keep_selection: bool, clear_error: bool) -> Option<Token> {
-        if self.phase != Phase::Ready || self.loading || self.history.pending.is_some() {
+        if self.phase != Phase::Ready
+            || self.loading
+            || self.history.pending.is_some()
+            || self.history_sources.holds_resources()
+        {
             return None;
         }
         self.history.generation += 1;
@@ -316,6 +320,7 @@ impl AppState {
     fn begin_history_restore(&mut self, confirmation: &Confirmation) -> Option<Token> {
         if self.phase != Phase::Ready
             || self.loading
+            || self.history_sources.holds_resources()
             || self.history.pending.is_some()
             || !self
                 .plugins
@@ -438,7 +443,10 @@ fn restore(mut state: Signal<AppState>, confirmation: Confirmation) {
 }
 fn ready(state: Signal<AppState>) -> bool {
     let current = state.read();
-    current.phase == Phase::Ready && !current.loading && current.history.pending.is_none()
+    current.phase == Phase::Ready
+        && !current.loading
+        && current.history.pending.is_none()
+        && !current.history_sources.holds_resources()
 }
 fn current_view(state: Signal<AppState>, view: Token) -> bool {
     let current = state.read();
@@ -501,6 +509,7 @@ pub(super) fn HistoryPane() -> Element {
             }
             HistorySearch {}
             HistoryResults {}
+            super::history_sources::Panel {}
         }
     }
 }
@@ -600,6 +609,7 @@ fn HistoryResults() -> Element {
     let blocked = !ready(state);
     let stale = current.history.stale;
     let generation = current.history.generation;
+    let source_view = current.history_source_view();
     let view = Token {
         session: current.revision.session,
         generation,
@@ -733,6 +743,39 @@ fn HistoryResults() -> Element {
                                             if entry.already_restored {
                                                 Badge { {tr("history-already-restored")} }
                                             }
+                                        }
+                                        Button {
+                                            variant: ButtonVariant::Outline,
+                                            disabled: !state.read().source_idle() || stale,
+                                            onclick: {
+                                                let entry = entry.clone();
+                                                let revision = revision.clone();
+                                                move |_| {
+                                                    let current = state.read();
+                                                    let valid = current.revision.session == view.session
+                                                        && current.history.generation == generation && !current.history.stale
+                                                        && current
+                                                            .history
+                                                            .page
+                                                            .as_ref()
+                                                            .is_some_and(|page| {
+                                                                page.revision == revision
+                                                                    && page.items.iter().any(|item| item.id == entry.id)
+                                                            });
+                                                    drop(current);
+                                                    if valid {
+                                                        super::history_sources::choose(
+                                                            state,
+                                                            source_view,
+                                                            super::history_sources::Selection {
+                                                                revision: revision.clone(),
+                                                                entry: entry.clone(),
+                                                            },
+                                                        );
+                                                    }
+                                                }
+                                            },
+                                            {tr("history-source-select-history-action")}
                                         }
                                         Button {
                                             variant: ButtonVariant::Outline,

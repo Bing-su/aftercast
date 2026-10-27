@@ -2,6 +2,7 @@ mod analysis;
 mod companions;
 mod encounter_context;
 mod history;
+mod history_sources;
 mod import_text;
 mod log_window;
 mod notifications;
@@ -107,6 +108,7 @@ struct AppState {
     triggers: triggers::EditorState,
     timers: timers::EditorState,
     history: history::BrowserState,
+    history_sources: history_sources::State,
     plugin_tables: plugin_tables::BrowserState,
     notifications: notifications::NotificationState,
     plugin_ui_pending: bool,
@@ -181,6 +183,7 @@ impl AppState {
             triggers: Default::default(),
             timers: Default::default(),
             history: Default::default(),
+            history_sources: Default::default(),
             plugin_tables: Default::default(),
             notifications: Default::default(),
             plugin_ui_pending: false,
@@ -522,6 +525,7 @@ fn stop(mut state: Signal<AppState>) {
         state.plugins.clear();
         state.triggers = Default::default();
         state.timers = Default::default();
+        state.history_sources.stop();
         state.history = Default::default();
         state.plugin_tables.reset_session();
         state.reparse.reset_session();

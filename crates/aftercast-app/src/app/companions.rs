@@ -9,6 +9,7 @@ use dioxus::{core::spawn_forever, prelude::*};
 #[cfg(test)]
 mod tests;
 mod view;
+pub(super) use view::Codec;
 
 #[derive(Clone, Debug)]
 struct Choice {

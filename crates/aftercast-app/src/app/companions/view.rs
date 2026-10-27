@@ -215,7 +215,7 @@ fn CandidateRow(
 }
 
 #[component]
-fn Codec(text: Option<ImportTextOptions>, companion: bool) -> Element {
+pub(in crate::app) fn Codec(text: Option<ImportTextOptions>, companion: bool) -> Element {
     let label = text.map(|text| {
         import_text::ENCODINGS
             .iter()

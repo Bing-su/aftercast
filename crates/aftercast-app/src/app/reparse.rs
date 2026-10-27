@@ -92,6 +92,7 @@ impl AppState {
     }
     fn can_reparse(&self) -> bool {
         self.phase == Phase::Ready
+            && !self.history_sources.holds_resources()
             && !self.loading
             && !self.reparse.active()
             && !self.import_text.active()

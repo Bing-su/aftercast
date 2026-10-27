@@ -174,6 +174,7 @@ impl AppState {
     }
     pub(super) fn can_full_import(&self) -> bool {
         self.phase == Phase::Ready
+            && !self.history_sources.holds_resources()
             && !self.loading
             && !self.exit_requested
             && !self.import_text.active()
