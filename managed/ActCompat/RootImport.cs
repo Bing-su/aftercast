@@ -59,7 +59,7 @@ namespace Advanced_Combat_Tracker
             }
         }
 
-        internal void BeginImport(string path)
+        internal void BeginImport(string path, ImportRange? range = null)
         {
             ArgumentException.ThrowIfNullOrEmpty(path);
             if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("An absolute import path is required", nameof(path));
@@ -70,7 +70,7 @@ namespace Advanced_Combat_Tracker
             {
                 EnsureCombatOpen();
                 if (inCombat) throw new InvalidOperationException("End live combat before importing a log file");
-                activeImport = new ImportOperation(this, path);
+                activeImport = new ImportOperation(this, path, range);
             }
             try { activeImport.Start(); }
             catch
@@ -90,9 +90,9 @@ namespace Advanced_Combat_Tracker
             finally { if (operation.Completed) lock (CombatGate) activeImport = null; }
         }
 
-        internal ImportResult ImportLog(string path)
+        internal ImportResult ImportLog(string path, ImportRange? range = null)
         {
-            BeginImport(path);
+            BeginImport(path, range);
             while (true)
             {
                 var before = CurrentImportProgress;
@@ -103,7 +103,7 @@ namespace Advanced_Combat_Tracker
             }
         }
 
-        private sealed class ImportOperation(FormActMain root, string path)
+        private sealed class ImportOperation(FormActMain root, string path, ImportRange? range)
         {
             internal int OwnerThread { get; } = Environment.CurrentManagedThreadId;
             internal bool Exclusive;
@@ -222,7 +222,7 @@ namespace Advanced_Combat_Tracker
                     var started = Stopwatch.GetTimestamp();
                     try
                     {
-                        for (var count = 0; count < 64 && Stopwatch.GetElapsedTime(started) < TimeSpan.FromMilliseconds(5); count++)
+                        for (var count = 0; count < 64 && !ending && Stopwatch.GetElapsedTime(started) < TimeSpan.FromMilliseconds(5); count++)
                         {
                             if (nextLine is null)
                             {
@@ -231,10 +231,15 @@ namespace Advanced_Combat_Tracker
                                 if (!buffered.TryDequeue(out var line)) break;
                                 nextLine = (line, line.Length == 0 ? DateTime.MinValue : root.GetDateTimeFromLog(line));
                             }
+                            if (SkipOutsideRange(nextLine.Value.Line, nextLine.Value.Time))
+                            {
+                                nextLine = null;
+                                continue;
+                            }
                             if (!TryDispatch(nextLine.Value.Line, nextLine.Value.Time)) break;
                             nextLine = null;
                         }
-                        if (nextLine is null && buffered.Count == 0 && input.Reader.Completion.IsCompleted)
+                        if (!ending && nextLine is null && buffered.Count == 0 && input.Reader.Completion.IsCompleted)
                         {
                             input.Reader.Completion.GetAwaiter().GetResult();
                             ending = true;
@@ -251,6 +256,24 @@ namespace Advanced_Combat_Tracker
                 // Keep diagnostics responsive while an already accepted action callback is finishing.
                 if (!root.actionsIdle.IsSet || !root.combatTransitionsIdle.IsSet) return null;
                 return Finish();
+            }
+
+            private bool SkipOutsideRange(string line, DateTime time)
+            {
+                if (range is null || line.Length == 0 || time >= range.Start && time <= range.End) return false;
+                lines++;
+                if (time > range.End)
+                {
+                    // ACT stops at the first later timestamp, even if subsequent records go backwards.
+                    ending = true;
+                    cancellation.Cancel();
+                }
+                else
+                {
+                    // Recover preceding raw zone context without dispatching out-of-range plugin callbacks.
+                    lock (root.CombatGate) root.UpdateRawZone(line);
+                }
+                return true;
             }
 
             private bool TryDispatch(string line, DateTime detectedTime)
