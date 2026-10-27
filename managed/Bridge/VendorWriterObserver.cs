@@ -64,8 +64,13 @@ internal sealed class VendorWriterObserver
             Thread.Sleep(10);
         }
         var active = threads.Where(thread => thread.IsAlive).Select(thread => thread.Name ?? "unnamed").ToArray();
+        var remaining = timeout - elapsed.Elapsed;
+        if (!Monitor.TryEnter(queueGate, remaining > TimeSpan.Zero ? remaining : TimeSpan.Zero))
+            throw new InvalidOperationException("Vendor disk writer queue inspection timed out; pending count is unknown. " +
+                "This worker cannot be reused; stop the Host and start a new worker process.");
         int pending;
-        lock (queueGate) pending = queue.Count;
+        try { pending = queue.Count; }
+        finally { Monitor.Exit(queueGate); }
         // Never replace a callback installed later by plugin code. Live threads keep this observer
         // bound to the old Host; its worker must exit before another plugin can be constructed.
         if (active.Length == 0 && ReferenceEquals(callbackProperty.GetValue(mediator), callback))

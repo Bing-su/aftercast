@@ -12,14 +12,21 @@ internal static class VendorWriterLifecycleChecks
         Platform.Prepare();
         RunCase(false);
         RunCase(true);
+        RunCase(true, holdQueue: true);
         Console.WriteLine("Pinned vendor pending-queue shutdown and sticky unsafe-worker lifecycle checks passed.");
     }
-    private static void RunCase(bool liveProducer)
+    private static void RunCase(bool liveProducer, bool holdQueue = false)
     {
         var directory = Directory.CreateTempSubdirectory("aftercast-writer-lifecycle-");
         var session = new PluginSession();
         using var release = new ManualResetEventSlim();
-        var producer = new Thread(() => release.Wait()) { IsBackground = true, Name = "synthetic vendor producer" };
+        using var acquired = new ManualResetEventSlim();
+        object? queueGate = null;
+        var producer = new Thread(() =>
+        {
+            if (holdQueue) { lock (queueGate!) { acquired.Set(); release.Wait(); } }
+            else release.Wait();
+        }) { IsBackground = true, Name = "synthetic vendor producer" };
         try
         {
             session.Configure(directory.FullName);
@@ -48,7 +55,12 @@ internal static class VendorWriterLifecycleChecks
             var write = writer.GetType().GetMethod("WriteLine")!;
             var kind = logfile.GetType("FFXIV_ACT_Plugin.Logfile.LogMessageType", true)!;
             write.Invoke(writer, new[] { Enum.ToObject(kind, 0), (object)DateTime.UnixEpoch, "synthetic queued record" });
-            if (liveProducer) producer.Start();
+            if (liveProducer)
+            {
+                queueGate = VendorWriterObserver.Field(writer, "_LogQueueLock");
+                producer.Start();
+                if (holdQueue) Check(acquired.Wait(1500), "Synthetic queue lock was not acquired");
+            }
             var id = session.Add(path, plugin);
             var records = (Dictionary<long, PluginRecord>)typeof(PluginSession)
                 .GetField("plugins", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(session)!;
@@ -59,7 +71,8 @@ internal static class VendorWriterLifecycleChecks
             typeof(PluginSession).GetMethod("CaptureWriter", BindingFlags.Instance | BindingFlags.NonPublic)!
                 .Invoke(session, new object[] { record });
             var error = Reject(() => session.Deinitialize(id));
-            Check(error.Contains("1 pending record(s)", StringComparison.Ordinal), "Pending queue was silently discarded");
+            Check(error.Contains(holdQueue ? "queue inspection timed out" : "1 pending record(s)", StringComparison.Ordinal),
+                "Pending queue or unknown inspection was silently discarded");
             Check(session.Status(id).State == (int)PluginState.Stopped, "Instance must remain terminal");
             if (liveProducer)
             {

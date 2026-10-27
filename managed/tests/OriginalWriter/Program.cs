@@ -33,7 +33,7 @@ try
         var path = Path.Combine(deployment.FullName, "FFXIV_ACT_Plugin.Logfile.dll");
         File.WriteAllBytes(path, LinuxPluginCompatibility.RewriteLogfile(File.ReadAllBytes(path)));
     }
-    foreach (var scenario in new[] { "success", "io-open", "open-recovery", "write-failure", "flush-failure", "diagnostic-failure", "cancel-before-start", "cancel-after-flush", "dispose-enqueue", "live-producer", "callback-replacement", "restart" })
+    foreach (var scenario in new[] { "success", "io-open", "open-recovery", "write-failure", "flush-failure", "diagnostic-failure", "cancel-before-start", "cancel-after-flush", "dispose-enqueue", "live-producer", "locked-producer", "callback-replacement", "restart" })
         RunIsolated(scenario, deployment.FullName, temporary.FullName, patched);
     return 0;
 }
@@ -149,10 +149,18 @@ static int RunChild(string scenario, string deployment, string output, bool patc
     var writerType = logfile.GetType("FFXIV_ACT_Plugin.Logfile.LogOutput", true)!;
     var writer = Activator.CreateInstance(writerType, mediator, act, benchmark)!;
     using var producerRelease = new ManualResetEventSlim();
-    var producer = new Thread(() => producerRelease.Wait()) { IsBackground = true, Name = "synthetic producer" };
+    using var producerHasGate = new ManualResetEventSlim();
+    var producer = new Thread(() =>
+    {
+        if (scenario == "locked-producer")
+        {
+            lock (VendorWriterObserver.Field(writer, "_LogQueueLock")) { producerHasGate.Set(); producerRelease.Wait(); }
+        }
+        else producerRelease.Wait();
+    }) { IsBackground = true, Name = "synthetic producer" };
     if (scenario == "live-producer") producer.Start();
     var observer = new VendorWriterObserver(writer, mediator,
-        scenario == "live-producer" ? new[] { producer } : Array.Empty<Thread>(), message =>
+        scenario is "live-producer" or "locked-producer" ? new[] { producer } : Array.Empty<Thread>(), message =>
         {
             if (scenario == "diagnostic-failure") throw new IOException("Synthetic diagnostic sink failure");
             lock (observedMessages) observedMessages.Add(message);
@@ -224,6 +232,18 @@ static int RunChild(string scenario, string deployment, string output, bool patc
         new FinalLogProducer(() => write.Invoke(writer, new[] { Enum.ToObject(messageType, 0), (object)time, "final disposal record" })).Dispose();
     Action<DateTime, string> replacement = (_, _) => { };
     if (scenario == "callback-replacement") mediator.GetType().GetProperty("ProcessException")!.SetValue(mediator, replacement);
+    if (scenario == "locked-producer")
+    {
+        producer.Start();
+        Check(producerHasGate.Wait(1500), "Synthetic producer did not acquire queue lock");
+        var elapsed = Stopwatch.StartNew();
+        try { MustReject(() => observer.Finish(() => { }, TimeSpan.FromMilliseconds(100))); }
+        finally { producerRelease.Set(); Check(producer.Join(1500), "Queue-lock producer leaked"); }
+        Check(elapsed.Elapsed < TimeSpan.FromSeconds(2), "Queue-lock inspection exceeded its bounded deadline");
+        observer.Finish(() => { });
+        Report(new { scenario, patched, status = "passed", queueInspectionTimedOut = true, pendingCount = "unknown", producerJoined = true });
+        return 0;
+    }
     var observation = observer.Finish(() => { }, TimeSpan.Zero);
     Check(observation.PendingRecords == (scenario switch { "io-open" or "cancel-before-start" => 3, "cancel-after-flush" => 2, "dispose-enqueue" => 1, _ => 0 }), "Wrong final pending count");
     Check(observation.IoErrors == privateMessages.Count, "Private failure count was lost");

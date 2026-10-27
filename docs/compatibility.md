@@ -109,7 +109,8 @@ diagnostic failures cannot escape onto the writer thread. Observation begins at
 attachment, not before plugin initialization; it is not a complete error ledger.
 
 After DeInit and control/plugin/container disposal, a bounded owner-pumped wait
-checks known threads and reads the queue count under the vendor queue lock. A
+checks known threads and acquires the vendor queue lock within that same deadline.
+A lock timeout reports an unknown pending count and poisons worker reuse. A
 nonzero pending count, observed I/O failure or diagnostic failure makes cleanup
 report an error. The pending count is only a point-in-time count of records still
 in that queue; it excludes already dequeued, partially written or unacknowledged
