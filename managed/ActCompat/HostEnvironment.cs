@@ -166,8 +166,8 @@ namespace Aftercast.ActCompat
         public Tuple<long, string> Diagnostics => main.Errors;
         public string[] RecentDiagnostics => main.RecentDiagnostics;
         public Tuple<long, string[]> DiagnosticsSnapshot => main.DiagnosticsSnapshot;
-        public ImportResult ImportLog(string path, ImportRange? range = null) => main.ImportLog(path, range);
-        public void BeginImport(string path, ImportRange? range = null) => main.BeginImport(path, range);
+        public ImportResult ImportLog(string path, ImportRange? range = null, ImportTextOptions? text = null) => main.ImportLog(path, range, text);
+        public void BeginImport(string path, ImportRange? range = null, ImportTextOptions? text = null) => main.BeginImport(path, range, text);
         public ImportProgress ImportProgress => main.CurrentImportProgress;
         public ImportResult? AdvanceImport(bool cancel) => main.AdvanceImport(cancel);
         public TablePageData? ReadTable(TableQuery query) => main.ReadTable(query);

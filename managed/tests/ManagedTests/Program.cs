@@ -466,6 +466,7 @@ internal static class Program
             {
                 Check(Call("HostProbe", "Root") is not null);
                 Check((string)Call("StartupProbe", "Run")! == "original");
+                Check((string)Call("LogEncodingProbe", "Run")! == "Log encodings");
                 Check((string)Call("LogHostProbe", "Run")! == "Network_*.log");
                 Check((int)Call("MasterSwingProbe", "Run")! == 42);
                 var main = ActGlobals.oFormActMain!;
@@ -526,6 +527,7 @@ internal static class Program
         RootActionChecks.Run();
         HitRateColumnChecks.Run();
         ImportLogReaderChecks.Run();
+        HostLifetimeChecks.RunBounded(ImportEncodingChecks.Run);
         HostLifetimeChecks.RunBounded(TableColumnChecks.Run);
         HostLifetimeChecks.RunBounded(TableValueChecks.Run);
         ImportChecks.Run();

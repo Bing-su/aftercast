@@ -3,7 +3,7 @@ using System.Runtime.ExceptionServices;
 using System.Text;
 using Advanced_Combat_Tracker;
 
-internal static class ImportLogReaderChecks
+internal static partial class ImportLogReaderChecks
 {
     private static readonly Type ReaderType = typeof(ActGlobals).Assembly.GetType("Advanced_Combat_Tracker.ImportLogReader", true)!;
 
@@ -133,6 +133,7 @@ internal static class ImportLogReaderChecks
             }
         }
         finally { directory.Delete(recursive: true); }
-        Console.WriteLine("Import UTF-8 framing, partial reads, fixed-length boundaries and record limits passed.");
+        EncodingCases();
+        Console.WriteLine("Import strict UTF-8, selected encodings/BOM, partial reads, fixed-length boundaries and record limits passed.");
     }
 }

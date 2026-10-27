@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text;
 using System.Runtime.ExceptionServices;
 using System.Threading.Channels;
 using Aftercast.ActCompat;
@@ -16,6 +17,7 @@ namespace Advanced_Combat_Tracker
     public partial class FormActMain
     {
         private ImportOperation? activeImport;
+        public Encoding LogEncoding { get; set; } = new ImportTextOptions().Resolve();
 
         private void EnsureImportAdmission()
         {
@@ -60,18 +62,19 @@ namespace Advanced_Combat_Tracker
             }
         }
 
-        internal void BeginImport(string path, ImportRange? range = null)
+        internal void BeginImport(string path, ImportRange? range = null, ImportTextOptions? text = null)
         {
             ArgumentException.ThrowIfNullOrEmpty(path);
             if (!Path.IsPathFullyQualified(path)) throw new ArgumentException("An absolute import path is required", nameof(path));
             if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() == true)
                 throw new InvalidOperationException("Import must start outside a dispatched callback on the owner thread");
+            var encoding = text?.Resolve() ?? ImportTextOptions.Validate(LogEncoding);
             EnsureCanWaitForLogReader();
             lock (CombatGate)
             {
                 EnsureCombatOpen();
                 if (inCombat) throw new InvalidOperationException("End live combat before importing a log file");
-                activeImport = new ImportOperation(this, path, range);
+                activeImport = new ImportOperation(this, path, range, encoding, text?.DetectBom ?? true);
             }
             try { activeImport.Start(); }
             catch
@@ -91,9 +94,9 @@ namespace Advanced_Combat_Tracker
             finally { if (operation.Completed) lock (CombatGate) activeImport = null; }
         }
 
-        internal ImportResult ImportLog(string path, ImportRange? range = null)
+        internal ImportResult ImportLog(string path, ImportRange? range = null, ImportTextOptions? text = null)
         {
-            BeginImport(path, range);
+            BeginImport(path, range, text);
             while (true)
             {
                 var before = CurrentImportProgress;
@@ -104,7 +107,7 @@ namespace Advanced_Combat_Tracker
             }
         }
 
-        private sealed class ImportOperation(FormActMain root, string path, ImportRange? range)
+        private sealed class ImportOperation(FormActMain root, string path, ImportRange? range, Encoding encoding, bool detectBom)
         {
             internal int OwnerThread { get; } = Environment.CurrentManagedThreadId;
             internal bool Exclusive;
@@ -159,7 +162,7 @@ namespace Advanced_Combat_Tracker
                     var batch = new List<string>();
                     try
                     {
-                        using var reader = new ImportLogReader(path);
+                        using var reader = new ImportLogReader(path, encoding, detectBom);
                         Interlocked.Exchange(ref totalBytes, reader.TotalBytes);
                         var characters = 0;
                         while (await reader.ReadAsync(cancellation.Token).ConfigureAwait(false) is { } line)
