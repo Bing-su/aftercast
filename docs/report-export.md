@@ -58,8 +58,18 @@ probe are separate evidence, not a claim of native UI execution on Linux.
 
 ## Remaining delivery stages
 
-1. Expose request-owned catalog/selection/render via Bridge and typed Rust API,
-   with actual isolated worker tests for session/revision/stale input and replies.
+1. Bridge `TextReportCommand` and Rust `text_report_catalog` / `text_report` are
+   connected. Private session-bound revisions and encounter IDs reject old/foreign
+   selections before dispatch. The owner thread renders once; fixed 16 MiB reply
+   space includes worst-case JSON escaping of the managed 1 MiB output budget.
+   Requests are bounded to 256 KiB; ABI size/version/session/command/reserved fields,
+   strict UTF-8/JSON (including duplicate keys), reply identity/revision and catalog
+   counts/keys are validated. No callback capacity retry or automatic revision
+   retry occurs. Missing exact encounters return `None`.
+   Synthetic ABI and Rust malformed-envelope/body tests plus an actual isolated
+   worker fixture cover dynamic variables/sort keys, original owner/object callbacks,
+   descending order, Unicode, callback/invalid UTF-8/output-limit errors, registry
+   mutation, removed selection, recovery, shutdown and stale IDs after restart.
 2. Connect existing Rust/UI controls for explicit encounter/template/options,
    draft/preview ownership and new-file export. Test synthetic temporary paths,
    byte encoding, refusal of overwrite, atomic failure/cancel and late replies.
@@ -70,7 +80,7 @@ probe are separate evidence, not a claim of native UI execution on Linux.
 4. L7c synthetic ODBC/schema/sink work and the shared L9d output preference audit
    remain separate. No external upload/service/real database has been accessed.
 
-L7b is **not complete** at the managed checkpoint. No Rust report route, GUI report
-editor, file export, HTML/table-XML serializer or ODBC writer is claimed yet.
+L7b is **not complete** at the Bridge/Rust checkpoint. No GUI report editor, file
+export, HTML/table-XML serializer or ODBC writer is claimed yet.
 L6b OS clipboard provider remains approval-blocked and has not been retried;
 WinForms bridge remains plan-only.

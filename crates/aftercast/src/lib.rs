@@ -39,9 +39,11 @@ mod plugins;
 mod process;
 mod runtime;
 pub use process::{run_child_if_requested, run_child_if_requested_with_audio};
+mod reports;
 mod snapshots;
 mod speech;
 mod tables;
+pub use reports::{TextReport, TextReportCatalog, TextReportOptions, TextReportRevision};
 mod timers;
 pub use tables::{
     TableCatalog, TableCategory, TableCell, TableCellError, TableColumn, TableLevel, TablePage,
@@ -79,6 +81,8 @@ pub use snapshots::{CombatRevision, CombatSnapshot, CombatSnapshotStatus, Combat
 #[derive(Debug, thiserror::Error)]
 #[non_exhaustive]
 pub enum Error {
+    #[error("invalid text report request or response: {0}")]
+    InvalidReportRequest(String),
     #[error("invalid companion request or response: {0}")]
     InvalidCompanionRequest(String),
     #[error("invalid table request or response: {0}")]

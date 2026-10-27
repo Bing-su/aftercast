@@ -51,6 +51,7 @@ pub(crate) struct ManagedSession {
     history_operation: ManagedFunctionWithDefaultSignature,
     table_command: ManagedFunctionWithDefaultSignature,
     companion_command: ManagedFunctionWithDefaultSignature,
+    text_report_command: ManagedFunctionWithDefaultSignature,
     session: u64,
     running: bool,
     // Keep the native library and delegate loader alive for every managed function call.
@@ -112,6 +113,7 @@ impl ManagedSession {
         let history_operation = function(pdcstr!("HistoryOperation"))?;
         let table_command = function(pdcstr!("TableCommand"))?;
         let companion_command = function(pdcstr!("CompanionCommand"))?;
+        let text_report_command = function(pdcstr!("TextReportCommand"))?;
         let mut host = Self {
             entry,
             read_error,
@@ -131,6 +133,7 @@ impl ManagedSession {
             history_operation,
             table_command,
             companion_command,
+            text_report_command,
             session: 0,
             running: false,
             _loader: loader,
@@ -180,6 +183,7 @@ impl ManagedSession {
             Request::History => (&self.history_operation, 17),
             Request::Tables => (&self.table_command, 18),
             Request::Companions => (&self.companion_command, 19),
+            Request::Reports => (&self.text_report_command, 20),
         };
         let length = i32::try_from(packet.len())
             .map_err(|error| Error::InvalidPluginRequest(error.to_string()))?;
