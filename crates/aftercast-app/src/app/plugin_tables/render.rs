@@ -87,6 +87,20 @@ fn OpenRow(view: View, target: Option<TableScope>) -> Element {
         }
     }
 }
+// Keep RSX outside renderer closures so rustfmt and dx fmt agree on their shape.
+fn row_link(view: View, target: Option<TableScope>) -> Element {
+    rsx! {
+        OpenRow { view, target }
+    }
+}
+fn row_cell(row: &Row, index: usize) -> Element {
+    let Some(cell) = row.cells.get(index) else {
+        return rsx! {};
+    };
+    rsx! {
+        CellView { cell: cell.clone() }
+    }
+}
 #[component]
 pub(super) fn Grid(page: TablePage, level: TableLevel, view: View) -> Element {
     let labels = page.columns.clone();
@@ -103,9 +117,7 @@ pub(super) fn Grid(page: TablePage, level: TableLevel, view: View) -> Element {
     let mut renderers = HashMap::<ColumnId, RowCellRenderer<Row>>::new();
     renderers.insert(
         ColumnId("open-row"),
-        Arc::new(move |row, _| rsx! {
-            OpenRow { view, target: next(row, level) }
-        }),
+        Arc::new(move |row, _| row_link(view, next(row, level))),
     );
     for (index, column) in labels.into_iter().enumerate() {
         let Some(slot) = SLOTS.get(index) else {
@@ -122,16 +134,7 @@ pub(super) fn Grid(page: TablePage, level: TableLevel, view: View) -> Element {
                     .map_or(CellValue::Empty, CellValue::Text)
             },
         ));
-        renderers.insert(
-            id,
-            Arc::new(move |row, _| {
-                row.cells
-                    .get(index)
-                    .map_or_else(|| rsx! {}, |cell| rsx! {
-                        CellView { cell: cell.clone() }
-                    })
-            }),
-        );
+        renderers.insert(id, Arc::new(move |row, _| row_cell(row, index)));
     }
     let handle = use_table(move || {
         let mut table = TableState::new(rows.clone(), definitions.clone());
