@@ -200,6 +200,14 @@ async fn range_cancel_and_shutdown(
     range: aftercast::ImportRange,
 ) {
     let handle = host.handle();
+    let before = handle
+        .encounters(0, 100)
+        .await
+        .expect("before cancellation")
+        .items
+        .into_iter()
+        .map(|row| row.id)
+        .collect::<Vec<_>>();
     std::fs::write(input, "1|1\n".repeat(100_000)).expect("long synthetic source");
     let job = handle
         .start_import_range(input, range)
@@ -222,15 +230,7 @@ async fn range_cancel_and_shutdown(
             .expect("live state restored")
             .is_none()
     );
-    assert!(
-        handle
-            .encounters(0, 100)
-            .await
-            .expect("partial graph")
-            .items
-            .iter()
-            .any(|row| row.status == aftercast::EncounterStatus::PartialImport && row.damage > 0)
-    );
+    assert_canceled_range_partial(&handle, &before).await;
     std::fs::write(input, "1|100\n").expect("reuse source");
     assert_eq!(
         handle
@@ -282,4 +282,24 @@ async fn wait_range_progress(handle: &aftercast::HostHandle, job: &aftercast::Im
         assert!(Instant::now() < deadline, "no range progress");
         tokio::time::sleep(Duration::from_millis(1)).await;
     }
+}
+
+async fn assert_canceled_range_partial(
+    handle: &aftercast::HostHandle,
+    before: &[aftercast::EncounterId],
+) {
+    let graph = handle.encounters(0, 100).await.expect("after cancellation");
+    let added = graph
+        .items
+        .iter()
+        .filter(|row| !before.contains(&row.id))
+        .collect::<Vec<_>>();
+    assert_eq!(
+        added.len(),
+        1,
+        "this canceled range must retain its own partial encounter"
+    );
+    let partial = added.first().expect("new partial encounter");
+    assert_eq!(partial.status, aftercast::EncounterStatus::PartialImport);
+    assert!(partial.damage > 0);
 }
