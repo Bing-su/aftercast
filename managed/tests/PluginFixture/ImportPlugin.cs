@@ -83,3 +83,23 @@ public class ToggleObserverPlugin : IActPluginV1
         File.AppendAllText(Path.Combine(root!.AppDataFolder.FullName, "toggle.observed"), info.logLine + "\n");
     public void DeInitPlugin() => root!.OnLogLineRead -= Read;
 }
+
+// A second actor edits the registry during an owned synthetic import, without GUI drafts being updated.
+public class TriggerMutationPlugin : IActPluginV1
+{
+    private readonly ImportPlugin parser = new();
+    private FormActMain? root;
+    private int changes;
+    public void InitPlugin(TabPage tab, Label status)
+    {
+        parser.InitPlugin(tab,status);
+        root=ActGlobals.oFormActMain!;
+        root.OnLogLineRead+=Change;
+    }
+    private void Change(bool import,LogLineEventArgs info)
+    {
+        if (import && info.originalLogLine.EndsWith("|edit-trigger",StringComparison.Ordinal))
+            root!.AddEditCustomTrigger(new CustomTrigger("fixture-external-"+(++changes),"external"));
+    }
+    public void DeInitPlugin() {root!.OnLogLineRead-=Change;parser.DeInitPlugin();}
+}
