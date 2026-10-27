@@ -467,6 +467,7 @@ internal static class Program
                 Check(Call("HostProbe", "Root") is not null);
                 Check((string)Call("StartupProbe", "Run")! == "original");
                 Check((string)Call("LogEncodingProbe", "Run")! == "Log encodings");
+                Check((string)Call("CompanionPathProbe", "Run")! == "Companion paths");
                 Check((string)Call("LogHostProbe", "Run")! == "Network_*.log");
                 Check((int)Call("MasterSwingProbe", "Run")! == 42);
                 var main = ActGlobals.oFormActMain!;

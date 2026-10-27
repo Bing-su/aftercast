@@ -72,5 +72,7 @@ clicks, focus and Windows runtime/input remain separate QA.
 | Companion logs            | A real ACT pipeline gap. Linux can test synthetic synchronized streams, cancellation/ordering, missing files and cleanup. This requires companion registration/dispatch and bounded multi-reader ownership beyond the single-file range unit. Native plugin-specific companion effects still need Windows QA.                            |
 | Automatic source matching | Folder/character hints do not establish identity. Keep explicit source selection for this unit; evaluate ACT's metadata-based matching separately with missing/ambiguous-file behavior.                                                                                                                                                  |
 
-Live-follower encoding, companion dispatch and automatic source matching remain
-tracked follow-ups. See the encoding contract for the supported decoder scope and native QA limits.
+Live-follower encoding is implemented with the [documented reference limits](follower-encoding.md).
+Companion dispatch and automatic source matching remain tracked in the finite
+[companion/source continuation](companion-source-plan.md). See the encoding contract
+for the supported decoder scope and native QA limits.

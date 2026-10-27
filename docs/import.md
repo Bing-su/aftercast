@@ -45,8 +45,9 @@ Inclusive source date windows are available through `ImportRange`,
 The desktop Import / Export pane exposes a separate original-source range form;
 checkpoint restoration stays separate. Drafts survive errors/cancellation/host stop,
 and accepted import cleanup continues across navigation.
-Companion files, encodings other than strict UTF-8 and remaining ACT import UI
-options are unsupported.
+Selected encodings and explicit error policies are supported; see [import encodings](import-encoding.md).
+Companion reader/dispatch and automatic source matching remain pending; their
+bounded continuation is tracked in [companion/source work](companion-source-plan.md).
 The public ACT data graph remains mutable for compatibility; direct concurrent
 replacement of its collections bypasses the host's coordination.
 

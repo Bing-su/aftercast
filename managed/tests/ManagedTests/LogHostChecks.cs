@@ -49,6 +49,7 @@ internal static class LogHostChecks
         HistoricalZone();
         EncodingSnapshot();
         LogInitialZoneChecks.Run();
+        CompanionCatalogChecks.Run();
     }
 
     private static void ReopenFromCallback()
