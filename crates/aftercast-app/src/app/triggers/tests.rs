@@ -257,5 +257,6 @@ async fn trigger_ui_contract_preserves_drafts_and_session_bound_work() {
     drafts(&host, &mut ui).await;
     pending_requests(&mut ui);
     deletion_and_pages(&host, &mut ui, root).await;
+    super::super::notifications::test_contract(&host, &mut ui).await;
     host.shutdown().await.expect("owned worker cleanup");
 }

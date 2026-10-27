@@ -515,3 +515,62 @@ test('trigger drafts, conflicts, results and persistence follow host ownership',
   expect(browserErrors).toEqual([]);
   await quit();
 });
+
+test('notification Show follows host ownership across navigation and restart', async () => {
+  const plugin = path.resolve(target, '../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll');
+  await fs.writeFile(path.join(directory, 'config.toml'), `schema_version = 1\n[ui]\nlanguage = "en-US"\n[host]\nplugins = [${JSON.stringify(plugin)}]\n[host.plugin_types]\n${JSON.stringify(plugin)} = "Aftercast.PluginFixture.NotificationPlugin"\n`);
+  const open = () => page.getByRole('button', { name: 'Notifications', exact: true }).click();
+  const entry = (title: string) => page.locator('main .accordion').filter({ has: page.locator('.accordion-trigger span').filter({ hasText: new RegExp(`^${title}$`) }) });
+  await start();
+  await open();
+  await expect(page.getByText('Start the host to inspect notifications.', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Start host', exact: true }).click();
+  const repeat = entry('repeat');
+  await expect(repeat.getByRole('button', { name: 'Show', exact: true })).toBeEnabled();
+  // Same-turn duplicate admission and unmount must not dispatch two callbacks or lose the first reply.
+  await repeat.getByRole('button', { name: 'Show', exact: true }).evaluate((button: HTMLButtonElement) => {
+    button.click(); button.click();
+    [...document.querySelectorAll('button')].find(item => item.textContent?.trim() === 'Settings')?.click();
+  });
+  await expect(page.getByRole('heading', { name: 'Settings', exact: true })).toBeVisible();
+  await open();
+  await expect(repeat.getByText('Read', { exact: true })).toBeVisible();
+  await page.getByRole('button', { name: 'Refresh notifications', exact: true }).click();
+  await expect(entry('shown')).toHaveCount(1);
+  await repeat.getByRole('button', { name: 'Show', exact: true }).click();
+  await expect(repeat.getByRole('button', { name: 'Show', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Refresh notifications', exact: true }).click();
+  await expect(entry('shown')).toHaveCount(2);
+  const disposed = entry('disposed').getByRole('button', { name: 'Show', exact: true });
+  await disposed.click();
+  await expect(disposed).toBeDisabled();
+  await entry('throws').getByRole('button', { name: 'Show', exact: true }).click();
+  await expect(entry('throws').getByRole('button', { name: 'Show', exact: true })).toBeDisabled();
+  await expect(entry('throws').getByRole('alert')).toContainText('Notification Show failed');
+  await expect(entry('no action').getByRole('button', { name: 'Show', exact: true })).toBeDisabled();
+  await entry('fill').getByRole('button', { name: 'Show', exact: true }).click();
+  await page.getByRole('button', { name: 'Refresh notifications', exact: true }).click();
+  await expect(entry('retention')).toHaveCount(16);
+  await expect(page.getByText(/Omitted notifications:/)).not.toHaveText('Omitted notifications: 0');
+  await page.getByRole('button', { name: 'Next', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Previous', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Previous', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Previous', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Stop host', exact: true }).click();
+  await expect(entry('retention')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Start host', exact: true })).toBeEnabled();
+  await page.getByRole('button', { name: 'Start host', exact: true }).click();
+  await expect(entry('repeat')).toHaveCount(1);
+  await expect(entry('shown')).toHaveCount(0);
+  await expect(entry('repeat').getByText('Unread', { exact: true })).toBeVisible();
+  await entry('repeat').getByRole('button', { name: 'Show', exact: true }).evaluate((button: HTMLButtonElement) => {
+    button.click();
+    [...document.querySelectorAll('button')].find(item => item.textContent?.trim() === 'Stop host')?.click();
+  });
+  await expect(page.getByRole('button', { name: 'Start host', exact: true })).toBeEnabled();
+  await expect(entry('repeat')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Start host', exact: true }).click();
+  await expect(entry('repeat').getByText('Unread', { exact: true })).toBeVisible();
+  await expect(entry('shown')).toHaveCount(0);
+  await quit();
+});

@@ -182,3 +182,15 @@ trigger-rebase = Keep draft on reviewed revision
 trigger-keep-as-new = Keep draft as new trigger
 trigger-latest-saved = Latest saved values
 trigger-unknown-sound = Unrecognized sound type; choose a supported type before saving
+
+notifications = Notifications
+notifications-help = Inspect retained notifications. Show runs the action supplied by its plugin. Successful actions can be used again; failed or disposed actions are disabled. Stopping the host clears this history.
+notifications-start = Start the host to inspect notifications.
+notifications-working = Waiting for the host…
+notifications-refresh = Refresh notifications
+notifications-omitted = Omitted notifications:
+notifications-empty = No notifications on this page.
+notification-read = Read
+notification-unread = Unread
+notification-show = Show
+showing-notification = Running notification action…

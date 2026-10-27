@@ -182,3 +182,15 @@ trigger-rebase = 확인한 버전을 기준으로 초안 유지
 trigger-keep-as-new = 초안을 새 트리거로 유지
 trigger-latest-saved = 최신 저장값
 trigger-unknown-sound = 알 수 없는 소리 종류입니다. 지원하는 종류를 선택한 뒤 저장하세요.
+
+notifications = 알림
+notifications-help = 보존된 알림을 확인합니다. 보기는 플러그인이 제공한 동작을 실행합니다. 성공한 동작은 다시 실행할 수 있으며 실패했거나 해제된 동작은 비활성화됩니다. 호스트를 중지하면 알림 기록이 지워집니다.
+notifications-start = 호스트를 시작하면 알림을 확인할 수 있습니다.
+notifications-working = 호스트 응답을 기다리는 중…
+notifications-refresh = 알림 새로고침
+notifications-omitted = 누락된 알림 수:
+notifications-empty = 이 페이지에 알림이 없습니다.
+notification-read = 읽음
+notification-unread = 읽지 않음
+notification-show = 보기
+showing-notification = 알림 동작 실행 중…

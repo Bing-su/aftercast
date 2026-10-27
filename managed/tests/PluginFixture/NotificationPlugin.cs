@@ -22,6 +22,8 @@ public sealed class NotificationPlugin : IActPluginV1
             if (!ReferenceEquals(sender,actual) || Environment.CurrentManagedThreadId != owner ||
                 !ReferenceEquals(context,SynchronizationContext.Current) || ReferenceEquals(previous,args))
                 throw new Exception("Notification callback ownership changed");
+            // Keep the synthetic request pending while GUI duplicate/Stop events are admitted.
+            Thread.Sleep(100);
             previous = args;
             root.NotificationAdd("shown", (++calls).ToString());
         }, sender);

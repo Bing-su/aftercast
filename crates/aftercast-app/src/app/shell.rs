@@ -11,7 +11,16 @@ pub(super) fn Header() -> Element {
             nav {
                 class: "flex min-w-0 flex-1 overflow-x-auto",
                 "aria-label": tr("navigation"),
-                for screen in ["analysis", "triggers", "plugins", "import", "history", "settings"] {
+                for screen in [
+                    "analysis",
+                    "triggers",
+                    "notifications",
+                    "plugins",
+                    "import",
+                    "history",
+                    "settings",
+                ]
+                {
                     button {
                         class: "workflow-tab shrink-0 px-4 text-sm min-[1280px]:px-5 min-[1280px]:text-base text-muted-foreground hover:bg-accent hover:text-foreground aria-[current=page]:border-primary aria-[current=page]:bg-accent aria-[current=page]:text-primary disabled:cursor-default disabled:opacity-40",
                         "aria-current": if state.read().screen == screen { "page" } else { "false" },

@@ -1,6 +1,7 @@
 mod analysis;
 mod encounter_context;
 mod log_window;
+mod notifications;
 mod plugins;
 mod preferences;
 mod shell;
@@ -40,6 +41,7 @@ enum Phase {
     Importing,
     Archiving,
     UpdatingTriggers,
+    ShowingNotification,
     ChangingPlugins,
     Stopping,
 }
@@ -54,6 +56,7 @@ impl Phase {
             Self::Importing => "importing",
             Self::Archiving => "archiving",
             Self::UpdatingTriggers => "updating-triggers",
+            Self::ShowingNotification => "showing-notification",
             Self::ChangingPlugins => "changing-plugins",
             Self::Stopping => "stopping",
         }
@@ -85,6 +88,7 @@ struct AppState {
     log_windows: std::sync::Arc<log_window::WindowLifetime>,
     plugins: Vec<LoadedPlugin>,
     triggers: triggers::EditorState,
+    notifications: notifications::NotificationState,
     plugin_ui_pending: bool,
     startup_failed: bool,
     failed_plugin: Option<String>,
@@ -141,6 +145,7 @@ impl AppState {
             log_windows: Default::default(),
             plugins: Vec::new(),
             triggers: Default::default(),
+            notifications: Default::default(),
             plugin_ui_pending: false,
             startup_failed: false,
             failed_plugin: None,
@@ -249,7 +254,8 @@ pub fn App() -> Element {
                     | Phase::Importing
                     | Phase::Archiving
                     | Phase::ChangingPlugins
-                    | Phase::UpdatingTriggers => {
+                    | Phase::UpdatingTriggers
+                    | Phase::ShowingNotification => {
                         stop(state);
                     }
                     Phase::Idle if !state.read().saving => {
@@ -303,6 +309,9 @@ pub fn App() -> Element {
                         },
                         "triggers" => rsx! {
                             triggers::TriggersPane {}
+                        },
+                        "notifications" => rsx! {
+                            notifications::NotificationsPane {}
                         },
                         "import" => rsx! {
                             analysis::ImportPane {}
@@ -458,6 +467,7 @@ fn stop(mut state: Signal<AppState>) {
         state.encounters.clear();
         state.plugins.clear();
         state.triggers = Default::default();
+        state.notifications = Default::default();
         state.plugin_ui_pending = false;
         state.loading = false;
     }

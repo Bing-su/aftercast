@@ -26,15 +26,30 @@ occurs outside that lock so a callback may add another notification safely. The
 bounded retention policy is an aftercast resource limit, not a claim about ACT's
 unbounded history behavior.
 
-## Next transport and GUI unit
+## Rust transport and GUI
 
-This managed model is not yet exposed through the Rust Host API or a notification
-pane. The next unit must use opaque session-owned notification IDs/cursors, reject
-IDs from older worker sessions, and dispatch Show through `PluginSession.OnOwner`.
-The GUI must use existing Rust/UI components, prevent concurrent duplicate requests,
-keep successful Show actions available after completion, and ignore stale replies
-after stop/restart/navigation. Read-only marking, mark-all and clear-read controls
-are subsequent ACT history operations, not implied by the current Show method.
+`HostHandle::notifications` returns owned records and an opaque session-owned cursor.
+`show_notification` accepts an opaque notification ID and invokes the callback through
+`PluginSession.OnOwner`. Old-session IDs/cursors are rejected before dispatch. The
+fixed ABI reply capacity and command fields are validated before invoking any callback.
+Delegates and sender objects never cross the process boundary.
+
+The Notifications tab uses the existing Rust/UI Button, Badge and Accordion components.
+It displays receipt time, text, per-entry read state, Show availability/failure and the
+cumulative omission count. First-page refresh and previous/next paging retain owned
+records. A full final page can lead to an empty next page; Previous remains available.
+Refresh is explicit; this pane does not poll or claim a global unread count.
+
+The controller admits one request at a time. An explicit Show blocks other host mutations
+until completion but remains independent of pane lifetime. Navigating away does not cancel
+or repeat the action, and completion does not change the selected screen. Stop/quit
+invalidates the UI session and clears history; replies from older sessions cannot update
+new state or clear a newer request. A successful Show remains available for a later
+intentional click. An acknowledged Show is never automatically retried after an error.
+
+Mark-all, direct mark-read without Show, clear-read and badge-blinking controls remain
+subsequent ACT history operations. Native callback effects remain platform-dependent;
+the partial WinForms rendering bridge is still planning only.
 
 Synthetic managed tests cover owner identity, original sender/fresh event arguments,
 repeat clicks, reentrant additions, absent handlers, disposed targets, callback
