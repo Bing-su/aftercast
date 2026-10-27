@@ -1,5 +1,6 @@
 mod analysis;
 mod encounter_context;
+mod history;
 mod log_window;
 mod notifications;
 mod plugins;
@@ -41,6 +42,7 @@ enum Phase {
     Ready,
     Importing,
     Archiving,
+    ReadingHistory,
     UpdatingTriggers,
     UpdatingTimers,
     ShowingNotification,
@@ -57,6 +59,7 @@ impl Phase {
             Self::Ready => "ready",
             Self::Importing => "importing",
             Self::Archiving => "archiving",
+            Self::ReadingHistory => "reading-history",
             Self::UpdatingTriggers => "updating-triggers",
             Self::UpdatingTimers => "updating-timers",
             Self::ShowingNotification => "showing-notification",
@@ -92,6 +95,7 @@ struct AppState {
     plugins: Vec<LoadedPlugin>,
     triggers: triggers::EditorState,
     timers: timers::EditorState,
+    history: history::BrowserState,
     notifications: notifications::NotificationState,
     plugin_ui_pending: bool,
     startup_failed: bool,
@@ -150,6 +154,7 @@ impl AppState {
             plugins: Vec::new(),
             triggers: Default::default(),
             timers: Default::default(),
+            history: Default::default(),
             notifications: Default::default(),
             plugin_ui_pending: false,
             startup_failed: false,
@@ -258,6 +263,7 @@ pub fn App() -> Element {
                     | Phase::Initializing
                     | Phase::Importing
                     | Phase::Archiving
+                    | Phase::ReadingHistory
                     | Phase::ChangingPlugins
                     | Phase::UpdatingTimers
                     | Phase::UpdatingTriggers
@@ -312,6 +318,9 @@ pub fn App() -> Element {
                         },
                         "plugins" => rsx! {
                             plugins::PluginsPane {}
+                        },
+                        "history" => rsx! {
+                            history::HistoryPane {}
                         },
                         "timers" => rsx! {
                             timers::TimersPane {}
@@ -477,6 +486,7 @@ fn stop(mut state: Signal<AppState>) {
         state.plugins.clear();
         state.triggers = Default::default();
         state.timers = Default::default();
+        state.history = Default::default();
         state.notifications = Default::default();
         state.plugin_ui_pending = false;
         state.loading = false;
@@ -702,7 +712,7 @@ fn archive_history(mut state: Signal<AppState>, restore: bool) {
     };
     let session = state.read().revision.session;
     if restore {
-        state.read().log_windows.invalidate();
+        state.write().invalidate_restored_context();
     }
     state.write().phase = Phase::Archiving;
     let message = tr(if restore {
@@ -722,22 +732,14 @@ fn archive_history(mut state: Signal<AppState>, restore: bool) {
         }
         // Also invalidate a window queued during restore, before its result became known.
         if restore {
-            state.read().log_windows.invalidate();
+            state.write().invalidate_restored_context();
         }
         state.write().phase = Phase::Ready;
         match result {
             Ok(count) => {
                 let mut current = state.write();
                 current.message = format!("{message}: {count}");
-                if restore {
-                    current.revision.selection += 1;
-                    current.selected = None;
-                    current.detail = None;
-                    current.detail_loading = false;
-                    current.attacks.clear();
-                    current.combatant = None;
-                    current.category = None;
-                }
+                current.history.invalidate_snapshot();
             }
             Err(error) => state.write().fail(error),
         }

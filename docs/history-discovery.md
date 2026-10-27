@@ -58,10 +58,29 @@ restart verifies release of the worker lease. This last case does not force a
 long-running restore at the moment of shutdown; exact pending Stop rejection is
 covered by the managed lifecycle test and shared operation implementation.
 
-Next: existing Rust/UI query/selection controls. Preserve selection only within its
-snapshot, reject stale responses across worker/query generations, and reuse existing
-restore invalidation for Analysis and independent log windows. Native calendar/file
-dialog behavior and Windows clicks remain unverified.
+## History GUI
+
+The History workspace uses the existing Rust/UI Accordion, Button, Input, Label
+and Badge components. Search drafts remain separate from the applied result query;
+paging keeps selection only within the same snapshot. Dates are inclusive civil
+days, exact times are exclusive at the end, and invalid precision/timezone/leap-second
+inputs are rejected without changing the draft.
+
+| Transition         | Controller contract                                                                                                                                                 |
+| ------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Query cancellation | Ignore the accepted read's late success/error, but keep the operation busy until it finishes.                                                                       |
+| Confirmation       | Freeze snapshot IDs; cancel/reopen and selection changes invalidate old confirmation buttons.                                                                       |
+| Restore            | Require an initialized parser; invalidate Analysis and independent log-window references both before and after the attempt, including failures.                     |
+| Navigation/stop    | App-owned work survives pane navigation; session/query tokens reject responses after session reset. Accepted restore work follows the Host shutdown drain contract. |
+| Failed restore     | Keep the error, require refreshed metadata and explicit selection/confirmation; never implicitly retry restoration.                                                 |
+
+`mise run test:gui-state` exercises a real isolated Host with 20 same-time synthetic
+checkpoints across restart, pages, search changes/cancellation, stale catalog and
+corrupt payload failures, selected restore and retained action/log identity. It also
+checks late responses after session reset. This is controller coverage, not native
+window input or a forced mid-restore shutdown test. The Windows desktop scenario
+covers search, invalid dates, confirmation cancel, navigation and selected restore;
+Windows clicks remain unexecuted on ser7.
 
 ## Source-log reparse follow-up
 

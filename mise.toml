@@ -418,6 +418,6 @@ run = [
 ]
 
 [tasks."test:gui-state"]
-description = "Test trigger, timer and notification GUI controller contracts against an isolated Host without native clicks"
+description = "Test history, trigger, timer and notification GUI controller contracts against an isolated Host without native clicks"
 depends = ["test:plugins"]
-run = "cargo test -p aftercast-app trigger_ui_contract -- --ignored"
+run = "cargo test -p aftercast-app ui_contract -- --ignored"
