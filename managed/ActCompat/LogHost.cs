@@ -265,7 +265,11 @@ public partial class FormActMain
         finally
         {
             try { if (disposing) StopCombatProcessing(); }
-            finally { base.Dispose(disposing); }
+            finally
+            {
+                try { if (disposing) DisposePluginSettingsWindow(); }
+                finally { base.Dispose(disposing); }
+            }
         }
     }
 }

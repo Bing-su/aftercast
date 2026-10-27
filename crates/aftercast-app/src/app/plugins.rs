@@ -1,4 +1,4 @@
-use super::{AppState, Phase, save_settings, tr};
+use super::{AppState, Phase, plugin_ui_action, save_settings, start, tr};
 use crate::components::{Badge, Button, ButtonVariant, Input, Label};
 use dioxus::prelude::*;
 
@@ -33,10 +33,50 @@ pub(super) fn PluginsPane() -> Element {
                         icons::Puzzle { class: "size-5 shrink-0 text-muted-foreground" }
                         div { class: "min-w-0 flex-1",
                             strong { class: "block truncate text-sm", "{path}" }
-                            if let Some((_, status)) = state.read().plugins.get(index) {
+                            if state.read().settings.host.disabled_plugins.contains(path) {
+                                Badge { class: "mt-2".to_owned(), {tr("disabled")} }
+                            }
+                            if state.read().failed_plugin.as_ref() == Some(path) {
+                                Badge { class: "mt-2".to_owned(), {tr("plugin-startup-failed")} }
+                            }
+                            if let Some(plugin) = state
+                                .read()
+                                .plugins
+                                .iter()
+                                .find(|plugin| &plugin.path == path)
+                                .cloned()
+                            {
                                 Badge { class: "mt-2 font-normal".to_owned(),
                                     {tr("plugin-status")}
-                                    " {status}"
+                                    " {plugin.status}"
+                                }
+                                div { class: "mt-3 flex flex-wrap items-center gap-2",
+                                    Button {
+                                        variant: ButtonVariant::Outline,
+                                        disabled: state.read().phase != Phase::Ready || state.read().plugin_ui_pending
+                                            || plugin.info.settings != aftercast::PluginSettings::Available,
+                                        onclick: move |_| plugin_ui_action(state, plugin.id, true),
+                                        {tr("open-plugin-settings")}
+                                    }
+                                    Button {
+                                        variant: ButtonVariant::Ghost,
+                                        disabled: state.read().phase != Phase::Ready || state.read().plugin_ui_pending,
+                                        onclick: move |_| plugin_ui_action(state, plugin.id, false),
+                                        {tr("refresh-plugin-status")}
+                                    }
+                                    span { class: "text-xs text-muted-foreground",
+                                        {
+                                            tr(
+                                                match plugin.info.settings {
+                                                    aftercast::PluginSettings::UnsupportedPlatform => {
+                                                        "plugin-settings-unsupported"
+                                                    }
+                                                    aftercast::PluginSettings::NoPage => "plugin-settings-unavailable",
+                                                    aftercast::PluginSettings::Available => "plugin-settings-available",
+                                                },
+                                            )
+                                        }
+                                    }
                                 }
                             }
                             {
@@ -60,6 +100,19 @@ pub(super) fn PluginsPane() -> Element {
                                 }
                             }
                         }
+                        {
+                            let path = path.clone();
+                            let enabled = !state.read().settings.host.disabled_plugins.contains(&path);
+                            rsx! {
+                                Button {
+                                    variant: ButtonVariant::Outline,
+                                    disabled,
+                                    aria_pressed: enabled,
+                                    onclick: move |_| toggle_plugin(state, &path),
+                                    {tr(if enabled { "disable-plugin" } else { "enable-plugin" })}
+                                }
+                            }
+                        }
                         Button {
                             variant: ButtonVariant::Ghost,
                             disabled: disabled || index == 0,
@@ -70,7 +123,11 @@ pub(super) fn PluginsPane() -> Element {
                             variant: ButtonVariant::Ghost,
                             disabled,
                             onclick: move |_| {
-                                state.write().settings.host.plugins.remove(index);
+                                let mut current = state.write();
+                                if let Some(path) = current.settings.host.plugins.get(index).cloned() {
+                                    current.settings.host.plugins.remove(index);
+                                    current.settings.host.disabled_plugins.retain(|entry| entry != &path);
+                                }
                             },
                             {tr("remove")}
                         }
@@ -78,7 +135,10 @@ pub(super) fn PluginsPane() -> Element {
                 }
             }
             p { class: "my-6 max-w-[70ch] text-xs leading-7 text-muted-foreground",
-                {tr("native-ui-planned")}
+                {tr("plugin-restart-policy")}
+            }
+            if state.read().startup_failed {
+                Button { disabled, onclick: move |_| start(state), {tr("retry-plugin-startup")} }
             }
             Button {
                 variant: ButtonVariant::Outline,
@@ -126,4 +186,26 @@ fn add_plugin(mut state: Signal<AppState>) {
         }
         state.write().settings.host.plugins.push(path.to_string());
     });
+}
+
+fn toggle_plugin(mut state: Signal<AppState>, path: &str) {
+    if state.read().phase != Phase::Idle || state.read().saving {
+        return;
+    }
+    let mut current = state.write();
+    if current
+        .settings
+        .host
+        .disabled_plugins
+        .iter()
+        .any(|entry| entry == path)
+    {
+        current
+            .settings
+            .host
+            .disabled_plugins
+            .retain(|entry| entry != path);
+    } else {
+        current.settings.host.disabled_plugins.push(path.to_owned());
+    }
 }

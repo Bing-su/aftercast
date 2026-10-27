@@ -87,19 +87,19 @@ the embedded runtime; other values resolve to an external runtime directory.
 Relative plugin and log paths also resolve from the executable, independently of
 the working directory. Invalid configuration is reported and never silently reset.
 
-| Source                                              | Responsibility and extension boundary                                                               |
-| --------------------------------------------------- | --------------------------------------------------------------------------------------------------- |
-| `src/main.rs`                                       | Common CLI parsing, authenticated child dispatch before GUI startup, logging and window setup       |
-| `src/app.rs`                                        | Shared async session state and host operations; rejects stale session/selection responses           |
-| `src/app/shell.rs`                                  | Navigation, encounters and application actions                                                      |
-| `src/app/analysis.rs`                               | Participant/attack aggregates, Chorale tables, collapsible Dioxus chart and log-import pane         |
-| `src/app/plugins.rs`                                | Plugin order, type overrides and status; future native settings/overlay actions belong here         |
-| `src/app/preferences.rs`                            | Fluent locale, Catppuccin flavour and runtime preferences                                           |
-| `src/config.rs`                                     | Validated, comment-preserving TOML and atomic replacement                                           |
-| `src/session.rs`                                    | Private bridge deployment and asynchronous host lifetime                                            |
-| `src/components/`                                   | Rust/UI button, input, label, separator, outline badge and progress; provenance in `THIRD_PARTY.md` |
-| `build.rs`, `build_support.rs`, `runtime-lock.toml` | Target-specific, pinned runtime download, validation and embedding                                  |
-| `src/runtime_bundle.rs`                             | Atomic executable-adjacent extraction, completion/essential-file checks and reuse                   |
+| Source                                              | Responsibility and extension boundary                                                                                           |
+| --------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- |
+| `src/main.rs`                                       | Common CLI parsing, authenticated child dispatch before GUI startup, logging and window setup                                   |
+| `src/app.rs`                                        | Shared async session state and host operations; rejects stale session/selection responses                                       |
+| `src/app/shell.rs`                                  | Navigation, encounters and application actions                                                                                  |
+| `src/app/analysis.rs`                               | Participant/attack aggregates, Chorale tables, collapsible Dioxus chart and log-import pane                                     |
+| `src/app/plugins.rs`                                | Plugin order/enablement, type overrides, status, fresh-worker retry and native settings; overlay management remains future work |
+| `src/app/preferences.rs`                            | Fluent locale, Catppuccin flavour and runtime preferences                                                                       |
+| `src/config.rs`                                     | Validated, comment-preserving TOML and atomic replacement                                                                       |
+| `src/session.rs`                                    | Private bridge deployment and asynchronous host lifetime                                                                        |
+| `src/components/`                                   | Rust/UI button, input, label, separator, outline badge and progress; provenance in `THIRD_PARTY.md`                             |
+| `build.rs`, `build_support.rs`, `runtime-lock.toml` | Target-specific, pinned runtime download, validation and embedding                                                              |
+| `src/runtime_bundle.rs`                             | Atomic executable-adjacent extraction, completion/essential-file checks and reuse                                               |
 
 The chart displays up to 12 positive-damage participants using approximate floating
 point values. The table retains exact integer totals. Progress and cancellation are
@@ -119,3 +119,26 @@ extraction and executing the embedded runtime without a global installation.
 The production download/extraction code has also passed its seven payload tests
 in a headless WSL Ubuntu harness. Linux GUI startup, ARM64 execution and release
 bundles remain separate validation work.
+
+## Plugin lifecycle and native settings
+
+Configured paths/order and `host.disabled_plugins` are separate from runtime IDs.
+Enable/disable is editable only while stopped; save settings to persist it. Each
+start or startup retry launches a fresh worker and constructs enabled plugins in
+configured order. Failure stops and awaits cleanup of that worker; Retry never
+reinitializes an old Failed/Stopped ID. This avoids pretending a new instance
+unloads an assembly or reverses arbitrary plugin effects. Dependencies are not
+inferred; disabling a prerequisite can cause startup failure.
+
+The Plugins pane reads typed lifecycle/settings availability and refreshes it on
+request. Windows Open Settings reuses the existing child-owned TabControl in a
+shared nonmodal WinForms window, selects the plugin's attached page, restores and
+focuses the window. Closing hides it; disabling/teardown disposes owned plugin
+controls, and host shutdown disposes the window. Removed/disposed pages are
+unavailable. Linux reports unsupported explicitly and never displays a fake page.
+
+Linux contract/worker checks cover availability, terminal instance rejection,
+cleanup/restart and saved enablement. Windows-specific contract code also covers
+show/reuse/hide/reopen, detached pages and disposal; actual Windows execution,
+input and focus remain unverified. The existing WebView2 GUI suite includes saved
+enablement and fresh-worker retry scenarios, but it cannot run on ser7 Linux.

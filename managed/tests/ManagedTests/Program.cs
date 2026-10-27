@@ -526,6 +526,7 @@ internal static class Program
         OriginalCorpusMessageChecks.Run();
         OwnerContextChecks.Run();
         HostLifetimeChecks.Run();
+        PluginSettingsChecks.Run();
         DiagnosticChecks.Run();
     }
     private static void CheckRegistrationViews(FormActMain main)

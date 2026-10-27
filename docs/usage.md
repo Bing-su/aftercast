@@ -220,3 +220,18 @@ remain unchanged.
 These corrections do not drain the vendor writer's pending queue or establish
 recording durability. See [compatibility](compatibility.md) for the affected
 artifacts and remaining limits.
+
+## Plugin settings and retry
+
+`HostHandle::plugin_status(id)` returns the instance lifecycle and independent
+native settings capability. `open_plugin_settings(id)` shows/selects/focuses the
+existing child-owned WinForms page on Windows. Linux returns an explicit platform
+error; detached pages and terminal instances cannot open settings. No control or
+native handle crosses IPC. Repeated opens reuse a nonmodal window, user close
+hides it, and Host shutdown owns disposal on the original owner thread.
+
+Failed/Stopped IDs stay terminal. Creating a new ID does not unload assemblies or
+undo arbitrary plugin side effects. The desktop uses a fresh Host process for
+startup retry and for applying saved enablement after an explicit stop; enabled
+plugins retain configured order. This is not automatic dependency resolution.
+Actual native display, input and focus require the pending Windows verification.

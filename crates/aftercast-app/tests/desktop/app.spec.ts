@@ -293,3 +293,36 @@ test('embedded runtime starts a real Host, imports expected totals and survives 
   expect(browserErrors).toEqual([]);
   await quit();
 });
+
+
+test('plugin enablement and failed startup retry use fresh host instances', async () => {
+  const plugin = path.resolve(target, '../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll');
+  await fs.writeFile(path.join(directory, 'config.toml'), `schema_version = 1\n[ui]\nlanguage = "en-US"\n[host]\nplugins = [${JSON.stringify(plugin)}]\n[host.plugin_types]\n${JSON.stringify(plugin)} = "Aftercast.PluginFixture.InitFailurePlugin"\n`);
+  await start();
+  await page.getByRole('button', { name: 'Start host', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('fixture initialization failure');
+  await expect(page.getByTestId('host-status')).toHaveText('Host stopped');
+  await page.getByRole('button', { name: 'Plugins', exact: true }).click();
+  await page.locator('#plugin-type-0').fill('Aftercast.PluginFixture.ReadyPlugin');
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Retry startup with fresh instances', exact: true }).click();
+  await expect(page.getByTestId('host-status')).toHaveText('Host running');
+  await expect(page.getByRole('alert')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: 'Open plugin settings', exact: true })).toBeEnabled();
+  await expect(page.getByRole('button', { name: 'Disable plugin', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Stop host', exact: true }).click();
+  await expect(page.getByTestId('host-status')).toHaveText('Host stopped');
+  await page.getByRole('button', { name: 'Disable plugin', exact: true }).click();
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Start host', exact: true }).click();
+  await expect(page.getByTestId('host-status')).toHaveText('Host running');
+  await expect(page.getByRole('button', { name: 'Open plugin settings', exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Stop host', exact: true }).click();
+  await expect(page.getByTestId('host-status')).toHaveText('Host stopped');
+  await page.getByRole('button', { name: 'Enable plugin', exact: true }).click();
+  await page.getByRole('button', { name: 'Save settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Start host', exact: true }).click();
+  await expect(page.getByTestId('host-status')).toHaveText('Host running');
+  await expect(page.getByRole('button', { name: 'Open plugin settings', exact: true })).toBeEnabled();
+  await quit();
+});

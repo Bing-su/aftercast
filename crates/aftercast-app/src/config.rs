@@ -47,6 +47,7 @@ pub struct HostSettings {
     pub dotnet_root: String,
     pub plugins: Vec<String>,
     pub plugin_types: BTreeMap<String, String>,
+    pub disabled_plugins: Vec<String>,
     pub record_encounter_logs: bool,
     pub original_logline_view_logs: bool,
 }
@@ -57,9 +58,18 @@ impl Default for HostSettings {
             dotnet_root: "dotnet".into(),
             plugins: Vec::new(),
             plugin_types: BTreeMap::new(),
+            disabled_plugins: Vec::new(),
             record_encounter_logs: true,
             original_logline_view_logs: false,
         }
+    }
+}
+
+impl HostSettings {
+    pub fn enabled_plugins(&self) -> impl Iterator<Item = &String> {
+        self.plugins
+            .iter()
+            .filter(|path| !self.disabled_plugins.contains(*path))
     }
 }
 
@@ -82,6 +92,11 @@ impl Settings {
         }
         if self.host.dotnet_root.trim().is_empty()
             || self.host.plugins.iter().any(|p| p.trim().is_empty())
+            || self
+                .host
+                .disabled_plugins
+                .iter()
+                .any(|p| p.trim().is_empty())
         {
             return Err(miette!("Runtime and plugin paths must not be empty"));
         }
@@ -152,6 +167,17 @@ impl ConfigFile {
             .map(String::as_str)
             .collect::<toml_edit::Array>();
         set(&mut self.document["host"]["plugins"], value(plugins));
+        set(
+            &mut self.document["host"]["disabled_plugins"],
+            value(
+                settings
+                    .host
+                    .disabled_plugins
+                    .iter()
+                    .map(String::as_str)
+                    .collect::<toml_edit::Array>(),
+            ),
+        );
         for (path, type_name) in &settings.host.plugin_types {
             if self.document["host"].get("plugin_types").is_none() {
                 self.document["host"]["plugin_types"] =
@@ -239,6 +265,41 @@ mod tests {
         assert_eq!(
             resolve(root, "plugins/parser.dll"),
             root.join("plugins/parser.dll")
+        );
+    }
+
+    #[test]
+    fn enablement_survives_restart_without_reordering_plugin_dependencies() {
+        let temp = tempfile::tempdir().expect("app");
+        let root = Utf8Path::from_path(temp.path()).expect("UTF-8 root");
+        let source = "schema_version = 1\n[host]\nplugins = ['first', 'middle', 'last']\ndisabled_plugins = [\n  'last', # preserve this order and note\n  'first',\n]\n";
+        fs::write(root.join("config.toml"), source).expect("config");
+        let file = ConfigFile::load(root).expect("load enabled set");
+        assert_eq!(
+            file.settings
+                .host
+                .enabled_plugins()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["middle"]
+        );
+        let mut file = file.save(root).expect("save unchanged enablement");
+        assert!(
+            fs::read_to_string(root.join("config.toml"))
+                .expect("saved")
+                .contains("'last', # preserve this order and note")
+        );
+        file.settings.host.disabled_plugins.clear();
+        file.save(root).expect("enable again");
+        let reloaded = ConfigFile::load(root).expect("restart");
+        assert_eq!(
+            reloaded
+                .settings
+                .host
+                .enabled_plugins()
+                .map(String::as_str)
+                .collect::<Vec<_>>(),
+            ["first", "middle", "last"]
         );
     }
 

@@ -209,6 +209,23 @@ internal sealed class PluginSession
             throw new InvalidOperationException($"InitPlugin failed for {plugin.Path}: {failure.GetBaseException().Message}", failure);
         }
     }
+    internal (int State, int Settings) Status(long id) => OnOwner(() =>
+    {
+        var plugin = Find(id);
+        var settings = !OperatingSystem.IsWindows() ? 0 :
+            plugin.State == PluginState.Initialized && plugin.Controls is { } controls && Host().HasPluginSettings(controls.Tab) ? 2 : 1;
+        return ((int)plugin.State, settings);
+    });
+
+    internal void ShowSettings(long id) => OnOwner(() =>
+    {
+        var plugin = Find(id);
+        if (plugin.State != PluginState.Initialized || plugin.Controls is not { } controls)
+            throw new InvalidOperationException("Only an initialized plugin can open settings");
+        Host().ShowPluginSettings(controls.Tab);
+        return 0;
+    });
+
     internal void Deinitialize(long id) => OnOwner(() =>
     {
         if (environment is null) DeinitializeCore(id);

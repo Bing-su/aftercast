@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use aftercast::{
     AttackSummary, EncounterDetail, EncounterId, EncounterSummary, HostHandle, ImportProgress,
-    PluginConfig, PluginId,
+    PluginConfig, PluginId, PluginStatus,
 };
 use camino::Utf8PathBuf;
 use dioxus::core::spawn_forever;
@@ -60,6 +60,14 @@ struct Revision {
     selection: u64,
 }
 
+#[derive(Clone)]
+struct LoadedPlugin {
+    path: String,
+    id: PluginId,
+    status: String,
+    info: PluginStatus,
+}
+
 struct AppState {
     root: Utf8PathBuf,
     settings: Settings,
@@ -68,7 +76,10 @@ struct AppState {
     phase: Phase,
     screen: &'static str,
     running: Option<RunningHost>,
-    plugins: Vec<(PluginId, String)>,
+    plugins: Vec<LoadedPlugin>,
+    plugin_ui_pending: bool,
+    startup_failed: bool,
+    failed_plugin: Option<String>,
     encounters: Vec<EncounterSummary>,
     total: u32,
     offset: u32,
@@ -99,6 +110,9 @@ impl AppState {
             screen: "analysis",
             running: None,
             plugins: Vec::new(),
+            plugin_ui_pending: false,
+            startup_failed: false,
+            failed_plugin: None,
             encounters: Vec::new(),
             total: 0,
             offset: 0,
@@ -308,6 +322,9 @@ fn start(mut state: Signal<AppState>) {
         (state.root.clone(), state.settings.clone())
     };
     state.write().phase = Phase::Starting;
+    state.write().startup_failed = false;
+    state.write().failed_plugin = None;
+    state.write().error = None;
     state.write().revision.session += 1;
     let session = state.read().revision.session;
     spawn(async move {
@@ -325,6 +342,7 @@ async fn start_session(
         Ok(running) => running,
         Err(error) => {
             state.write().phase = Phase::Idle;
+            state.write().startup_failed = true;
             state.write().fail_report(error);
             return;
         }
@@ -332,7 +350,7 @@ async fn start_session(
     let handle = running.host.handle();
     state.write().running = Some(running);
     state.write().phase = Phase::Initializing;
-    for path in settings.host.plugins {
+    for path in settings.host.enabled_plugins() {
         if state.read().exit_requested || state.read().revision.session != session {
             break;
         }
@@ -340,12 +358,12 @@ async fn start_session(
             let plugin = handle
                 .create_plugin(
                     PluginConfig::builder()
-                        .path(resolve(&root, &path))
+                        .path(resolve(&root, path))
                         .maybe_type_name(
                             settings
                                 .host
                                 .plugin_types
-                                .get(&path)
+                                .get(path)
                                 .cloned()
                                 .filter(|name| !name.trim().is_empty()),
                         )
@@ -353,7 +371,13 @@ async fn start_session(
                 )
                 .await?;
             let status = handle.initialize_plugin(plugin).await?;
-            Ok::<_, aftercast::Error>((plugin, status))
+            let info = handle.plugin_status(plugin).await?;
+            Ok::<_, aftercast::Error>(LoadedPlugin {
+                path: path.clone(),
+                id: plugin,
+                status,
+                info,
+            })
         }
         .await;
         if state.read().revision.session != session {
@@ -362,6 +386,8 @@ async fn start_session(
         match result {
             Ok(plugin) => state.write().plugins.push(plugin),
             Err(error) => {
+                state.write().startup_failed = true;
+                state.write().failed_plugin = Some(path.clone());
                 state.write().fail(error);
                 stop(state);
                 return;
@@ -390,6 +416,7 @@ fn stop(mut state: Signal<AppState>) {
         state.category = None;
         state.encounters.clear();
         state.plugins.clear();
+        state.plugin_ui_pending = false;
         state.loading = false;
     }
     spawn(async move {
@@ -559,6 +586,49 @@ async fn run_import(
             }
         }
     }
+}
+
+fn plugin_ui_action(mut state: Signal<AppState>, id: PluginId, show: bool) {
+    if state.read().phase != Phase::Ready || state.read().plugin_ui_pending {
+        return;
+    }
+    let Some(handle) = state.read().handle() else {
+        return;
+    };
+    let session = state.read().revision.session;
+    state.write().plugin_ui_pending = true;
+    let opened_message = tr("plugin-settings-opened");
+    // UI requests belong to the app, e.g. changing tabs must not strand the pending state.
+    spawn_forever(async move {
+        let opened = if show {
+            Some(handle.open_plugin_settings(id).await)
+        } else {
+            None
+        };
+        let status = handle.plugin_status(id).await;
+        if state.read().revision.session != session {
+            return;
+        }
+        state.write().plugin_ui_pending = false;
+        match status {
+            Ok(info) => {
+                if let Some(plugin) = state
+                    .write()
+                    .plugins
+                    .iter_mut()
+                    .find(|plugin| plugin.id == id)
+                {
+                    plugin.info = info;
+                }
+            }
+            Err(error) => state.write().fail(error),
+        }
+        match opened {
+            Some(Ok(())) => state.write().message = opened_message,
+            Some(Err(error)) => state.write().fail(error),
+            None => {}
+        }
+    });
 }
 
 fn archive_history(mut state: Signal<AppState>, restore: bool) {

@@ -183,6 +183,8 @@ namespace Aftercast.ActCompat
             main.RecordEncounterLogs = enabled;
             main.OriginalLoglineViewLogs = original;
         }
+        public bool HasPluginSettings(TabPage tab) => main.HasPluginSettings(tab);
+        public void ShowPluginSettings(TabPage tab) => main.ShowPluginSettings(tab);
         public void EnsureCanStop() => main.EnsureCanWaitForLogReader();
         // Quiesce file callbacks before the boundary so an admitted line cannot race encounter finalization.
         public void EndCombat() => main.RunWithLogReadingSuspended(() => main.EndCombat(true));

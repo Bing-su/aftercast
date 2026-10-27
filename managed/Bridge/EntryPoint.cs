@@ -152,6 +152,13 @@ public static partial class EntryPoint
         {
             case 1: text = plugins.Value.Initialize(id); break;
             case 2: plugins.Value.Deinitialize(id); text = ""; break;
+            case 3:
+                var status = plugins.Value.Status(id);
+                Marshal.WriteInt32(buffer, 32, status.State);
+                Marshal.WriteInt32(buffer, 36, status.Settings);
+                Marshal.WriteInt32(buffer, 28, 8);
+                return 0;
+            case 4: plugins.Value.ShowSettings(id); text = ""; break;
             default: throw new ArgumentException("Unknown plugin lifecycle command", "command");
         }
         if (text.Length > 2048) text = text[..2048];

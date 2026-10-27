@@ -35,7 +35,7 @@ pub use import::{ImportJob, ImportProgress, ImportReport};
 pub use logs::{
     LogBatch, LogLoss, LogRecord, LogSubscription, LogSubscriptionConfig, LogTimeKind, LogTimestamp,
 };
-pub use plugins::{PluginConfig, PluginId};
+pub use plugins::{PluginConfig, PluginId, PluginSettings, PluginState, PluginStatus};
 pub use runtime::HostConfig;
 pub use snapshots::{CombatRevision, CombatSnapshot, CombatSnapshotStatus, CombatantSnapshot};
 

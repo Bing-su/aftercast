@@ -262,3 +262,75 @@ async fn initialization_cleanup_and_shutdown_are_session_owned_and_not_retried(
     assert_eq!(lines(&state, "ready.deinit"), 2);
     assert_eq!(lines(&state, "ready.disposed"), 4);
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
+async fn plugin_status_and_settings_respect_terminal_instances_and_session_restart(
+    deployment: Deployment,
+) {
+    let mut host = Host::start(deployment.config()).await.expect("host");
+    let assembly = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let mut previous = None;
+    for _ in 0..3 {
+        let id = construct(&mut host, &assembly, "ReadyPlugin").await;
+        assert_eq!(
+            host.plugin_status(id)
+                .await
+                .expect("constructed status")
+                .state,
+            aftercast::PluginState::Constructed
+        );
+        assert!(matches!(
+            host.open_plugin_settings(id).await,
+            Err(Error::Managed { .. })
+        ));
+        host.initialize_plugin(id)
+            .await
+            .expect("initialize fresh instance");
+        let status = host.plugin_status(id).await.expect("running status");
+        assert_eq!(status.state, aftercast::PluginState::Initialized);
+        if cfg!(target_os = "windows") {
+            assert_eq!(status.settings, aftercast::PluginSettings::Available);
+            host.open_plugin_settings(id).await.expect("show settings");
+            host.open_plugin_settings(id)
+                .await
+                .expect("focus existing window");
+        } else {
+            assert_eq!(
+                status.settings,
+                aftercast::PluginSettings::UnsupportedPlatform
+            );
+            let error = host
+                .open_plugin_settings(id)
+                .await
+                .expect_err("explicit platform limit");
+            assert!(error.to_string().contains("Windows"));
+        }
+        host.deinitialize_plugin(id).await.expect("disable");
+        assert_eq!(
+            host.plugin_status(id).await.expect("stopped status").state,
+            aftercast::PluginState::Stopped
+        );
+        assert!(matches!(
+            host.open_plugin_settings(id).await,
+            Err(Error::Managed { .. })
+        ));
+        assert_ne!(previous, Some(id));
+        previous = Some(id);
+    }
+    let old = previous.expect("old instance");
+    host.shutdown().await.expect("stop owner");
+    let restarted = Host::start(deployment.config())
+        .await
+        .expect("restart owner");
+    assert!(matches!(
+        restarted.plugin_status(old).await,
+        Err(Error::InvalidPluginRequest(_))
+    ));
+    restarted
+        .shutdown()
+        .await
+        .expect("shutdown restarted owner");
+}

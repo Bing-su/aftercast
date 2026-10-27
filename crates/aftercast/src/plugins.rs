@@ -1,5 +1,5 @@
 use bon::Builder;
-use bytes::{BufMut, BytesMut};
+use bytes::{Buf, BufMut, BytesMut};
 use camino::Utf8PathBuf;
 
 use crate::runtime::Request;
@@ -23,10 +23,34 @@ pub struct PluginId {
     instance: u64,
 }
 
+/// Lifecycle of one instance. Failed and stopped instances cannot initialize again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PluginState {
+    Constructed,
+    Initializing,
+    Initialized,
+    Failed,
+    Stopped,
+}
+
+/// Native settings capability, separate from whether a plugin is running.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum PluginSettings {
+    UnsupportedPlatform,
+    NoPage,
+    Available,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct PluginStatus {
+    pub state: PluginState,
+    pub settings: PluginSettings,
+}
+
 impl HostHandle {
     /// Constructs a trusted plugin and retains it until this host stops.
     ///
-    /// Constructors execute arbitrary code in this process and may register global handlers.
+    /// Constructors execute arbitrary code in the isolated child and may register global handlers.
     /// ACT globals and the settings directory are available before construction. The library owns
     /// the plugin thread and its Windows STA/message loop.
     /// No sandbox or assembly unloading is provided. `InitPlugin` and `DeInitPlugin` are not
@@ -54,8 +78,8 @@ impl HostHandle {
     /// Calls `InitPlugin` once and returns its bounded status text, not proof of parser readiness.
     ///
     /// Same-thread exceptions reported through ACT's `WriteExceptionLog` during the callback fail this
-    /// attempt. Failed instances cannot be retried; construct another instance instead. Arbitrary
-    /// plugin side effects cannot be rolled back. Initialize prerequisites before constructing
+    /// attempt. Failed instances cannot be retried. A new instance does not unload the assembly or
+    /// undo arbitrary side effects; restart the Host unless the plugin's cleanup is known safe. Initialize prerequisites before constructing
     /// dependents that require their assembly resolvers, e.g. OverlayPlugin before cactbot.
     pub async fn initialize_plugin(&self, plugin: PluginId) -> Result<String, Error> {
         self.plugin_call(plugin, 1).await
@@ -67,7 +91,19 @@ impl HostHandle {
         self.plugin_call(plugin, 2).await.map(|_status| ())
     }
 
-    async fn plugin_call(&self, plugin: PluginId, command: u32) -> Result<String, Error> {
+    /// Reads fresh lifecycle/settings availability. Linux explicitly reports UnsupportedPlatform.
+    pub async fn plugin_status(&self, plugin: PluginId) -> Result<PluginStatus, Error> {
+        let packet = self.plugin_request(plugin, 3).await?;
+        decode_plugin_status(&packet)
+    }
+
+    /// Shows/selects the existing child-owned nonmodal WinForms page and focuses its shared window.
+    /// User close hides the window; shutdown owns disposal. Linux and detached/removed pages fail explicitly.
+    pub async fn open_plugin_settings(&self, plugin: PluginId) -> Result<(), Error> {
+        self.plugin_call(plugin, 4).await.map(|_status| ())
+    }
+
+    async fn plugin_request(&self, plugin: PluginId, command: u32) -> Result<BytesMut, Error> {
         if plugin.session != self.session {
             return Err(Error::InvalidPluginRequest(
                 "plugin belongs to another host session".to_owned(),
@@ -82,6 +118,11 @@ impl HostHandle {
         request.put_u32_le(0);
         request.resize(8224, 0);
         self.request(Request::PluginCommand, &mut request).await?;
+        Ok(request)
+    }
+
+    async fn plugin_call(&self, plugin: PluginId, command: u32) -> Result<String, Error> {
+        let request = self.plugin_request(plugin, command).await?;
         let length: [u8; 4] = request
             .get(28..32)
             .and_then(|bytes| bytes.try_into().ok())
@@ -99,6 +140,42 @@ impl HostHandle {
             .map(str::to_owned)
             .map_err(|error| Error::InvalidPluginRequest(error.to_string()))
     }
+}
+
+fn decode_plugin_status(packet: &[u8]) -> Result<PluginStatus, Error> {
+    let fields = packet
+        .get(28..40)
+        .ok_or_else(|| Error::InvalidPluginRequest("missing plugin status".into()))?;
+    let mut fields = fields;
+    if fields.get_u32_le() != 8 {
+        return Err(Error::InvalidPluginRequest(
+            "invalid plugin status length".into(),
+        ));
+    }
+    let state = match fields.get_u32_le() {
+        0 => PluginState::Constructed,
+        1 => PluginState::Initializing,
+        2 => PluginState::Initialized,
+        3 => PluginState::Failed,
+        4 => PluginState::Stopped,
+        _ => return Err(Error::InvalidPluginRequest("invalid plugin state".into())),
+    };
+    let settings = match fields.get_u32_le() {
+        0 => PluginSettings::UnsupportedPlatform,
+        1 => PluginSettings::NoPage,
+        2 => PluginSettings::Available,
+        _ => {
+            return Err(Error::InvalidPluginRequest(
+                "invalid plugin settings capability".into(),
+            ));
+        }
+    };
+    if settings == PluginSettings::Available && state != PluginState::Initialized {
+        return Err(Error::InvalidPluginRequest(
+            "settings available for an inactive instance".into(),
+        ));
+    }
+    Ok(PluginStatus { state, settings })
 }
 
 pub(crate) fn plugin_packet(
@@ -136,6 +213,28 @@ pub(crate) fn plugin_packet(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn plugin_status_rejects_truncated_or_impossible_capabilities() {
+        let mut packet = vec![0_u8; 40];
+        packet[28..32].copy_from_slice(&8_u32.to_le_bytes());
+        packet[32..36].copy_from_slice(&2_u32.to_le_bytes());
+        packet[36..40].copy_from_slice(&2_u32.to_le_bytes());
+        assert_eq!(
+            decode_plugin_status(&packet)
+                .expect("initialized settings")
+                .settings,
+            PluginSettings::Available
+        );
+        for length in 0..40 {
+            decode_plugin_status(&packet[..length]).expect_err("truncated status");
+        }
+        for (offset, value) in [(28, 0_u32), (32, 5), (36, 3), (32, 4)] {
+            let mut bad = packet.clone();
+            bad[offset..offset + 4].copy_from_slice(&value.to_le_bytes());
+            decode_plugin_status(&bad).expect_err("invalid status");
+        }
+    }
 
     #[rstest::rstest]
     fn plugin_requests_bound_lengths_and_preserve_utf8() {
