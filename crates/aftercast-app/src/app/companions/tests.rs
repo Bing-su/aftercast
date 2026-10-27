@@ -264,3 +264,219 @@ async fn close_late_and_restart(
     let restarted = Host::start(configuration).await.expect("lease released");
     restarted.shutdown().await.expect("restart stop");
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and synthetic Host; run mise run test:gui-state"]
+async fn companion_ui_contract_active_settings_do_not_follow_drafts() {
+    let temporary = tempfile::tempdir().expect("private files");
+    let root = Utf8Path::from_path(temporary.path()).expect("UTF8");
+    let host = Host::start(config(root)).await.expect("worker");
+    let mut ui = AppState::new(root.to_owned());
+    ui.phase = Phase::Ready;
+    ui.revision.session = 1;
+    parser(&host, &mut ui).await;
+    let main = root.join("same.log");
+    std::fs::write(&main, "").expect("main");
+    std::fs::create_dir(root.join("CompanionLogs")).expect("sides");
+    std::fs::write(root.join("CompanionLogs/same.Alpha.log"), "").expect("side");
+    candidates(&host, &mut ui, &main).await;
+    edit(&mut ui, "Alpha", "selected", "");
+    assert!(
+        ui.edit_import_text(ui.text_view(), "encoding", "utf8")
+            .expect("main codec")
+    );
+    let admitted = ui
+        .companions
+        .live_options(ui.import_text.options())
+        .expect("admitted policy");
+    let token = ui.begin_sources(Kind::Open).expect("open");
+    assert!(ui.receive_live(
+        token,
+        Kind::Open,
+        host.open_live_logs(&main, admitted.clone()).await,
+        None
+    ));
+    let first = ui.companions.live.as_ref().expect("active").selection;
+    let token = ui
+        .begin_sources(Kind::Open)
+        .expect("missing path preflight");
+    let failed = host
+        .reopen_live_logs(first, root.join("missing.log"), admitted.clone())
+        .await;
+    let kept = retained(&host, Some(first)).await;
+    assert!(ui.receive_live(token, Kind::Open, failed, kept));
+    let failure = ui.companions.error.clone().expect("explicit error");
+    let token = ui.begin_sources(Kind::Status).expect("background poll");
+    assert!(ui.receive_live(token, Kind::Status, host.live_logs(first).await, None));
+    assert_eq!(
+        ui.companions.error.as_deref(),
+        Some(failure.as_str()),
+        "healthy status must not hide failed replacement"
+    );
+
+    edit(&mut ui, "Alpha", "encoding", "utf16-le");
+    edit(&mut ui, "", "wait", "1234");
+    assert!(
+        ui.edit_import_text(ui.text_view(), "encoding", "ascii")
+            .expect("next main codec")
+    );
+    let next = ui
+        .companions
+        .live_options(ui.import_text.options())
+        .expect("next policy");
+    assert_ne!(next, admitted);
+    let token = ui.begin_sources(Kind::Status).expect("poll");
+    assert!(ui.receive_live(token, Kind::Status, host.live_logs(first).await, None));
+    assert_eq!(
+        ui.companions
+            .live
+            .as_ref()
+            .expect("active settings")
+            .options,
+        admitted,
+        "poll must display admitted codecs/timeout, never current draft"
+    );
+    let token = ui.begin_sources(Kind::Open).expect("explicit replacement");
+    assert!(ui.receive_live(
+        token,
+        Kind::Open,
+        host.reopen_live_logs(first, &main, next.clone()).await,
+        None
+    ));
+    assert_eq!(
+        ui.companions
+            .live
+            .as_ref()
+            .expect("new active settings")
+            .options,
+        next
+    );
+    host.shutdown().await.expect("stop");
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and synthetic Host; run mise run test:gui-state"]
+async fn companion_ui_contract_cancel_keeps_request_snapshot_and_partial_graph() {
+    use std::time::{Duration, Instant};
+    let temporary = tempfile::tempdir().expect("private files");
+    let root = Utf8Path::from_path(temporary.path()).expect("UTF8");
+    let host = Host::start(config(root)).await.expect("worker");
+    let mut ui = AppState::new(root.to_owned());
+    ui.phase = Phase::Ready;
+    ui.revision.session = 1;
+    parser(&host, &mut ui).await;
+    let main = root.join("long.log");
+    std::fs::write(&main, "1|1\n".repeat(100_000)).expect("long main");
+    std::fs::create_dir(root.join("CompanionLogs")).expect("sides");
+    std::fs::write(root.join("CompanionLogs/long.Alpha.log"), "1|10\n").expect("side");
+    candidates(&host, &mut ui, &main).await;
+    edit(&mut ui, "Alpha", "selected", "");
+    edit(&mut ui, "Alpha", "encoding", "utf8");
+    let picker = ui.select_full_import().expect("select");
+    let request = ui
+        .admit_full_path(picker.token, main.clone())
+        .expect("admit");
+    let snapshot = ui.source_import_snapshot().expect("admitted display");
+    assert_eq!(
+        snapshot.sources[0].text.expect("codec").encoding,
+        aftercast::ImportEncoding::Utf8
+    );
+    assert!(
+        !ui.edit_source(ui.source_view(), "Alpha", "encoding", "ascii")
+            .expect("busy edit ignored")
+    );
+    assert!(ui.select_full_import().is_none(), "duplicate import");
+    let mut job = import_text::start_selected(
+        &host,
+        &main,
+        None,
+        request.options(),
+        request.sources.as_ref(),
+    )
+    .await
+    .expect("job");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while job.progress().records_dispatched == 0 {
+        tokio::select! {result=&mut job=>panic!("finished before cancellation: {result:?}"),()=tokio::time::sleep(Duration::from_millis(1))=>{}}
+        assert!(Instant::now() < deadline, "no progress");
+    }
+    ui.screen = "analysis";
+    assert_eq!(ui.source_import_snapshot(), Some(snapshot));
+    ui.cancel_import = true;
+    job.cancel();
+    let result = job.wait().await;
+    assert!(matches!(result, Err(aftercast::Error::Cancelled)));
+    assert!(ui.receive_full_import(request.token, result, "complete", "cancelled"));
+    assert!(ui.source_import_snapshot().is_none());
+    assert_eq!(ui.message, "cancelled");
+    assert_eq!(ui.companions.choices[0].text.key(), "utf8");
+    assert!(
+        !host
+            .encounters(0, 100)
+            .await
+            .expect("partial graph")
+            .items
+            .is_empty()
+    );
+    host.shutdown().await.expect("stop");
+}
+
+#[cfg(target_os = "linux")]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and synthetic Host; run mise run test:gui-state"]
+async fn companion_ui_contract_partial_open_failure_retires_capture_and_preserves_draft() {
+    let temporary = tempfile::tempdir().expect("private files");
+    let root = Utf8Path::from_path(temporary.path()).expect("UTF8");
+    let host = Host::start(config(root)).await.expect("worker");
+    let mut ui = AppState::new(root.to_owned());
+    ui.phase = Phase::Ready;
+    ui.revision.session = 1;
+    parser(&host, &mut ui).await;
+    let main = root.join("partial.log");
+    let side = root.join("CompanionLogs/partial.Alpha.log");
+    let locked = root.join("CompanionLogs/partial.Zlocked.log");
+    std::fs::create_dir(root.join("CompanionLogs")).expect("sides");
+    for path in [&main, &side, &locked] {
+        std::fs::write(path, "").expect("source");
+    }
+    candidates(&host, &mut ui, &main).await;
+    let token = ui.begin_sources(Kind::Open).expect("initial capture");
+    assert!(ui.receive_live(
+        token,
+        Kind::Open,
+        host.open_live_logs(&main, LiveLogOptions::default()).await,
+        None
+    ));
+    let old = ui.companions.live.as_ref().expect("capture").selection;
+    edit(&mut ui, "Alpha", "selected", "");
+    edit(&mut ui, "Zlocked", "selected", "");
+    edit(&mut ui, "Alpha", "encoding", "utf8");
+    let file = std::fs::File::open(&locked).expect("later source");
+    file.try_lock().expect("lock later synthetic source");
+    let options = ui.companions.live_options(None).expect("replace snapshot");
+    let token = ui.begin_sources(Kind::Open).expect("replace");
+    let result = host.reopen_live_logs(old, &main, options).await;
+    assert!(matches!(result, Err(aftercast::Error::Managed { .. })));
+    let kept = retained(&host, Some(old)).await;
+    assert!(ui.receive_live(token, Kind::Open, result, kept));
+    assert!(ui.companions.live.is_none() && ui.companions.error.is_some());
+    assert_eq!(ui.companions.choices.len(), 2);
+    for path in [&main, &side] {
+        let probe = std::fs::File::open(path).expect("earlier source");
+        probe.try_lock().expect("earlier reader leaked");
+    }
+    drop(file);
+    let options = ui.companions.live_options(None).expect("draft retained");
+    let token = ui.begin_sources(Kind::Open).expect("retry");
+    assert!(ui.receive_live(
+        token,
+        Kind::Open,
+        host.open_live_logs(&main, options).await,
+        None
+    ));
+    assert_eq!(
+        ui.companions.live.as_ref().expect("retried").sources.len(),
+        3
+    );
+    host.shutdown().await.expect("stop");
+}

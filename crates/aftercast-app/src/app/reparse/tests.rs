@@ -434,3 +434,126 @@ async fn encoded_partial_failure(host: &Host, ui: &mut AppState, input: &Utf8Pat
             .contains('\u{fffd}')
     );
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and synthetic Host; run mise run test:gui-state"]
+async fn companion_range_ui_contract_uses_admitted_sources_and_keeps_cancelled_drafts() {
+    use super::super::companions::Kind;
+    let temporary = tempfile::tempdir().expect("private source fixtures");
+    let root = Utf8Path::from_path(temporary.path()).expect("UTF8");
+    let bridge = root.join("bridge");
+    extract_bridge(&bridge).expect("payload");
+    let application = std::env::current_exe()
+        .expect("test path")
+        .parent()
+        .and_then(std::path::Path::parent)
+        .expect("target")
+        .join("examples")
+        .join(format!("test-application{}", std::env::consts::EXE_SUFFIX));
+    let host = Host::start(
+        HostConfig::builder()
+            .dotnet_root(std::env::var("DOTNET_ROOT").expect("dotnet"))
+            .bridge_directory(bridge)
+            .data_directory(root.join("state"))
+            .application_executable(Utf8PathBuf::try_from(application).expect("UTF8"))
+            .build(),
+    )
+    .await
+    .expect("worker");
+    let mut ui = AppState::new(root.to_owned());
+    ui.phase = Phase::Ready;
+    ui.revision.session = 1;
+    fixture(&host, &mut ui).await;
+    let main = root.join("source.log");
+    std::fs::write(
+        &main,
+        "0|999
+1|10
+3|999
+",
+    )
+    .expect("main");
+    std::fs::create_dir(root.join("CompanionLogs")).expect("sides");
+    std::fs::write(
+        root.join("CompanionLogs/source.Alpha.log"),
+        "1|21
+1|22
+4|999
+",
+    )
+    .expect("companion");
+    ui.import_path = main.to_string();
+    let token = ui.begin_sources(Kind::Catalog).expect("query");
+    assert!(ui.receive_catalog(token, host.companion_candidates(&main).await));
+    assert!(
+        ui.edit_source(ui.source_view(), "Alpha", "selected", "")
+            .expect("choose")
+    );
+    assert!(
+        ui.edit_source(ui.source_view(), "Alpha", "encoding", "utf8")
+            .expect("codec")
+    );
+    ui.reparse.draft = Draft {
+        path: main.to_string(),
+        start: "1970-01-01T00:00:01".into(),
+        end: "1970-01-01T00:00:01".into(),
+    };
+    let compiled = request(&ui);
+    let token = ui.begin_reparse(compiled.clone()).expect("range admission");
+    let snapshot = ui.reparse.source_snapshot().expect("active range display");
+    assert_eq!(snapshot.range, Some(compiled.range));
+    assert_eq!(snapshot.sources[0].name, "Alpha");
+    assert!(
+        ui.begin_reparse(compiled.clone()).is_none(),
+        "duplicate range"
+    );
+    ui.screen = "history";
+    let report = super::super::import_text::start_selected(
+        &host,
+        &compiled.path,
+        Some(compiled.range),
+        compiled.text,
+        compiled.sources.as_ref(),
+    )
+    .await
+    .expect("source range")
+    .wait()
+    .await
+    .expect("range complete");
+    assert_eq!((report.records_dispatched, report.damage), (3, 53));
+    assert!(ui.receive_reparse(token, Ok(report), "complete", "cancelled"));
+    assert!(ui.reparse.source_snapshot().is_none());
+    cancel_selected_range(&host, &mut ui, &main).await;
+    host.shutdown().await.expect("stop");
+}
+async fn cancel_selected_range(host: &Host, ui: &mut AppState, main: &Utf8Path) {
+    use std::time::{Duration, Instant};
+    std::fs::write(main, "1|1\n".repeat(100_000)).expect("long range");
+    let draft = ui.reparse.draft.clone();
+    let compiled = request(ui);
+    let token = ui.begin_reparse(compiled.clone()).expect("range request");
+    let snapshot = ui.reparse.source_snapshot().expect("range snapshot");
+    let mut job = super::super::import_text::start_selected(
+        host,
+        &compiled.path,
+        Some(compiled.range),
+        compiled.text,
+        compiled.sources.as_ref(),
+    )
+    .await
+    .expect("cancel range job");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    while job.progress().records_dispatched == 0 {
+        tokio::select! {result=&mut job=>panic!("completed before cancel: {result:?}"),()=tokio::time::sleep(Duration::from_millis(1))=>{}}
+        assert!(Instant::now() < deadline, "no range progress");
+    }
+    assert!(ui.cancel_reparse(token));
+    assert!(!ui.cancel_reparse(token), "duplicate cancel");
+    job.cancel();
+    assert_eq!(ui.reparse.source_snapshot(), Some(snapshot));
+    let result = job.wait().await;
+    assert!(matches!(result, Err(aftercast::Error::Cancelled)));
+    assert!(ui.receive_reparse(token, result, "complete", "cancelled"));
+    assert_eq!(ui.reparse.draft, draft);
+    assert_eq!(ui.message, "cancelled");
+}
