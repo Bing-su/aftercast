@@ -84,8 +84,8 @@ also cover actual empty data, absent scope, independent current-table capture,
 first action field override, same-name collection replacement, callback failures,
 invalid values/names, owner/reentry/Dispose, counts, limits and cooperative recovery.
 This is Linux managed/IL contract evidence, not native ACT export execution.
-Bridge/Rust session-typed hierarchy selection, worker tests, GUI depth selection
-and new-file save remain subsequent slices.
+Bridge/Rust session-typed hierarchy selection and actual isolated-worker tests are
+connected below. GUI depth selection and new-file save remain subsequent slices.
 
 ## Remaining existing HTML/graph work, in order
 
@@ -118,3 +118,55 @@ work. Native drawing/plugin-graph execution and Windows visual verification rema
 platform boundaries. L7b is not complete; no ODBC, upload, AI or WinForms rendering
 bridge implementation is added by this slice. OS clipboard provider approval is
 still pending and has not been retried.
+
+## Bridge/Rust hierarchy API
+
+`HostHandle::capture_hierarchy_xml(encounter, depth)` returns an optional opaque
+`HierarchyXmlSelection`. It privately binds the originating session-owned encounter,
+separate hierarchy revision, exact depth, table count and aggregate row count.
+`hierarchy_xml(&selection)` renders once and returns an owned source snapshot with
+the same selection. The type cannot be substituted with a current-table selection
+or ordinary-text revision. Wrong-session encounters/selections are rejected before
+dispatch; changed/missing graph selections and retired revisions fail in the worker.
+A missing capture returns None and retires older hierarchy captures. Current-table
+and hierarchical captures remain independent.
+
+The existing owner-serialized report transport now has command 3 (capture) and
+4 (render), sharing its normal Busy/shutdown/process isolation. Requests use strict
+UTF-8 JSON, known fields, recursive duplicate-key checks, exact command shape and
+validated enum depth. The request length is bounded by both 256 KiB and its actual
+fixed buffer capacity **before** copying input, including the small capture buffer.
+All owner/header/version/reserved checks precede owner operations. Caption/hash
+methods may run during capture; SQL render callbacks never run as a size probe.
+
+| Reply        | Fixed pre-reserved capacity and validation                                                                                                                                                                                                                                                                       |
+| ------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Capture      | 4096 bytes (also holds its bounded input JSON); response is presence plus revision/encounter/depth/table/row metadata. Missing is exactly a zero presence flag.                                                                                                                                                  |
+| Render       | 16 MiB + 32 bytes; metadata and byte length precede raw complete UTF-8 XML. XML is not re-escaped into JSON. This remains below the existing 128 MiB worker frame bound.                                                                                                                                         |
+| Rust receive | Exact command/session/version/reserved envelope, nonzero revision, requested encounter/depth, tables 1..1024, rows ≤16384, tables ≤rows+1 and main-depth tables=1. Render metadata must exactly match the private selection; content must be nonempty, bounded, well-formed UTF-8 without NUL or trailing bytes. |
+
+Errors preserve bounded inner callback causes. No automatic retry, depth downgrade,
+partial XML result or successful-empty fallback is added. Cooperative timeouts are
+**explicit unsupported-workload outcomes**, not evidence of normal large-report
+support. A returning callback's timed-out request may be followed by an explicit
+new request; a callback that never returns still needs the existing worker shutdown
+boundary. Counts admitted by capture do not guarantee completion within the
+per-node two-second and whole-render four-second budgets; quadratic validation
+cost documented above remains. No timeout limit is silently extended.
+
+Synthetic actual isolated-worker tests cover all three depths, SQL order/hidden
+columns versus registration labels/display callbacks, Unicode/CRLF caption,
+per-encounter EncId override, repeat rendering, independence from current-table
+capture, retired revisions, removed/missing encounters, old handles and restart.
+Separate cases cover SQL/first-action callback failures, malformed Unicode/cell
+limits, one returning 2.1-second callback with explicit same-selection recovery,
+and escaped XML exceeding 16 MiB followed by an explicit shallow capture/render.
+Rust malformed-response tests include valid control cases, unknown identity/depth,
+count/budget violations, exact 16 MiB byte transport, invalid UTF-8/NUL/trailing
+bytes, and command-specific envelopes. ABI tests check invalid requests before
+owner callbacks, including capture input exceeding 4096 bytes.
+
+The worker tests use temporary synthetic log files and owned plugin objects only.
+They do not execute native ACT exporters, clipboard, browser or Windows UI. GUI
+depth selection and explicit new-file save are the next slice; multi-encounter
+hierarchical HTML and graph calculation/static rendering remain separate L7b work.

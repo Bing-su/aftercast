@@ -12,13 +12,13 @@ public static partial class EntryPoint
         const int header = 32;
         if (buffer == 0 || sizeBytes < header) throw new ArgumentException("Invalid table report buffer");
         var command = Marshal.ReadInt32(buffer, 16);
-        var capacity = command switch { 1 => 56 * 1024 * 1024, 2 => 16 * 1024 * 1024 + 20, _ => throw new ArgumentException("Invalid table report command") };
+        var capacity = command switch { 1 => 56 * 1024 * 1024, 2 => 16 * 1024 * 1024 + 20, 3 => 4096, 4 => 16 * 1024 * 1024 + 32, _ => throw new ArgumentException("Invalid table report command") };
         // Reserve the bounded binary reply before callbacks; UTF-8 content needs no JSON re-escaping or retry.
         if (sizeBytes != header + capacity) throw new ArgumentException("Invalid table report capacity");
         ValidateHeader(buffer, sizeBytes, "Table report ABI size/version mismatch");
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
         var length = Marshal.ReadInt32(buffer, 20);
-        if (length is < 2 or > 256 * 1024 || Marshal.ReadInt64(buffer, 24) != 0)
+        if (length is < 2 or > 256 * 1024 || length > capacity || Marshal.ReadInt64(buffer, 24) != 0)
             throw new ArgumentException("Invalid table report request fields");
         var input = new byte[length]; Marshal.Copy(buffer + header, input, 0, length);
         var json = new UTF8Encoding(false, true).GetString(input);
@@ -29,11 +29,17 @@ public static partial class EntryPoint
         }
         var request = JsonSerializer.Deserialize<TableReportRequest>(json, HostJson.Options)
             ?? throw new ArgumentException("Missing table report request");
-        if (command == 1 ? request.Scope is null || request.Revision != 0 || request.Options is not null :
-            request.Scope is not null || request.Revision == 0 || request.Options is null)
-            throw new ArgumentException("Table report request does not match command");
+        var valid = command switch
+        {
+            1 => request.Scope is not null && request.Revision == 0 && request.Options is null && request.Hierarchy is null,
+            2 => request.Scope is null && request.Revision != 0 && request.Options is not null && request.Hierarchy is null,
+            3 => request.Scope is null && request.Revision == 0 && request.Options is null && request.Hierarchy is {} hierarchy && hierarchy.EncounterId != 0 && Enum.IsDefined(hierarchy.Depth),
+            4 => request.Scope is null && request.Revision != 0 && request.Options is null && request.Hierarchy is null,
+            _ => false
+        };
+        if (!valid) throw new ArgumentException("Table report request does not match command");
         byte[] output;
-        try { output = plugins.Value.TableReportOperation(request, capacity); }
+        try { output = command <= 2 ? plugins.Value.TableReportOperation(request, capacity) : plugins.Value.HierarchyXmlOperation(command, request); }
         catch (Exception error) when (error.InnerException is not null)
         {
             // Preserve bounded callback causes across the native boundary; Describe tolerates hostile Message getters.
@@ -53,7 +59,8 @@ public static partial class EntryPoint
         return 0;
     });
 }
-internal sealed record TableReportRequest(TableScope? Scope = null, ulong Revision = 0, TableReportOptions? Options = null);
+internal sealed record TableReportRequest(TableScope? Scope = null, ulong Revision = 0, TableReportOptions? Options = null, HierarchyXmlRequest? Hierarchy = null);
+internal sealed record HierarchyXmlRequest(ulong EncounterId, HierarchyXmlDepth Depth);
 internal static class TableReportEncoding
 {
     internal static byte[] Encode(HostEnvironment host, TableReportRequest request, int capacity)
@@ -95,6 +102,30 @@ internal static class TableReportEncoding
         else
         {
             Wide(report!.Revision); Number((uint)report.Format); Number((uint)report.Rows); Text(report.Content);
+        }
+        return stream.ToArray();
+    }
+}
+
+internal static class HierarchyXmlEncoding
+{
+    internal static byte[] Encode(HostEnvironment host,int command,TableReportRequest request)
+    {
+        // Fixed reply capacity was reserved before owner callbacks; UTF-8 is transmitted without JSON escaping.
+        var catalog=command==3?host.CaptureHierarchyXml(request.Hierarchy!.EncounterId,request.Hierarchy.Depth):null;
+        var report=command==4?host.ReadHierarchyXml(request.Revision):null;
+        using var stream=new MemoryStream();using var writer=new BinaryWriter(stream,new UTF8Encoding(false,true),true);
+        if(command==3)writer.Write(catalog is null?0u:1u);
+        if(catalog is not null||report is not null)
+        {
+            writer.Write(catalog?.Revision??report!.Revision);writer.Write(catalog?.EncounterId??report!.EncounterId);
+            writer.Write((uint)(catalog?.Depth??report!.Depth));writer.Write((uint)(catalog?.Tables??report!.Tables));writer.Write((uint)(catalog?.Rows??report!.Rows));
+            if(report is not null)
+            {
+                var count=new UTF8Encoding(false,true).GetByteCount(report.Content);
+                if(count>16*1024*1024)throw new InvalidDataException("Hierarchy XML reply exceeds 16 MiB");
+                writer.Write((uint)count);writer.Write(report.Content.AsSpan());
+            }
         }
         return stream.ToArray();
     }

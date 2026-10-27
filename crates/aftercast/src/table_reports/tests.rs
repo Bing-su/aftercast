@@ -137,3 +137,31 @@ fn rejects_invalid_selection_policy_and_catalogs() {
     bytes[last..].copy_from_slice(&16385u32.to_le_bytes());
     decode_catalog(&bytes, 7, choice.scope()).expect_err("row budget");
 }
+
+#[test]
+fn hierarchy_commands_validate_their_own_envelope_and_capacity() {
+    assert_eq!(capacity(3), 4096);
+    assert_eq!(capacity(4), MAX_CONTENT + 32);
+    for command in [3, 4] {
+        let bound = capacity(command);
+        let mut packet = vec![0; HEADER + bound];
+        packet[..4].copy_from_slice(&((HEADER + bound) as u32).to_le_bytes());
+        packet[4..8].copy_from_slice(&1u32.to_le_bytes());
+        packet[8..16].copy_from_slice(&7u64.to_le_bytes());
+        packet[16..20].copy_from_slice(&command.to_le_bytes());
+        packet[24..28].copy_from_slice(&1u32.to_le_bytes());
+        assert_eq!(
+            decode_packet(&packet, 7, command).expect("valid envelope"),
+            [0]
+        );
+        for offset in [0, 4, 8, 16, 28] {
+            packet[offset] ^= 1;
+            decode_packet(&packet, 7, command).expect_err("identity/version/reserved");
+            packet[offset] ^= 1;
+        }
+        packet[24..28].copy_from_slice(&((bound + 1) as u32).to_le_bytes());
+        decode_packet(&packet, 7, command).expect_err("reply exceeds command capacity");
+        packet.pop();
+        decode_packet(&packet, 7, command).expect_err("truncated fixed buffer");
+    }
+}

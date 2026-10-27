@@ -155,13 +155,13 @@ impl HostHandle {
         let output = self.table_report_call(2, &request).await?;
         decode_report(&output, selection, options)
     }
-    async fn table_report_call(
+    pub(crate) async fn table_report_call(
         &self,
         command: u32,
         request: &serde_json::Value,
     ) -> Result<Vec<u8>, Error> {
         let input = serde_json::to_vec(request).map_err(invalid)?;
-        if !(2..=256 * 1024).contains(&input.len()) {
+        if !(2..=256 * 1024).contains(&input.len()) || input.len() > capacity(command) {
             return Err(invalid("table report input exceeds capacity"));
         }
         let capacity = capacity(command);
@@ -179,10 +179,11 @@ impl HostHandle {
     }
 }
 fn capacity(command: u32) -> usize {
-    if command == 1 {
-        CATALOG_CAPACITY
-    } else {
-        REPORT_CAPACITY
+    match command {
+        1 => CATALOG_CAPACITY,
+        3 => 4096,
+        4 => MAX_CONTENT + 32,
+        _ => REPORT_CAPACITY,
     }
 }
 fn decode_packet(packet: &[u8], session: u64, command: u32) -> Result<Vec<u8>, Error> {

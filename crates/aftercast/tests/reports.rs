@@ -186,3 +186,6 @@ async fn owned_reports_render_once_fail_explicitly_and_reject_stale_sessions(
     );
     restarted.shutdown().await.expect("final stop");
 }
+
+#[path = "reports/hierarchy_xml.rs"]
+mod hierarchy_xml;
