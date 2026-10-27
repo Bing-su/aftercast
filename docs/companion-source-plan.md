@@ -26,7 +26,7 @@ expansion or Windows validation is implied by constructor/path probes.
 | Unit                                | Deliverable and completion evidence                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               | State                                                                                             |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | C1 Names and candidate catalog      | Public ACT path API; literal, top-level sibling discovery, case-insensitive unique names, deterministic order; reject linked/malformed/ambiguous candidates and fail explicitly above 64 companions/4096 directory entries. Synthetic path/name/link/bounds regressions and original pure API comparison.                                                                                                                                                                                                                         | Implemented; used by explicit managed companion import admission. Live admission remains pending. |
-| C2 Managed readers and dispatch     | Open selected main/companion handles together at admission, capture identity/length/encoding, retain handles rather than reopening catalog paths. Reuse parser/owner dispatch; populate companionLogName and each record's actual source path, distinct sorter and action/log identity. Test same timestamps, undated/empty/partial lines, range boundaries, malformed bytes, rotation/truncation, pause/cancel/stop and one-source failure with partial results. Specify stable ordering without claiming ACT thread tie parity. | Managed import connected with explicit selection; live follower remains pending (C2b).            |
+| C2 Managed readers and dispatch     | Open selected main/companion handles together at admission, capture identity/length/encoding, retain handles rather than reopening catalog paths. Reuse parser/owner dispatch; populate companionLogName and each record's actual source path, distinct sorter and action/log identity. Test same timestamps, undated/empty/partial lines, range boundaries, malformed bytes, rotation/truncation, pause/cancel/stop and one-source failure with partial results. Specify stable ordering without claiming ACT thread tie parity. | Managed import and live groups connected with explicit selection; C3 transport/UI pending.        |
 | C3 Bridge/Rust and existing UI      | Expose bounded request-owned companion choices/catalog and source status through existing import flow. Preserve explicit encoding snapshot, revisions/session ownership, draft/error/cancel/navigation/duplicate request behavior and controller tests. Do not present discovery alone as synchronized-import completion.                                                                                                                                                                                                         | Pending.                                                                                          |
 | S1 Bounded history source proposals | Reuse selected history snapshot/time bounds. Inspect only explicit paths, recorded source references, or individually allowed roots; no parent climbing, recursive scan or external lookup. FolderHint/CharName/LastWriteTime are advisory. Return missing/ambiguous/changed outcomes; require explicit user selection when identity is not established.                                                                                                                                                                          | Pending. Current history metadata contains hints, not a trusted exact original-file identity.     |
 | S2 Selection and reparse wiring     | Bind chosen source and file identity to the owned request, revalidate at admission and retain open handle. Connect to existing source-range import separately from checkpoint restore. Preserve selection drafts and reject stale history/catalog/session responses, changed files and duplicate requests. Synthetic Host/API/controller tests.                                                                                                                                                                                   | Pending.                                                                                          |
@@ -72,8 +72,8 @@ archive restart, malformed complete records and replacement policy, incomplete
 EOF, inclusive ranges, backward/undated records, captured append/rename, premature
 truncation, cancellation/reuse, missing selections, hardlink aliases on Linux,
 head limits and exclusive file opens after cleanup. The native ACT companion
-thread itself has not been executed. Bridge/Rust/GUI selection and **live companion
-following (C2b)** are still unconnected; no completion claim covers those paths.
+thread itself has not been executed. Live following is described in C2b below;
+Bridge/Rust/GUI selection remains unconnected.
 
 ### C2a main EOF/watermark contract
 
@@ -118,4 +118,81 @@ termination gates. Equal-time records use main then name order; empty/undated
 races and wall-clock drift are not reproduced. **They are not a claim of native
 ACT thread timing parity.** The genuine path/clock/StreamReader probes run, while
 native companion threads and history dialogs remain unexecuted. C2b live following
-and C3 transport/UI remain pending.
+is connected below; C3 transport/UI remains pending.
+
+## C2b managed live source groups
+
+`HostEnvironment.OpenLogWithCompanions(companions, getCurrentZone, maxClockWait)`
+uses the explicitly configured main LogFilePath and a copied, name-sorted source
+selection. It reuses ImportCompanion(Name, Text) for the source codec descriptor;
+this does not start an import. Ordinary ACT OpenLog stays a single-source path.
+`ReadLiveLogSources()` returns managed status snapshots for the current group;
+Bridge/Rust/GUI selection and status transport are **not connected** yet.
+
+Every main/companion reader opens before the dispatcher starts and seeks its
+initial EOF. Existing history is not replayed; the initial zone snapshot belongs
+to the main handle only. Source names, codecs and paths are captured. Reader file
+identities reject aliases, and matching links or a detected admission change
+fail explicitly. A failed replacement retires the old group as existing OpenLog
+already does; it does not silently reactivate an old selection. Open failures
+join any earlier tail readers and release their handles even when another reader
+reports a cleanup error. The normal follower and a fresh explicit group can then
+be opened again.
+
+| Resource or time boundary | Contract/configuration                                                                                                                                                                                                                                                                                                                                                                                                                         |
+| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Live companion count      | Fixed implementation safety limit of 8 companions plus main. Metadata/import catalogs may contain up to 64; this does not authorize 64 live worker threads. No saved user option or GUI setting changes this limit.                                                                                                                                                                                                                            |
+| Queues and heads          | Fixed queue capacity 1 and at most one dispatcher head per source, plus one producer callback record in transit. Backpressure stops further framing rather than growing an unbounded queue.                                                                                                                                                                                                                                                    |
+| Buffered text             | Fixed aggregate 64 MiB of UTF-16 text reserved by transport callbacks, queued records and heads. This is not a process RSS bound: decoder work/transient strings and thread stacks are additional. Exceeding the budget fails the offending source explicitly.                                                                                                                                                                                 |
+| Physical record           | Existing fixed 8 MiB source-byte limit. Large completed-record decoder allocations are released rather than retained per reader. Malformed/oversized records report diagnostics and recover at the next delimiter.                                                                                                                                                                                                                             |
+| Clock wait                | Default 30 seconds of uninterrupted active future-head waiting. A positive per-open managed maxClockWait up to 5 minutes is allowed; it is not persisted and has no GUI control yet. Pause or an eligible transition resets the wait interval, even if another ready head is selected first. A later clock regression starts a fresh interval. Timeout is checked cooperatively; it cannot preempt a stuck plugin callback or blocking OS I/O. |
+| Retired readers           | Existing fixed 32-unit root lifecycle budget now counts file workers and group dispatchers, preventing reentrant group replacement from bypassing the old reader bound.                                                                                                                                                                                                                                                                        |
+
+The single live dispatcher runs timestamp parsing and raw callbacks in the
+existing live reader-thread style, **not the Host owner thread**. Disk workers
+only frame and queue records. Eligible ready heads are selected by timestamp;
+ties among currently ready heads prefer main then companion name. Main timestamp
+look-ahead and LastEstimatedTime admit dated companion heads. MinValue bypasses
+the time gate; every source still honors dispatch pause. EOF remains an idle wait
+for append, unlike import's terminal watermark. No waiting for an absent source
+or claim about future equal-time arrivals is made. Native ACT thread tie order
+and timing remain unverified.
+
+Companion raw timestamps and names are preserved; late/undated records do not
+rewind LastKnownTime. Automatic raw zone context follows main only; plugins may
+still explicitly change zone from their hooks. OriginalLogRecord carries actual
+source path/name before mutable hook edits, and every dispatched record receives
+a distinct sorter. Import suspension waits for the group's active parser cycle,
+while disk transport may retain bounded input. Resume retains those records.
+
+File replacement/truncation resets the reused follower decoder and increments
+its source generation. Pending prior-generation records are invalidated with
+diagnostics and Dropped counts rather than dispatched under a new image. A
+periodic identity/length check also releases a future head blocked ahead of a
+replacement. Complete queued old-image records or old unread suffixes can be
+omitted during this invalidation; this is explicit partial-state handling, not
+a lossless recording promise. Missing paths during rename/create keep the old
+handle until a replacement appears. An in-place truncate/regrow beyond the
+observed read position can remain indistinguishable from append, as with the
+single follower; concurrent overwrites are not immutable snapshots.
+
+Timeout, budget or fatal I/O failure marks that source failed and stops its
+reader. Healthy main/companions continue when a companion fails; main failure
+stops the group. There is no automatic retry or silent skip-to-current-time.
+An explicit reopen starts a fresh tail selection. Status exposes following,
+paused, waiting_for_clock, changing, failed or stopped, pending time, bounded
+queue count, source generation, dropped framed records and last diagnostic.
+These are current-group observations, not authority tokens. C3 must bind root
+selection generation and session/revision ownership; source generation alone
+resets on a new selection. Status disappears when the root detaches the group.
+
+Synthetic append-file tests cover Unicode/949/BOM and explicit BOM suppression,
+raw path/name/clock and ready-head ties, late records, future waiting across
+pause and eligible-tie/backward-clock transitions, aggregate budget saturation,
+invalid options preserving an active group, generation invalidation during paused rotation/truncation, malformed
+record recovery, timeout/partial operation/explicit retry, joined stop/exclusive
+opens, reentrant replacement and import suspension. A dedicated last-source
+exclusive-lock test reaches FileStream open **after main and an earlier companion
+reader started**, then verifies earlier handle release, old dispatcher exit and
+ordinary/group retry. Native ACT companion execution, Windows filesystem/UI
+interaction and live game capture have not been run.
