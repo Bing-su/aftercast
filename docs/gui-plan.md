@@ -143,7 +143,8 @@ establish nonblocking behavior.
 Confirmed direction (2026-10-26): on Windows, open original plugin configuration
 pages in a separate child-owned WinForms window and retain the plugin's existing
 CEF overlay windows. Dioxus provides management and entry points. Do not rewrite
-arbitrary plugin controls or embed native controls into the Dioxus WebView.
+arbitrary plugin controls or embed native controls into the Dioxus WebView in this native path.
+A separately approved follow-up plan for partial Linux rendering is below.
 
 | Surface                  | Current evidence                                                                                                                                                                | Implementation target                                                                                                                                                                                                  |
 | ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
@@ -151,6 +152,36 @@ arbitrary plugin controls or embed native controls into the Dioxus WebView.
 | Web-based overlay        | Original CEF and external Edge rendering have been exercised by the [worker integration tests](overlay-cactbot-process-validation.md); the CEF test also captures hidden frames | Retain original plugin-owned CEF windows and settings. Add user-facing discovery, create/show/hide and configuration entry points through the plugin's supported operations; verify visible-window behavior separately |
 | Dioxus management        | GUI is not implemented                                                                                                                                                          | List plugin status and available UI actions; provide Open Settings and overlay-management entry points, pending/error states and explicit unsupported/unavailable results                                              |
 | Linux/native portability | The Linux WinForms compatibility layer is headless; Windows CEF/Edge evidence is not WebKitGTK evidence                                                                         | Report unsupported native plugin UI explicitly. Track Linux plugin/browser support separately rather than showing an empty placeholder as working UI                                                                   |
+
+### Planned partial WinForms configuration bridge
+
+Approved for planning on 2026-10-27; implementation requires a separate explicit
+request. This does not change the current Linux native-settings unsupported result
+or introduce Mono/Wine automatically.
+
+The scope is behavioral compatibility for the settings of a named ACT plugin,
+using the existing `aftercast-winforms` headless Control model. It is not arbitrary
+WinForms compatibility or a pixel-perfect replica. First inventory the target
+plugin's actual controls, properties and events; determine the initial supported
+subset from that evidence (candidates: Label, TextBox, CheckBox, ComboBox, Button
+and TabPage).
+
+1. Define stable control IDs and a versioned tree/state snapshot or delta protocol.
+2. Render that supported subset with existing Rust/UI components in Dioxus.
+3. Dispatch user events back to the original worker UI owner thread, preserving
+   Invoke semantics, reentrancy rules and event ordering.
+4. Synchronize plugin-driven changes, dynamic addition/removal and disposal;
+   reject stale input after disposal or instance replacement and explicitly report
+   unsupported controls/operations.
+5. Compare real target-plugin settings behavior against ACT, with synthetic
+   regression tests for event ordering, thread ownership, lifecycle, stale IDs and
+   state synchronization. Completion requires the selected settings flow to work,
+   rather than merely rendering a tree.
+
+HWND/WndProc, Win32 P/Invoke, GDI+ custom painting, ActiveX/COM and complex data
+binding are initially excluded or require a separate feasibility evaluation.
+Keep this bridge distinct from the Windows path that hosts the original WinForms
+TabPage and from ordinary aftercast Dioxus windows.
 
 ### Ownership and API work
 
