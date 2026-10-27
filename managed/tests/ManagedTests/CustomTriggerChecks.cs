@@ -29,6 +29,13 @@ internal static class CustomTriggerChecks
                 root.TimeStampLen = 0;
                 root.CurrentZone = "Fixture Zone 2";
                 ActGlobals.charName = "Source";
+                var optional = new CustomTrigger(@"^(?:(?<YOU>Source)|Other)$", "optional")
+                { Tabbed = true, Timer = true, TimerName = "Countdown", SoundType = 3, SoundData = "optional" };
+                root.AddEditCustomTrigger(optional);
+                Process(root, "Other", "Other");
+                Check(root.ReadTriggerResults(0,16).Items.Length == 0 && host.DrainSpeech().Length == 0 &&
+                    ActGlobals.oFormSpellTimers!.GetTimerFrames().Count == 0);
+                root.CustomTriggers.Remove(optional.Key);
                 var trigger = new CustomTrigger(@"(?<YOU>\w+) (?<value>\d+)", "fixture")
                 { SoundType = 3, SoundData = "${value}", RestrictToCategoryZone = true, Timer = true, TimerName = "Countdown" };
                 ActGlobals.oFormSpellTimers!.AddEditTimerDef(new TimerData("Countdown", "fixture") { TimerValue = 30 });

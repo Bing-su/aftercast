@@ -46,7 +46,7 @@ public partial class FormActMain
                 var match = trigger.RegEx.Match(text);
                 if (!match.Success) continue;
                 var you = match.Groups["YOU"];
-                if (you.Success && !you.Value.ToLowerInvariant().Contains((ActGlobals.charName ?? "").ToLowerInvariant())) continue;
+                if (trigger.RegEx.GroupNumberFromName("YOU") >= 0 && !you.Value.ToLowerInvariant().Contains((ActGlobals.charName ?? "").ToLowerInvariant())) continue;
                 if (trigger.Tabbed) RecordTriggerResult(trigger, info, text, match, isImport, sorter);
                 if (isImport) continue;
                 if (trigger.Timer)

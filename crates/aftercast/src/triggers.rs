@@ -11,7 +11,7 @@ pub struct TriggerDefinition {
     pub category: String,
     pub regex: String,
     /// 0 None, 1 Beep, 2 WAV, 3 TTS; expressions in sound_data use .NET Match.Result syntax.
-    pub sound_type: u32,
+    pub sound_type: i32,
     pub sound_data: String,
     pub active: bool,
     pub restrict_to_category_zone: bool,
@@ -273,6 +273,12 @@ fn decode_reply<T: DeserializeOwned>(packet: &[u8]) -> Result<T, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn legacy_signed_sound_type_is_readable_without_normalizing_plugin_state() {
+        let item: TriggerItem = serde_json::from_str(r#"{"key":"x|x","definition":{"category":"x","regex":"x","soundType":-1,"soundData":"","active":true,"restrictToCategoryZone":false,"timer":false,"timerName":"","tabbed":false}}"#)
+            .expect("ACT stores SoundType as a signed integer");
+        assert_eq!(item.definition.sound_type, -1);
+    }
     #[test]
     fn malformed_reply_cannot_escape_its_declared_buffer() {
         let mut packet = vec![0; HEADER];
