@@ -175,7 +175,7 @@ Four actual isolated-Host controller regressions cover the four XML roots and
 saved bytes, original-index subset values, sort and HTML column order, format
 switches, text/table switching, safe source/UTF-8 preview limit versus full save,
 no-overwrite/failure/cancel, recapture, stale confirmations/replies, selection,
-navigation, Stop, empty scopes and SQL callback errors. Existing ordinary-text
+navigation, Stop, absent scopes and SQL callback errors. Existing ordinary-text
 controller and file failure/race regressions remain in the suite. Native
 click/focus/visual verification and Windows execution remain unverified on ser7;
 launch smoke is not a substitute. Full hierarchical HTML, depth and graphs remain
