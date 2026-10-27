@@ -56,6 +56,7 @@ internal static class LiveCompanionChecks
     {
         HostLifetimeChecks.RunBounded(ClockPauseAndNames);
         HostLifetimeChecks.RunBounded(PausedImageChanges);
+        HostLifetimeChecks.RunBounded(FailurePublication);
         HostLifetimeChecks.RunBounded(TimeoutAndRecovery);
         HostLifetimeChecks.RunBounded(EligibleTieResetsWait);
         HostLifetimeChecks.RunBounded(ReentrantAndImport);
@@ -121,6 +122,57 @@ internal static class LiveCompanionChecks
         fixture.Root.ReadThreadLock = false;
         Wait(() => fixture.Seen.Count == 2, "truncation did not reset a blocked source");
         Check(fixture.Seen.Last().Line == "0|fresh" && fixture.Host.RecentDiagnostics.Any(text => text.Contains("invalidated", StringComparison.Ordinal) || text.Contains("generation", StringComparison.Ordinal)), "image loss was hidden");
+    }
+    private sealed class PausedMessage(ManualResetEventSlim entered, ManualResetEventSlim release) : IOException
+    {
+        public override string Message
+        {
+            get
+            {
+                entered.Set();
+                Check(release.Wait(TimeSpan.FromSeconds(5)), "failure message was not released");
+                return "synthetic terminal reader failure";
+            }
+        }
+    }
+    private static void FailurePublication()
+    {
+        using var fixture = new Fixture("side");
+        fixture.Host.OpenLogWithCompanions([new("side")]);
+        var flags = System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic;
+        var group = fixture.Root.GetType().GetField("follower", flags)!.GetValue(fixture.Root)!;
+        var sources = (Array)group.GetType().GetField("sources", flags)!.GetValue(group)!;
+        var source = sources.GetValue(1)!;
+        var fail = group.GetType().GetMethod("Fail", flags)!;
+        using var entered = new ManualResetEventSlim();
+        using var release = new ManualResetEventSlim();
+        // Pause the actual failure path before it can obtain its diagnostic: no scheduler timing assumption.
+        var failure = Task.Run(() => fail.Invoke(group, [source, new PausedMessage(entered, release)]));
+        try
+        {
+            Check(entered.Wait(TimeSpan.FromSeconds(5)), "failure did not reach diagnostic capture");
+            var pending = fixture.Status("side");
+            Check(pending.State != "failed", "failed state escaped before its diagnostic was available");
+        }
+        finally
+        {
+            release.Set();
+            Check(failure.Wait(TimeSpan.FromSeconds(5)), "failure publication did not finish");
+        }
+        var published = fixture.Status("side");
+        Check(published.State == "failed" && published.LastError == "synthetic terminal reader failure", "terminal diagnostic not published together");
+        // Later recoverable diagnostics cannot replace the reason for the terminal state, even with empty text.
+        group.GetType().GetMethod("Report", flags)!.Invoke(group, [new IOException(""), source]);
+        Check(fixture.Status("side").LastError == published.LastError, "later report erased terminal cause");
+        fixture.Host.OpenLogWithCompanions([new("side")]);
+        Check(fixture.Status("side").State == "following" && fixture.Status("side").LastError.Length == 0, "reopen retained old failure");
+        group = fixture.Root.GetType().GetField("follower", flags)!.GetValue(fixture.Root)!;
+        sources = (Array)group.GetType().GetField("sources", flags)!.GetValue(group)!;
+        source = sources.GetValue(1)!;
+        fail.Invoke(group, [source, new IOException("")]);
+        Check(fixture.Status("side").State == "failed" && fixture.Status("side").LastError == nameof(IOException), "empty failure lacks type fallback");
+        fail.Invoke(group, [source, new IOException("later failure")]);
+        Check(fixture.Status("side").LastError == nameof(IOException), "repeat failure replaced first cause");
     }
     private static void TimeoutAndRecovery()
     {

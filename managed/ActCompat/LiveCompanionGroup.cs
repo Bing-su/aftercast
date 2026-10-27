@@ -24,7 +24,8 @@ namespace Advanced_Combat_Tracker
             internal LogFollower Reader = null!;
             internal Head? Head;
             internal long Version = 1, Dropped, WaitStarted;
-            internal int Failed, Invalidating, QueuedCount, Waiting;
+            internal int Invalidating, QueuedCount, Waiting;
+            internal string? Failure;
             internal string Error = "";
         }
         private readonly object gate = new();
@@ -100,7 +101,7 @@ namespace Advanced_Combat_Tracker
         internal override bool IsAlive => worker.IsAlive;
         internal override bool CallbackActive { get { lock (gate) return callbackActive; } }
         internal override int ResourceCost => sources.Length + 1;
-        private bool Valid(Source source, long version) => !token.IsCancellationRequested && Volatile.Read(ref source.Failed) == 0 &&
+        private bool Valid(Source source, long version) => !token.IsCancellationRequested && Volatile.Read(ref source.Failure) is null &&
             Volatile.Read(ref source.Invalidating) == 0 && Interlocked.Read(ref source.Version) == version;
         private void Enqueue(Source source, string line)
         {
@@ -153,7 +154,11 @@ namespace Advanced_Combat_Tracker
         }
         private void Fail(Source source, Exception error)
         {
-            if (Interlocked.Exchange(ref source.Failed, 1) != 0) return;
+            // Publish one immutable terminal cause instead of a flag followed by a separate diagnostic.
+            // Readers can never observe failed + empty, and later recoverable reports cannot erase the cause.
+            var message = error.Message;
+            if (string.IsNullOrEmpty(message)) message = error.GetType().Name;
+            if (Interlocked.CompareExchange(ref source.Failure, message, null) is not null) return;
             Report(error, source);
             if (source.Name.Length == 0) Stop();
             source.Reader?.Dispose();
@@ -248,7 +253,7 @@ namespace Advanced_Combat_Tracker
             lastImageCheck = Stopwatch.GetTimestamp();
             foreach (var source in sources)
             {
-                if (Volatile.Read(ref source.Failed) != 0 || source.Head is null && Volatile.Read(ref source.QueuedCount) == 0) continue;
+                if (Volatile.Read(ref source.Failure) is not null || source.Head is null && Volatile.Read(ref source.QueuedCount) == 0) continue;
                 var version = Interlocked.Read(ref source.Version);
                 try
                 {
@@ -277,11 +282,15 @@ namespace Advanced_Combat_Tracker
         internal LiveLogSourceStatus[] ReadStatus()
         {
             var isPaused = paused();
-            return sources.Select(source => new LiveLogSourceStatus(source.Name, source.Path,
-                source.Failed != 0 ? "failed" : Volatile.Read(ref stopped) != 0 ? "stopped" : isPaused ? "paused" :
-                source.Invalidating != 0 ? "changing" : source.Waiting != 0 ? "waiting_for_clock" : "following",
-                Math.Max(0, Volatile.Read(ref source.QueuedCount)), Volatile.Read(ref source.Head)?.Time,
-                Interlocked.Read(ref source.Version), Interlocked.Read(ref source.Dropped), Volatile.Read(ref source.Error))).ToArray();
+            return sources.Select(source =>
+            {
+                var failure = Volatile.Read(ref source.Failure);
+                return new LiveLogSourceStatus(source.Name, source.Path,
+                    failure is not null ? "failed" : Volatile.Read(ref stopped) != 0 ? "stopped" : isPaused ? "paused" :
+                    source.Invalidating != 0 ? "changing" : source.Waiting != 0 ? "waiting_for_clock" : "following",
+                    Math.Max(0, Volatile.Read(ref source.QueuedCount)), Volatile.Read(ref source.Head)?.Time,
+                    Interlocked.Read(ref source.Version), Interlocked.Read(ref source.Dropped), failure ?? Volatile.Read(ref source.Error));
+            }).ToArray();
         }
         internal override string? ReadInitialZone(Regex? regex, Func<bool> canceled) => sources[0].Reader.ReadInitialZone(regex, canceled);
         internal override void CompleteInitialSnapshot()

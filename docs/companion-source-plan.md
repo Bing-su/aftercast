@@ -511,3 +511,18 @@ The existing History results now provide a separate **Find source logs** action,
 | Drafts                     | Scope, budget and codec input survive failure/release; companion drafts are associated with their source path, preserved on cancellation and retained only for names still present on catalog refresh      |
 
 Actual isolated-Host controller tests cover explicit candidate selection, frozen main/companion options, both range endpoints, source replacement after Ready, one-shot replay, graph-reference invalidation, selection/navigation cleanup, duplicate requests, cancellation, late responses and session stop, partial-open failures, stale history preflight with Ready image retention, codec draft preservation and stale A Replay/Release events against a newer B capture. Existing whole/ACT comparisons remain required. These are controller contracts, not native mouse/keyboard/focus QA. Linux startup can be checked in an isolated temporary executable directory; ser7 accessibility/CUA limits and actual Windows/native ACT timing remain unverified.
+
+## Live failure publication
+
+A source publishes its first terminal failure and nonempty cause as one atomic
+reference. Status reads that reference once, so `failed` cannot be paired with an
+unpublished/empty diagnostic. An empty exception message falls back to its type
+name. Later recoverable reports still reach Host diagnostics but do not replace
+the terminal cause returned in source status. Repeated failure does not restart
+cleanup; explicit reopen creates a new source and clears that cause.
+
+The synthetic managed regression pauses exception-message preparation before
+publication, checks that no premature `failed` status escapes, then releases it
+and verifies the cause, later reports, repeated failure and reopen. Existing
+timeout/cancel/shutdown and isolated-worker companion checks remain separate
+lifecycle evidence; no live game/user files are involved.
