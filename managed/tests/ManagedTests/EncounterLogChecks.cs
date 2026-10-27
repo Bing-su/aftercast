@@ -15,6 +15,7 @@ internal static class EncounterLogChecks
         HostLifetimeChecks.RunBounded(SwitchesAndFailure);
         HostLifetimeChecks.RunBounded(Live);
         HostLifetimeChecks.RunBounded(Retention);
+        HostLifetimeChecks.RunBounded(UnknownSourcesSurviveRestart);
         Console.WriteLine("Automatic encounter logs, ACT hook order, boundaries, bounded omissions and restart identity passed.");
     }
 
@@ -52,6 +53,7 @@ internal static class EncounterLogChecks
                 File.WriteAllText(path, "outside\nfirst\nsame\nsame\nend\noutside\nlater\nidle\n", new UTF8Encoding(false));
                 Check(host.ImportLog(path) is { Encounters: 2, Damage: 400 });
                 CheckLogs(root.ZoneList[0].Items);
+                CheckQueries(host);
                 Check(host.ArchiveOperation(3, "", 0, false) == 2);
             }
             using (var restarted = new HostEnvironment(directory.FullName))
@@ -59,6 +61,7 @@ internal static class EncounterLogChecks
                 CombatFixture.ConfigureCategories();
                 Check(restarted.ArchiveOperation(4, "", 0, false) == 2);
                 CheckLogs(ActGlobals.oFormActMain!.ZoneList[0].Items);
+                CheckQueries(restarted);
             }
         }
         finally { directory.Delete(true); }
@@ -79,6 +82,41 @@ internal static class EncounterLogChecks
                 Check(source.Time == action.Time && source.LogLine is "first" or "same" or "later");
             }
         }
+    }
+
+    private static void CheckQueries(HostEnvironment host)
+    {
+        var id = host.ListEncounters(0, 16).Items.OrderBy(item => item.Start).First().Id;
+        var actions = host.ReadEncounterActions(id, 0, 1)!;
+        Check(actions.Total == 3 && actions.Items.Length == 1 && actions.Items[0].SourceIndex == 0);
+        Check(host.ReadEncounterActions(id, 1, 2)!.Items.Select(action => action.SourceIndex).SequenceEqual(new[] { 1, 2 }));
+        var logs = host.ReadEncounterLogs(id, 1, 2)!;
+        Check(logs.Dropped == 0 && logs.Page.Total == 4 && logs.Page.Items.Select(line => line.Text).SequenceEqual(new[] { "same", "same" }));
+        Check(logs.Page.Items[0].TimeSorter != logs.Page.Items[1].TimeSorter);
+        Check(host.ReadEncounterLogs(ulong.MaxValue, 0, 1) is null && host.ReadEncounterActions(ulong.MaxValue, 0, 1) is null);
+        Check(host.ReadEncounterLogs(id, 99, 1)!.Page.Items.Length == 0);
+        var encounter = ActGlobals.oFormActMain!.ZoneList[0].Items.OrderBy(item => item.StartTime).First();
+        var line = encounter.LogLines[0];
+        encounter.LogLines.Add(line);
+        Check(host.ReadEncounterActions(id, 0, 1)!.Items[0].SourceIndex == -2);
+        encounter.LogLines.RemoveAt(encounter.LogLines.Count - 1);
+        encounter.LogLines.RemoveAt(0);
+        Check(host.ReadEncounterActions(id, 0, 1)!.Items[0].SourceIndex == -1);
+        encounter.LogLines.Insert(0, line);
+        using var xml = new MemoryStream();
+        var root = ActGlobals.oFormActMain!;
+        root.EncountersToXml([encounter], xml, true);
+        var sorter = root.GlobalTimeSorter;
+        root.GlobalTimeSorter = line.GlobalTimeSorter - 1;
+        xml.Position = 0;
+        var imported = root.XmlToEncounters(xml).Single();
+        imported.Parent = root.ZoneList[0];
+        root.ZoneList[0].Items.Add(imported);
+        var importedId = host.ListEncounters(0, 16).Items.Last().Id;
+        Check(imported.LogLines[0].GlobalTimeSorter == line.GlobalTimeSorter);
+        Check(host.ReadEncounterActions(importedId, 0, 1)!.Items[0].SourceIndex == -1);
+        root.ZoneList[0].Items.Remove(imported);
+        root.GlobalTimeSorter = sorter;
     }
 
     private static void SwitchesAndFailure()
@@ -138,6 +176,40 @@ internal static class EncounterLogChecks
             Check(encounter.LogLines.Select(line => line.LogLine).SequenceEqual(new[] { "first", "end" }));
             Check(encounter.LogLines[0].GlobalTimeSorter == encounter.GetCombatant("Source")!.AllOut["All"].Items.Single().TimeSorter);
             Check(root.ActiveZone.Items[0].LogLines.Count == 0 && host.Diagnostics.Item1 == 0);
+        }
+        finally { directory.Delete(true); }
+    }
+
+    private static void UnknownSourcesSurviveRestart()
+    {
+        var directory = Directory.CreateTempSubdirectory("aftercast-unknown-sources-");
+        try
+        {
+            using (var host = new HostEnvironment(directory.FullName))
+            {
+                CombatFixture.ConfigureCategories();
+                var root = ActGlobals.oFormActMain!;
+                root.GetDateTimeFromLog = _ => Epoch;
+                root.BeforeLogLineRead += (_, info) => Add(root, info);
+                var path = Path.Combine(directory.FullName, "source.log");
+                File.WriteAllText(path, "first\n");
+                host.ImportLog(path);
+                var id = host.ListEncounters(0, 1).Items.Single().Id;
+                var xml = Path.Combine(directory.FullName, "external.xml");
+                host.ArchiveOperation(2, xml, id, false);
+                root.ZoneList[0].Items.Clear();
+                root.GlobalTimeSorter = 0;
+                host.ArchiveOperation(1, xml, 0, false);
+                id = host.ListEncounters(0, 1).Items.Single().Id;
+                Check(host.ReadEncounterActions(id, 0, 1)!.Items.Single().SourceIndex == -1);
+                Check(host.ArchiveOperation(3, "", 0, false) == 1);
+            }
+            using var restarted = new HostEnvironment(directory.FullName);
+            CombatFixture.ConfigureCategories();
+            Check(restarted.ArchiveOperation(4, "", 0, false) == 1);
+            var restoredId = restarted.ListEncounters(0, 1).Items.Single().Id;
+            Check(restarted.ReadEncounterActions(restoredId, 0, 1)!.Items.Single().SourceIndex == -1);
+            Check(restarted.ReadEncounterLogs(restoredId, 0, 1)!.Page.Items.Single().Text == "first");
         }
         finally { directory.Delete(true); }
     }

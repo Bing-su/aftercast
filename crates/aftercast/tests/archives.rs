@@ -34,6 +34,25 @@ async fn archives_survive_restart_and_round_trip_through_public_apis(deployment:
     let result = host.encounters(0, 16).await.expect("retained encounters");
     let encounter = result.items.first().expect("parsed encounter");
     assert_eq!(encounter.damage, 400);
+    let actions = host
+        .encounter_actions(encounter.id, 0, 1)
+        .await
+        .expect("read actions")
+        .expect("encounter");
+    assert_eq!(actions.total, 2);
+    assert_eq!(
+        actions.items[0].source,
+        aftercast::SourceLogLink::Retained(0)
+    );
+    let logs = host
+        .encounter_logs(encounter.id, 0, 1)
+        .await
+        .expect("read logs")
+        .expect("encounter");
+    assert_eq!(logs.page.total, 2);
+    assert_eq!(logs.dropped, 0);
+    assert_eq!(logs.page.items[0].time_sorter, actions.items[0].time_sorter);
+    assert_eq!(logs.page.items[0].text, "0|100");
     let old_id = encounter.id;
     let gzip = deployment.directory().join("encounter.act");
     let xml = deployment.directory().join("encounter.xml");
@@ -90,6 +109,27 @@ async fn archives_survive_restart_and_round_trip_through_public_apis(deployment:
         restored.items.first().expect("restored encounter").damage,
         400
     );
+    let restored_id = restored.items[0].id;
+    let actions = restarted
+        .encounter_actions(restored_id, 1, 1)
+        .await
+        .expect("restored actions")
+        .expect("encounter");
+    assert_eq!(
+        actions.items[0].source,
+        aftercast::SourceLogLink::Retained(1)
+    );
+    let logs = restarted
+        .encounter_logs(restored_id, 1, 1)
+        .await
+        .expect("restored logs")
+        .expect("encounter");
+    assert_eq!(logs.page.items[0].time_sorter, actions.items[0].time_sorter);
+    assert_eq!(logs.page.items[0].text, "2|300");
+    assert!(matches!(
+        restarted.encounter_logs(old_id, 0, 1).await,
+        Err(Error::InvalidCombatRequest(_))
+    ));
     let restored_xml = deployment.directory().join("restored.xml");
     restarted
         .export_act(restored.items[0].id, &restored_xml, ActFormat::Xml)

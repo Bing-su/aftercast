@@ -100,8 +100,19 @@ older version-1 payloads without that attribute have zero capacity omissions.
 ACT interchange does not carry this private loss metadata.
 
 This is retained encounter context, not lossless recording of every file record.
-Out-of-combat input and blank records are excluded, UI/Rust log-query operations
-and persistence of the recording options remain separate work. Vendor disk-writer
+Out-of-combat input and blank records are excluded. Rust `encounter_actions` and
+`encounter_logs` return owned pages (1..256 rows), with canonical outgoing actions,
+retained source offsets, missing/ambiguous source states and capacity omissions.
+New checkpoints record whether source identities are known in
+`AftercastLogIdentityKnown`. ACT interchange and older private payloads lacking
+this provenance are browsable, but their actions report unavailable source links;
+coincidentally equal reconstructed sorters must not select a different line.
+They are current graph reads, not frozen snapshots; a source offset belongs only
+to its originating encounter. The GUI checks the selected sorter's identity again
+when opening its log page. Session IDs do not survive restart.
+The Analysis pane exposes these pages using Rust/UI-derived Button/Accordion
+components; Import/Export exposes checkpoint save/restore and clears old selections
+after restoration. Persistence of recording options remains separate work. Vendor disk-writer
 queue/flush/rotation guarantees are unchanged. The recording-order evidence was
 read from the pinned ACT binary with ILSpy 11.1.0.9782; new runtime regressions
 exercise aftercast on Linux, not ACT's full Windows application.

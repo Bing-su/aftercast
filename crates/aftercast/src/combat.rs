@@ -73,6 +73,42 @@ pub struct AttackSummary {
     pub blocked: i32,
 }
 
+/// Link within the originating encounter; ambiguous or omitted logs never select a guessed line.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SourceLogLink {
+    Missing,
+    Ambiguous,
+    Retained(u32),
+}
+
+/// One canonical outgoing action; categories are not summed or duplicated.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncounterAction {
+    pub time: LogTimestamp,
+    pub time_sorter: i32,
+    pub attacker: String,
+    pub victim: String,
+    pub attack: String,
+    pub damage: String,
+    pub source: SourceLogLink,
+}
+
+/// Retained encounter text, independent of the live subscription buffer.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct EncounterLog {
+    pub time: LogTimestamp,
+    pub time_sorter: i32,
+    pub log_type: i32,
+    pub text: String,
+}
+
+/// Current page and exact automatic capacity omissions; disabled recording is not counted as loss.
+#[derive(Debug, Clone)]
+pub struct EncounterLogs {
+    pub dropped: u64,
+    pub page: EncounterPage<EncounterLog>,
+}
+
 impl HostHandle {
     /// Reads current live combat without ending it. Returns None while idle or importing.
     ///
@@ -135,6 +171,37 @@ impl HostHandle {
         };
         reader.finish()?;
         Ok(page)
+    }
+
+    /// Pages canonical outgoing actions and their encounter-scoped source-log links.
+    /// Like other graph queries, pages are current reads, not a frozen cursor. Limit is 1..=256.
+    pub async fn encounter_actions(
+        &self,
+        id: EncounterId,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Option<EncounterPage<EncounterAction>>, Error> {
+        let payload = self.query_combat(5, Some(id), offset, limit).await?;
+        let mut reader = Reader(&payload);
+        let page = if reader.present()? {
+            Some(reader.page(limit, offset, Reader::action)?)
+        } else {
+            None
+        };
+        reader.finish()?;
+        Ok(page)
+    }
+
+    /// Pages retained text and capacity omissions. Missing encounters return None; empty logs are valid.
+    /// Source indices are offsets in this encounter, never timestamps or live subscription sequences.
+    pub async fn encounter_logs(
+        &self,
+        id: EncounterId,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Option<EncounterLogs>, Error> {
+        let payload = self.query_combat(6, Some(id), offset, limit).await?;
+        decode_logs(&payload, offset, limit)
     }
 
     async fn query_combat(
@@ -299,6 +366,37 @@ impl<'a> Reader<'a> {
             combatants: self.u32()?,
         })
     }
+    fn action(&mut self) -> Result<EncounterAction, Error> {
+        let time = self.time()?;
+        let time_sorter = self.i32()?;
+        let attacker = self.text()?;
+        let victim = self.text()?;
+        let attack = self.text()?;
+        let damage = self.text()?;
+        let source = match self.i32()? {
+            -1 => SourceLogLink::Missing,
+            -2 => SourceLogLink::Ambiguous,
+            index if index >= 0 => SourceLogLink::Retained(index.cast_unsigned()),
+            _ => return Err(invalid("invalid source log link")),
+        };
+        Ok(EncounterAction {
+            time,
+            time_sorter,
+            attacker,
+            victim,
+            attack,
+            damage,
+            source,
+        })
+    }
+    fn log(&mut self) -> Result<EncounterLog, Error> {
+        Ok(EncounterLog {
+            time: self.time()?,
+            time_sorter: self.i32()?,
+            log_type: self.i32()?,
+            text: self.text()?,
+        })
+    }
     fn attack(&mut self) -> Result<AttackSummary, Error> {
         Ok(AttackSummary {
             combatant: self.text()?,
@@ -316,6 +414,24 @@ impl<'a> Reader<'a> {
             blocked: self.i32()?,
         })
     }
+}
+
+fn decode_logs(payload: &[u8], offset: u32, limit: u32) -> Result<Option<EncounterLogs>, Error> {
+    let mut reader = Reader(payload);
+    let page = if reader.present()? {
+        let dropped = reader.u64()?;
+        if dropped > i64::MAX as u64 {
+            return Err(invalid("invalid omitted log count"));
+        }
+        Some(EncounterLogs {
+            dropped,
+            page: reader.page(limit, offset, Reader::log)?,
+        })
+    } else {
+        None
+    };
+    reader.finish()?;
+    Ok(page)
 }
 
 fn decode_detail(payload: &[u8], session: u64) -> Result<Option<EncounterDetail>, Error> {
@@ -398,6 +514,50 @@ mod tests {
         decode_detail(&2u32.to_le_bytes(), 1).expect_err("reject invalid presence");
         decode_detail(&[0; 5], 1).expect_err("reject trailing bytes");
         assert!(decode_detail(&[0; 4], 1).expect("absent detail").is_none());
+    }
+
+    #[test]
+    fn action_and_log_pages_reject_truncation_and_invalid_links_or_loss() {
+        let mut action = BytesMut::new();
+        action.put_i64_le(0);
+        action.put_u32_le(0);
+        action.put_i32_le(42);
+        for value in ["Source", "Target", "Strike", "100"] {
+            text(&mut action, value);
+        }
+        action.put_i32_le(7);
+        assert_eq!(
+            Reader(&action).action().expect("action").source,
+            SourceLogLink::Retained(7)
+        );
+        for length in 0..action.len() {
+            Reader(&action[..length])
+                .action()
+                .expect_err("truncated action");
+        }
+        let end = action.len();
+        action[end - 4..].copy_from_slice(&(-3_i32).to_le_bytes());
+        Reader(&action).action().expect_err("invalid source link");
+        let mut logs = BytesMut::new();
+        logs.put_u32_le(1);
+        logs.put_u64_le(3);
+        logs.put_u32_le(1);
+        logs.put_u32_le(1);
+        logs.put_i64_le(0);
+        logs.put_u32_le(0);
+        logs.put_i32_le(42);
+        logs.put_i32_le(12);
+        text(&mut logs, "한글\0 source");
+        let page = decode_logs(&logs, 0, 1)
+            .expect("log page")
+            .expect("present");
+        assert_eq!(page.dropped, 3);
+        assert_eq!(page.page.items[0].text, "한글\0 source");
+        for length in 0..logs.len() {
+            decode_logs(&logs[..length], 0, 1).expect_err("truncated logs");
+        }
+        logs[4..12].copy_from_slice(&u64::MAX.to_le_bytes());
+        decode_logs(&logs, 0, 1).expect_err("invalid loss count");
     }
 
     #[rstest::rstest]

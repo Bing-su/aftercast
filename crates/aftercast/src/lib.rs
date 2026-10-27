@@ -26,7 +26,8 @@ pub use speech::AudioSettings;
 pub use bridge::extract_bridge;
 use camino::Utf8PathBuf;
 pub use combat::{
-    AttackSummary, EncounterDetail, EncounterId, EncounterPage, EncounterStatus, EncounterSummary,
+    AttackSummary, EncounterAction, EncounterDetail, EncounterId, EncounterLog, EncounterLogs,
+    EncounterPage, EncounterStatus, EncounterSummary, SourceLogLink,
 };
 pub use diagnostics::HostDiagnostics;
 pub use host::{Host, HostHandle};

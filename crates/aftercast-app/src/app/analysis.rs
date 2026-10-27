@@ -87,6 +87,12 @@ pub(super) fn AnalysisPane() -> Element {
                             .collect(),
                     }
                 }
+                for id in [detail.summary.id] {
+                    super::encounter_context::EncounterContext {
+                        key: "{state.read().revision.session}-{state.read().revision.selection}",
+                        id,
+                    }
+                }
                 p { class: "my-6 max-w-[70ch] text-xs leading-7 text-muted-foreground",
                     {tr("aggregate-scope")}
                 }
@@ -161,6 +167,22 @@ pub(super) fn ImportPane() -> Element {
                     }
                 }
             }
+            div { class: "my-5 flex flex-wrap gap-3",
+                Button {
+                    variant: ButtonVariant::Outline,
+                    disabled: state.read().phase != Phase::Ready || state.read().loading,
+                    onclick: move |_| super::archive_history(state, false),
+                    {tr("save-history")}
+                }
+                Button {
+                    variant: ButtonVariant::Outline,
+                    disabled: state.read().phase != Phase::Ready || state.read().loading
+                        || state.read().plugins.is_empty(),
+                    onclick: move |_| super::archive_history(state, true),
+                    {tr("restore-history")}
+                }
+            }
+            p { class: "text-sm text-muted-foreground", {tr("history-help")} }
             p { class: "mt-8 border-t border-border pt-5 text-sm text-muted-foreground",
                 {tr("export-planned")}
             }

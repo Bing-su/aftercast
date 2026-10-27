@@ -64,12 +64,14 @@ does not trim or rewrite territory names.
 
 ## GUI combat queries
 
-| API                                    | Returned data                                                                          | Idle / removed behavior                             |
-| -------------------------------------- | -------------------------------------------------------------------------------------- | --------------------------------------------------- |
-| `live_combat()`                        | Active live encounter and participant counters, including DPS/HPS                      | `None` while idle or importing                      |
-| `encounters(offset, limit)`            | Total count and a page of encounter summaries                                          | Empty page when offset is past the end              |
-| `encounter_detail(id)`                 | Selected encounter summary and participant counters                                    | `None` if a plugin removed it                       |
-| `encounter_attacks(id, offset, limit)` | Category/attack totals, direction, damage, duration, DPS, hits/criticals/misses/blocks | `None` if removed; otherwise possibly an empty page |
+| API                                    | Returned data                                                                          | Idle / removed behavior                                                |
+| -------------------------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- |
+| `live_combat()`                        | Active live encounter and participant counters, including DPS/HPS                      | `None` while idle or importing                                         |
+| `encounters(offset, limit)`            | Total count and a page of encounter summaries                                          | Empty page when offset is past the end                                 |
+| `encounter_detail(id)`                 | Selected encounter summary and participant counters                                    | `None` if a plugin removed it                                          |
+| `encounter_attacks(id, offset, limit)` | Category/attack totals, direction, damage, duration, DPS, hits/criticals/misses/blocks | `None` if removed; otherwise possibly an empty page                    |
+| `encounter_actions(id, offset, limit)` | Canonical outgoing actions and encounter-scoped source links                           | `None` if removed; Missing/Ambiguous links never select a guessed line |
+| `encounter_logs(id, offset, limit)`    | Retained timestamp/type/text/sorter pages and capacity omissions                       | `None` if removed; empty logs remain valid                             |
 
 ```rust,no_run
 async fn refresh(host: &aftercast::HostHandle) -> Result<(), aftercast::Error> {
@@ -103,7 +105,7 @@ async fn refresh(host: &aftercast::HostHandle) -> Result<(), aftercast::Error> {
 | Import status | New imports are `Importing` until restoration completes. Failure marks every encounter added by that import `PartialImport`; earlier imports keep their status |
 | Ownership     | Strings, participant arrays and attack rows remain valid after later input and host shutdown; subsequent queries read current plugin edits                     |
 | Aggregates    | `All` attack rows and overlapping ACT categories are returned verbatim. Do not sum every row to compute encounter damage                                       |
-| Scope         | Participant and attack aggregates; individual swing/log inspection and persistence across process restart are outside these queries                            |
+| Scope         | Participant/attack aggregates and individual action/log pages; persistence uses the explicit private history APIs, with fresh encounter IDs after restart      |
 | Bounds        | 65,536 participants in a detail response and 64 MiB per encoded query. Invalid state or oversize results report an error                                       |
 
 Unlike `combat_snapshot`, these queries read the mutable graph each time and

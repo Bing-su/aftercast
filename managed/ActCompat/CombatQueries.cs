@@ -9,6 +9,10 @@ namespace Aftercast.ActCompat
     public sealed record EncounterDetailData(EncounterSummaryData Summary, CombatantSnapshotData[] Combatants);
     public sealed record AttackSummaryData(string Combatant, string Category, string Attack, bool Outgoing,
         long Damage, long DurationTicks, double DPS, double EncDPS, int Swings, int Hits, int CritHits, int Misses, int Blocked);
+    public sealed record EncounterActionData(DateTime Time, int TimeSorter, string Attacker, string Victim,
+        string Attack, string Damage, int SourceIndex);
+    public sealed record EncounterLogData(DateTime Time, int TimeSorter, int Type, string Text);
+    public sealed record EncounterLogPageData(long Dropped, CombatPage<EncounterLogData> Page);
     public sealed record CombatPage<T>(int Total, T[] Items);
 }
 
@@ -109,6 +113,39 @@ namespace Advanced_Combat_Tracker
                         total = checked(total + attacks.Count);
                     }
                 return new(total, items.ToArray());
+            }
+        }
+
+        internal CombatPage<EncounterActionData>? ReadEncounterActions(ulong id, int offset, int limit)
+        {
+            ValidateCombatPage(offset, limit);
+            lock (CombatGate)
+            {
+                var encounter = QueryEncounters().Select(item => item.Encounter).FirstOrDefault(item => Identity(item).Id == id);
+                if (encounter is null) return null;
+                // Canonical outgoing All lists avoid multiplying actions across overlapping parser categories.
+                var actions = encounter.Items.Values.SelectMany(actor => actor.AllOut.TryGetValue("All", out var all)
+                    ? (IEnumerable<MasterSwing>)all.Items : []);
+                var sources = new Dictionary<int, int>();
+                for (var index = 0; index < encounter.LogLines.Count; index++)
+                {
+                    var sorter = encounter.LogLines[index].GlobalTimeSorter;
+                    if (!sources.TryAdd(sorter, index)) sources[sorter] = -2;
+                }
+                return new(actions.Count(), actions.Skip(offset).Take(limit).Select(action => new EncounterActionData(
+                    action.Time, action.TimeSorter, action.Attacker, action.Victim, action.AttackType, action.Damage.ToString(),
+                    encounter.LogSourceIdentityKnown ? sources.GetValueOrDefault(action.TimeSorter, -1) : -1)).ToArray());
+            }
+        }
+
+        internal EncounterLogPageData? ReadEncounterLogs(ulong id, int offset, int limit)
+        {
+            ValidateCombatPage(offset, limit);
+            lock (CombatGate)
+            {
+                var encounter = QueryEncounters().Select(item => item.Encounter).FirstOrDefault(item => Identity(item).Id == id);
+                return encounter is null ? null : new(encounter.DroppedLogLines,
+                    new(encounter.LogLines.Count, encounter.LogLines.Skip(offset).Take(limit).Select(line => new EncounterLogData(line.Time, line.GlobalTimeSorter, line.Type, line.LogLine)).ToArray()));
             }
         }
 

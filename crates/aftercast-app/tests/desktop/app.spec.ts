@@ -167,7 +167,7 @@ test('embedded runtime starts a real Host, imports expected totals and survives 
   await fs.access(plugin);
   await fs.writeFile(path.join(directory, 'config.toml'), `schema_version = 1\n[ui]\nlanguage = "en-US"\n[host]\nplugins = [${JSON.stringify(plugin)}]\n[host.plugin_types]\n${JSON.stringify(plugin)} = "Aftercast.PluginFixture.ImportPlugin"\n`);
   const log = path.join(directory, 'fixture.log');
-  await fs.writeFile(log, '0|100\n2|300\n');
+  await fs.writeFile(log, '0|100\n0|300\n');
   await start();
   await page.getByRole('button', { name: 'Start host', exact: true }).click();
   await expect(page.getByTestId('host-status')).toHaveText('Host running', { timeout: 40_000 });
@@ -185,6 +185,21 @@ test('embedded runtime starts a real Host, imports expected totals and survives 
   await expect(page.locator('.summary-strip')).toContainText('400');
   await expect(page.locator('.data-table')).toContainText('400');
   await expect(page.getByRole('alert')).toHaveCount(0);
+  const context = page.getByRole('region', { name: 'Actions and encounter logs', exact: true });
+  const checkSources = async () => {
+    await context.getByRole('button', { name: /Source → Target · Strike · 100/ }).click();
+    await expect(context.locator('[aria-current="true"]')).toContainText('0|100');
+    await context.getByRole('button', { name: 'Back to actions', exact: true }).click();
+    await context.getByRole('button', { name: /Source → Target · Strike · 300/ }).click();
+    await expect(context.locator('[aria-current="true"]')).toContainText('0|300');
+    await expect(context.getByRole('status')).toContainText('Omitted by retention limits 0');
+    await context.getByRole('button', { name: 'Back to actions', exact: true }).click();
+  };
+  await checkSources();
+  await page.getByRole('button', { name: 'Settings', exact: true }).click();
+  await page.getByRole('button', { name: 'Analysis', exact: true }).click();
+  await expect(context.getByRole('button', { name: /Source → Target · Strike · 100/ })).toBeVisible();
+
   await page.locator('#encounter-search').fill('missing');
   await expect(page.locator('.encounter-item')).toHaveCount(0);
   await page.locator('#encounter-search').fill('Target');
@@ -245,6 +260,9 @@ test('embedded runtime starts a real Host, imports expected totals and survives 
   await expect(page.locator('main')).toBeInViewport();
   await expect(page.locator('footer')).toBeInViewport();
   await page.getByRole('button', { name: 'End combat', exact: true }).click();
+  await page.getByRole('button', { name: 'Import / Export', exact: true }).click();
+  await page.getByRole('button', { name: 'Save history checkpoint', exact: true }).click();
+  await expect(page.getByRole('status').last()).toHaveText('History saved: 1');
   await page.getByRole('button', { name: 'Stop host', exact: true }).click();
   await page.setViewportSize({ width: 1280, height: 820 });
   await expect(page.getByTestId('host-status')).toHaveText('Host stopped');
@@ -255,6 +273,14 @@ test('embedded runtime starts a real Host, imports expected totals and survives 
   await page.getByRole('button', { name: 'Start host', exact: true }).click();
   await expect(page.getByTestId('host-status')).toHaveText('Host running', { timeout: 40_000 });
   expect((await fs.stat(marker)).mtimeMs).toBe(timestamp);
+  await page.getByRole('button', { name: 'Import / Export', exact: true }).click();
+  await page.getByRole('button', { name: 'Restore saved history', exact: true }).click();
+  await expect(page.getByRole('status').last()).toHaveText('History restored: 1');
+  await page.getByRole('button', { name: 'Analysis', exact: true }).click();
+  await expect(page.getByRole('region', { name: 'Actions and encounter logs', exact: true })).toHaveCount(0);
+  await page.locator('.encounter-item').click();
+  await checkSources();
+
   await page.getByRole('button', { name: 'Stop host', exact: true }).click();
   await expect(page.getByTestId('host-status')).toHaveText('Host stopped');
   expect(browserErrors).toEqual([]);

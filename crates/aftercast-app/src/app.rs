@@ -1,4 +1,5 @@
 mod analysis;
+mod encounter_context;
 mod plugins;
 mod preferences;
 mod shell;
@@ -35,6 +36,7 @@ enum Phase {
     Initializing,
     Ready,
     Importing,
+    Archiving,
     Stopping,
 }
 
@@ -46,6 +48,7 @@ impl Phase {
             Self::Initializing => "initializing",
             Self::Ready => "ready",
             Self::Importing => "importing",
+            Self::Archiving => "archiving",
             Self::Stopping => "stopping",
         }
     }
@@ -196,7 +199,7 @@ pub fn App() -> Element {
                 }
                 let phase = state.read().phase;
                 match phase {
-                    Phase::Ready | Phase::Initializing | Phase::Importing => {
+                    Phase::Ready | Phase::Initializing | Phase::Importing | Phase::Archiving => {
                         stop(state);
                     }
                     Phase::Idle if !state.read().saving => {
@@ -556,6 +559,51 @@ async fn run_import(
             }
         }
     }
+}
+
+fn archive_history(mut state: Signal<AppState>, restore: bool) {
+    if state.read().phase != Phase::Ready || state.read().loading {
+        return;
+    }
+    let Some(handle) = state.read().handle() else {
+        return;
+    };
+    let session = state.read().revision.session;
+    state.write().phase = Phase::Archiving;
+    let message = tr(if restore {
+        "history-restored"
+    } else {
+        "history-saved"
+    });
+    // History I/O belongs to the application, e.g. changing tabs must not abandon a pending checkpoint.
+    spawn_forever(async move {
+        let result = if restore {
+            handle.restore_history("").await
+        } else {
+            handle.save_history().await
+        };
+        if state.read().revision.session != session {
+            return;
+        }
+        state.write().phase = Phase::Ready;
+        match result {
+            Ok(count) => {
+                let mut current = state.write();
+                current.message = format!("{message}: {count}");
+                if restore {
+                    current.revision.selection += 1;
+                    current.selected = None;
+                    current.detail = None;
+                    current.detail_loading = false;
+                    current.attacks.clear();
+                    current.combatant = None;
+                    current.category = None;
+                }
+            }
+            Err(error) => state.write().fail(error),
+        }
+        refresh(state, 0);
+    });
 }
 
 fn save_settings(mut state: Signal<AppState>) {

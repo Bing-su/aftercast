@@ -17,7 +17,7 @@ public static partial class EntryPoint
         var offset = Marshal.ReadInt32(buffer, 20);
         var id = unchecked((ulong)Marshal.ReadInt64(buffer, 24));
         var limit = Marshal.ReadInt32(buffer, 32);
-        if (mode is < 1 or > 4 || offset < 0 || limit is < 1 or > 256 ||
+        if (mode is < 1 or > 6 || offset < 0 || limit is < 1 or > 256 ||
             (mode is 1 or 2 ? id != 0 : id == 0) || (mode is 1 or 3 && offset != 0))
             throw new ArgumentException("Invalid combat query mode, ID or page");
         for (var field = 36; field < header; field += 4)
@@ -90,6 +90,35 @@ internal static class CombatQueryEncoding
                     writer.Write(value.DPS); writer.Write(value.EncDPS);
                     writer.Write(value.Swings); writer.Write(value.Hits); writer.Write(value.CritHits);
                     writer.Write(value.Misses); writer.Write(value.Blocked);
+                }
+            }
+        }
+        else if (mode == 5)
+        {
+            var page = host?.ReadEncounterActions(id, offset, limit);
+            writer.Write(page is null ? 0u : 1u);
+            if (page is not null)
+            {
+                writer.Write(page.Total); writer.Write(page.Items.Length);
+                foreach (var action in page.Items)
+                {
+                    Budget(16); Time(action.Time); writer.Write(action.TimeSorter);
+                    Text(action.Attacker); Text(action.Victim); Text(action.Attack); Text(action.Damage);
+                    Budget(4); writer.Write(action.SourceIndex);
+                }
+            }
+        }
+        else if (mode == 6)
+        {
+            var value = host?.ReadEncounterLogs(id, offset, limit);
+            writer.Write(value is null ? 0u : 1u);
+            if (value is not null)
+            {
+                writer.Write(value.Dropped); writer.Write(value.Page.Total); writer.Write(value.Page.Items.Length);
+                foreach (var line in value.Page.Items)
+                {
+                    Budget(20); Time(line.Time); writer.Write(line.TimeSorter); writer.Write(line.Type);
+                    Text(line.Text);
                 }
             }
         }

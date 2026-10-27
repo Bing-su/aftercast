@@ -39,7 +39,7 @@ internal static class CombatQueryAbiChecks
             Check(EntryPoint.QueryCombat(memory, 47) == -1);
             Check(EntryPoint.QueryCombat(memory, 48 + CombatQueryEncoding.MaximumBytes + 1) == -1);
             Reject(0, 49); Reject(4, 2); Reject(8, session + 1, true);
-            Reject(16, 0); Reject(16, 5); Reject(20, -1); Reject(24, 1, true);
+            Reject(16, 0); Reject(16, 7); Reject(20, -1); Reject(24, 1, true);
             Reject(32, 0); Reject(32, 257); Reject(36, 1); Reject(40, 1); Reject(44, 1);
             Reset(48, 1);
             Marshal.WriteInt32(memory, 20, 1);
@@ -71,7 +71,15 @@ internal static class CombatQueryAbiChecks
             Reset(65536, 4, id);
             Check(EntryPoint.QueryCombat(memory, 65536) == 0 && Marshal.ReadInt32(memory, 48) == 1);
             Check(Marshal.ReadInt64(memory, 52) == 0);
-            foreach (var mode in new[] { 1, 3, 4 })
+            Reset(65536, 5, id);
+            Check(EntryPoint.QueryCombat(memory, 65536) == 0 && Marshal.ReadInt32(memory, 48) == 1);
+            Check(Marshal.ReadInt64(memory, 52) == 0);
+            Reset(48, 6, id);
+            Check(EntryPoint.QueryCombat(memory, 48) == 1 && Marshal.ReadInt32(memory, 40) == 68);
+            Reset(68, 6, id);
+            Check(EntryPoint.QueryCombat(memory, 68) == 0 && Marshal.ReadInt32(memory, 48) == 1);
+            Check(Marshal.ReadInt64(memory, 52) == 0 && Marshal.ReadInt64(memory, 60) == 0);
+            foreach (var mode in new[] { 1, 3, 4, 5, 6 })
             {
                 Reset(65536, mode, mode == 1 ? 0 : ulong.MaxValue);
                 Check(EntryPoint.QueryCombat(memory, 65536) == 0 && Marshal.ReadInt32(memory, 48) == 0);
