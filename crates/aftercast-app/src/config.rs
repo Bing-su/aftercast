@@ -32,6 +32,7 @@ impl Default for Settings {
 pub struct UiSettings {
     pub language: String,
     pub theme: String,
+    pub notification_blink: bool,
 }
 
 impl Default for UiSettings {
@@ -39,6 +40,7 @@ impl Default for UiSettings {
         Self {
             language: "ko-KR".into(),
             theme: "mocha".into(),
+            notification_blink: true,
         }
     }
 }
@@ -167,6 +169,10 @@ impl ConfigFile {
             value(&settings.ui.language),
         );
         set(&mut self.document["ui"]["theme"], value(&settings.ui.theme));
+        set(
+            &mut self.document["ui"]["notification_blink"],
+            value(settings.ui.notification_blink),
+        );
         set(
             &mut self.document["host"]["dotnet_root"],
             value(&settings.host.dotnet_root),
@@ -433,11 +439,45 @@ mod tests {
         );
     }
 
+    #[test]
+    fn notification_blink_defaults_and_annotations_survive_restart() {
+        let temp = tempfile::tempdir().expect("app");
+        let root = Utf8Path::from_path(temp.path()).expect("UTF8 root");
+        assert!(
+            ConfigFile::load(root)
+                .expect("defaults")
+                .settings
+                .ui
+                .notification_blink
+        );
+        fs::write(
+            root.join("config.toml"),
+            "schema_version = 1\n[ui]\nnotification_blink = true # badge preference\n",
+        )
+        .expect("fixture");
+        let mut file = ConfigFile::load(root).expect("config");
+        file.settings.ui.notification_blink = false;
+        file.save(root).expect("save");
+        assert!(
+            !ConfigFile::load(root)
+                .expect("restart")
+                .settings
+                .ui
+                .notification_blink
+        );
+        assert!(
+            fs::read_to_string(root.join("config.toml"))
+                .expect("saved")
+                .contains("# badge preference")
+        );
+    }
+
     #[rstest::rstest]
     #[case("schema_version = 99")]
     #[case("[ui]\nlanguage = 'unknown'")]
     #[case("[ui]\ntheme = 'unknown'")]
     #[case("[ui]\ntheme = [")]
+    #[case("[ui]\nnotification_blink = 'invalid'")]
     #[case("[host]\nplugins = ['same.dll', 'same.dll']")]
     fn rejects_invalid_configuration_without_rewriting(#[case] source: &str) {
         let temp = tempfile::tempdir().expect("temporary app");
