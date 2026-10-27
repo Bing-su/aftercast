@@ -168,6 +168,8 @@ namespace Aftercast.ActCompat
         public Tuple<long, string[]> DiagnosticsSnapshot => main.DiagnosticsSnapshot;
         public ImportResult ImportLog(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null) => main.ImportLog(path, range, text, companions);
         public void BeginImport(string path, ImportRange? range = null, ImportTextOptions? text = null, IReadOnlyList<ImportCompanion>? companions = null) => main.BeginImport(path, range, text, companions);
+        public void OpenLogWithCompanions(IReadOnlyList<ImportCompanion> companions, bool getCurrentZone = false, TimeSpan? maxClockWait = null) => main.OpenLogWithCompanions(getCurrentZone, companions, maxClockWait);
+        public LiveLogSourceStatus[] ReadLiveLogSources() => main.ReadLiveLogSources();
         public ImportProgress ImportProgress => main.CurrentImportProgress;
         public ImportResult? AdvanceImport(bool cancel) => main.AdvanceImport(cancel);
         public TablePageData? ReadTable(TableQuery query) => main.ReadTable(query);

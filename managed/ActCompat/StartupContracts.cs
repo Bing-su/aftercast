@@ -30,7 +30,7 @@ public class LogLineEventArgs : EventArgs
 public partial class FormActMain
 {
     private volatile bool readThreadLock;
-    // Workers observe the real pause flag; companion-log propagation awaits companion-log support.
+    // Pause dispatch for every selected live source; groups retain only bounded framed input while paused.
     public bool ReadThreadLock { get => readThreadLock; set => readThreadLock = value; }
     public delegate void NullDelegate();
     public delegate DateTime DateTimeLogParser(string logLine);

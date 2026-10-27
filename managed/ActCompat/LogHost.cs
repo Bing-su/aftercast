@@ -7,8 +7,8 @@ public partial class FormActMain
     // One monitor makes timestamp/zone snapshots and combat transitions consistent without lock-order inversion.
     private readonly object logGate = ActGlobals.actionDataLock;
     private const int MaximumRetiredFollowers = 32;
-    private readonly HashSet<LogFollower> retiredFollowers = new();
-    private LogFollower? follower;
+    private readonly HashSet<LogReader> retiredFollowers = new();
+    private LogReader? follower;
     private long logGeneration;
     private long readyGeneration;
     private bool logHostStopped;
@@ -35,13 +35,40 @@ public partial class FormActMain
     public string CurrentZone { get { lock (logGate) return currentZone; } set { lock (logGate) currentZone = value; } }
     public event LogLineEventDelegate? OnLogLineRead;
 
-    public void OpenLog(bool getCurrentZone, bool getCharNameFromFile)
+    public void OpenLog(bool getCurrentZone, bool getCharNameFromFile) => OpenLogCore(getCurrentZone, getCharNameFromFile, [], TimeSpan.FromSeconds(30));
+
+    internal void OpenLogWithCompanions(bool getCurrentZone, IReadOnlyList<Aftercast.ActCompat.ImportCompanion> companions, TimeSpan? maxClockWait)
+    {
+        ArgumentNullException.ThrowIfNull(companions);
+        var selected = companions.ToArray();
+        if (selected.Length > 8) throw new ArgumentException("At most eight live companions can be followed");
+        var names = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var source in selected)
+        {
+            ArgumentNullException.ThrowIfNull(source);
+            CompanionLogCatalog.ValidateName(source.Name);
+            if (!names.Add(source.Name)) throw new ArgumentException("Duplicate live companion name");
+            source.Text?.Validate();
+        }
+        var wait = maxClockWait ?? TimeSpan.FromSeconds(30);
+        if (wait <= TimeSpan.Zero || wait > TimeSpan.FromMinutes(5)) throw new ArgumentOutOfRangeException(nameof(maxClockWait));
+        OpenLogCore(getCurrentZone, false, selected.OrderBy(source => source.Name, StringComparer.OrdinalIgnoreCase).ToArray(), wait);
+    }
+
+    internal Aftercast.ActCompat.LiveLogSourceStatus[] ReadLiveLogSources()
+    {
+        LiveCompanionGroup? group;
+        lock (logGate) group = follower as LiveCompanionGroup;
+        return group?.ReadStatus() ?? [];
+    }
+
+    private void OpenLogCore(bool getCurrentZone, bool getCharNameFromFile, Aftercast.ActCompat.ImportCompanion[] companions, TimeSpan maxClockWait)
     {
         var encoding = Aftercast.ActCompat.ImportTextOptions.Validate(LogEncoding);
         EnsureCanWaitForLogReader();
         if (getCharNameFromFile)
             throw new PlatformNotSupportedException("Character-name discovery from log filenames is not implemented");
-        LogFollower? previous;
+        LogReader? previous;
         string path;
         long generation;
         lock (logGate)
@@ -49,7 +76,8 @@ public partial class FormActMain
             ObjectDisposedException.ThrowIf(logHostStopped, this);
             PruneRetiredFollowers();
             // Reserve a cleanup slot for a candidate whose snapshot fails during repeated reentrant replacement.
-            if (retiredFollowers.Count >= MaximumRetiredFollowers - 1)
+            var candidateCost = companions.Length == 0 ? 1 : companions.Length + 2;
+            if (retiredFollowers.Sum(reader => reader.ResourceCost) + (follower?.ResourceCost ?? 0) + candidateCost > MaximumRetiredFollowers)
                 throw new InvalidOperationException("Too many log readers are still retiring");
             path = logFilePath;
             generation = ++logGeneration;
@@ -59,14 +87,19 @@ public partial class FormActMain
         }
         // Never join under the root gate: an in-flight subscriber may open another log or read host state.
         if (previous is not null) DisposeRetiredFollower(previous);
-        LogFollower? next = null;
+        LogReader? next = null;
         try
         {
             lock (logGate)
             {
                 if (logHostStopped || generation != logGeneration) return;
-                next = new LogFollower(path, line => ReceiveLogLine(generation, path, line),
-                    error => WriteExceptionLog(error, "Log follower"), () => ReadThreadLock || IsLogDeliveryPaused(generation), initialSnapshot: true, encoding: encoding);
+                next = companions.Length == 0
+                    ? new LogFollower(path, line => ReceiveLogLine(generation, path, line),
+                        error => WriteExceptionLog(error, "Log follower"), () => ReadThreadLock || IsLogDeliveryPaused(generation), initialSnapshot: true, encoding: encoding)
+                    : new LiveCompanionGroup(path, encoding, companions, maxClockWait, GetLiveTimestamp,
+                        () => LastEstimatedTime, () => ReadThreadLock || IsLogDeliveryPaused(generation),
+                        (source, name, line, time, valid) => ReceiveLogLine(generation, source, line, name, time, valid),
+                        error => WriteExceptionLog(error, "Live companion"));
                 follower = next;
             }
             var snapshot = getCurrentZone ? next.ReadInitialZone(ZoneChangeRegex, () =>
@@ -120,11 +153,11 @@ public partial class FormActMain
 
     private void PruneRetiredFollowers() => retiredFollowers.RemoveWhere(reader => !reader.IsAlive);
 
-    private LogFollower[] ReadersUnderGate() => follower is null
+    private LogReader[] ReadersUnderGate() => follower is null
         ? retiredFollowers.ToArray()
         : retiredFollowers.Append(follower).ToArray();
 
-    private void DisposeRetiredFollower(LogFollower reader)
+    private void DisposeRetiredFollower(LogReader reader)
     {
         try { reader.Dispose(PumpOwnerCallbacks); }
         finally
@@ -139,7 +172,7 @@ public partial class FormActMain
         // An action callback cannot join a reader that may itself be waiting for the action drain.
         EnsureCanWaitForCombatLifecycle();
         if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() != true) return;
-        LogFollower[] readers;
+        LogReader[] readers;
         lock (logGate) readers = ReadersUnderGate();
         // A dispatched UI callback must return before its waiting reader can finish delivery.
         if (readers.Any(reader => reader.CallbackActive))
@@ -158,14 +191,14 @@ public partial class FormActMain
     {
         // Import has already performed lifecycle preflight before reserving its exclusive scope.
         if (!importOperation) EnsureCanWaitForLogReader();
-        LogFollower[] readers;
+        LogReader[] readers;
         lock (logGate)
         {
             logPauseDepth++;
             PruneRetiredFollowers();
             readers = ReadersUnderGate();
         }
-        var suspended = new List<LogFollower>();
+        var suspended = new List<LogReader>();
         try
         {
             foreach (var reader in readers)
@@ -184,7 +217,7 @@ public partial class FormActMain
         }
     }
 
-    private sealed class LogSuspension(FormActMain root, List<LogFollower> readers) : IDisposable
+    private sealed class LogSuspension(FormActMain root, List<LogReader> readers) : IDisposable
     {
         internal bool IsReady => readers.All(reader => !reader.CallbackActive);
         public void Dispose()
@@ -194,42 +227,45 @@ public partial class FormActMain
         }
     }
 
-    private void ReceiveLogLine(long generation, string sourcePath, string line)
+    private DateTime GetLiveTimestamp(string line) => GetDateTimeFromLog(line);
+
+    private void ReceiveLogLine(long generation, string sourcePath, string line, string companionName = "", DateTime? parsedTime = null, Func<bool>? sourceCurrent = null)
     {
-        if (!IsCurrentLog(generation)) return;
-        var timestamp = GetDateTimeFromLog(line);
+        bool Valid() => IsCurrentLog(generation) && (sourceCurrent?.Invoke() ?? true);
+        if (!Valid()) return;
+        var timestamp = parsedTime ?? GetDateTimeFromLog(line);
         DateTime detectedTime;
         string zone;
         int timeSorter;
         lock (logGate)
         {
-            if (logHostStopped || generation != logGeneration) return;
-            LastKnownTime = timestamp;
+            if (logHostStopped || generation != logGeneration || !(sourceCurrent?.Invoke() ?? true)) return;
+            if (companionName.Length == 0 || timestamp > lastKnownTime) LastKnownTime = timestamp;
             GlobalTimeSorter++;
             timeSorter = GlobalTimeSorter;
-            UpdateRawZone(line);
-            detectedTime = lastKnownTime;
+            if (companionName.Length == 0) UpdateRawZone(line);
+            detectedTime = companionName.Length == 0 ? lastKnownTime : timestamp;
             zone = currentZone;
         }
         var wasInCombat = InCombat;
         CheckIdleEndCombat();
-        var info = new LogLineEventArgs(line, 0, detectedTime, zone, InCombat);
-        if (!IsCurrentLog(generation)) return;
-        PublishOriginalLogRecord(false, sourcePath, line, detectedTime, timeSorter);
-        InvokeLogHandlers(BeforeLogLineRead, false, info, generation);
+        var info = new LogLineEventArgs(line, 0, detectedTime, zone, InCombat, companionName);
+        if (!Valid()) return;
+        PublishOriginalLogRecord(false, sourcePath, line, detectedTime, timeSorter, companionName);
+        InvokeLogHandlers(BeforeLogLineRead, false, info, generation, sourceCurrent);
         LastLogLine = info.logLine;
-        if (!IsCurrentLog(generation)) return;
+        if (!Valid()) return;
         RecordEncounterLog(info, timeSorter, wasInCombat);
         var triggerText = info.logLine;
-        InvokeLogHandlers(OnLogLineRead, false, info, generation);
-        if (IsCurrentLog(generation)) ProcessCustomTriggerRecord(line, info, false, timeSorter, triggerText);
+        InvokeLogHandlers(OnLogLineRead, false, info, generation, sourceCurrent);
+        if (Valid()) ProcessCustomTriggerRecord(line, info, false, timeSorter, triggerText);
     }
 
-    private void InvokeLogHandlers(LogLineEventDelegate? handlers, bool isImport, LogLineEventArgs info, long? generation = null)
+    private void InvokeLogHandlers(LogLineEventDelegate? handlers, bool isImport, LogLineEventArgs info, long? generation = null, Func<bool>? sourceCurrent = null)
     {
         foreach (var callback in Delegate.EnumerateInvocationList(handlers))
         {
-            if (generation is { } active && !IsCurrentLog(active)) return;
+            if (generation is { } active && (!IsCurrentLog(active) || !(sourceCurrent?.Invoke() ?? true))) return;
             try { callback(isImport, info); }
             catch (Exception error) { RecordImportFailure(error); WriteExceptionLog(error, "Log line subscriber"); }
         }
@@ -245,7 +281,7 @@ public partial class FormActMain
     internal void StopLogFollower()
     {
         EnsureCanWaitForLogReader();
-        LogFollower[] readers;
+        LogReader[] readers;
         lock (logGate)
         {
             logHostStopped = true;

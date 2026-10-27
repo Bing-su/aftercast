@@ -4,7 +4,7 @@ using Aftercast.ActCompat;
 namespace Advanced_Combat_Tracker;
 
 // Follow only appended complete lines; decoding state belongs to this single reader thread.
-internal sealed class LogFollower : IDisposable
+internal sealed class LogFollower : LogReader
 {
     private readonly object gate = new();
     private FileStream stream;
@@ -24,9 +24,12 @@ internal sealed class LogFollower : IDisposable
     private readonly bool initialCr;
     private readonly Encoding selectedEncoding;
     private Exception? reportingFailure;
+    private readonly Action? imageChanged;
+    private readonly bool detectBom;
+    private long observedPosition;
     private long InitialPosition { get; }
-    internal bool IsAlive => worker.IsAlive;
-    internal bool CallbackActive { get { lock (gate) return callbackActive; } }
+    internal override bool IsAlive => worker.IsAlive;
+    internal override bool CallbackActive { get { lock (gate) return callbackActive; } }
 
     internal LogFollower(string path, Action<string> onLine, Action<Exception> onError, Func<bool> paused)
         : this(path, onLine, onError, paused, false) { }
@@ -34,7 +37,13 @@ internal sealed class LogFollower : IDisposable
     internal LogFollower(string path, Action<string> onLine, Action<Exception> onError, Func<bool> paused, bool initialSnapshot)
         : this(path, onLine, onError, paused, initialSnapshot, new ImportTextOptions().Resolve()) { }
     internal LogFollower(string path, Action<string> onLine, Action<Exception> onError, Func<bool> paused, bool initialSnapshot, Encoding encoding)
+        : this(path, onLine, onError, paused, initialSnapshot, encoding, null) { }
+    internal LogFollower(string path, Action<string> onLine, Action<Exception> onError, Func<bool> paused, bool initialSnapshot, Encoding encoding, Action? imageChanged)
+        : this(path, onLine, onError, paused, initialSnapshot, encoding, imageChanged, true) { }
+    internal LogFollower(string path, Action<string> onLine, Action<Exception> onError, Func<bool> paused, bool initialSnapshot, Encoding encoding, Action? imageChanged, bool detectBom)
     {
+        this.detectBom = detectBom;
+        this.imageChanged = imageChanged;
         selectedEncoding = ImportTextOptions.Validate(encoding);
         ArgumentNullException.ThrowIfNull(onLine);
         ArgumentNullException.ThrowIfNull(onError);
@@ -51,6 +60,7 @@ internal sealed class LogFollower : IDisposable
             opened = Open();
             identity = LogFileIdentity.Read(opened.SafeFileHandle);
             InitialPosition = opened.Seek(0, SeekOrigin.End);
+            observedPosition = InitialPosition;
             if (InitialPosition > 0)
             {
                 var width = LiveLogDecoder.Width(selectedEncoding);
@@ -80,7 +90,7 @@ internal sealed class LogFollower : IDisposable
     private void Read()
     {
         var bytes = new byte[4096];
-        using var decoder = new LiveLogDecoder(selectedEncoding, InitialPosition, discardInitialContinuation, initialCr);
+        using var decoder = new LiveLogDecoder(selectedEncoding, InitialPosition, discardInitialContinuation, initialCr, detectBom);
         try
         {
             while (!stopped.WaitOne(0))
@@ -95,8 +105,11 @@ internal sealed class LogFollower : IDisposable
                     if (decoder.HasPending) Report(new InvalidDataException("Log truncation discarded an incomplete source record"));
                     stream.Seek(0, SeekOrigin.Begin);
                     decoder.Reset();
+                    Interlocked.Exchange(ref observedPosition, 0);
+                    imageChanged?.Invoke();
                 }
                 var count = stream.Read(bytes, 0, bytes.Length);
+                Interlocked.Exchange(ref observedPosition, stream.Position);
                 if (count == 0)
                 {
                     // Drain the old complete tail before switching; absence during rename/create is temporary.
@@ -104,6 +117,8 @@ internal sealed class LogFollower : IDisposable
                     {
                         if (decoder.HasPending) Report(new InvalidDataException("Log replacement discarded an incomplete source record"));
                         decoder.Reset();
+                        Interlocked.Exchange(ref observedPosition, 0);
+                        imageChanged?.Invoke();
                         continue;
                     }
                     stopped.WaitOne(10);
@@ -127,7 +142,7 @@ internal sealed class LogFollower : IDisposable
         }
     }
 
-    internal string? ReadInitialZone(System.Text.RegularExpressions.Regex? regex, Func<bool> canceled)
+    internal override string? ReadInitialZone(System.Text.RegularExpressions.Regex? regex, Func<bool> canceled)
     {
         ArgumentNullException.ThrowIfNull(canceled);
         if (regex is null) return null;
@@ -157,7 +172,7 @@ internal sealed class LogFollower : IDisposable
         }
     }
 
-    internal void CompleteInitialSnapshot()
+    internal override void CompleteInitialSnapshot()
     {
         lock (gate) initialSnapshotPending = false;
     }
@@ -173,13 +188,23 @@ internal sealed class LogFollower : IDisposable
             var nextIdentity = LogFileIdentity.Read(candidate.SafeFileHandle);
             if (nextIdentity == identity) return false;
             var previous = stream;
-            stream = candidate;
+            lock (gate) { stream = candidate; identity = nextIdentity; }
             candidate = null;
-            identity = nextIdentity;
             previous.Dispose();
             return true;
         }
         finally { candidate?.Dispose(); }
+    }
+
+    internal LogFileIdentity Identity { get { lock (gate) return identity; } }
+    internal bool IsCurrentImage()
+    {
+        FileStream candidate;
+        try { candidate = Open(); }
+        catch (FileNotFoundException) { return true; }
+        catch (DirectoryNotFoundException) { return true; }
+        using (candidate)
+            return LogFileIdentity.Read(candidate.SafeFileHandle) == Identity && candidate.Length >= Interlocked.Read(ref observedPosition);
     }
 
     private bool Deliver(string line)
@@ -229,7 +254,7 @@ internal sealed class LogFollower : IDisposable
         }
     }
 
-    internal void Suspend(Action? pump)
+    internal override void Suspend(Action? pump)
     {
         RequestSuspension();
         try { while (!callbackIdle.Wait(10)) pump?.Invoke(); }
@@ -237,7 +262,7 @@ internal sealed class LogFollower : IDisposable
     }
 
     // Reserve suspension without joining a callback, e.g. during an asynchronous import's prepare phase.
-    internal void RequestSuspension()
+    internal override void RequestSuspension()
     {
         lock (gate)
         {
@@ -247,7 +272,7 @@ internal sealed class LogFollower : IDisposable
         }
     }
 
-    internal void Resume()
+    internal override void Resume()
     {
         lock (gate)
         {
@@ -255,9 +280,9 @@ internal sealed class LogFollower : IDisposable
         }
     }
 
-    public void Dispose() => Dispose(null);
+    public override void Dispose() => Dispose(null);
 
-    internal void Dispose(Action? pump)
+    internal override void Dispose(Action? pump)
     {
         lock (gate)
         {

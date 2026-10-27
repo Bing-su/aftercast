@@ -51,6 +51,7 @@ internal static class LogHostChecks
         LogInitialZoneChecks.Run();
         CompanionCatalogChecks.Run();
         CompanionImportChecks.Run();
+        LiveCompanionChecks.Run();
     }
 
     private static void ReopenFromCallback()

@@ -13,6 +13,7 @@ internal sealed class LiveLogDecoder : IDisposable
         ([0xff,0xfe],1200), ([0xfe,0xff],1201),
     ];
     private readonly Encoding configured;
+    private readonly bool detectBom;
     private Encoding encoding;
     private readonly MemoryStream pending = new();
     private readonly List<byte> prefix = new(4);
@@ -29,7 +30,10 @@ internal sealed class LiveLogDecoder : IDisposable
         return true;
     }
     internal LiveLogDecoder(Encoding encoding, long position, bool discard, bool previousCr)
+        : this(encoding, position, discard, previousCr, true) { }
+    internal LiveLogDecoder(Encoding encoding, long position, bool discard, bool previousCr, bool detectBom)
     {
+        this.detectBom = detectBom;
         configured = ImportTextOptions.Validate(encoding);
         this.encoding = configured;
         Reset(position, discard, previousCr);
@@ -69,6 +73,7 @@ internal sealed class LiveLogDecoder : IDisposable
         var own = encoding.Preamble;
         if (!own.IsEmpty && bytes.Length >= own.Length && bytes[..own.Length].SequenceEqual(own)) return true;
         if (bytes.Length < own.Length && own[..bytes.Length].SequenceEqual(bytes)) return false;
+        if (!detectBom) return true;
         foreach (var (bom, _) in Boms)
             if (bytes.Length < bom.Length && bom.AsSpan(0, bytes.Length).SequenceEqual(bytes)) return false;
         return true;
@@ -79,7 +84,7 @@ internal sealed class LiveLogDecoder : IDisposable
         prefix.CopyTo(bytes); var count = prefix.Count; prefix.Clear();
         var own = encoding.Preamble;
         var skip = !own.IsEmpty && count >= own.Length && bytes[..own.Length].SequenceEqual(own) ? own.Length : 0;
-        if (skip == 0)
+        if (skip == 0 && detectBom)
             foreach (var (bom, codePage) in Boms)
                 if (count >= bom.Length && bytes[..bom.Length].SequenceEqual(bom))
                 { encoding = ImportTextOptions.BomEncoding(codePage, configured); skip = bom.Length; break; }
@@ -108,6 +113,7 @@ internal sealed class LiveLogDecoder : IDisposable
             try { line = encoding.GetString(pending.GetBuffer().AsSpan(0, (int)pending.Length)); }
             catch (DecoderFallbackException error) { pending.SetLength(0); report(error); return true; }
             pending.SetLength(0);
+            if (pending.Capacity > 128 * 1024) pending.Capacity = 0;
             return deliver(line);
         }
         if (discarding) return true;
