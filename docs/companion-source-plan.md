@@ -74,3 +74,17 @@ truncation, cancellation/reuse, missing selections, hardlink aliases on Linux,
 head limits and exclusive file opens after cleanup. The native ACT companion
 thread itself has not been executed. Bridge/Rust/GUI selection and **live companion
 following (C2b)** are still unconnected; no completion claim covers those paths.
+
+### Remaining C2a EOF/watermark parity
+
+The inspected ACT import locks companion readers when its main loop completes
+and sets their abort flags in finally. Companion dispatch waits on the main
+LastEstimatedTime. C2a currently drains each explicitly selected source to its
+own captured EOF/range endpoint, including dated records after main EOF. Thus it
+can admit later companion records that ACT's clock/termination gates may leave
+undispatched. This is distinct from deterministic same-time ordering and is not
+covered by the genuine pure-path/StreamReader probes. Native timing has not been
+executed. Main-watermark/end-of-main admission and cancellation/partial-result
+regressions must be reconciled in the next C2 step before claiming companion
+import parity or completing C2. C2b live following and C3 transport/UI also remain
+pending.
