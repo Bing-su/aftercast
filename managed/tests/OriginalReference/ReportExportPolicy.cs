@@ -61,6 +61,18 @@ internal static class ReportExportPolicy
         Check(Literal(html,0x00ab)=="<th>{0}</th>"&&Literal(html,0x0132)=="<td>{0}</td>","HTML table structure");
         Call(html,0x0155,"GetColumnByName");Call(html,0x015a,"AppendFormat");
         var full=Body("ThreadExportHTML");Check(Literal(full,0x10b2).Contains("actHtml.js",StringComparison.Ordinal),"native report JavaScript resource");
-        return new {text=new{unaligned=true,descendingSort=true,defaultLines=256,unknownActorExcluded=true,selectiveIgnoreEnemies="all actors",lfFraming=true},tableXmlRoots=roots.Select(value=>value.Item2).ToArray(),xmlValues="SQL names and callbacks",xmlSelection="more than one filters",htmlNativeResources=true,nativeUiExecuted=false,clipboardAccessExecuted=false,exportFileExecuted=false};
+        foreach(var (method,opcode) in new[]{("ExportXml1",OpCodes.Ldc_I4_1),("ExportXml2",OpCodes.Ldc_I4_2),("ExportXml3",OpCodes.Ldc_I4_3)})
+        {var route=NamedBody("IO_XmlFile",method);Check(route[1]==opcode.Value,"three task XML depths");Call(route,2,"ExportXml");}
+        var nested=NamedBody("IO_XmlFile","ExportXml","Depth");
+        foreach(var (offset,root) in new[]{(0x01d5,"EncounterTable"),(0x028b,"CombatantTable"),(0x034c,"DamageTypeTable"),(0x0435,"AttackTypeTable")})Check(Literal(nested,offset)==root,"nested XML roots");
+        Check(nested[0x027d]==OpCodes.Ldarg_1.Value&&nested[0x027e]==OpCodes.Ldc_I4_1.Value&&nested[0x027f]==OpCodes.Ble.Value,"depth one stops after main table");
+        Check(nested[0x0427]==OpCodes.Ldarg_1.Value&&nested[0x0428]==OpCodes.Ldc_I4_2.Value&&nested[0x0429]==OpCodes.Ble.Value,"depth two stops before action rows");
+        Check(nested[0x04fb]==OpCodes.Brtrue_S.Value,"first action SQL index override");Call(nested,0x0510,"get_EncId");
+        var id=NamedBody("EncounterData","get_EncId");Call(id,0x0011,"GetHashCode");Check(Literal(id,0x0019)=="x8","cached object hash format");
+        var caption=NamedBody("EncounterData","ToString");Check(Literal(caption,0x0012)=="{0} - [{1}]"&&Literal(caption,0x004c)=="{0} - [{1}] ({3}) {2}"&&Literal(caption,0x0091)=="{0} - [{1}] {2}","encounter caption formats");
+        var controls=NamedBody("IO_ExportHtml","InitializeComponent");
+        foreach(var (offset,value) in new[]{(0x064c,1600),(0x066a,128),(0x06b9,256),(0x0705,1600),(0x0723,128),(0x0772,640)})
+            Check(controls[offset]==OpCodes.Ldc_I4.Value&&BitConverter.ToInt32(controls,offset+1)==value,"HTML graph dimensions");
+        return new {text=new{unaligned=true,descendingSort=true,defaultLines=256,unknownActorExcluded=true,selectiveIgnoreEnemies="all actors",lfFraming=true},tableXmlRoots=roots.Select(value=>value.Item2).ToArray(),xmlValues="SQL names and callbacks",xmlSelection="more than one filters",hierarchyXmlDepths=new[]{1,2,3},hierarchyActionFirstField="EncId",htmlDepths=4,graphPixels=new{minimum=128,maximum=1600,width=640,height=256},htmlNativeResources=true,nativeUiExecuted=false,clipboardAccessExecuted=false,exportFileExecuted=false};
     }
 }

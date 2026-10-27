@@ -47,5 +47,6 @@ internal static class TextExportChecks
         Console.WriteLine("Text format registration, empty output and callback failure checks passed.");
         TextReportChecks.Run();
         TableReportChecks.Run();
+        HierarchyXmlChecks.Run();
     }
 }

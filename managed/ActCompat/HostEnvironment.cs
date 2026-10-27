@@ -186,6 +186,8 @@ namespace Aftercast.ActCompat
             .Select(source => new CompanionCandidate(source.Name, source.Path)).ToArray();
         public ImportProgress ImportProgress => main.CurrentImportProgress;
         public ImportResult? AdvanceImport(bool cancel) => main.AdvanceImport(cancel);
+        public HierarchyXmlCatalog? CaptureHierarchyXml(ulong encounterId,HierarchyXmlDepth depth) => main.CaptureHierarchyXml(encounterId,depth);
+        public HierarchyXmlReport ReadHierarchyXml(ulong revision) => main.ReadHierarchyXml(revision);
         public TableReportCatalog? ReadTableReportCatalog(TableScope scope) => main.ReadTableReportCatalog(scope);
         public TableReport ReadTableReport(ulong revision, TableReportOptions options) => main.ReadTableReport(revision,options);
         public TablePageData? ReadTable(TableQuery query) => main.ReadTable(query);

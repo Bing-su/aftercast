@@ -86,7 +86,7 @@ probe are separate evidence, not a claim of native UI execution on Linux.
    the four ACT table-XML roots, and escaped cell values for static HTML. Its
    Bridge/Rust typed table-report selection and isolated-worker synthetic tests are connected.
    The current-table GUI/source preview and shared no-overwrite save are connected. Full HTML hierarchy/depth,
-   checked encounter sets and graph/image dimensions are still unfinished;
+   checked encounter sets and graph/image dimensions are still unfinished. The first managed [task XML hierarchy/depth core](hierarchical-reports.md) is connected with three ACT depth modes, owned topology and synthetic vectors; its API/GUI integration remains separate;
    unsupported choices and security differences are explicit before I/O.
 4. L7c synthetic ODBC/schema/sink work and the shared L9d output preference audit
    remain separate. No external upload/service/real database has been accessed.

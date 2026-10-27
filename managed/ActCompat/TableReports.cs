@@ -44,15 +44,22 @@ namespace Advanced_Combat_Tracker
             {
                 // One bounded current selection per Host; a new capture retires all earlier row indices.
                 tableReportCapture=null;
-                var guard=FindTextReportScope(scope.EncounterId);var parents=ReportParents(scope);var source=TableSources(scope);
-                if(guard is null||parents is null||source is null)return null;
-                var rows=source.Take(MaximumTableRows+1).ToArray();
-                if(rows.Length>MaximumTableRows||rows.Any(row=>row.Value is null))throw new InvalidDataException("Invalid or oversized report rows");
-                var catalog=ReadTableColumns(scope.Level);var columns=columnSnapshots[scope.Level].Snapshot;
-                var capture=new ReportCapture(checked(++tableReportSequence),scope,catalog.Revision,columns,rows,guard,parents);
-                CheckTableReport(capture);tableReportCapture=capture;
-                return new(capture.Revision,scope,catalog.Columns.ToArray(),rows.Select((row,index)=>new TableReportRow(index,row.EncounterId,row.Combatant,row.Category,row.Attack,row.TimeSorter)).ToArray());
+                var capture=CaptureReportTable(scope);if(capture is null)return null;
+                tableReportCapture=capture;
+                var rows=capture.Rows;var catalog=capture.Columns.Bindings.Select(binding=>binding.Metadata).ToArray();
+                return new(capture.Revision,scope,catalog,rows.Select((row,index)=>new TableReportRow(index,row.EncounterId,row.Combatant,row.Category,row.Attack,row.TimeSorter)).ToArray());
             }
+        }
+        private ReportCapture? CaptureReportTable(TableScope scope)
+        {
+            ValidateTableScope(scope);
+            var guard=FindTextReportScope(scope.EncounterId);var parents=ReportParents(scope);var source=TableSources(scope);
+            if(guard is null||parents is null||source is null)return null;
+            var rows=source.Take(MaximumTableRows+1).ToArray();
+            if(rows.Length>MaximumTableRows||rows.Any(row=>row.Value is null))throw new InvalidDataException("Invalid or oversized report rows");
+            var catalog=ReadTableColumns(scope.Level);var columns=columnSnapshots[scope.Level].Snapshot;
+            var capture=new ReportCapture(checked(++tableReportSequence),scope,catalog.Revision,columns,rows,guard,parents);
+            CheckTableReport(capture);return capture;
         }
         private void CheckTableReport(ReportCapture capture)
         {
@@ -112,11 +119,20 @@ namespace Advanced_Combat_Tracker
         private TableReport RenderTableReport(ReportCapture capture,TableReportFormat format,string name,int[] selected,
             ColumnBinding[] columns,TableSort? sort,ColumnBinding? primary,ColumnBinding? secondary)
         {
+            var values=ReadReportValues(capture,format,selected,columns,sort,primary,secondary);
+            var content=TableReportSerialization.Serialize(format,capture.Scope.Level,name,values.Columns,values.Rows);
+            values.Check();return new(capture.Revision,capture.Scope,format,values.Rows.Length,content);
+        }
+        private sealed record ReportValues(TableColumnData[] Columns,string[][] Rows,Action Check);
+        private ReportValues ReadReportValues(ReportCapture capture,TableReportFormat format,int[] selected,
+            ColumnBinding[] columns,TableSort? sort,ColumnBinding? primary,ColumnBinding? secondary,
+            Action? outerCheck=null,string? firstActionValue=null)
+        {
             var clock=Stopwatch.StartNew();var errors=OwnerErrors.Item1;var level=capture.Scope.Level;
             void Check()
             {
                 if(clock.Elapsed>TimeSpan.FromSeconds(2))throw new TimeoutException("Table report exceeded cooperative two-second budget");
-                CheckTableReport(capture);
+                outerCheck?.Invoke();CheckTableReport(capture);
                 if(OwnerErrors.Item1!=errors)throw new InvalidOperationException("Report callback reported an owner-thread exception");
             }
             T Invoke<T>(ColumnBinding column,Func<T> action)
@@ -149,7 +165,14 @@ namespace Advanced_Combat_Tracker
                 var row=capture.Rows[index];var cells=new List<string>();
                 foreach(var column in columns)
                 {
-                    var value=Invoke(column,()=>format==TableReportFormat.TableXml?SqlReportCell(column,row.Value):CellText(column,row.Value));
+                    string value;
+                    if(firstActionValue is not null&&level==TableLevel.Action&&ReferenceEquals(column,columns[0]))
+                    {
+                        // Native evaluates whole ColCollection when any later field exists; retain first-field failures once.
+                        if(columns.Length>1)Invoke(column,()=>SqlReportCell(column,row.Value));
+                        value=firstActionValue;
+                    }
+                    else value=Invoke(column,()=>format==TableReportFormat.TableXml?SqlReportCell(column,row.Value):CellText(column,row.Value));
                     if(value is null||value.Contains('\0')||ColumnUtf8.GetByteCount(value)>MaximumCellBytes)throw new InvalidDataException("Invalid or oversized report cell");
                     if(format==TableReportFormat.TableXml)XmlConvert.VerifyXmlChars(value);
                     bytes+=ColumnUtf8.GetByteCount(value);if(bytes>MaximumTableTextBytes)throw new InvalidDataException("Table report text exceeds 8 MiB");
@@ -158,8 +181,7 @@ namespace Advanced_Combat_Tracker
                 values.Add(cells.ToArray());
             }
             Check();
-            var content=TableReportSerialization.Serialize(format,level,name,columns.Select(column=>column.Metadata).ToArray(),values.ToArray());
-            Check();return new(capture.Revision,capture.Scope,format,values.Count,content);
+            return new(columns.Select(column=>column.Metadata).ToArray(),values.ToArray(),Check);
         }
     }
 }
@@ -200,7 +222,7 @@ namespace Aftercast.ActCompat
             }
             return new UTF8Encoding(false,true).GetString(stream.ToArray());
         }
-        private sealed class ReportStream:MemoryStream
+        internal sealed class ReportStream:MemoryStream
         {
             private const int Maximum=16*1024*1024;
             private void Budget(int count){if(count<0||Length+count>Maximum)throw new InvalidDataException("Serialized table report exceeds 16 MiB UTF-8");}

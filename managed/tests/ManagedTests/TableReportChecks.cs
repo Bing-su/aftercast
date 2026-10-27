@@ -9,7 +9,7 @@ internal static class TableReportChecks
     private static void Check(bool value,string message){if(!value)throw new Exception("Table reports: "+message);}
     private static T Throws<T>(Action action)where T:Exception
     {try{action();}catch(T error){return error;}throw new Exception("Expected "+typeof(T).Name);}
-    private sealed class Fixture:IDisposable
+    internal sealed class Fixture:IDisposable
     {
         private readonly DirectoryInfo directory=Directory.CreateTempSubdirectory("aftercast-table-report-");
         internal readonly HostEnvironment Host;internal readonly FormActMain Root;internal readonly EncounterData Encounter;

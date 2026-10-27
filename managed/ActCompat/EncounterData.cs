@@ -26,6 +26,18 @@ public class EncounterData
         Parent = parent;
     }
 
+    private string? cachedEncId;
+    // ACT's cached object hash is process-local, never a durable archive/source identity.
+    public string EncId => cachedEncId ??= GetHashCode().ToString("x8");
+    public string DurationS => Duration.Hours == 0 ? $"{Duration.Minutes:00}:{Duration.Seconds:00}" : $"{Duration.Hours:00}:{Duration.Minutes:00}:{Duration.Seconds:00}";
+    public override string ToString()
+    {
+        if (StartTime == DateTime.MaxValue) return $"{Title} - [{DurationS}]";
+        return (DateTime.Now - StartTime).TotalHours > 12
+            ? $"{Title} - [{DurationS}] ({StartTime.ToShortDateString()}) {StartTime.ToLongTimeString()}"
+            : $"{Title} - [{DurationS}] {StartTime.ToLongTimeString()}";
+    }
+
     public ZoneData Parent { get; set; }
     public string CharName { get; set; }
     // shortcut: these verified built-in English terms need ActGlobals.Trans for custom localization.
