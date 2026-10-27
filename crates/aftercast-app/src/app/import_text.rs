@@ -9,7 +9,7 @@ use dioxus::prelude::*;
 mod tests;
 mod view;
 
-const ENCODINGS: [(&str, ImportEncoding, &str); 9] = [
+pub(super) const ENCODINGS: [(&str, ImportEncoding, &str); 9] = [
     ("utf8", ImportEncoding::Utf8, "UTF-8"),
     ("utf16-le", ImportEncoding::Utf16Le, "UTF-16 LE"),
     ("utf16-be", ImportEncoding::Utf16Be, "UTF-16 BE"),
@@ -29,10 +29,10 @@ const ENCODINGS: [(&str, ImportEncoding, &str); 9] = [
     ("ascii", ImportEncoding::Ascii, "ASCII"),
 ];
 #[derive(Clone, Debug, PartialEq, Eq)]
-struct Draft {
-    encoding: Option<ImportEncoding>,
-    invalid_bytes: ImportInvalidBytes,
-    detect_bom: bool,
+pub(super) struct Draft {
+    pub(super) encoding: Option<ImportEncoding>,
+    pub(super) invalid_bytes: ImportInvalidBytes,
+    pub(super) detect_bom: bool,
 }
 impl Default for Draft {
     fn default() -> Self {
@@ -44,20 +44,20 @@ impl Default for Draft {
     }
 }
 impl Draft {
-    fn options(&self) -> Option<ImportTextOptions> {
+    pub(super) fn options(&self) -> Option<ImportTextOptions> {
         self.encoding.map(|encoding| ImportTextOptions {
             encoding,
             invalid_bytes: self.invalid_bytes,
             detect_bom: self.detect_bom,
         })
     }
-    fn key(&self) -> &'static str {
+    pub(super) fn key(&self) -> &'static str {
         ENCODINGS
             .iter()
             .find(|(_, encoding, _)| Some(*encoding) == self.encoding)
             .map_or("plugin", |(key, _, _)| *key)
     }
-    fn change(&mut self, field: &str, value: &str) -> Result<(), &'static str> {
+    pub(super) fn change(&mut self, field: &str, value: &str) -> Result<(), &'static str> {
         match field {
             "encoding" => {
                 self.encoding = if value == "plugin" {
@@ -101,6 +101,7 @@ pub(super) struct FullRequest {
     pub(super) token: Token,
     pub(super) path: Option<Utf8PathBuf>,
     draft: Draft,
+    pub(super) sources: Option<super::companions::Selection>,
 }
 impl FullRequest {
     pub(super) fn options(&self) -> Option<ImportTextOptions> {
@@ -114,6 +115,15 @@ pub(super) struct State {
     full: Option<FullRequest>,
 }
 impl State {
+    pub(super) fn source_snapshot(&self) -> Option<super::companions::ActiveImport> {
+        let request = self.full.as_ref()?;
+        Some(super::companions::ActiveImport::new(
+            request.path.clone()?,
+            None,
+            request.options(),
+            request.sources.as_ref(),
+        ))
+    }
     pub(super) fn options(&self) -> Option<ImportTextOptions> {
         self.draft.options()
     }
@@ -156,6 +166,9 @@ impl AppState {
     }
     pub(super) fn edit_import_path(&mut self, expected: Token, value: String) {
         if self.text_view() == expected && self.can_edit_import_text() {
+            if self.import_path != value {
+                self.companions.invalidate_catalog();
+            }
             self.import_path = value;
         }
     }
@@ -178,6 +191,7 @@ impl AppState {
             token: self.text_view(),
             path: None,
             draft: self.import_text.draft.clone(),
+            sources: self.companions.selection(),
         };
         self.import_text.full = Some(request.clone());
         self.phase = Phase::SelectingImport;
@@ -271,12 +285,25 @@ impl AppState {
                 self.message = format!(
                     "{complete} · {} / {} · {}",
                     report.records_dispatched, report.lines_read, report.encounters
-                )
+                );
+                self.companions.excluded = report.companion_heads_excluded
             }
             Err(aftercast::Error::Cancelled) => self.message = canceled.into(),
             Err(error) => self.fail(error),
         }
         true
+    }
+}
+pub(super) async fn start_selected(
+    handle: &HostHandle,
+    path: &Utf8Path,
+    range: Option<ImportRange>,
+    text: Option<ImportTextOptions>,
+    sources: Option<&super::companions::Selection>,
+) -> Result<ImportJob, aftercast::Error> {
+    match sources {
+        Some(selection) => selection.start(handle, path, range, text).await,
+        None => start(handle, path, range, text).await,
     }
 }
 pub(super) async fn start(

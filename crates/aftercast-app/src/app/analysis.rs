@@ -141,6 +141,7 @@ pub(super) fn ImportPane() -> Element {
                 oninput: move |event: FormEvent| state.write().edit_import_path(text_view, event.value()),
             }
             super::import_text::TextControls {}
+            super::companions::Controls {}
             div { class: "my-5 flex gap-3",
                 Button {
                     disabled: !state.read().can_full_import(),
@@ -171,6 +172,12 @@ pub(super) fn ImportPane() -> Element {
                         "{state.read().progress.bytes_read} / {state.read().progress.total_bytes} B · {state.read().progress.records_dispatched} "
                         {tr("records")}
                     }
+                }
+            }
+            if state.read().phase == Phase::Importing {
+                p { class: "text-xs tabular-nums text-muted-foreground",
+                    {tr("sources-progress-excluded")}
+                    " {state.read().progress.companion_heads_excluded}"
                 }
             }
             super::reparse::ReparseControls {}

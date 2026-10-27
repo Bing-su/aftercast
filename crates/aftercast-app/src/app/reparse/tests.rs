@@ -102,11 +102,12 @@ async fn execute(host: &Host, ui: &mut AppState) -> Token {
         ui.begin_reparse(request.clone()).is_none(),
         "duplicate request"
     );
-    let result = match super::super::import_text::start(
+    let result = match super::super::import_text::start_selected(
         host,
         &request.path,
         Some(request.range),
         request.text,
+        request.sources.as_ref(),
     )
     .await
     {

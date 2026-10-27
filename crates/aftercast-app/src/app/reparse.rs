@@ -16,6 +16,7 @@ struct Request {
     range: ImportRange,
     bounds: String,
     text: Option<aftercast::ImportTextOptions>,
+    sources: Option<super::companions::Selection>,
 }
 impl Draft {
     fn compile(&self, root: &Utf8Path) -> Result<Request, &'static str> {
@@ -37,6 +38,7 @@ impl Draft {
             range,
             bounds: format!("{} — {}", self.start, self.end),
             text: None,
+            sources: None,
         })
     }
 }
@@ -55,6 +57,15 @@ pub(super) struct ReparseState {
     pending: Option<(Token, Request)>,
 }
 impl ReparseState {
+    pub(super) fn source_snapshot(&self) -> Option<super::companions::ActiveImport> {
+        let (_, request) = self.pending.as_ref()?;
+        Some(super::companions::ActiveImport::new(
+            request.path.clone(),
+            Some(request.range),
+            request.text,
+            request.sources.as_ref(),
+        ))
+    }
     pub(super) fn reset_session(&mut self) {
         self.generation += 1;
         self.pending = None;
@@ -67,6 +78,7 @@ impl AppState {
     fn compile_reparse(&self) -> Result<Request, &'static str> {
         let mut request = self.reparse.draft.compile(&self.root)?;
         request.text = self.import_text.options();
+        request.sources = self.companions.selection();
         Ok(request)
     }
     fn reparse_view(&self) -> Token {
@@ -147,7 +159,8 @@ impl AppState {
                 self.message = format!(
                     "{complete} · {} / {} · {}",
                     report.records_dispatched, report.lines_read, report.encounters
-                )
+                );
+                self.companions.excluded = report.companion_heads_excluded
             }
             Err(aftercast::Error::Cancelled) => self.message = canceled.to_owned(),
             Err(error) => self.fail(error),
@@ -177,11 +190,12 @@ fn submit(mut state: Signal<AppState>, view: Token) {
     let canceled = tr("import-cancelled");
     // The app owns accepted cleanup, e.g. leaving Import must not abandon a partially parsed graph.
     spawn_forever(async move {
-        let result = match super::import_text::start(
+        let result = match super::import_text::start_selected(
             &handle,
             &request.path,
             Some(request.range),
             request.text,
+            request.sources.as_ref(),
         )
         .await
         {

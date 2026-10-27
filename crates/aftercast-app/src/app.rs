@@ -1,4 +1,5 @@
 mod analysis;
+mod companions;
 mod encounter_context;
 mod history;
 mod import_text;
@@ -52,6 +53,7 @@ enum Phase {
     ShowingNotification,
     UpdatingNotifications,
     ChangingPlugins,
+    ChangingSources,
     Stopping,
 }
 
@@ -72,6 +74,7 @@ impl Phase {
             Self::ShowingNotification => "showing-notification",
             Self::UpdatingNotifications => "updating-notifications",
             Self::ChangingPlugins => "changing-plugins",
+            Self::ChangingSources => "changing-sources",
             Self::Stopping => "stopping",
         }
     }
@@ -123,6 +126,7 @@ struct AppState {
     cancel_import: bool,
     import_path: String,
     import_text: import_text::State,
+    companions: companions::State,
     reparse: reparse::ReparseState,
     progress: ImportProgress,
     message: String,
@@ -196,6 +200,7 @@ impl AppState {
             cancel_import: false,
             import_path: String::new(),
             import_text: Default::default(),
+            companions: Default::default(),
             reparse: Default::default(),
             progress: ImportProgress::default(),
             message: String::new(),
@@ -274,6 +279,7 @@ pub fn App() -> Element {
     });
     use_future(move || load_settings(state, i18n()));
     use_future(move || notifications::poll(state));
+    use_future(move || companions::poll(state));
     use_future(move || {
         let window = window.clone();
         async move {
@@ -292,6 +298,7 @@ pub fn App() -> Element {
                     | Phase::Archiving
                     | Phase::ReadingHistory
                     | Phase::ReadingTables
+                    | Phase::ChangingSources
                     | Phase::ChangingPlugins
                     | Phase::UpdatingTimers
                     | Phase::UpdatingTriggers
@@ -519,6 +526,7 @@ fn stop(mut state: Signal<AppState>) {
         state.plugin_tables.reset_session();
         state.reparse.reset_session();
         state.import_text.reset_session();
+        state.companions.reset_session();
         state.notifications = Default::default();
         state.plugin_ui_pending = false;
         state.loading = false;
@@ -653,7 +661,15 @@ fn import_log(mut state: Signal<AppState>) {
             state.write().abandon_full_selection(selection.token);
             return;
         };
-        let result = match import_text::start(&handle, &path, None, request.options()).await {
+        let result = match import_text::start_selected(
+            &handle,
+            &path,
+            None,
+            request.options(),
+            request.sources.as_ref(),
+        )
+        .await
+        {
             Ok(job) => wait_import(state, job, selection.token.session).await,
             Err(error) => Err(error),
         };
