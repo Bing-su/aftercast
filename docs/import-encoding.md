@@ -102,4 +102,7 @@ pending. Existing requests retain their prior defaults. Companion registration/
 dispatch and source matching remain separate finite tasks. Windows native import,
 legacy Framework code-page equivalence and actual plugin/UI behavior remain
 unexecuted. This does not claim arbitrary .NET encodings or live-follower encoding
-parity; the existing follower is still strict UTF-8 and must be assessed separately.
+parity. The existing LogFollower forward reader and backward zone-context search
+both hardcode strict UTF-8, unlike ACT's LogEncoding-based live reader. This is a
+confirmed Linux-capable follow-up after import GUI, requiring its own append,
+rotation, partial-record and context-search regressions; it is not implemented here.
