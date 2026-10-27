@@ -33,6 +33,7 @@ internal sealed class PluginSession
     private readonly LogBuffer logs = new();
     internal Tuple<long, string[]> DiagnosticsSnapshot => environment?.DiagnosticsSnapshot ?? Tuple.Create(0L, Array.Empty<string>());
     internal T OnOwner<T>(Func<T> action) => context is null ? action() : context.Run(action);
+    internal byte[] TableOperation(TableRequest request, int capacity) => OnOwner(() => TableEncoding.Encode(Host(), request, capacity));
     internal ArraySegment<byte> QueryCombat(int mode, ulong id, int offset, int limit) =>
         OnOwner(() => CombatQueryEncoding.Encode(environment, mode, id, offset, limit));
     internal int Pump()
