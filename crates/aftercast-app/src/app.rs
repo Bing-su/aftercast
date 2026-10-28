@@ -17,6 +17,7 @@ mod preferences;
 mod reparse;
 mod reports;
 mod shell;
+mod specials;
 mod timers;
 mod triggers;
 

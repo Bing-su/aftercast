@@ -24,6 +24,18 @@ Do not silently replace this with a different report contract.
 `managed/tests/fixtures/specials/counts.json`, including out-of-order rows,
 repeated values, None resets, empty input and reserved-name collisions. The
 implementation uses ACT's default English `None`; localization overrides need
-ActGlobals.Trans, as elsewhere in aftercast. The full grouped report, worker API,
-UI and native verification remain outstanding. Independent review remains
-pending due to the previously reported quota restriction.
+ActGlobals.Trans, as elsewhere in aftercast.
+
+The managed report captures all three groups, their evidence and retained logs
+under one combat lock, then pages immutable bytes through the session-owned worker
+API. A new capture retires old pages; the Rust report owns its decoded copy.
+Limits are 16,384 source actions, 4,096 groups, 49,152 evidence rows, 65,536
+logs, a conservative sum of per-skill squared row counts of 4,000,000, and a
+64 MiB encoded report. These are aftercast safeguards, not ACT defaults. Failed
+captures keep the previous snapshot. Missing/ambiguous source logs are explicit.
+The existing Rust/UI displays all three groups, their raw ratios and rates, and
+paged source evidence. Cancellation stops waiting; an admitted request may
+finish. Numeric display uses fixed decimal formatting rather than ACT's locale.
+Native layout, Windows execution and actual mouse/keyboard interaction remain
+unverified. Independent review remains pending because of the existing quota
+restriction; only self-review was performed.
