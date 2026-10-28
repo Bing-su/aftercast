@@ -50,7 +50,7 @@ internal static class AvoidanceOutcomesProbe
             {
                 var sample = group.Value!;
                 var occurrences = (IList)getOccurrences.Invoke(form, new[] { sample, category })!;
-                var indices = added.Where(item => occurrences.Contains(item.Action)).Select(item => item.Index).ToArray();
+                var indices = added.Where(item => occurrences.Cast<object>().Any(value => ReferenceEquals(value, item.Action))).Select(item => item.Index).ToArray();
                 var want = expected[position++];
                 if ((string)group.Key != want.GetProperty("label").GetString() ||
                     (long)dnum.GetProperty("Number")!.GetValue(sample)! != want.GetProperty("amount").GetInt64() ||

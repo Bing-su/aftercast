@@ -22,7 +22,11 @@ estimated damage, encounter scope, Bridge/Rust, and GUI are not yet provided.
 
 [Fixture](../managed/tests/fixtures/avoidance/outcomes.json) includes same-label
 different-number collisions, duplicate equal outcomes, zero, positive values,
-a custom-labeled -10, an actual death marker and an unregistered swing. Both the
+a custom-labeled -10, an actual death marker, an unregistered swing, and
+canonically equivalent Unicode labels that compare equal in the selected culture
+but are not ordinally equal in Dnum.Equals. The oracle matches evidence by
+object reference: original MasterSwing.Equals compares rendered text, which can
+otherwise falsely identify a different action as the same evidence. Both the
 managed implementation and ACT's original `GetUniqueAvoidances` and
 `GetDnumOccurances` execute this fixture. The original probe creates no native
 form and does not perform OS clipboard operations.

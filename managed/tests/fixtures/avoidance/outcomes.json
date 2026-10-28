@@ -2,18 +2,77 @@
   "culture": "en-US",
   "registeredSwingTypes": [1],
   "actions": [
-    { "amount": -1, "label": "same", "swingType": 1 },
-    { "amount": -2, "label": "same", "swingType": 1 },
-    { "amount": -1, "label": "same", "swingType": 1 },
-    { "amount": 0, "label": "blocked", "swingType": 1 },
-    { "amount": -10, "label": "custom", "swingType": 1 },
-    { "amount": -10, "label": "", "swingType": 1 },
-    { "amount": 5, "label": "", "swingType": 1 },
-    { "amount": -1, "label": "unregistered", "swingType": 2 }
+    {
+      "amount": -1,
+      "label": "same",
+      "swingType": 1
+    },
+    {
+      "amount": -2,
+      "label": "same",
+      "swingType": 1
+    },
+    {
+      "amount": -1,
+      "label": "same",
+      "swingType": 1
+    },
+    {
+      "amount": 0,
+      "label": "blocked",
+      "swingType": 1
+    },
+    {
+      "amount": -10,
+      "label": "custom",
+      "swingType": 1
+    },
+    {
+      "amount": -10,
+      "label": "",
+      "swingType": 1
+    },
+    {
+      "amount": 5,
+      "label": "",
+      "swingType": 1
+    },
+    {
+      "amount": -1,
+      "label": "unregistered",
+      "swingType": 2
+    },
+    {
+      "amount": -1,
+      "label": "é",
+      "swingType": 1
+    },
+    {
+      "amount": -1,
+      "label": "é",
+      "swingType": 1
+    }
   ],
   "expected": [
-    { "label": "blocked", "amount": 0, "evidence": [3] },
-    { "label": "custom", "amount": -10, "evidence": [4] },
-    { "label": "same", "amount": -1, "evidence": [0, 2] }
+    {
+      "label": "blocked",
+      "amount": 0,
+      "evidence": [3]
+    },
+    {
+      "label": "custom",
+      "amount": -10,
+      "evidence": [4]
+    },
+    {
+      "label": "é",
+      "amount": -1,
+      "evidence": [8]
+    },
+    {
+      "label": "same",
+      "amount": -1,
+      "evidence": [0, 2]
+    }
   ]
 }
