@@ -272,6 +272,10 @@ namespace Aftercast.ActCompat
         public NotificationStatus ReadNotificationStatus() => main.ReadNotificationStatus();
         public NotificationChange MarkNotificationsRead(ulong through) => main.MarkNotificationsRead(through);
         public NotificationChange ClearReadNotifications(ulong through) => main.ClearReadNotifications(through);
+        public TimerBatchPreview PreviewTimerConfig(string text) => timers.PreviewTimerConfig(text);
+        public ulong SaveTimerBatch(ulong revision, TimerDefinition[] definitions) => timers.SaveTimerBatch(Path.Combine(main.AppDataFolder.FullName,"SpellTimers.xml"), revision, definitions);
+        public TriggerBatchPreview PreviewTriggerConfig(string text) => main.PreviewTriggerConfig(text);
+        public ulong SaveTriggerBatch(ulong revision, TriggerDefinition[] definitions) => main.SaveTriggerBatch(revision, definitions);
         public TimerSnippetPreview PreviewTimerSnippet(string snippet) => timers.PreviewTimerSnippet(snippet);
         public object TimerOperation(int command,ulong revision,string? previousKey,TimerDefinition? definition,
             string? key,int offset,int limit)

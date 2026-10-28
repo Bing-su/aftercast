@@ -257,3 +257,60 @@ async fn spell_snippet_preview_and_import_are_owned_and_persistent(deployment: D
         .expect_err("old session");
     restarted.shutdown().await.expect("shutdown restart");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and fixtures; run mise run test:plugins"]
+async fn timer_config_batch_is_atomic_and_session_owned(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let xml = "<Config><SpellTimers><Spell Name='One' Category='Fixture' Timer='45'/><Spell Name='Two' Category='Fixture'/></SpellTimers></Config>";
+    let preview = host.preview_timer_config(xml).await.expect("preview");
+    assert_eq!(preview.items.len(), 2);
+    assert!(preview.conflicts.is_empty());
+    assert_eq!(
+        host.timer_definitions(0, 16)
+            .await
+            .expect("no changes")
+            .total,
+        0
+    );
+    host.preview_timer_config("<Config><CustomTriggers/><SpellTimers/></Config>")
+        .await
+        .expect_err("mixed rejected");
+    let items = preview
+        .items
+        .iter()
+        .map(|item| item.definition.clone())
+        .collect::<Vec<_>>();
+    host.save_timer_batch(preview.revision, &items)
+        .await
+        .expect("atomic batch");
+    host.save_timer_batch(preview.revision, &items)
+        .await
+        .expect_err("stale");
+    let page = host.timer_definitions(0, 16).await.expect("timers");
+    assert_eq!((page.total, page.retained_frames), (2, 0));
+    assert_eq!(
+        host.preview_timer_config(xml)
+            .await
+            .expect("conflict")
+            .conflicts
+            .len(),
+        2
+    );
+    host.shutdown().await.expect("shutdown");
+    let restarted = Host::start(deployment.config()).await.expect("restart");
+    assert_eq!(
+        restarted
+            .timer_definitions(0, 16)
+            .await
+            .expect("persisted")
+            .total,
+        2
+    );
+    restarted
+        .save_timer_batch(preview.revision, &items)
+        .await
+        .expect_err("old session");
+    restarted.shutdown().await.expect("shutdown");
+}

@@ -62,7 +62,9 @@ internal sealed partial class PluginSession
     {
         var host = Host();
         object result;
-        if (command == 9) result = host.PreviewTriggerSnippet(request.Snippet ?? throw new ArgumentException("Missing trigger snippet"));
+        if (command == 10) result = host.PreviewTriggerConfig(request.Snippet ?? throw new ArgumentException("Missing Config"));
+        else if (command == 11) { object? batch = null; host.RunWithLogReadingSuspended(() => batch = host.SaveTriggerBatch(request.Revision, request.Definitions ?? throw new ArgumentException("Missing definitions"))); result = batch!; }
+        else if (command == 9) result = host.PreviewTriggerSnippet(request.Snippet ?? throw new ArgumentException("Missing trigger snippet"));
         else if (command == 8) result = host.BenchmarkTriggers(request.Revision, request.Snapshot, request.Keys ?? throw new ArgumentException("Missing benchmark selection"));
         else if (command is 1 or 6) result = host.TriggerOperation(command, request.Revision, request.PreviousKey,
             request.Definition, request.Key, request.Offset, request.Limit, request.OriginalLines, request.ProcessImports, request.After);
@@ -86,9 +88,13 @@ internal sealed partial class PluginSession
     {
         var host = Host();
         object? result = null;
-        void Execute() => result = command == 5 ? host.PreviewTimerSnippet(request.Snippet ?? throw new ArgumentException("Missing timer snippet")) : host.TimerOperation(command,request.Revision,request.PreviousKey,request.Definition,
-            request.Key,request.Offset,request.Limit);
-        if (command is 1 or 5) Execute(); else host.RunWithLogReadingSuspended(Execute);
+        void Execute() => result = command switch {
+            5 => host.PreviewTimerSnippet(request.Snippet ?? throw new ArgumentException("Missing timer snippet")),
+            6 => host.PreviewTimerConfig(request.Snippet ?? throw new ArgumentException("Missing Config")),
+            7 => host.SaveTimerBatch(request.Revision, request.Definitions ?? throw new ArgumentException("Missing definitions")),
+            _ => host.TimerOperation(command,request.Revision,request.PreviousKey,request.Definition,request.Key,request.Offset,request.Limit),
+        };
+        if (command is 1 or 5 or 6) Execute(); else host.RunWithLogReadingSuspended(Execute);
         return HostJson.Encode(result!);
     });
     internal byte[] NotificationOperation(int command, ulong id, int limit) => OnOwner(() =>

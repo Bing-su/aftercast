@@ -63,6 +63,20 @@ pub struct TimerRevision {
     value: u64,
 }
 #[derive(Debug, Clone)]
+pub struct TimerBatchPreview {
+    pub revision: TimerRevision,
+    pub items: Vec<TimerItem>,
+    pub conflicts: Vec<String>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawTimerBatchPreview {
+    revision: u64,
+    items: Vec<TimerItem>,
+    conflicts: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct TimerSnippetPreview {
     pub revision: TimerRevision,
     pub key: String,
@@ -129,6 +143,70 @@ impl HostHandle {
             items: page.items,
         })
     }
+    /// Preview one allowlisted, homogeneous ACT Config section without changes.
+    pub async fn preview_timer_config(&self, snippet: &str) -> Result<TimerBatchPreview, Error> {
+        if snippet.len() > 16384 || snippet.contains('\0') {
+            return Err(invalid("Config exceeds 16 KiB or contains NUL"));
+        }
+        let raw: RawTimerBatchPreview = self
+            .timer_call(6, &serde_json::json!({"snippet": snippet}))
+            .await?;
+        let keys = raw
+            .items
+            .iter()
+            .map(|item| &item.key)
+            .collect::<std::collections::HashSet<_>>();
+        let conflicts = raw
+            .conflicts
+            .iter()
+            .collect::<std::collections::HashSet<_>>();
+        if raw.revision == 0
+            || raw.items.is_empty()
+            || raw.items.len() > 32
+            || keys.len() != raw.items.len()
+            || raw
+                .items
+                .iter()
+                .any(|item| item.key.is_empty() || item.key.len() > 8192)
+            || conflicts.len() != raw.conflicts.len()
+            || raw.conflicts.iter().any(|key| !keys.contains(key))
+        {
+            return Err(invalid("invalid Config preview"));
+        }
+        Ok(TimerBatchPreview {
+            revision: TimerRevision {
+                session: self.session,
+                value: raw.revision,
+            },
+            items: raw.items,
+            conflicts: raw.conflicts,
+        })
+    }
+    /// Atomically add a homogeneous batch; existing definitions are never overwritten.
+    pub async fn save_timer_batch(
+        &self,
+        revision: TimerRevision,
+        definitions: &[TimerDefinition],
+    ) -> Result<TimerRevision, Error> {
+        self.check_timer_revision(revision)?;
+        if definitions.is_empty() || definitions.len() > 32 {
+            return Err(invalid("select 1–32 definitions"));
+        }
+        let value: u64 = self
+            .timer_call(
+                7,
+                &serde_json::json!({"revision": revision.value, "definitions": definitions}),
+            )
+            .await?;
+        if value == 0 {
+            return Err(invalid("invalid batch revision"));
+        }
+        Ok(TimerRevision {
+            session: self.session,
+            value,
+        })
+    }
+
     /// Preview one ACT Spell snippet without changing definitions or starting timers.
     pub async fn preview_timer_snippet(&self, snippet: &str) -> Result<TimerSnippetPreview, Error> {
         if snippet.len() > 16384 || snippet.contains('\0') {

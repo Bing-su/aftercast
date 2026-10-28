@@ -297,3 +297,45 @@ async fn trigger_snippet_preview_is_read_only_and_owned(deployment: Deployment) 
         .expect_err("old session");
     restarted.shutdown().await.expect("stop restart");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
+async fn trigger_config_batch_is_atomic_and_session_owned(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let xml = "<Config><CustomTriggers><Trigger Regex='one' Category='Fixture'/><Trigger Regex='two' Category='Fixture'/></CustomTriggers></Config>";
+    let preview = host.preview_trigger_config(xml).await.expect("preview");
+    assert_eq!(preview.items.len(), 2);
+    assert!(preview.conflicts.is_empty());
+    assert_eq!(host.triggers(0, 16).await.expect("no changes").total, 0);
+    host.preview_trigger_config("<Config><CustomTriggers/><SpellTimers/></Config>")
+        .await
+        .expect_err("mixed rejected");
+    let items = preview
+        .items
+        .iter()
+        .map(|item| item.definition.clone())
+        .collect::<Vec<_>>();
+    host.save_trigger_batch(preview.revision, &items)
+        .await
+        .expect("atomic batch");
+    host.save_trigger_batch(preview.revision, &items)
+        .await
+        .expect_err("stale");
+    assert_eq!(
+        host.preview_trigger_config(xml)
+            .await
+            .expect("conflict")
+            .conflicts
+            .len(),
+        2
+    );
+    host.shutdown().await.expect("shutdown");
+    let restarted = Host::start(deployment.config()).await.expect("restart");
+    assert_eq!(restarted.triggers(0, 16).await.expect("persisted").total, 2);
+    restarted
+        .save_trigger_batch(preview.revision, &items)
+        .await
+        .expect_err("old session");
+    restarted.shutdown().await.expect("shutdown");
+}

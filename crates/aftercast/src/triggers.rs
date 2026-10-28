@@ -46,6 +46,20 @@ pub struct TriggerRevision {
     value: u64,
 }
 #[derive(Debug, Clone)]
+pub struct TriggerBatchPreview {
+    pub revision: TriggerRevision,
+    pub items: Vec<TriggerItem>,
+    pub conflicts: Vec<String>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawTriggerBatchPreview {
+    revision: u64,
+    items: Vec<TriggerItem>,
+    conflicts: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
 pub struct TriggerSnippetPreview {
     pub revision: TriggerRevision,
     pub key: String,
@@ -190,6 +204,73 @@ impl HostHandle {
             items: page.items,
         })
     }
+    /// Preview one allowlisted, homogeneous ACT Config section without changes.
+    pub async fn preview_trigger_config(
+        &self,
+        snippet: &str,
+    ) -> Result<TriggerBatchPreview, Error> {
+        if snippet.len() > 16384 || snippet.contains('\0') {
+            return Err(trigger_error("Config exceeds 16 KiB or contains NUL"));
+        }
+        let raw: RawTriggerBatchPreview = self
+            .trigger_call(10, &serde_json::json!({"snippet": snippet}))
+            .await?;
+        let keys = raw
+            .items
+            .iter()
+            .map(|item| &item.key)
+            .collect::<std::collections::HashSet<_>>();
+        let conflicts = raw
+            .conflicts
+            .iter()
+            .collect::<std::collections::HashSet<_>>();
+        if raw.revision == 0
+            || raw.items.is_empty()
+            || raw.items.len() > 32
+            || keys.len() != raw.items.len()
+            || raw
+                .items
+                .iter()
+                .any(|item| item.key.is_empty() || item.key.len() > 8192)
+            || conflicts.len() != raw.conflicts.len()
+            || raw.conflicts.iter().any(|key| !keys.contains(key))
+        {
+            return Err(trigger_error("invalid Config preview"));
+        }
+        Ok(TriggerBatchPreview {
+            revision: TriggerRevision {
+                session: self.session,
+                value: raw.revision,
+            },
+            items: raw.items,
+            conflicts: raw.conflicts,
+        })
+    }
+    /// Atomically add a homogeneous batch; existing definitions are never overwritten.
+    pub async fn save_trigger_batch(
+        &self,
+        revision: TriggerRevision,
+        definitions: &[TriggerDefinition],
+    ) -> Result<TriggerRevision, Error> {
+        self.check_trigger_revision(revision)?;
+        if definitions.is_empty() || definitions.len() > 32 {
+            return Err(trigger_error("select 1–32 definitions"));
+        }
+        let value: u64 = self
+            .trigger_call(
+                11,
+                &serde_json::json!({"revision": revision.value, "definitions": definitions}),
+            )
+            .await?;
+        if value == 0 {
+            return Err(trigger_error("invalid batch revision"));
+        }
+        Ok(TriggerRevision {
+            session: self.session,
+            value,
+        })
+    }
+
     /// Preview one ACT Trigger snippet without changing definitions or running effects.
     pub async fn preview_trigger_snippet(
         &self,

@@ -75,8 +75,9 @@ pub use timers::{
 };
 pub use triggers::TriggerResultCursor;
 pub use triggers::{
-    TriggerBenchmarkResult, TriggerBenchmarkRow, TriggerCapture, TriggerDefinition, TriggerItem,
-    TriggerPage, TriggerResult, TriggerResultPage, TriggerRevision, TriggerSnippetPreview,
+    TriggerBatchPreview, TriggerBenchmarkResult, TriggerBenchmarkRow, TriggerCapture,
+    TriggerDefinition, TriggerItem, TriggerPage, TriggerResult, TriggerResultPage, TriggerRevision,
+    TriggerSnippetPreview,
 };
 
 pub use avoidance_report::{
