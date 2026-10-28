@@ -18,6 +18,7 @@ impl RunningHost {
             settings.host.idle_end_enabled,
             settings.host.idle_end_seconds,
             settings.host.idle_timer_enabled,
+            settings.host.main_table_commas,
             if settings.host.silence_cut_enabled {
                 settings.host.silence_cut_seconds
             } else {
@@ -47,7 +48,8 @@ impl RunningHost {
                 .idle_end_enabled(recording.2)
                 .idle_end_seconds(recording.3)
                 .idle_timer_enabled(recording.4)
-                .silence_cut_seconds(recording.5)
+                .main_table_commas(recording.5)
+                .silence_cut_seconds(recording.6)
                 .build(),
         )
         .await

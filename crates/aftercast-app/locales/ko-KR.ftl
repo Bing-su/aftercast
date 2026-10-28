@@ -645,3 +645,12 @@ idle-end-help = 호스트를 중지하고 저장하면 다음 시작부터 적�
 silence-cut-heading = 전투 행동이 없는 구간의 시간 제외
 silence-cut-seconds = 구간 분리 기준(초)
 silence-cut-help = 다음 전투 행동까지의 간격이 기준을 초과하면 행동이 없는 구간을 전투 시간에서 제외하여 초당 수치에도 반영합니다. 중지 후 저장하면 다음 시작에 적용됩니다.
+
+main-table-commas = ACT 표시 값의 천 단위 구분자
+main-table-commas-help = ACT 서식과 이를 사용하는 플러그인에 적용됩니다. 중지 후 저장하면 다음 시작부터 적용됩니다.
+
+main-table-refresh = 전투 표 자동 갱신 간격(초)
+main-table-refresh-help = 0으로 설정하면 자동 갱신을 끕니다. 수동 갱신은 계속 사용할 수 있습니다.
+
+main-table-reverse = 전투 표 공통 정렬 방향
+main-table-reverse-help = 전투원·기술·액션 표에서 선택한 정렬 콜백에 적용됩니다. 정렬을 선택하지 않은 표는 원래 순서를 유지합니다.

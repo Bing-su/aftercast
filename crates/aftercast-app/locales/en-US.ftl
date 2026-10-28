@@ -645,3 +645,12 @@ idle-end-help = Save while stopped; the next host applies these settings. The el
 silence-cut-heading = Pause encounter duration during silence
 silence-cut-seconds = Gap threshold (seconds)
 silence-cut-help = When a later combat action exceeds this gap, elapsed silence is omitted from encounter duration and rates. Save while stopped to apply on next start.
+
+main-table-commas = Group digits in ACT display values
+main-table-commas-help = Applies to ACT formatting and plugins that use it. Save while stopped; applies on next start.
+
+main-table-refresh = Main table refresh interval (seconds)
+main-table-refresh-help = Zero disables automatic refresh; manual refresh remains available.
+
+main-table-reverse = Main table sort direction
+main-table-reverse-help = Applies to selected combatant, attack, and action sort callbacks. Tables without a selected sort retain their source order.

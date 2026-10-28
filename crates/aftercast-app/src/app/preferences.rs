@@ -195,6 +195,77 @@ pub(super) fn SettingsPane() -> Element {
             }
             Separator { class: "my-6".to_owned() }
             div { class: "space-y-3",
+                Label { html_for: "main-table-refresh", {tr("main-table-refresh")} }
+                select {
+                    id: "main-table-refresh",
+                    class: "h-9 max-w-full rounded-md border border-border bg-background px-2",
+                    disabled,
+                    value: state.read().settings.ui.main_table_refresh_seconds.to_string(),
+                    onchange: move |event| {
+                        if let Ok(seconds) = event.value().parse::<u8>() && seconds <= 60 {
+                            state.write().settings.ui.main_table_refresh_seconds = seconds;
+                        }
+                    },
+                    for seconds in 0..=60 {
+                        option { value: seconds.to_string(), "{seconds}" }
+                    }
+                }
+                p { class: "text-xs leading-6 text-muted-foreground",
+                    {tr("main-table-refresh-help")}
+                }
+            }
+            Separator { class: "my-6".to_owned() }
+            div { class: "space-y-3",
+                h2 { class: "text-sm font-semibold", {tr("main-table-reverse")} }
+                Button {
+                    variant: ButtonVariant::Outline,
+                    disabled,
+                    aria_pressed: state.read().settings.ui.main_table_reverse,
+                    onclick: move |_| {
+                        let current = state.peek().settings.ui.main_table_reverse;
+                        state.write().settings.ui.main_table_reverse = !current;
+                    },
+                    {
+                        tr(
+                            if state.read().settings.ui.main_table_reverse {
+                                "sort-descending"
+                            } else {
+                                "sort-ascending"
+                            },
+                        )
+                    }
+                }
+                p { class: "text-xs leading-6 text-muted-foreground",
+                    {tr("main-table-reverse-help")}
+                }
+            }
+            Separator { class: "my-6".to_owned() }
+            div { class: "space-y-3",
+                h2 { class: "text-sm font-semibold", {tr("main-table-commas")} }
+                Button {
+                    variant: ButtonVariant::Outline,
+                    disabled: disabled || state.read().phase != Phase::Idle,
+                    aria_pressed: state.read().settings.host.main_table_commas,
+                    onclick: move |_| {
+                        let current = state.peek().settings.host.main_table_commas;
+                        state.write().settings.host.main_table_commas = !current;
+                    },
+                    {
+                        tr(
+                            if state.read().settings.host.main_table_commas {
+                                "enabled"
+                            } else {
+                                "disabled"
+                            },
+                        )
+                    }
+                }
+                p { class: "text-xs leading-6 text-muted-foreground",
+                    {tr("main-table-commas-help")}
+                }
+            }
+            Separator { class: "my-6".to_owned() }
+            div { class: "space-y-3",
                 h2 { class: "text-sm font-semibold", {tr("silence-cut-heading")} }
                 Button {
                     variant: ButtonVariant::Outline,

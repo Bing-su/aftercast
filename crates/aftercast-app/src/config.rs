@@ -97,6 +97,8 @@ pub struct UiSettings {
     pub language: String,
     pub theme: String,
     pub notification_blink: bool,
+    pub main_table_refresh_seconds: u8,
+    pub main_table_reverse: bool,
 }
 
 impl Default for UiSettings {
@@ -105,6 +107,8 @@ impl Default for UiSettings {
             language: "ko-KR".into(),
             theme: "mocha".into(),
             notification_blink: true,
+            main_table_refresh_seconds: 5,
+            main_table_reverse: true,
         }
     }
 }
@@ -118,6 +122,7 @@ pub struct HostSettings {
     pub disabled_plugins: Vec<String>,
     pub record_encounter_logs: bool,
     pub original_logline_view_logs: bool,
+    pub main_table_commas: bool,
     pub silence_cut_enabled: bool,
     pub silence_cut_seconds: u8,
     pub idle_end_enabled: bool,
@@ -134,6 +139,7 @@ impl Default for HostSettings {
             disabled_plugins: Vec::new(),
             record_encounter_logs: true,
             original_logline_view_logs: false,
+            main_table_commas: true,
             silence_cut_enabled: false,
             silence_cut_seconds: 6,
             idle_end_enabled: true,
@@ -183,6 +189,9 @@ impl Settings {
             return Err(miette!(
                 "Duplicate configured plugin path; each entry must have a unique path"
             ));
+        }
+        if self.ui.main_table_refresh_seconds > 60 {
+            return Err(miette!("Main table refresh must be 0–60 seconds"));
         }
         if !(1..=60).contains(&self.host.silence_cut_seconds) {
             return Err(miette!("Silence cut threshold must be 1–60 seconds"));
@@ -245,15 +254,7 @@ impl ConfigFile {
             &mut self.document["schema_version"],
             value(i64::from(settings.schema_version)),
         );
-        set(
-            &mut self.document["ui"]["language"],
-            value(&settings.ui.language),
-        );
-        set(&mut self.document["ui"]["theme"], value(&settings.ui.theme));
-        set(
-            &mut self.document["ui"]["notification_blink"],
-            value(settings.ui.notification_blink),
-        );
+        save_ui(&mut self.document, &settings.ui);
         set(
             &mut self.document["host"]["dotnet_root"],
             value(&settings.host.dotnet_root),
@@ -265,6 +266,10 @@ impl ConfigFile {
         set(
             &mut self.document["host"]["original_logline_view_logs"],
             value(settings.host.original_logline_view_logs),
+        );
+        set(
+            &mut self.document["host"]["main_table_commas"],
+            value(settings.host.main_table_commas),
         );
         set(
             &mut self.document["host"]["silence_cut_enabled"],
@@ -329,6 +334,24 @@ impl ConfigFile {
             .wrap_err_with(|| format!("Save {path}"))?;
         Ok(self)
     }
+}
+
+#[expect(clippy::indexing_slicing, reason = "TOML indexing inserts UI fields")]
+fn save_ui(document: &mut DocumentMut, ui: &UiSettings) {
+    set(&mut document["ui"]["language"], value(&ui.language));
+    set(&mut document["ui"]["theme"], value(&ui.theme));
+    set(
+        &mut document["ui"]["main_table_reverse"],
+        value(ui.main_table_reverse),
+    );
+    set(
+        &mut document["ui"]["main_table_refresh_seconds"],
+        value(i64::from(ui.main_table_refresh_seconds)),
+    );
+    set(
+        &mut document["ui"]["notification_blink"],
+        value(ui.notification_blink),
+    );
 }
 
 #[expect(
@@ -599,6 +622,63 @@ mod tests {
                 .map(String::as_str)
                 .collect::<Vec<_>>(),
             ["first", "middle", "last"]
+        );
+    }
+
+    #[test]
+    fn main_table_refresh_defaults_and_limits_survive_restart() {
+        let temp = tempfile::tempdir().expect("app");
+        let root = Utf8Path::from_path(temp.path()).expect("UTF-8");
+        let mut file = ConfigFile::load(root).expect("defaults");
+        assert_eq!(file.settings.ui.main_table_refresh_seconds, 5);
+        assert!(file.settings.ui.main_table_reverse);
+        file.settings.ui.main_table_reverse = false;
+        file.settings.ui.main_table_refresh_seconds = 0;
+        file = file.save(root).expect("save disabled");
+        assert_eq!(
+            ConfigFile::load(root)
+                .expect("restart")
+                .settings
+                .ui
+                .main_table_refresh_seconds,
+            0
+        );
+        assert!(
+            !ConfigFile::load(root)
+                .expect("reverse restart")
+                .settings
+                .ui
+                .main_table_reverse
+        );
+        file.settings.ui.main_table_refresh_seconds = 60;
+        file = file.save(root).expect("save max");
+        file.settings.ui.main_table_refresh_seconds = 61;
+        file.settings.validate().expect_err("invalid");
+        assert!(file.save(root).is_err());
+        assert_eq!(
+            ConfigFile::load(root)
+                .expect("preserved")
+                .settings
+                .ui
+                .main_table_refresh_seconds,
+            60
+        );
+    }
+
+    #[test]
+    fn main_table_commas_persist_across_restart() {
+        let temp = tempfile::tempdir().expect("app");
+        let root = Utf8Path::from_path(temp.path()).expect("UTF-8");
+        let mut file = ConfigFile::load(root).expect("defaults");
+        assert!(file.settings.host.main_table_commas);
+        file.settings.host.main_table_commas = false;
+        file.save(root).expect("save");
+        assert!(
+            !ConfigFile::load(root)
+                .expect("restart")
+                .settings
+                .host
+                .main_table_commas
         );
     }
 

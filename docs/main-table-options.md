@@ -1,0 +1,9 @@
+# Main table options
+
+ACT 3.8.5.288's `Options_MainTableGen` defaults to a 5-second update period (0 disables periodic grid updates; the control permits 0–60), thousand separators enabled and reverse sorting enabled. Its main table receives the reverse operation for combatant, attack and swing lists, not the zone encounter list or category list. Its built-in display callbacks use `ActGlobals.mainTableShowCommas`; plugins may use that global themselves. Arbitrary plugin cell text is not rewritten.
+
+Aftercast persists the refresh period and direction in UI settings and sends the comma setting at worker start. A pane-owned refresh clock preserves page offsets and uses request generations to retire late results on navigation or session replacement; delayed ticks coalesce. With no registered columns the retained encounter list is refreshed instead. Period 0 disables this clock. ACT schedules from its global one-second UI timer, so phase and scheduling under a busy UI can differ.
+
+The global direction applies to explicitly selected plugin comparers on combatant, attack and action tables; comparers and callbacks run unchanged. Aftercast currently retains source order when no sort is selected, whereas ACT uses its default object comparison (eDSort=EncDPS, mDSort=Damage, aTSort=Time) before optionally reversing. Stable equal-key order can also differ from ACT's reverse of its sorted list. These remain parity gaps.
+
+ACT's `Options_TableZone` is a checked, ordered list of `EncounterData.ColumnDefs` displayed when a zone is selected, not a separate registry of zone columns. Aftercast's existing encounter-level editor persists those same registration keys, order and visibility. Its encounter table currently flattens zones and does not offer ACT's selected-zone tree scope; that navigation/filtering difference remains open. No extra zone column registry is introduced.

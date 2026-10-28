@@ -132,14 +132,28 @@ fn SortControls(view: View, catalog: TableCatalog, draft: Preferences, disabled:
                     }
                 }
             }
-            Button {
-                variant: ButtonVariant::Outline,
-                disabled,
-                aria_pressed: draft.descending,
-                onclick: move |_| {
-                    state.write().edit_table(view, |draft| draft.descending = !draft.descending);
-                },
-                {tr(if draft.descending { "sort-descending" } else { "sort-ascending" })}
+            if uses_global_reverse(catalog.level) {
+                Badge {
+                    {
+                        tr(
+                            if state.read().settings.ui.main_table_reverse {
+                                "sort-descending"
+                            } else {
+                                "sort-ascending"
+                            },
+                        )
+                    }
+                }
+            } else {
+                Button {
+                    variant: ButtonVariant::Outline,
+                    disabled,
+                    aria_pressed: draft.descending,
+                    onclick: move |_| {
+                        state.write().edit_table(view, |draft| draft.descending = !draft.descending);
+                    },
+                    {tr(if draft.descending { "sort-descending" } else { "sort-ascending" })}
+                }
             }
         }
     }

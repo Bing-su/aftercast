@@ -17,6 +17,7 @@ struct View {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Mode {
     Refresh,
+    Auto,
     Apply,
     Saved,
 }
@@ -27,6 +28,7 @@ struct Token {
     scope: TableScope,
     mode: Mode,
     editor_version: u64,
+    reverse: Option<bool>,
 }
 #[derive(Clone)]
 struct Editor {
@@ -72,6 +74,7 @@ pub(super) struct BrowserState {
     history: Vec<TableScope>,
     editors: BTreeMap<String, Editor>,
     pending: Option<Token>,
+    auto_fallback: Option<View>,
     attempted: Option<Token>,
     frame: Option<Frame>,
     error: Option<String>,
@@ -90,10 +93,19 @@ impl BrowserState {
     }
     pub(super) fn reset_session(&mut self) {
         self.invalidate();
+        self.auto_fallback = None;
         self.base = None;
         self.scope = None;
         self.history.clear();
     }
+}
+fn uses_global_reverse(level: aftercast::TableLevel) -> bool {
+    matches!(
+        level,
+        aftercast::TableLevel::Combatant
+            | aftercast::TableLevel::Attack
+            | aftercast::TableLevel::Action
+    )
 }
 fn base_scope(state: &AppState) -> TableScope {
     match (state.selected, &state.combatant, &state.category) {
@@ -125,7 +137,13 @@ fn view(state: &AppState) -> View {
     }
 }
 fn target_matches(state: &AppState, token: &Token) -> bool {
-    view(state) == token.view && base_scope(state) == token.base && scope(state) == token.scope
+    (token.mode != Mode::Auto || (state.screen == "analysis" && !state.exit_requested))
+        && view(state) == token.view
+        && base_scope(state) == token.base
+        && scope(state) == token.scope
+        && token.reverse
+            == uses_global_reverse(token.scope.level())
+                .then_some(state.settings.ui.main_table_reverse)
 }
 fn idle(state: &AppState) -> bool {
     state.phase == Phase::Ready
@@ -150,6 +168,23 @@ pub(super) fn dynamic(state: &AppState) -> bool {
     })
 }
 impl AppState {
+    fn retire_table_view(&mut self) {
+        let fallback = self.plugin_tables.auto_fallback.take().is_some();
+        if fallback {
+            self.loading = false;
+        }
+        let table = self
+            .plugin_tables
+            .pending
+            .as_ref()
+            .is_some_and(|token| token.mode == Mode::Auto);
+        if table && self.phase == Phase::ReadingTables {
+            self.phase = Phase::Ready;
+        }
+        if fallback || table {
+            self.plugin_tables.invalidate();
+        }
+    }
     fn begin_table(&mut self, mode: Mode) -> Option<(Token, Preferences)> {
         if !idle(self) {
             return None;
@@ -160,7 +195,7 @@ impl AppState {
         let editor = self.plugin_tables.editors.get(key);
         let preferences = match (mode, editor) {
             (Mode::Apply, Some(editor)) => editor.draft.clone(),
-            (Mode::Refresh, Some(editor)) => editor.applied.clone(),
+            (Mode::Refresh | Mode::Auto, Some(editor)) => editor.applied.clone(),
             _ => self.settings.tables.get(key).cloned().unwrap_or_default(),
         };
         if mode == Mode::Apply {
@@ -181,6 +216,8 @@ impl AppState {
             scope: scope.clone(),
             mode,
             editor_version,
+            reverse: uses_global_reverse(scope.level())
+                .then_some(self.settings.ui.main_table_reverse),
         };
         if self.plugin_tables.base.as_ref() != Some(&base) {
             self.plugin_tables.history.clear();
@@ -369,7 +406,7 @@ fn refreshed_draft(
     let Some(editor) = editor else {
         return Ok(loaded.preferences.clone());
     };
-    if token.mode != Mode::Refresh && editor.version == token.editor_version {
+    if !matches!(token.mode, Mode::Refresh | Mode::Auto) && editor.version == token.editor_version {
         return Ok(loaded.preferences.clone());
     }
     let reconciled = editor.draft.reconcile(&loaded.catalog)?;
@@ -406,7 +443,12 @@ async fn read(
     let notices = notices(&reconciled);
     let preferences = reconciled.preferences;
     let query = match preferences.query(token.scope.clone(), &catalog, offset, PAGE) {
-        Ok(query) => query,
+        Ok(query) => query.map(|mut query| {
+            if let (Some(sort), Some(reverse)) = (&mut query.sort, token.reverse) {
+                sort.descending = reverse;
+            }
+            query
+        }),
         Err(error) => {
             return Ok(Loaded {
                 layout_error: Some(error.into()),
@@ -449,6 +491,61 @@ fn load(mut state: Signal<AppState>, mode: Mode, offset: u32) {
         state.write().receive_table(token, result);
     });
 }
+impl AppState {
+    fn begin_auto_fallback(&mut self) -> Option<(View, super::Revision)> {
+        if !idle(self) {
+            return None;
+        }
+        let expected = view(self);
+        self.plugin_tables.auto_fallback = Some(expected);
+        self.loading = true;
+        Some((expected, self.revision))
+    }
+    fn receive_auto_fallback(
+        &mut self,
+        expected: View,
+        revision: super::Revision,
+        offset: u32,
+        result: Result<aftercast::EncounterPage<aftercast::EncounterSummary>, aftercast::Error>,
+    ) -> bool {
+        if self.plugin_tables.auto_fallback != Some(expected) {
+            return false;
+        }
+        self.plugin_tables.auto_fallback = None;
+        self.loading = false;
+        if view(self) != expected
+            || self.revision != revision
+            || self.screen != "analysis"
+            || self.exit_requested
+        {
+            return false;
+        }
+        match result {
+            Ok(page) => {
+                self.encounters = page.items;
+                self.total = page.total;
+                self.offset = offset;
+            }
+            Err(error) => self.fail(error),
+        }
+        true
+    }
+}
+fn refresh_fallback(mut state: Signal<AppState>, offset: u32) {
+    let Some(handle) = state.read().handle() else {
+        return;
+    };
+    let Some((expected, revision)) = state.write().begin_auto_fallback() else {
+        return;
+    };
+    spawn_forever(async move {
+        let result = handle.encounters(offset, 128).await;
+        state
+            .write()
+            .receive_auto_fallback(expected, revision, offset, result);
+    });
+}
+
 fn save(mut state: Signal<AppState>, expected: View) {
     let Some((token, root, file)) = state.write().begin_table_save(expected) else {
         return;
@@ -462,9 +559,88 @@ fn save(mut state: Signal<AppState>, expected: View) {
         state.write().receive_table_save(token, result, message);
     });
 }
+// A single pane-owned clock admits at most one refresh. A changed setting/session
+// starts a new interval; hidden panes and disabled refresh have no deadline.
+#[derive(Default)]
+struct RefreshClock {
+    key: Option<(u64, u8)>,
+    deadline: std::time::Duration,
+}
+impl RefreshClock {
+    fn tick(
+        &mut self,
+        session: u64,
+        seconds: u8,
+        visible: bool,
+        ready: bool,
+        now: std::time::Duration,
+    ) -> bool {
+        if !visible || seconds == 0 {
+            self.key = None;
+            return false;
+        }
+        let interval = std::time::Duration::from_secs(u64::from(seconds));
+        if self.key != Some((session, seconds)) {
+            self.key = Some((session, seconds));
+            self.deadline = now + interval;
+            return false;
+        }
+        if ready && now >= self.deadline {
+            self.deadline = now + interval;
+            return true;
+        }
+        false
+    }
+}
+
 #[component]
 pub(super) fn PluginTablesPane() -> Element {
-    let state = use_context::<Signal<AppState>>();
+    let mut state = use_context::<Signal<AppState>>();
+    use_drop(move || {
+        if let Ok(mut current) = state.try_write() {
+            current.retire_table_view();
+        }
+    });
+    use_future(move || async move {
+        let start = std::time::Instant::now();
+        let mut clock = RefreshClock::default();
+        loop {
+            dioxus_sdk::time::sleep(std::time::Duration::from_millis(100)).await;
+            let current = state.read();
+            let visible = current.screen == "analysis"
+                && !current.exit_requested
+                && current.running.is_some();
+            let fallback = current
+                .plugin_tables
+                .frame
+                .as_ref()
+                .is_some_and(|frame| frame.catalog.columns.is_empty());
+            let offset = if fallback {
+                current.offset
+            } else {
+                current
+                    .plugin_tables
+                    .frame
+                    .as_ref()
+                    .map_or(0, |frame| frame.offset)
+            };
+            let due = clock.tick(
+                current.revision.session,
+                current.settings.ui.main_table_refresh_seconds,
+                visible,
+                idle(&current),
+                start.elapsed(),
+            );
+            drop(current);
+            if due {
+                if fallback {
+                    refresh_fallback(state, offset);
+                } else {
+                    load(state, Mode::Auto, offset);
+                }
+            }
+        }
+    });
     use_effect(move || {
         let current = state.read();
         let needed = idle(&current)

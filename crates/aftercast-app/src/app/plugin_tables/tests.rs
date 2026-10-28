@@ -410,3 +410,111 @@ async fn session_and_restart(
     );
     host.shutdown().await.expect("cleanup");
 }
+
+#[test]
+fn refresh_clock_and_retired_requests_respect_session_and_visibility() {
+    use std::time::Duration;
+    let mut clock = RefreshClock::default();
+    let t = |seconds| Duration::from_secs(seconds);
+    assert!(!clock.tick(1, 5, true, true, t(0)));
+    assert!(!clock.tick(1, 5, true, true, t(4)));
+    assert!(!clock.tick(1, 5, true, false, t(5)));
+    assert!(clock.tick(1, 5, true, true, t(6)));
+    assert!(!clock.tick(1, 5, true, true, t(6)));
+    assert!(!clock.tick(1, 2, true, true, t(7)));
+    assert!(clock.tick(1, 2, true, true, t(9)));
+    assert!(!clock.tick(2, 2, true, true, t(10)));
+    assert!(!clock.tick(2, 2, false, true, t(12)));
+    assert!(!clock.tick(2, 0, true, true, t(20)));
+}
+
+#[test]
+fn automatic_table_requests_are_retired_on_navigation() {
+    let mut ui = AppState::new(camino::Utf8PathBuf::from("/synthetic"));
+    ui.phase = Phase::Ready;
+    let (token, _) = ui.begin_table(Mode::Auto).expect("request");
+    ui.retire_table_view();
+    assert!(ui.phase == Phase::Ready);
+    assert!(!ui.receive_table(token, Err("late".into())));
+    assert!(ui.plugin_tables.error.is_none());
+    let (fallback, stamp) = ui.begin_auto_fallback().expect("fallback");
+    assert!(ui.begin_auto_fallback().is_none());
+    ui.retire_table_view();
+    assert!(!ui.loading);
+    let (new_fallback, new_stamp) = ui.begin_auto_fallback().expect("reopened fallback");
+    assert!(!ui.receive_auto_fallback(fallback, stamp, 0, Err(aftercast::Error::Closed)));
+    assert!(ui.loading);
+    assert!(ui.receive_auto_fallback(
+        new_fallback,
+        new_stamp,
+        0,
+        Ok(aftercast::EncounterPage {
+            total: 0,
+            items: vec![]
+        })
+    ));
+    let (fallback, stamp) = ui.begin_auto_fallback().expect("next fallback");
+    ui.revision.selection += 1;
+    assert!(!ui.receive_auto_fallback(fallback, stamp, 0, Err(aftercast::Error::Closed)));
+    assert!(!ui.loading && ui.error.is_none());
+    assert!(!ui.loading && ui.error.is_none());
+}
+
+#[test]
+fn automatic_table_requests_are_retired_on_exit() {
+    let mut ui = AppState::new(camino::Utf8PathBuf::from("/synthetic"));
+    ui.phase = Phase::Ready;
+    let (fallback, stamp) = ui.begin_auto_fallback().expect("closing fallback");
+    ui.exit_requested = true;
+    assert!(!ui.receive_auto_fallback(fallback, stamp, 0, Err(aftercast::Error::Closed)));
+    assert!(!ui.loading && ui.error.is_none());
+    ui.exit_requested = false;
+    let (token, _) = ui.begin_table(Mode::Auto).expect("closing table");
+    ui.exit_requested = true;
+    assert!(!ui.receive_table(token, Err("late close".into())));
+    assert!(ui.phase == Phase::Ready && ui.plugin_tables.error.is_none());
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and actual synthetic Host; run mise run test:gui-state"]
+async fn global_reverse_changes_only_selected_main_table_comparator() {
+    let temporary = tempfile::tempdir().expect("fixture");
+    let root = Utf8Path::from_path(temporary.path()).expect("UTF8");
+    let host = Host::start(config(root)).await.expect("host");
+    plugin(&host).await;
+    let input = root.join("reverse.log");
+    std::fs::write(&input, "0|600\n1|50\n").expect("synthetic");
+    host.import_log(&input).await.expect("import");
+    let encounter = host.encounters(0, 16).await.expect("encounters").items[0].id;
+    let mut ui = AppState::new(root.to_owned());
+    ui.phase = Phase::Ready;
+    ui.revision.session = 1;
+    ui.selected = Some(encounter);
+    receive(&host, &mut ui, Mode::Refresh).await;
+    assert!(ui.edit_table(view(&ui), |draft| draft.primary = Some("fixture".into())));
+    receive(&host, &mut ui, Mode::Apply).await;
+    let descending = page(&ui)
+        .rows
+        .iter()
+        .map(|row| row.combatant.clone())
+        .collect::<Vec<_>>();
+    ui.settings.ui.main_table_reverse = false;
+    receive(&host, &mut ui, Mode::Refresh).await;
+    let ascending = page(&ui)
+        .rows
+        .iter()
+        .map(|row| row.combatant.clone())
+        .collect::<Vec<_>>();
+    assert_eq!(descending.len(), 2);
+    assert_ne!(descending, ascending);
+    assert_eq!(descending[0].as_deref(), Some("SOURCE"));
+    assert_eq!(ascending[0].as_deref(), Some("TARGET"));
+    let (old, preferences) = ui.begin_table(Mode::Refresh).expect("old request");
+    ui.settings.ui.main_table_reverse = true;
+    let old_result = read(&host, &old, preferences, 0).await;
+    assert!(!ui.receive_table(old, old_result));
+    assert!(ui.phase == Phase::Ready);
+    assert!(!uses_global_reverse(TableLevel::Encounter));
+    assert!(!uses_global_reverse(TableLevel::Category));
+    host.shutdown().await.expect("shutdown");
+}
