@@ -1,0 +1,14 @@
+{
+  "allies": ["Ann", "Bob", "YOU"],
+  "labels": ["Ann and Bob", "BobOnly", "Miss", "YOU dodges", "ann lowercase"],
+  "expectedGroups": {
+    "Ann": ["Ann and Bob"],
+    "Bob": ["Ann and Bob", "BobOnly"],
+    "YOU": ["YOU dodges"]
+  },
+  "links": ["Damage", "Damage", "All"],
+  "expectedRouting": {
+    "Damage": 2,
+    "All": 1
+  }
+}

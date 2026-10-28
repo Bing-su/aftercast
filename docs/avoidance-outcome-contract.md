@@ -35,15 +35,10 @@ form and does not perform OS clipboard operations.
 DOTNET_ROOT=/usr/lib/dotnet dotnet run --project managed/tests/OriginalReference/OriginalReference.csproj -c Release -- binaries/act/'Advanced Combat Tracker.exe' crates/aftercast-winforms/managed avoidance-outcomes managed/tests/fixtures/avoidance/outcomes.json
 ```
 
-Remaining exact reference questions: how category reconstruction handles linked
-categories, duplicates, missing mappings and `All`; how `AttackType.Average`
-selects successful samples (including zero, special and overflow), the melee
-`DamageTypeDataNonSkillDamage` branch and victim-specific versus all-victim
-fallback; how hit/block settings affect the two displayed denominators; and
-how encounter ally-name/`YOU` filtering behaves with overlapping names and
-custom labels. These need original IL and executable comparisons before a UI
-can honestly claim ACT parity. The existing incoming snapshot does not expose
-outgoing swing-to-category mapping or the full attacker sample graph.
+The remaining category, average/fallback, denominator and alias contracts are now
+resolved in [avoidance-report-contract](avoidance-report-contract.md), with
+original data-class execution and guarded IL-derived fixtures distinguished.
+Production report/API/GUI integration remains pending.
 
 Independent review remains pending because the review worker exhausted its
 usage quota. Author tests are not a substitute for that review.

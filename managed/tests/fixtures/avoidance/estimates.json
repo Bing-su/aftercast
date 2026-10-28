@@ -1,0 +1,60 @@
+{
+  "samples": [
+    {
+      "victim": "A",
+      "amount": 100,
+      "swing": 1
+    },
+    {
+      "victim": "A",
+      "amount": 300,
+      "swing": 1
+    },
+    {
+      "victim": "B",
+      "amount": 900,
+      "swing": 2
+    },
+    {
+      "victim": "C",
+      "amount": 0,
+      "swing": 1
+    },
+    {
+      "victim": "C",
+      "amount": -1,
+      "swing": 1
+    }
+  ],
+  "targets": [
+    {
+      "victim": "A",
+      "average": 200,
+      "fallback": false
+    },
+    {
+      "victim": "B",
+      "average": 900,
+      "fallback": false
+    },
+    {
+      "victim": "C",
+      "average": 433.3333333333333,
+      "fallback": true
+    },
+    {
+      "victim": "missing",
+      "average": 433.3333333333333,
+      "fallback": true
+    }
+  ],
+  "denominator": {
+    "amounts": [100, 0, -1, -2, -10],
+    "labels": ["", "", "", "", "custom"],
+    "swings": 5,
+    "hits": 1,
+    "nonHits": 4
+  },
+  "cachedAverage": 50,
+  "freshAverage": 100
+}
