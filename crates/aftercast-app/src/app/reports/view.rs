@@ -190,6 +190,7 @@ pub(in crate::app) fn Panel() -> Element {
                     }
                 }
                 super::table_view::Editor {}
+                super::hierarchy::Editor {}
                 if let Some((active, _)) = pending {
                     div { class: "flex items-center gap-3", role: "status",
                         p { class: "text-sm text-muted-foreground", {tr("report-working")} }

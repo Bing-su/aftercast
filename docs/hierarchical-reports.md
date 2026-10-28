@@ -85,7 +85,7 @@ first action field override, same-name collection replacement, callback failures
 invalid values/names, owner/reentry/Dispose, counts, limits and cooperative recovery.
 This is Linux managed/IL contract evidence, not native ACT export execution.
 Bridge/Rust session-typed hierarchy selection and actual isolated-worker tests are
-connected below. GUI depth selection and new-file save remain subsequent slices.
+connected below. GUI depth selection and new-file save are connected as described below.
 
 ## Remaining existing HTML/graph work, in order
 
@@ -168,5 +168,41 @@ owner callbacks, including capture input exceeding 4096 bytes.
 
 The worker tests use temporary synthetic log files and owned plugin objects only.
 They do not execute native ACT exporters, clipboard, browser or Windows UI. GUI
-depth selection and explicit new-file save are the next slice; multi-encounter
+depth selection and explicit new-file save are connected; multi-encounter
 hierarchical HTML and graph calculation/static rendering remain separate L7b work.
+
+## Hierarchy XML GUI and new-file save
+
+The existing Rust/UI-adapted Dioxus Button controls select the three ACT depths
+for the explicitly selected encounter. This editor is separate from current-table
+XML/HTML and encounter archive interchange. Main is the default; summaries add
+category and attack-summary tables (two row levels), and all adds action tables.
+There is no implicit row filter, display-column selection or current-table sort.
+
+Generate admits one encounter/depth snapshot, then captures and renders once on
+the existing serialized Host report path. Depth edits cannot enter a pending
+request. Completed preview metadata describes the returned depth, tables and
+rows, not mutable draft settings. Depth edits retire preview/save confirmations;
+encounter selection, session replacement, navigation and cancellation retire late
+results. Cancel discards the result without preempting a plugin callback; pending
+admission remains held until its response. Draft depth survives failure/Stop.
+Time/output/callback failures remain explicit errors with no partial XML or
+automatic retry/shallow fallback.
+
+The shared preview renders source as escaped text (64 KiB UTF-8-safe preview
+limit), never executable markup. Save uses the complete owned UTF-8 source, an
+explicit path and confirmation, same-directory staging and atomic no-clobber
+publication. Existing destinations are not overwritten. Failed saves retain the
+generated source. Cancellation before publication prevents a new file; already
+admitted publication can finish after Stop and late UI replies are ignored.
+No archive, clipboard, browser, external resource or upload operation occurs.
+
+Three actual isolated-Host controller regressions cover the three depths and
+exact saved bytes, Unicode, duplicate requests, stale edits/confirmation,
+selection/navigation/session retirement, cancellation before save, missing-parent
+and existing-file errors, explicit returning-callback timeout and serialized
+16 MiB failure followed by an explicit shallow request. The existing shared
+source-preview truncation and file-write/flush/publication regressions remain in
+force. Synthetic temporary logs/files only; native clicks, Windows UI and native
+ACT exporter execution are not established by these checks. Hierarchical HTML
+and graph work remains separate and unfinished.

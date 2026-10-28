@@ -583,3 +583,9 @@ table-report-missing-key = Key is no longer registered; remove it or reload the 
 table-report-generate = Generate table report
 report-preview-truncated = Preview is limited to 64 KiB of source text. Saving uses the complete generated snapshot.
 table-report-remove = Remove column
+
+hierarchy-report-title = Encounter hierarchy XML
+hierarchy-report-help = Selected encounter, SQL columns in registration order. This is a nested table report, separate from current-table XML and encounter archives. Main includes combatants; summaries add categories and attack summaries; all adds action rows. Generation may fail explicitly on time or output limits. Cancel discards the result without interrupting plugin callbacks.
+hierarchy-report-main = Main table
+hierarchy-report-summary = Category and attack summaries
+hierarchy-report-all = All tables including actions

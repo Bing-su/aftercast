@@ -3,6 +3,7 @@ use aftercast::{EncounterId, HostHandle, TextReport, TextReportCatalog, TextRepo
 use camino::Utf8PathBuf;
 use std::sync::Arc;
 mod file;
+mod hierarchy;
 mod table_view;
 mod tables;
 #[cfg(test)]
@@ -27,12 +28,14 @@ struct Preview {
 enum Content {
     Text(TextReport, TextReportOptions),
     Table(aftercast::TableReport, aftercast::TableReportOptions),
+    Hierarchy(aftercast::HierarchyXmlReport),
 }
 impl Content {
     fn text(&self) -> &str {
         match self {
             Self::Text(report, _) => &report.text,
             Self::Table(report, _) => &report.content,
+            Self::Hierarchy(report) => &report.content,
         }
     }
     fn preview_text(&self) -> &str {
@@ -46,6 +49,13 @@ impl Content {
     fn description(&self) -> String {
         match self {
             Self::Text(_, options) => format!("Text · {}", options.sorting),
+            Self::Hierarchy(report) => format!(
+                "{} · {} · {} tables · {} rows",
+                super::tr("hierarchy-report-title"),
+                super::tr(hierarchy::label(report.selection.depth())),
+                report.selection.table_count(),
+                report.selection.row_count()
+            ),
             Self::Table(report, options) => format!(
                 "{:?} · {} · {} · {}",
                 report.format,
@@ -66,6 +76,7 @@ impl Content {
 }
 #[derive(Clone, Debug)]
 enum Request {
+    Hierarchy(EncounterId, aftercast::HierarchyXmlDepth, String),
     Catalog,
     TableCatalog(aftercast::TableScope),
     TableRender(
@@ -87,6 +98,7 @@ enum Request {
 }
 #[derive(Debug)]
 enum Reply {
+    Hierarchy(Option<aftercast::HierarchyXmlReport>, String),
     Catalog(TextReportCatalog),
     TableCatalog(Option<aftercast::TableReportCatalog>),
     TableReport(
@@ -104,6 +116,7 @@ enum Reply {
 #[derive(Default)]
 pub(super) struct State {
     epoch: u64,
+    hierarchy: hierarchy::Draft,
     table: tables::Draft,
     table_catalog: Option<Arc<aftercast::TableReportCatalog>>,
     catalog: Option<TextReportCatalog>,
@@ -280,6 +293,14 @@ impl AppState {
             return false;
         }
         match result {
+            Ok(Reply::Hierarchy(Some(report), title)) => {
+                self.reports.preview = Some(Preview {
+                    token,
+                    report: Arc::new(Content::Hierarchy(report)),
+                    title,
+                });
+            }
+            Ok(Reply::Hierarchy(None, _)) => self.reports.error = Some("report-unavailable".into()),
             Ok(Reply::Catalog(catalog)) => {
                 if !self.reports.edited {
                     self.reports.draft = catalog.default_options.clone();
@@ -370,6 +391,22 @@ impl AppState {
 }
 async fn perform(handle: &HostHandle, request: &Request) -> Result<Reply, String> {
     match request {
+        Request::Hierarchy(target, depth, title) => {
+            let report = match handle
+                .capture_hierarchy_xml(*target, *depth)
+                .await
+                .map_err(|error| error.to_string())?
+            {
+                Some(selection) => Some(
+                    handle
+                        .hierarchy_xml(&selection)
+                        .await
+                        .map_err(|error| error.to_string())?,
+                ),
+                None => None,
+            };
+            Ok(Reply::Hierarchy(report, title.clone()))
+        }
         Request::TableCatalog(scope) => handle
             .table_report_catalog(scope)
             .await

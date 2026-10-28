@@ -583,3 +583,9 @@ table-report-missing-key = 등록이 사라진 키입니다. 제거하거나 해
 table-report-generate = 표 보고서 생성
 report-preview-truncated = 미리보기는 원문 64KiB로 제한됩니다. 저장에는 생성된 전체 결과를 사용합니다.
 table-report-remove = 열 제거
+
+hierarchy-report-title = 전투 계층 XML
+hierarchy-report-help = 선택한 전투의 SQL 열을 등록 순서로 출력합니다. 현재 표 XML·전투 보관 파일과 별개인 중첩 표 보고서입니다. 기본은 전투원, 요약은 분류·공격 요약까지, 전체는 액션 행까지 포함합니다. 시간·출력 한도 초과는 명시적 오류입니다. 취소는 플러그인 콜백을 중단하지 않고 결과를 폐기합니다.
+hierarchy-report-main = 기본 표
+hierarchy-report-summary = 분류·공격 요약
+hierarchy-report-all = 액션 포함 전체 표
