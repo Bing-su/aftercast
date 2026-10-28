@@ -176,6 +176,18 @@ async fn history_snapshots_select_exact_archives_and_preserve_log_identity(deplo
         .await
         .expect("snapshot page");
     assert_eq!(frozen.items[0].action, actions.items[0]);
+    let frozen_logs = host
+        .action_snapshot_logs(snapshot, 1, 1)
+        .await
+        .expect("snapshot logs");
+    assert_eq!(
+        frozen_logs.page.items[0].source,
+        frozen.items[0].action.source
+    );
+    assert_eq!(
+        frozen_logs.page.items[0].time_sorter,
+        frozen.items[0].action.time_sorter
+    );
     let replacement = host
         .capture_action_snapshot(id)
         .await
@@ -184,6 +196,9 @@ async fn history_snapshots_select_exact_archives_and_preserve_log_identity(deplo
     host.action_snapshot_page(snapshot, 0, 1)
         .await
         .expect_err("replaced snapshot rejected");
+    host.action_snapshot_logs(snapshot, 0, 1)
+        .await
+        .expect_err("replaced log snapshot rejected");
     let logs = host
         .encounter_logs(id, 1, 1)
         .await
@@ -197,6 +212,10 @@ async fn history_snapshots_select_exact_archives_and_preserve_log_identity(deplo
     let clean = Host::start(deployment.config())
         .await
         .expect("worker lease released after abandoned query");
+    clean
+        .action_snapshot_logs(replacement, 0, 1)
+        .await
+        .expect_err("previous session log snapshot rejected");
     clean
         .action_snapshot_page(replacement, 0, 1)
         .await

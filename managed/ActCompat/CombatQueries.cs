@@ -34,7 +34,7 @@ namespace Advanced_Combat_Tracker
         private readonly ConditionalWeakTable<EncounterData, EncounterIdentity> encounterIds = new();
         private ulong nextEncounterId;
         private ulong nextActionSnapshotRevision;
-        private (ulong Revision, ClassifiedActionData[] Items)? actionSnapshot;
+        private (ulong Revision, ClassifiedActionData[] Items, EncounterLogPageData Logs)? actionSnapshot;
         private const int MaximumSnapshotActions = 16384;
         private EncounterIdentity Identity(EncounterData encounter) => encounterIds.GetValue(encounter,
             _ => new(checked(++nextEncounterId)));
@@ -155,11 +155,16 @@ namespace Advanced_Combat_Tracker
                     throw new InvalidDataException("Action snapshot exceeds 16384 rows");
                 var damage = CombatantData.DamageSwingTypes.ToHashSet();
                 var healing = CombatantData.HealingSwingTypes.ToHashSet();
+                if (encounter.LogLines.Count > EncounterData.MaximumRecordedLogLines)
+                    throw new InvalidDataException("Action snapshot exceeds 65536 log rows");
                 var sources = SourceIndices(encounter);
+                var logs = new EncounterLogPageData(encounter.DroppedLogLines, new(encounter.LogLines.Count,
+                    encounter.LogLines.Select(line => new EncounterLogData(line.Time, line.GlobalTimeSorter, line.Type,
+                        line.LogLine, sources.GetValueOrDefault(line.GlobalTimeSorter, -1))).ToArray()));
                 var items = actions.Select(action => new ClassifiedActionData(ProjectAction(action, sources),
                     damage.Contains(action.SwingType), healing.Contains(action.SwingType))).ToArray();
                 var revision = checked(++nextActionSnapshotRevision);
-                actionSnapshot = (revision, items);
+                actionSnapshot = (revision, items, logs);
                 return new(revision, items.Length);
             }
         }
@@ -172,6 +177,18 @@ namespace Advanced_Combat_Tracker
                 if (actionSnapshot is not { } snapshot || snapshot.Revision != revision)
                     throw new InvalidOperationException("Action snapshot is stale");
                 return new(snapshot.Items.Length, snapshot.Items.Skip(offset).Take(limit).ToArray());
+            }
+        }
+
+        internal EncounterLogPageData ReadActionSnapshotLogs(ulong revision, int offset, int limit)
+        {
+            ValidateCombatPage(offset, limit);
+            lock (CombatGate)
+            {
+                if (actionSnapshot is not { } snapshot || snapshot.Revision != revision)
+                    throw new InvalidOperationException("Action snapshot is stale");
+                var logs = snapshot.Logs;
+                return new(logs.Dropped, new(logs.Page.Total, logs.Page.Items.Skip(offset).Take(limit).ToArray()));
             }
         }
 

@@ -17,7 +17,7 @@ public static partial class EntryPoint
         var offset = Marshal.ReadInt32(buffer, 20);
         var id = unchecked((ulong)Marshal.ReadInt64(buffer, 24));
         var limit = Marshal.ReadInt32(buffer, 32);
-        if (mode is < 1 or > 8 || offset < 0 || limit is < 1 or > 256 ||
+        if (mode is < 1 or > 9 || offset < 0 || limit is < 1 or > 256 ||
             (mode is 1 or 2 ? id != 0 : id == 0) || (mode is 1 or 3 or 7 && offset != 0))
             throw new ArgumentException("Invalid combat query mode, ID or page");
         for (var field = 36; field < header; field += 4)
@@ -139,9 +139,10 @@ internal static class CombatQueryEncoding
                 Budget(4); writer.Write((item.RegisteredDamage ? 1u : 0u) | (item.RegisteredHealing ? 2u : 0u));
             }
         }
-        else if (mode == 6)
+        else if (mode is 6 or 9)
         {
-            var value = host?.ReadEncounterLogs(id, offset, limit);
+            var value = mode == 9 ? host?.ReadActionSnapshotLogs(id, offset, limit) : host?.ReadEncounterLogs(id, offset, limit);
+            if (mode == 9 && value is null) throw new InvalidOperationException("Action snapshot is unavailable");
             writer.Write(value is null ? 0u : 1u);
             if (value is not null)
             {

@@ -104,6 +104,9 @@ internal static class EncounterLogChecks
         var removedLine = originalEncounter.LogLines[1];
         originalEncounter.LogLines.RemoveAt(1);
         var next = host.ReadActionSnapshot(snapshot.Revision, 1, 2);
+        var frozenLogs = host.ReadActionSnapshotLogs(snapshot.Revision, 1, 1);
+        Check(frozenLogs.Page.Total == 4 && frozenLogs.Page.Items.Single().Text == removedLine.LogLine);
+        Check(frozenLogs.Page.Items.Single().SourceIndex == next.Items[0].Action.SourceIndex);
         Check(next.Total == 3 && next.Items.All(item => item.RegisteredDamage && item.RegisteredHealing));
         Check(next.Items[0].Action.SourceIndex == 1 && next.Items[0].Action.Amount == 100);
         originalEncounter.LogLines.Insert(1, removedLine);
@@ -112,6 +115,17 @@ internal static class EncounterLogChecks
         Check(!host.ReadActionSnapshot(replacement.Revision, 0, 1).Items.Single().RegisteredDamage);
         try { host.ReadActionSnapshot(snapshot.Revision, 0, 1); throw new Exception("Expected stale snapshot rejection"); }
         catch (InvalidOperationException) { }
+        try { host.ReadActionSnapshotLogs(snapshot.Revision, 0, 1); throw new Exception("Expected stale log snapshot rejection"); }
+        catch (InvalidOperationException) { }
+        var originalCount = allActions.Count;
+        allActions.AddRange(Enumerable.Repeat(removedAction, 16384 - originalCount));
+        var atLimit = host.CaptureActionSnapshot(id)!;
+        Check(atLimit.Total == 16384 && host.ReadActionSnapshot(atLimit.Revision, 16383, 1).Items.Length == 1);
+        allActions.Add(removedAction);
+        try { host.CaptureActionSnapshot(id); throw new Exception("Expected action snapshot limit"); }
+        catch (InvalidDataException) { }
+        Check(host.ReadActionSnapshot(atLimit.Revision, 16383, 1).Total == 16384);
+        allActions.RemoveRange(originalCount, allActions.Count - originalCount);
         var logs = host.ReadEncounterLogs(id, 1, 2)!;
         Check(logs.Dropped == 0 && logs.Page.Total == 4 && logs.Page.Items.Select(line => line.Text).SequenceEqual(new[] { "same", "same" }));
         Check(logs.Page.Items[0].TimeSorter != logs.Page.Items[1].TimeSorter);
@@ -257,6 +271,15 @@ internal static class EncounterLogChecks
                 Check(encounter.LogLines.Count == 65536 && encounter.DroppedLogLines == 11);
                 Check(encounter.LogLines.Any(line => line.LogLine == "tail"));
                 Check(encounter.LogLines.Count(line => line.LogLine.Length == 512 * 1024) == 7);
+                var id = host.ListEncounters(0, 1).Items.Single().Id;
+                var snapshot = host.CaptureActionSnapshot(id)!;
+                var logs = host.ReadActionSnapshotLogs(snapshot.Revision, 0, 1);
+                Check(logs.Dropped == 11 && logs.Page.Total == 65536 && logs.Page.Items.Single().Text == "start");
+                encounter.LogLines.Add(encounter.LogLines[0]);
+                try { host.CaptureActionSnapshot(id); throw new Exception("Expected log snapshot limit"); }
+                catch (InvalidDataException) { }
+                Check(host.ReadActionSnapshotLogs(snapshot.Revision, 0, 1).Dropped == 11);
+                encounter.LogLines.RemoveAt(encounter.LogLines.Count - 1);
                 Check(host.ArchiveOperation(3, "", 0, false) == 1);
             }
             using var restarted = new HostEnvironment(directory.FullName);

@@ -243,7 +243,7 @@ impl HostHandle {
         Ok(snapshot)
     }
 
-    /// Reads frozen rows; source indices refer to the log list at capture time.
+    /// Reads frozen rows; source indices address `action_snapshot_logs` in the same snapshot.
     pub async fn action_snapshot_page(
         &self,
         snapshot: ActionSnapshot,
@@ -273,6 +273,21 @@ impl HostHandle {
         }
         reader.finish()?;
         Ok(page)
+    }
+
+    /// Reads the same frozen log list referenced by action snapshot source indices.
+    pub async fn action_snapshot_logs(
+        &self,
+        snapshot: ActionSnapshot,
+        offset: u32,
+        limit: u32,
+    ) -> Result<EncounterLogs, Error> {
+        let id = EncounterId {
+            session: snapshot.session,
+            value: snapshot.revision,
+        };
+        let payload = self.query_combat(9, Some(id), offset, limit).await?;
+        decode_logs(&payload, offset, limit)?.ok_or_else(|| invalid("missing action snapshot logs"))
     }
 
     /// Pages retained text and capacity omissions. Missing encounters return None; empty logs are valid.
