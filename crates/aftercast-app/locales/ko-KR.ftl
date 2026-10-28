@@ -635,3 +635,4 @@ html-graph-advanced = Advanced
 html-graph-simple-column = Simple 그래프 열 키
 html-graph-allies = 아군만
 html-graph-totals = 합계와 평균 표시
+html-graph-save-settings = 그래프 설정 저장

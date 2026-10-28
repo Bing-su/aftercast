@@ -14,6 +14,7 @@ pub struct Settings {
     pub ui: UiSettings,
     pub host: HostSettings,
     pub tables: BTreeMap<String, crate::table_settings::Preferences>,
+    pub graphs: GraphSettings,
 }
 
 impl Default for Settings {
@@ -23,7 +24,70 @@ impl Default for Settings {
             ui: UiSettings::default(),
             host: HostSettings::default(),
             tables: BTreeMap::new(),
+            graphs: GraphSettings::default(),
         }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct GraphSettings {
+    pub levels: [bool; 4],
+    pub window: u32,
+    pub rolling: bool,
+    pub simple: bool,
+    pub simple_column: String,
+    pub only_allies: bool,
+    pub totals: bool,
+    pub distribution: String,
+    pub action_sort: String,
+    pub all_label: String,
+    pub ward_prefix: String,
+    pub solo_categories: Option<Vec<String>>,
+}
+impl Default for GraphSettings {
+    fn default() -> Self {
+        Self {
+            levels: [true; 4],
+            window: 10,
+            rolling: true,
+            simple: true,
+            simple_column: String::new(),
+            only_allies: true,
+            totals: true,
+            distribution: String::new(),
+            action_sort: String::new(),
+            all_label: "All".into(),
+            ward_prefix: "Warded/".into(),
+            solo_categories: None,
+        }
+    }
+}
+impl GraphSettings {
+    pub(crate) fn validate(&self) -> Result<()> {
+        if !(1..=120).contains(&self.window)
+            || [
+                &self.simple_column,
+                &self.distribution,
+                &self.action_sort,
+                &self.all_label,
+                &self.ward_prefix,
+            ]
+            .iter()
+            .any(|v| v.len() > 1024 || v.contains('\0'))
+            || self.all_label.is_empty()
+            || (self.levels[2] && self.distribution == "Resist" && self.ward_prefix.is_empty())
+            || self.solo_categories.as_ref().is_some_and(|keys| {
+                keys.len() > 256
+                    || keys
+                        .iter()
+                        .any(|key| key.is_empty() || key.len() > 1024 || key.contains('\0'))
+                    || keys.iter().collect::<std::collections::HashSet<_>>().len() != keys.len()
+            })
+        {
+            return Err(miette!("Invalid report graph settings"));
+        }
+        Ok(())
     }
 }
 
@@ -110,6 +174,7 @@ impl Settings {
                 "Duplicate configured plugin path; each entry must have a unique path"
             ));
         }
+        self.graphs.validate()?;
         for (level, preferences) in &self.tables {
             if !crate::table_settings::LEVELS
                 .iter()
@@ -213,6 +278,7 @@ impl ConfigFile {
                 value(type_name),
             );
         }
+        save_graphs(&mut self.document, &settings.graphs);
         save_tables(&mut self.document, &settings.tables)?;
         let path = root.join("config.toml");
         let mut temporary = tempfile::NamedTempFile::new_in(root).into_diagnostic()?;
@@ -226,6 +292,60 @@ impl ConfigFile {
             .into_diagnostic()
             .wrap_err_with(|| format!("Save {path}"))?;
         Ok(self)
+    }
+}
+
+#[expect(
+    clippy::indexing_slicing,
+    reason = "TOML indexing inserts graph fields"
+)]
+fn save_graphs(document: &mut DocumentMut, graph: &GraphSettings) {
+    set(
+        &mut document["graphs"]["levels"],
+        value(graph.levels.iter().copied().collect::<toml_edit::Array>()),
+    );
+    set(
+        &mut document["graphs"]["window"],
+        value(i64::from(graph.window)),
+    );
+    set(&mut document["graphs"]["rolling"], value(graph.rolling));
+    set(&mut document["graphs"]["simple"], value(graph.simple));
+    set(
+        &mut document["graphs"]["simple_column"],
+        value(&graph.simple_column),
+    );
+    set(
+        &mut document["graphs"]["only_allies"],
+        value(graph.only_allies),
+    );
+    set(&mut document["graphs"]["totals"], value(graph.totals));
+    set(
+        &mut document["graphs"]["distribution"],
+        value(&graph.distribution),
+    );
+    set(
+        &mut document["graphs"]["action_sort"],
+        value(&graph.action_sort),
+    );
+    set(
+        &mut document["graphs"]["all_label"],
+        value(&graph.all_label),
+    );
+    set(
+        &mut document["graphs"]["ward_prefix"],
+        value(&graph.ward_prefix),
+    );
+    if let Some(keys) = &graph.solo_categories {
+        set(
+            &mut document["graphs"]["solo_categories"],
+            value(
+                keys.iter()
+                    .map(String::as_str)
+                    .collect::<toml_edit::Array>(),
+            ),
+        );
+    } else if let Some(table) = document["graphs"].as_table_like_mut() {
+        table.remove("solo_categories");
     }
 }
 
@@ -301,10 +421,24 @@ fn set(item: &mut toml_edit::Item, mut replacement: toml_edit::Item) {
             (toml_edit::Value::Boolean(old), toml_edit::Value::Boolean(new)) => {
                 old.value() == new.value()
             }
-            (toml_edit::Value::Array(old), toml_edit::Value::Array(new)) => old
-                .iter()
-                .map(toml_edit::Value::as_str)
-                .eq(new.iter().map(toml_edit::Value::as_str)),
+            (toml_edit::Value::Array(old), toml_edit::Value::Array(new)) => {
+                old.len() == new.len()
+                    && old
+                        .iter()
+                        .zip(new.iter())
+                        .all(|(left, right)| match (left, right) {
+                            (toml_edit::Value::String(a), toml_edit::Value::String(b)) => {
+                                a.value() == b.value()
+                            }
+                            (toml_edit::Value::Boolean(a), toml_edit::Value::Boolean(b)) => {
+                                a.value() == b.value()
+                            }
+                            (toml_edit::Value::Integer(a), toml_edit::Value::Integer(b)) => {
+                                a.value() == b.value()
+                            }
+                            _ => false,
+                        })
+            }
             _ => false,
         };
         if same {
@@ -330,6 +464,49 @@ pub fn resolve(root: &Utf8Path, path: &str) -> Utf8PathBuf {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn graph_settings_roundtrip_defaults_validation_and_failed_save() {
+        let temp = tempfile::tempdir().expect("temporary configuration");
+        let root = camino::Utf8Path::from_path(temp.path()).expect("UTF-8 path");
+        let old =
+            "schema_version = 1\n# preserved\n[ui]\nlanguage = \"ko-KR\"\nunknown = \"keep\"\n";
+        std::fs::write(root.join("config.toml"), old).expect("synthetic config");
+        let mut file = super::ConfigFile::load(root).expect("old schema");
+        assert_eq!(file.settings.graphs, super::GraphSettings::default());
+        file.settings.graphs.levels = [true, true, false, false];
+        file.settings.graphs.simple_column = "key".into();
+        file.settings.graphs.solo_categories = Some(vec!["Damage".into()]);
+        file.save(root).expect("save graph settings");
+        let saved = std::fs::read_to_string(root.join("config.toml")).expect("read saved");
+        assert!(saved.contains("# preserved") && saved.contains("unknown = \"keep\""));
+        let mut changed = super::ConfigFile::load(root).expect("first restart");
+        changed.settings.graphs.levels = [false, true, false, false];
+        changed.save(root).expect("save changed levels");
+        let loaded = super::ConfigFile::load(root).expect("restart");
+        assert_eq!(loaded.settings.graphs.levels, [false, true, false, false]);
+        let saved = std::fs::read_to_string(root.join("config.toml")).expect("changed config");
+        assert_eq!(
+            loaded.settings.graphs.solo_categories,
+            Some(vec!["Damage".into()])
+        );
+        assert_eq!(loaded.settings.graphs.simple_column, "key");
+        let mut bad = loaded.clone();
+        bad.settings.graphs.window = 0;
+        assert!(bad.save(root).is_err());
+        assert_eq!(
+            std::fs::read_to_string(root.join("config.toml")).expect("unchanged"),
+            saved
+        );
+        assert!(loaded.save(&root.join("missing")).is_err());
+        assert_eq!(
+            std::fs::read_to_string(root.join("config.toml")).expect("unchanged after failure"),
+            saved
+        );
+        std::fs::write(root.join("config.toml"), "[graphs]\nwindow = [broken")
+            .expect("corrupt fixture");
+        assert!(super::ConfigFile::load(root).is_err());
+    }
 
     #[test]
     fn edits_keep_comments_unknown_values_and_executable_relative_paths() {

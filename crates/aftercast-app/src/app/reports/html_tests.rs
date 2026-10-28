@@ -735,3 +735,90 @@ async fn hierarchy_html_ui_contract_simple_graph_snapshot_and_save() {
     assert!(!f.ui.report_receive(token, result, ""));
     f.host.shutdown().await.unwrap();
 }
+
+#[test]
+fn graph_preferences_roundtrip_excludes_ephemeral_selection() {
+    let draft = super::super::html::Draft {
+        graph_levels: [true, true, false, false],
+        graph_simple_column: "registered-key".into(),
+        graph_actors: Some(vec!["private-session-actor".into()]),
+        graph_categories: Some(vec!["Damage".into()]),
+        ..Default::default()
+    };
+    let settings = draft.graph_settings().expect("valid preferences");
+    let serialized = toml_edit::ser::to_string(&settings).expect("serialize");
+    assert!(!serialized.contains("private-session-actor"));
+    let mut restored = super::super::html::Draft::default();
+    restored.restore_graphs(&settings);
+    assert_eq!(restored.graph_categories, Some(vec!["Damage".into()]));
+    assert!(
+        restored.graph_actors.is_none()
+            && restored.graph_candidates.is_none()
+            && restored.selected.is_empty()
+    );
+    assert_eq!(restored.graph_simple_column, "registered-key");
+    restored.graph_window = "invalid".into();
+    restored.graph_settings().expect_err("invalid window");
+}
+
+#[test]
+fn graph_settings_loading_and_save_snapshot_are_guarded() {
+    let temp = tempfile::tempdir().expect("temp");
+    let root = camino::Utf8Path::from_path(temp.path())
+        .expect("utf8")
+        .to_owned();
+    let mut ui = AppState::new(root.clone());
+    ui.file = Some(crate::config::ConfigFile::load(&root).expect("configuration"));
+    let defaults = ui.settings.graphs.clone();
+    ui.restore_report_graphs(&defaults);
+    assert_eq!(ui.reports.html.graph_levels, [true; 4]);
+    assert_eq!(ui.reports.html.last, TableLevel::Action);
+    let token = ui.report_token();
+    ui.saving = true;
+    assert!(!ui.report_html_graph_edit(token, "window", "20".into()));
+    assert!(!ui.report_html_prepare_graph_save(token).expect("guard"));
+    ui.saving = false;
+    assert!(ui.report_html_graph_edit(ui.report_token(), "window", "20".into()));
+    assert!(
+        !ui.report_html_prepare_graph_save(token)
+            .expect("stale token")
+    );
+    assert!(
+        ui.report_html_prepare_graph_save(ui.report_token())
+            .expect("prepare")
+    );
+    let (path, file) = ui.begin_settings_save().expect("snapshot");
+    assert!(!ui.report_html_graph_edit(ui.report_token(), "window", "30".into()));
+    ui.receive_settings_save(file.save(&path), "saved".into());
+    assert_eq!(
+        crate::config::ConfigFile::load(&root)
+            .unwrap()
+            .settings
+            .graphs
+            .window,
+        20
+    );
+    assert_eq!(ui.reports.html.graph_window, "20");
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn hierarchy_html_ui_contract_restored_missing_graph_column_is_explicit() {
+    let mut f = Fixture::new_with("HierarchyHtmlPlugin", "0|100\n3|200\n").await;
+    load(&mut f).await;
+    let id = f.ui.encounters[0].id;
+    toggle(&mut f, id);
+    let graph = crate::config::GraphSettings {
+        levels: [true, false, false, false],
+        simple_column: "removed-key".into(),
+        ..Default::default()
+    };
+    f.ui.restore_report_graphs(&graph);
+    let (token, request) = begin(&mut f);
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(result.is_err(), "missing registration rejected");
+    assert!(f.ui.report_receive(token, result, ""));
+    assert_eq!(f.ui.reports.html.graph_simple_column, "removed-key");
+    assert!(f.ui.report_preview().is_none());
+    f.host.shutdown().await.unwrap();
+}

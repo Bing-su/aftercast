@@ -432,6 +432,8 @@ async fn load_settings(mut state: Signal<AppState>, mut language: I18n) {
                 Ok(()) => {
                     let mut state = state.write();
                     state.settings = file.settings.clone();
+                    let graphs = state.settings.graphs.clone();
+                    state.restore_report_graphs(&graphs);
                     state.file = Some(file);
                 }
                 Err(error) => state.write().fail(error),

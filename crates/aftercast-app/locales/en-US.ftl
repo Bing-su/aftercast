@@ -635,3 +635,4 @@ html-graph-advanced = Advanced
 html-graph-simple-column = Simple graph column key
 html-graph-allies = Only allies
 html-graph-totals = Show total and average
+html-graph-save-settings = Save graph settings

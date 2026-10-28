@@ -109,3 +109,5 @@ and primarily technical; there is no need to ask a product-policy question merel
 to implement a verified ACT behavior. Actual native execution, external services,
 plan-only WinForms work and stronger recording durability keep the separate
 boundaries above.
+
+Graph report options now persist in the application configuration as described in [hierarchical-reports.md](hierarchical-reports.md). The remaining L7b/L9d gaps include ACT custom GDI graph delegates, native rendering and unrelated output settings; L9e still includes ACT-specific fonts and color rules. L7c ODBC requires distinguishing local configuration/SQL generation from an actual external database connection. L8 analysis items remain scoped individually above; no external service has been contacted.

@@ -148,6 +148,55 @@ fn choice_missing(values: Option<&Vec<String>>, available: &[String]) -> bool {
     values.is_some_and(|values| values.iter().any(|value| !available.contains(value)))
 }
 impl Draft {
+    pub(super) fn restore_graphs(&mut self, graph: &crate::config::GraphSettings) {
+        self.graph_levels = graph.levels;
+        self.graph_window = graph.window.to_string();
+        self.graph_rolling = graph.rolling;
+        self.graph_simple = graph.simple;
+        self.graph_simple_column = graph.simple_column.clone();
+        self.graph_only_allies = graph.only_allies;
+        self.graph_totals = graph.totals;
+        self.graph_distribution = graph.distribution.clone();
+        self.graph_action_sort = graph.action_sort.clone();
+        self.graph_all = graph.all_label.clone();
+        self.graph_ward = graph.ward_prefix.clone();
+        self.graph_categories = graph.solo_categories.clone();
+        self.graph_candidates = None;
+        if let Some((index, _)) = self
+            .graph_levels
+            .iter()
+            .enumerate()
+            .rev()
+            .find(|(_, enabled)| **enabled)
+            && let Some(level) = LEVELS.get(index)
+        {
+            self.last = *level;
+        }
+    }
+    pub(super) fn graph_settings(&self) -> Result<crate::config::GraphSettings, &'static str> {
+        let window = self
+            .graph_window
+            .parse::<u32>()
+            .ok()
+            .filter(|v| (1..=120).contains(v))
+            .ok_or("html-graph-invalid")?;
+        let graph = crate::config::GraphSettings {
+            levels: self.graph_levels,
+            window,
+            rolling: self.graph_rolling,
+            simple: self.graph_simple,
+            simple_column: self.graph_simple_column.clone(),
+            only_allies: self.graph_only_allies,
+            totals: self.graph_totals,
+            distribution: self.graph_distribution.clone(),
+            action_sort: self.graph_action_sort.clone(),
+            all_label: self.graph_all.clone(),
+            ward_prefix: self.graph_ward.clone(),
+            solo_categories: self.graph_categories.clone(),
+        };
+        graph.validate().map_err(|_error| "html-graph-invalid")?;
+        Ok(graph)
+    }
     fn graph_capture(
         &self,
         graph: Option<&HierarchyHtmlGraphOptions>,
@@ -235,7 +284,6 @@ impl Draft {
         self.catalogs.clear();
         self.graph_candidates = None;
         self.graph_actors = None;
-        self.graph_categories = None;
         self.page = 0;
     }
 }
@@ -245,6 +293,7 @@ impl AppState {
             && self.screen == "analysis"
             && !self.exit_requested
             && !self.loading
+            && !self.saving
             && self.reports.pending.is_none()
             && matches!(self.phase, Phase::Idle | Phase::Ready)
     }
@@ -295,6 +344,16 @@ impl AppState {
         }
         self.reports.leave();
         true
+    }
+    pub(super) fn report_html_prepare_graph_save(
+        &mut self,
+        token: Token,
+    ) -> Result<bool, &'static str> {
+        if !self.report_html_editable(token) || !self.can_save_settings() {
+            return Ok(false);
+        }
+        self.settings.graphs = self.reports.html.graph_settings()?;
+        Ok(true)
     }
     pub(super) fn report_html_graph_candidates_begin(
         &mut self,

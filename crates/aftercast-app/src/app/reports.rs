@@ -199,6 +199,9 @@ impl State {
     }
 }
 impl AppState {
+    pub(super) fn restore_report_graphs(&mut self, graph: &crate::config::GraphSettings) {
+        self.reports.html.restore_graphs(graph);
+    }
     fn report_token(&self) -> Token {
         Token {
             session: self.revision.session,

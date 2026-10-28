@@ -172,6 +172,19 @@ fn GraphEditor() -> Element {
                     }
                 }
             }
+            Button {
+                variant: ButtonVariant::Outline,
+                disabled: disabled || !state.read().can_save_settings(),
+                onclick: move |_| {
+                    let result = state.write().report_html_prepare_graph_save(token);
+                    match result {
+                        Ok(true) => super::super::save_settings(state),
+                        Ok(false) => {}
+                        Err(key) => state.write().reports.error = Some(tr(key)),
+                    }
+                },
+                {tr("html-graph-save-settings")}
+            }
             if draft.graph_levels.iter().any(|selected| *selected) {
                 if draft.graph_levels[0] {
                     Button {
