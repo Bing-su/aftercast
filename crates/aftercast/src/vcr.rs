@@ -660,6 +660,35 @@ mod tests {
         vcr_frame(&snapshot, 1, 31, &[], true, true).expect_err("lookback");
     }
     #[test]
+    fn equal_time_rows_remain_distinct_at_inclusive_boundary() {
+        let mut snapshot = sample();
+        let row = action(5, 7, 1, 42, "A", "B", false);
+        let source = snapshot
+            .actors
+            .iter_mut()
+            .find(|a| a.name == "A")
+            .expect("source");
+        source.outgoing.push(row.clone());
+        source
+            .categories
+            .iter_mut()
+            .find(|c| c.name == "Damage")
+            .expect("category")
+            .actions
+            .push(row.clone());
+        snapshot
+            .actors
+            .iter_mut()
+            .find(|a| a.name == "B")
+            .expect("target")
+            .incoming
+            .push(row);
+        let frame = vcr_frame(&snapshot, 5, 0, &["Damage".into()], true, true).expect("frame");
+        assert!(frame.edges.iter().any(|edge| edge.amount == 47));
+        let frame = vcr_frame(&snapshot, 4, 0, &["Damage".into()], true, true).expect("before");
+        assert!(frame.edges.is_empty());
+    }
+    #[test]
     fn clock_obeys_native_tick_rate_seek_and_link() {
         let mut clock = VcrClock::new(4);
         clock.mode = VcrMode::Play;

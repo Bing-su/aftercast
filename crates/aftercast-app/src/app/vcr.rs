@@ -53,6 +53,15 @@ impl State {
         self.clock.mode = VcrMode::Paused;
         self.clock.linked = false;
     }
+    fn follow_snapshot(&mut self, snapshot: &VcrSnapshot) {
+        if self.lookback.parse::<u32>().is_ok_and(|value| value < 1) {
+            self.lookback = "1".into();
+        }
+        self.selected
+            .retain(|name| snapshot.categories.contains(name));
+        self.clock.duration = snapshot.duration;
+        self.clock.position = snapshot.duration;
+    }
     fn receive(
         &mut self,
         token: u64,
@@ -66,13 +75,7 @@ impl State {
         match result {
             Ok(Some(snapshot)) => {
                 if follow {
-                    if self.lookback.parse::<u32>().is_ok_and(|value| value < 1) {
-                        self.lookback = "1".into();
-                    }
-                    self.selected
-                        .retain(|name| snapshot.categories.contains(name));
-                    self.clock.duration = snapshot.duration;
-                    self.clock.position = snapshot.duration;
+                    self.follow_snapshot(&snapshot);
                 } else {
                     self.selected = snapshot.categories.clone();
                     self.clock = VcrClock::new(snapshot.duration);

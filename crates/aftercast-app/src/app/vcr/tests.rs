@@ -133,6 +133,16 @@ async fn vcr_controller_owns_capture_and_rejects_late_results() {
             .expect("after invalidate")
             .is_some()
     );
+    check_partial(&root, &host, fresh.clone()).await;
+    lifetime.close();
+    assert_eq!(
+        load(&fresh, false).await.expect_err("closed"),
+        "Session ended"
+    );
+    host.shutdown().await.expect("shutdown");
+}
+
+async fn check_partial(root: &Utf8Path, host: &Host, fresh: ContextEndpoint) {
     let partial = root.join("partial.log");
     std::fs::write(
         &partial,
@@ -167,10 +177,4 @@ async fn vcr_controller_owns_capture_and_rejects_late_results() {
             .iter()
             .any(|line| line.text.contains("broken"))
     );
-    lifetime.close();
-    assert_eq!(
-        load(&fresh, false).await.expect_err("closed"),
-        "Session ended"
-    );
-    host.shutdown().await.expect("shutdown");
 }
