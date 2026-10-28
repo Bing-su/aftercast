@@ -75,6 +75,12 @@ pub(super) fn AnalysisPane() -> Element {
                         }
                     }
                 }
+                for timeline_id in [detail.summary.id] {
+                    super::timeline::TimelinePanel {
+                        key: "timeline-{state.read().revision.session}-{state.read().revision.selection}",
+                        id: timeline_id,
+                    }
+                }
                 for avoidance_combatant in [state.read().combatant.clone()] {
                     super::avoidance::AvoidancePanel {
                         key: "avoidance-{state.read().revision.session}-{state.read().revision.selection}-{avoidance_combatant:?}",

@@ -18,6 +18,7 @@ mod reparse;
 mod reports;
 mod shell;
 mod specials;
+mod timeline;
 mod timers;
 mod triggers;
 
