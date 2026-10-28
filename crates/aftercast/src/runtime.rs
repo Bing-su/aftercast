@@ -6,6 +6,10 @@ use serde::{Deserialize, Serialize};
 
 pub(crate) use crate::local_runtime::canonicalize;
 
+fn default_true() -> bool {
+    true
+}
+
 /// ACT selection policy. Graph/export modes keep all recorded actions.
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -75,6 +79,10 @@ pub struct HostConfig {
     /// Use grouping separators in ACT-provided display formatting.
     #[builder(default = true)]
     pub(crate) main_table_commas: bool,
+    /// Count zero-damage actions as hits, matching ACT's enabled default.
+    #[builder(default = true)]
+    #[serde(default = "default_true")]
+    pub(crate) count_zero_damage_as_hit: bool,
     /// Silence gap in seconds; zero disables segment cutting, otherwise 1–60.
     #[builder(default)]
     pub(crate) silence_cut_seconds: u8,

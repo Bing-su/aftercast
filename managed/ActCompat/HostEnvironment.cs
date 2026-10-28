@@ -247,6 +247,7 @@ namespace Aftercast.ActCompat
         public EncounterLogPageData ReadActionSnapshotLogs(ulong revision, int offset, int limit) => main.ReadActionSnapshotLogs(revision, offset, limit);
         public EncounterLogPageData? ReadEncounterLogs(ulong id, int offset, int limit) => main.ReadEncounterLogs(id, offset, limit);
         public void ConfigureMainTableCommas(bool enabled) => ActGlobals.mainTableShowCommas = enabled;
+        public void ConfigureZeroDamageHits(bool enabled) => ActGlobals.blockIsHit = enabled;
         public void ConfigureSilenceCut(int seconds) => main.ConfigureSilenceCut(seconds);
         public void ConfigureIdleEnd(bool enabled, int seconds, bool timerEnabled = true) => main.ConfigureIdleEnd(enabled, seconds, timerEnabled);
         public void AdvanceIdleTimer() => main.AdvanceIdleTimer(System.Diagnostics.Stopwatch.GetTimestamp());

@@ -677,3 +677,6 @@ history-selective-recording = 선택 기록 사용됨 · 행동이 제외됐을 
 history-nonselective-recording = 선택 기록 꺼짐
 history-recording-unknown = 기록 정책 알 수 없음
 history-policy-hint = 기록 정책은 목록의 참고 정보이며 복원할 때 확인됩니다. 로그 보존 및 가져오기 완료 상태와는 별개입니다.
+
+zero-hit-heading = 피해가 0인 행동도 명중으로 계산
+zero-hit-help = ACT 기본값은 켜짐입니다. 기록된 피해량은 바꾸지 않고 명중과 치명타 명중 계산에 반영합니다. 다음 호스트 세션부터 적용됩니다.

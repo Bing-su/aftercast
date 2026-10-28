@@ -677,3 +677,6 @@ history-selective-recording = Selective recording was enabled; actions may be ex
 history-nonselective-recording = Selective recording was off
 history-recording-unknown = Recording policy unknown
 history-policy-hint = Recording policy is an index hint; the archive is checked when restored. It is separate from log retention and import completion.
+
+zero-hit-heading = Count zero-damage actions as hits
+zero-hit-help = ACT enables this by default. This changes hit and critical-hit calculations, not the recorded damage. Changes apply to the next host session.

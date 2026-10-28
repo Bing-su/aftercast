@@ -137,13 +137,13 @@ public static partial class EntryPoint
         var selection = optionsJson.Length == 0 ? new SelectiveStartup() :
             System.Text.Json.JsonSerializer.Deserialize<SelectiveStartup>(optionsJson, HostJson.Options) ?? throw new ArgumentException("Missing selective options");
         var flags = unchecked((ulong)Marshal.ReadInt64(buffer, 32));
-        if ((flags & ~2097151UL) != 0) throw new ArgumentException("Unknown host option flags");
+        if ((flags & ~4194303UL) != 0) throw new ArgumentException("Unknown host option flags");
         var seconds = (int)((flags >> 3) & 1023);
         if (seconds == 0) seconds = 6;
         if (seconds is < 2 or > 600) throw new ArgumentException("Idle end threshold must be 2–600 seconds");
         var silence = (int)((flags >> 14) & 63);
         if (silence > 60) throw new ArgumentException("Silence cut threshold must be 0–60 seconds");
-        plugins.Value.Configure(path, (flags & 1) == 0, (flags & 2) != 0, (flags & 4) == 0, seconds, (flags & 8192) == 0, silence, (flags & 1048576) == 0, (Advanced_Combat_Tracker.SelectiveParsingModeEnum)selection.Mode, selection.Selected);
+        plugins.Value.Configure(path, (flags & 1) == 0, (flags & 2) != 0, (flags & 4) == 0, seconds, (flags & 8192) == 0, silence, (flags & 1048576) == 0, (Advanced_Combat_Tracker.SelectiveParsingModeEnum)selection.Mode, selection.Selected, (flags & 2097152) == 0);
         return 0;
     });
     public static int PluginCommand(nint buffer, int sizeBytes) => Run(() =>

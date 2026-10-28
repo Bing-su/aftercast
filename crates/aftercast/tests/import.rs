@@ -535,3 +535,115 @@ async fn selective_recording_filters_synthetic_live_append(deployment: Deploymen
     host.end_combat().await.expect("finish");
     host.shutdown().await.expect("shutdown");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and fixture; run mise run test:plugins"]
+async fn zero_damage_hit_option_reaches_plugins_reparse_and_history(deployment: Deployment) {
+    use aftercast::{HostConfig, TableLevel, TableQuery, TableScope};
+    for enabled in [true, false] {
+        let state = deployment
+            .directory()
+            .join(if enabled { "hit-on" } else { "hit-off" });
+        let config = HostConfig::builder()
+            .application_executable(common::application())
+            .dotnet_root(std::env::var("DOTNET_ROOT").expect("dotnet"))
+            .bridge_directory(&deployment.bridge)
+            .data_directory(&state)
+            .count_zero_damage_as_hit(enabled)
+            .build();
+        let plugin_path = Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll",
+        );
+        let plugin = || {
+            PluginConfig::builder()
+                .path(plugin_path.clone())
+                .type_name("Aftercast.PluginFixture.ZeroDamagePlugin")
+                .build()
+        };
+        let host = Host::start(config.clone()).await.expect("host");
+        let id = host.create_plugin(plugin()).await.expect("plugin");
+        assert_eq!(
+            host.initialize_plugin(id).await.expect("init"),
+            if enabled {
+                "zero-hit:on"
+            } else {
+                "zero-hit:off"
+            }
+        );
+        let source = deployment.directory().join("zero-hit-synthetic.log");
+        std::fs::write(&source, "0|0\n1|100\n").expect("synthetic input");
+        host.import_log(&source).await.expect("first import");
+        let encounter = host.encounters(0, 16).await.expect("encounters").items[0].id;
+        check_zero_hits(&host, encounter, enabled).await;
+        let catalog = host
+            .table_columns(TableLevel::Encounter)
+            .await
+            .expect("catalog");
+        let query = TableQuery {
+            scope: TableScope::Encounters,
+            revision: catalog.revision,
+            columns: vec!["zero-hit-probe".into()],
+            offset: 0,
+            limit: 16,
+            sort: None,
+        };
+        let page = host
+            .table_rows(&query)
+            .await
+            .expect("table")
+            .expect("scope");
+        assert_eq!(
+            page.rows[0].cells[0].text.as_deref(),
+            Some(if enabled {
+                "True:0,True:100"
+            } else {
+                "False:0,False:100"
+            })
+        );
+        host.import_log(&source).await.expect("reparse");
+        let encounters = host.encounters(0, 16).await.expect("reparsed");
+        assert_eq!(encounters.total, 2);
+        for row in &encounters.items {
+            check_zero_hits(&host, row.id, enabled).await;
+        }
+        assert_eq!(host.save_history().await.expect("save"), 2);
+        host.shutdown().await.expect("stop");
+        let host = Host::start(config).await.expect("restart");
+        let id = host.create_plugin(plugin()).await.expect("plugin");
+        host.initialize_plugin(id).await.expect("init");
+        assert_eq!(host.restore_history("").await.expect("restore"), 2);
+        for row in host.encounters(0, 16).await.expect("restored").items {
+            check_zero_hits(&host, row.id, enabled).await;
+        }
+        host.shutdown().await.expect("stop");
+    }
+}
+
+async fn check_zero_hits(host: &Host, encounter: aftercast::EncounterId, enabled: bool) {
+    let actions = host
+        .encounter_actions(encounter, 0, 16)
+        .await
+        .expect("actions")
+        .expect("encounter");
+    assert_eq!(
+        actions
+            .items
+            .iter()
+            .map(|row| row.amount)
+            .collect::<Vec<_>>(),
+        [0, 100]
+    );
+    let attacks = host
+        .encounter_attacks(encounter, 0, 128)
+        .await
+        .expect("attacks")
+        .expect("encounter");
+    let strike = attacks
+        .items
+        .iter()
+        .find(|row| row.combatant == "Source" && row.category == "Damage" && row.attack == "Strike")
+        .expect("strike");
+    assert_eq!(strike.damage, 100);
+    assert_eq!(strike.hits, if enabled { 2 } else { 1 });
+}

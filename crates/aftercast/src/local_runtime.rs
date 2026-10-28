@@ -39,6 +39,7 @@ fn host_option_flags(config: &HostConfig) -> u64 {
         | (u64::from(!config.idle_timer_enabled) << 13)
         | (u64::from(config.silence_cut_seconds) << 14)
         | (u64::from(!config.main_table_commas) << 20)
+        | (u64::from(!config.count_zero_damage_as_hit) << 21)
 }
 
 // Own native delegates and thread affinity until managed shutdown has completed.

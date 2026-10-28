@@ -180,6 +180,32 @@ pub(super) fn SettingsPane() -> Element {
             }
             Separator { class: "my-6".to_owned() }
             div { class: "space-y-3",
+                h2 { class: "text-sm font-semibold", {tr("zero-hit-heading")} }
+                Button {
+                    variant: ButtonVariant::Outline,
+                    disabled: disabled || state.read().phase != Phase::Idle,
+                    aria_pressed: state.read().settings.host.count_zero_damage_as_hit,
+                    onclick: move |_| {
+                        if state.read().phase != Phase::Idle {
+                            return;
+                        }
+                        let current = state.peek().settings.host.count_zero_damage_as_hit;
+                        state.write().settings.host.count_zero_damage_as_hit = !current;
+                    },
+                    {
+                        tr(
+                            if state.read().settings.host.count_zero_damage_as_hit {
+                                "enabled"
+                            } else {
+                                "disabled"
+                            },
+                        )
+                    }
+                }
+                p { class: "text-xs leading-6 text-muted-foreground", {tr("zero-hit-help")} }
+            }
+            Separator { class: "my-6".to_owned() }
+            div { class: "space-y-3",
                 h2 { class: "text-sm font-semibold", {tr("idle-end-heading")} }
                 Button {
                     variant: ButtonVariant::Outline,

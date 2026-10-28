@@ -26,7 +26,7 @@ internal sealed partial class PluginSession
     private HostEnvironment? environment;
     private OwnerContext? context;
     private bool recordEncounterLogs = true, originalLoglineViewLogs;
-    private bool idleEndEnabled = true, idleTimerEnabled = true, mainTableCommas = true;
+    private bool idleEndEnabled = true, idleTimerEnabled = true, mainTableCommas = true, countZeroDamageAsHit = true;
     private int idleEndSeconds = 6, silenceCutSeconds;
     private SelectiveParsingModeEnum selectiveMode;
     private string[] selectedCombatants = [];
@@ -192,6 +192,7 @@ internal sealed partial class PluginSession
         host.ConfigureIdleEnd(idleEndEnabled, idleEndSeconds, idleTimerEnabled);
         host.ConfigureSilenceCut(silenceCutSeconds);
         host.ConfigureMainTableCommas(mainTableCommas);
+        host.ConfigureZeroDamageHits(countZeroDamageAsHit);
         host.OriginalLogRecordRead += logs.Capture;
         host.ConfigureSpeech(speechEnabled);
         host.ConfigureSound(soundEnabled);
@@ -230,7 +231,7 @@ internal sealed partial class PluginSession
         try { FinishWriter(plugin); } catch (Exception error) { errors.Add(error); }
         if (errors.Count != 0) throw new AggregateException("Host control disposal failed", errors);
     }
-    internal void Configure(string path, bool recordLogs = true, bool originalLogs = false, bool idleEnabled = true, int idleSeconds = 6, bool timerEnabled = true, int silenceSeconds = 0, bool commas = true, SelectiveParsingModeEnum selection = SelectiveParsingModeEnum.None, string[]? selected = null)
+    internal void Configure(string path, bool recordLogs = true, bool originalLogs = false, bool idleEnabled = true, int idleSeconds = 6, bool timerEnabled = true, int silenceSeconds = 0, bool commas = true, SelectiveParsingModeEnum selection = SelectiveParsingModeEnum.None, string[]? selected = null, bool countZero = true)
     {
         RequireReusableWorker();
         HostEnvironment.ValidateSelectiveParsing(selection, selected ?? []);
@@ -248,6 +249,7 @@ internal sealed partial class PluginSession
         idleTimerEnabled = timerEnabled;
         silenceCutSeconds = silenceSeconds;
         mainTableCommas = commas;
+        countZeroDamageAsHit = countZero;
         selectiveMode = selection;
         selectedCombatants = (selected ?? []).ToArray();
         idleEndSeconds = idleSeconds;

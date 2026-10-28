@@ -123,6 +123,7 @@ pub struct HostSettings {
     pub record_encounter_logs: bool,
     pub original_logline_view_logs: bool,
     pub main_table_commas: bool,
+    pub count_zero_damage_as_hit: bool,
     pub selective_mode: aftercast::SelectiveMode,
     pub selective_names: String,
     pub silence_cut_enabled: bool,
@@ -142,6 +143,7 @@ impl Default for HostSettings {
             record_encounter_logs: true,
             original_logline_view_logs: false,
             main_table_commas: true,
+            count_zero_damage_as_hit: true,
             selective_mode: aftercast::SelectiveMode::None,
             selective_names: String::new(),
             silence_cut_enabled: false,
@@ -284,6 +286,7 @@ impl ConfigFile {
             value(settings.host.original_logline_view_logs),
         );
         save_selective(&mut self.document, &settings.host);
+        save_zero_hit(&mut self.document, &settings.host);
         set(
             &mut self.document["host"]["main_table_commas"],
             value(settings.host.main_table_commas),
@@ -351,6 +354,14 @@ impl ConfigFile {
             .wrap_err_with(|| format!("Save {path}"))?;
         Ok(self)
     }
+}
+
+#[expect(clippy::indexing_slicing, reason = "TOML indexing creates host fields")]
+fn save_zero_hit(document: &mut DocumentMut, host: &HostSettings) {
+    set(
+        &mut document["host"]["count_zero_damage_as_hit"],
+        value(host.count_zero_damage_as_hit),
+    );
 }
 
 #[expect(
@@ -701,6 +712,24 @@ mod tests {
                 .main_table_refresh_seconds,
             60
         );
+    }
+
+    #[test]
+    fn zero_damage_hit_default_and_persistence() {
+        let temp = tempfile::tempdir().expect("app");
+        let root = Utf8Path::from_path(temp.path()).expect("UTF-8");
+        let mut file = ConfigFile::load(root).expect("defaults");
+        assert!(file.settings.host.count_zero_damage_as_hit);
+        file.settings.host.count_zero_damage_as_hit = false;
+        file.save(root).expect("save");
+        assert!(
+            !ConfigFile::load(root)
+                .expect("restart")
+                .settings
+                .host
+                .count_zero_damage_as_hit
+        );
+        assert!(ConfigFile::parse("[host]\ncount_zero_damage_as_hit = 'bad'\n").is_err());
     }
 
     #[test]
