@@ -135,8 +135,11 @@ public static partial class EntryPoint
     {
         var (path, _) = Request(buffer, sizeBytes, clearResult: false);
         var flags = unchecked((ulong)Marshal.ReadInt64(buffer, 32));
-        if ((flags & ~3UL) != 0) throw new ArgumentException("Unknown host recording flags");
-        plugins.Value.Configure(path, (flags & 1) == 0, (flags & 2) != 0);
+        if ((flags & ~8191UL) != 0) throw new ArgumentException("Unknown host option flags");
+        var seconds = (int)((flags >> 3) & 1023);
+        if (seconds == 0) seconds = 6;
+        if (seconds is < 2 or > 600) throw new ArgumentException("Idle end threshold must be 2–600 seconds");
+        plugins.Value.Configure(path, (flags & 1) == 0, (flags & 2) != 0, (flags & 4) == 0, seconds);
         return 0;
     });
     public static int PluginCommand(nint buffer, int sizeBytes) => Run(() =>

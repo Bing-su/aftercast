@@ -26,6 +26,8 @@ internal sealed partial class PluginSession
     private HostEnvironment? environment;
     private OwnerContext? context;
     private bool recordEncounterLogs = true, originalLoglineViewLogs;
+    private bool idleEndEnabled = true;
+    private int idleEndSeconds = 6;
     private bool speechEnabled;
     private bool soundEnabled;
     private int soundVolume = 100, ttsVolume = 100;
@@ -185,6 +187,7 @@ internal sealed partial class PluginSession
             context is null ? null : () => context.Pump(),
             context is null ? null : () => context.IsDispatching);
         host.ConfigureRecording(recordEncounterLogs, originalLoglineViewLogs);
+        host.ConfigureIdleEnd(idleEndEnabled, idleEndSeconds);
         host.OriginalLogRecordRead += logs.Capture;
         host.ConfigureSpeech(speechEnabled);
         host.ConfigureSound(soundEnabled);
@@ -223,9 +226,10 @@ internal sealed partial class PluginSession
         try { FinishWriter(plugin); } catch (Exception error) { errors.Add(error); }
         if (errors.Count != 0) throw new AggregateException("Host control disposal failed", errors);
     }
-    internal void Configure(string path, bool recordLogs = true, bool originalLogs = false)
+    internal void Configure(string path, bool recordLogs = true, bool originalLogs = false, bool idleEnabled = true, int idleSeconds = 6)
     {
         RequireReusableWorker();
+        if (idleSeconds is < 2 or > 600) throw new ArgumentOutOfRangeException(nameof(idleSeconds));
         if (directory is not null) throw new InvalidOperationException("Host environment is already configured");
         if (!Path.IsPathFullyQualified(path) || !Directory.Exists(path))
             throw new ArgumentException("Host data directory must be an existing absolute directory", nameof(path));
@@ -234,6 +238,8 @@ internal sealed partial class PluginSession
         directory = path;
         recordEncounterLogs = recordLogs;
         originalLoglineViewLogs = originalLogs;
+        idleEndEnabled = idleEnabled;
+        idleEndSeconds = idleSeconds;
         // Both platforms dispatch on the caller's thread; Windows also pumps its native messages.
         context = new(error => ActGlobals.oFormActMain?.WriteExceptionLog(error, "Posted owner callback"));
     }

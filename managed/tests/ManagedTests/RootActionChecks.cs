@@ -51,6 +51,7 @@ internal static class RootActionChecks
     {
         HostLifetimeChecks.RunBounded(Pipeline);
         HostLifetimeChecks.RunBounded(IdleBoundary);
+        HostLifetimeChecks.RunBounded(IdleOptions);
         HostLifetimeChecks.RunBounded(EndCommand);
         HostLifetimeChecks.RunBounded(AdmittedProducerDuringEnd);
         HostLifetimeChecks.RunBounded(PumpedShutdown);
@@ -173,6 +174,22 @@ internal static class RootActionChecks
         root.LastKnownTime = Epoch.AddSeconds(6).AddTicks(1);
         checkIdle.Invoke(root, null);
         Check(!root.InCombat && root.ActiveZone.ActiveEncounter!.Damage == 100);
+    }
+
+    private static void IdleOptions()
+    {
+        using var fixture = new Fixture();
+        var root = fixture.Root;
+        var check = typeof(FormActMain).GetMethod("CheckIdleEndCombat", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        fixture.Environment.ConfigureIdleEnd(false, 2);
+        root.SetEncounter(Epoch, "Source", "Target"); root.AddCombatAction(Swing(100, 0, 1));
+        fixture.Environment.RunWithLogReadingSuspended(() => { });
+        root.LastKnownTime = Epoch.AddSeconds(100); check.Invoke(root, null); Check(root.InCombat);
+        fixture.Environment.ConfigureIdleEnd(true, 30);
+        Throws<ArgumentOutOfRangeException>(() => fixture.Environment.ConfigureIdleEnd(true, 1));
+        Throws<ArgumentOutOfRangeException>(() => fixture.Environment.ConfigureIdleEnd(true, 601));
+        root.LastKnownTime = Epoch.AddSeconds(30); check.Invoke(root, null); Check(root.InCombat);
+        root.LastKnownTime = Epoch.AddSeconds(30).AddTicks(1); check.Invoke(root, null); Check(!root.InCombat);
     }
 
     private static void AdmittedProducerDuringEnd()

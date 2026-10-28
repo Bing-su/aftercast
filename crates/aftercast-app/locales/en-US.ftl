@@ -636,3 +636,7 @@ html-graph-simple-column = Simple graph column key
 html-graph-allies = Only allies
 html-graph-totals = Show total and average
 html-graph-save-settings = Save graph settings
+
+idle-end-heading = Automatic encounter end (log time)
+idle-end-seconds = Seconds after last hostile action
+idle-end-help = Save while stopped; the next host uses this log-time threshold. This does not configure real-time idle termination.

@@ -15,6 +15,8 @@ impl RunningHost {
         let recording = (
             settings.host.record_encounter_logs,
             settings.host.original_logline_view_logs,
+            settings.host.idle_end_enabled,
+            settings.host.idle_end_seconds,
         );
         let (deployment, dotnet_root) = tokio::task::spawn_blocking(move || {
             let runtime = if settings.host.dotnet_root == "dotnet" {
@@ -36,6 +38,8 @@ impl RunningHost {
                 .data_directory(root.join("state"))
                 .record_encounter_logs(recording.0)
                 .original_logline_view_logs(recording.1)
+                .idle_end_enabled(recording.2)
+                .idle_end_seconds(recording.3)
                 .build(),
         )
         .await

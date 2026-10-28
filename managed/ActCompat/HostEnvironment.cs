@@ -236,6 +236,7 @@ namespace Aftercast.ActCompat
         public CombatPage<ClassifiedActionData> ReadActionSnapshot(ulong revision, int offset, int limit) => main.ReadActionSnapshot(revision, offset, limit);
         public EncounterLogPageData ReadActionSnapshotLogs(ulong revision, int offset, int limit) => main.ReadActionSnapshotLogs(revision, offset, limit);
         public EncounterLogPageData? ReadEncounterLogs(ulong id, int offset, int limit) => main.ReadEncounterLogs(id, offset, limit);
+        public void ConfigureIdleEnd(bool enabled, int seconds) => main.ConfigureIdleEnd(enabled, seconds);
         public void ConfigureRecording(bool enabled, bool original)
         {
             main.RecordEncounterLogs = enabled;

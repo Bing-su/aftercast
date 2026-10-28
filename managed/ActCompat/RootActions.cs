@@ -224,10 +224,18 @@ public partial class FormActMain
         // The original force flag controls UI/export paths; an embedded library performs neither automatically.
     }
 
+    private bool idleEndEnabled = true;
+    private int idleEndSeconds = 6;
+    internal void ConfigureIdleEnd(bool enabled, int seconds)
+    {
+        if (seconds is < 2 or > 600) throw new ArgumentOutOfRangeException(nameof(seconds));
+        lock (CombatGate) { idleEndEnabled = enabled; idleEndSeconds = seconds; }
+    }
+
     internal void CheckIdleEndCombat()
     {
         bool end;
-        lock (CombatGate) end = InCombat && LastKnownTime - LastHostileTime > TimeSpan.FromSeconds(6);
+        lock (CombatGate) end = idleEndEnabled && InCombat && LastKnownTime - LastHostileTime > TimeSpan.FromSeconds(idleEndSeconds);
         if (end) EndCombat(true);
     }
 

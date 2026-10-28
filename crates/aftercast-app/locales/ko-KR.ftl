@@ -636,3 +636,7 @@ html-graph-simple-column = Simple 그래프 열 키
 html-graph-allies = 아군만
 html-graph-totals = 합계와 평균 표시
 html-graph-save-settings = 그래프 설정 저장
+
+idle-end-heading = 전투 자동 종료 (로그 시간)
+idle-end-seconds = 마지막 적대 행동 후 대기 시간(초)
+idle-end-help = 호스트를 중지하고 저장하면 다음 시작부터 적용됩니다. 실제 경과 시간 기준 종료는 이 설정에 포함되지 않습니다.

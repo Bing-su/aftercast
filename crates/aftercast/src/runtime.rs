@@ -21,6 +21,12 @@ pub struct HostConfig {
     /// Keep original input rather than parser-processed text. Applies when recording is enabled.
     #[builder(default)]
     pub(crate) original_logline_view_logs: bool,
+    /// End encounters after the configured interval measured in parsed log time.
+    #[builder(default = true)]
+    pub(crate) idle_end_enabled: bool,
+    /// ACT's idle threshold; valid range is 2–600 seconds.
+    #[builder(default = 6)]
+    pub(crate) idle_end_seconds: u16,
     /// Defaults to the current application executable. Override for an embedding test harness or launcher.
     #[builder(into)]
     pub(crate) application_executable: Option<Utf8PathBuf>,

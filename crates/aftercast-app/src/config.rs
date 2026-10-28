@@ -118,6 +118,8 @@ pub struct HostSettings {
     pub disabled_plugins: Vec<String>,
     pub record_encounter_logs: bool,
     pub original_logline_view_logs: bool,
+    pub idle_end_enabled: bool,
+    pub idle_end_seconds: u16,
 }
 
 impl Default for HostSettings {
@@ -129,6 +131,8 @@ impl Default for HostSettings {
             disabled_plugins: Vec::new(),
             record_encounter_logs: true,
             original_logline_view_logs: false,
+            idle_end_enabled: true,
+            idle_end_seconds: 6,
         }
     }
 }
@@ -173,6 +177,9 @@ impl Settings {
             return Err(miette!(
                 "Duplicate configured plugin path; each entry must have a unique path"
             ));
+        }
+        if !(2..=600).contains(&self.host.idle_end_seconds) {
+            return Err(miette!("Idle end threshold must be 2–600 seconds"));
         }
         self.graphs.validate()?;
         for (level, preferences) in &self.tables {
@@ -249,6 +256,14 @@ impl ConfigFile {
         set(
             &mut self.document["host"]["original_logline_view_logs"],
             value(settings.host.original_logline_view_logs),
+        );
+        set(
+            &mut self.document["host"]["idle_end_enabled"],
+            value(settings.host.idle_end_enabled),
+        );
+        set(
+            &mut self.document["host"]["idle_end_seconds"],
+            value(i64::from(settings.host.idle_end_seconds)),
         );
         let plugins = settings
             .host
@@ -563,6 +578,34 @@ mod tests {
                 .map(String::as_str)
                 .collect::<Vec<_>>(),
             ["first", "middle", "last"]
+        );
+    }
+
+    #[test]
+    fn idle_end_options_validate_and_survive_restart() {
+        let temp = tempfile::tempdir().expect("app");
+        let root = Utf8Path::from_path(temp.path()).expect("UTF8");
+        let mut file = ConfigFile::load(root).expect("defaults");
+        assert!(file.settings.host.idle_end_enabled);
+        assert_eq!(file.settings.host.idle_end_seconds, 6);
+        file.settings.host.idle_end_enabled = false;
+        file.settings.host.idle_end_seconds = 30;
+        file.save(root).expect("save");
+        let mut reloaded = ConfigFile::load(root).expect("restart");
+        assert!(!reloaded.settings.host.idle_end_enabled);
+        assert_eq!(reloaded.settings.host.idle_end_seconds, 30);
+        for invalid in [0, 1, 601] {
+            reloaded.settings.host.idle_end_seconds = invalid;
+            assert!(reloaded.settings.validate().is_err());
+        }
+        assert!(reloaded.save(root).is_err());
+        assert_eq!(
+            ConfigFile::load(root)
+                .expect("unchanged file")
+                .settings
+                .host
+                .idle_end_seconds,
+            30
         );
     }
 
