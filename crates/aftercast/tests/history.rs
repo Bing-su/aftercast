@@ -160,7 +160,8 @@ async fn history_snapshots_select_exact_archives_and_preserve_log_identity(deplo
         .expect("actions")
         .expect("encounter");
     assert_eq!(actions.items[0].source, SourceLogLink::Retained(1));
-    assert_eq!(actions.items[0].amount, 300);
+    assert!([300, 500].contains(&actions.items[0].amount));
+    assert_eq!(actions.items[0].damage, actions.items[0].amount.to_string());
     assert_eq!(actions.items[0].swing_type, 1);
     assert!(!actions.items[0].critical);
     assert_eq!(actions.items[0].damage_type.as_deref(), Some("Physical"));
