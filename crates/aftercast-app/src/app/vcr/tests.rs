@@ -185,3 +185,69 @@ async fn check_partial(root: &Utf8Path, host: &Host, fresh: ContextEndpoint) {
             .any(|line| line.text.contains("broken"))
     );
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn lookup_ui_contract_uses_category_snapshot_and_session_guard() {
+    let (_temp, _root, host, endpoint, lifetime) = fixture().await;
+    let outgoing = super::super::lookup::load(&endpoint, "Source", "Damage", true)
+        .await
+        .expect("outgoing")
+        .expect("category");
+    assert_eq!(outgoing.actions.len(), 3);
+    let mut collision = outgoing.actions.clone();
+    collision[0].action.attack = "All".into();
+    let aggregate = super::super::lookup::matched_indices(&collision, "Target", true, None);
+    assert_eq!(aggregate.len(), 4);
+    assert_eq!(aggregate.iter().filter(|&&index| index == 0).count(), 2);
+    assert_eq!(
+        aggregate,
+        super::super::lookup::matched_indices(&collision, "Target", true, Some("All"))
+    );
+    assert!(super::super::lookup::matched_indices(&collision, "Source", true, None).is_empty());
+    assert!(
+        outgoing
+            .actions
+            .iter()
+            .all(|row| super::super::lookup::peer(row, true) == "Target")
+    );
+    let first = &outgoing.actions[0].action;
+    let aftercast::SourceLogLink::Retained(offset) = first.source else {
+        panic!("source missing")
+    };
+    let logs = endpoint
+        .handle
+        .action_snapshot_logs(outgoing.snapshot, offset, 1)
+        .await
+        .expect("log");
+    assert_eq!(logs.page.items[0].time_sorter, first.time_sorter);
+    let incoming = super::super::lookup::load(&endpoint, "Target", "Taken", false)
+        .await
+        .expect("incoming")
+        .expect("category");
+    assert_eq!(incoming.actions.len(), 3);
+    assert!(
+        incoming
+            .actions
+            .iter()
+            .all(|row| super::super::lookup::peer(row, false) == "Source")
+    );
+    endpoint
+        .handle
+        .action_snapshot_page(outgoing.snapshot, 0, 1)
+        .await
+        .expect_err("stale snapshot");
+    assert!(
+        super::super::lookup::load(&endpoint, "Source", "Damage", false)
+            .await
+            .expect("wrong direction")
+            .is_none()
+    );
+    lifetime.invalidate();
+    assert!(
+        super::super::lookup::load(&endpoint, "Source", "Damage", true)
+            .await
+            .is_err()
+    );
+    host.shutdown().await.expect("shutdown");
+}

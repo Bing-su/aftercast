@@ -10,6 +10,7 @@ mod import_progress;
 mod import_text;
 mod interchange;
 mod log_window;
+mod lookup;
 mod notifications;
 mod plugin_tables;
 mod plugins;

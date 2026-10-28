@@ -75,6 +75,20 @@ pub(super) fn AnalysisPane() -> Element {
                         }
                     }
                 }
+                if let (Some(combatant), Some((category, outgoing))) = (
+                    state.read().combatant.clone(),
+                    state.read().category.clone(),
+                )
+                {
+                    super::lookup::LookupPanel {
+                        key: "lookup-{state.read().revision.session}-{state.read().revision.selection}-{combatant}-{category}-{outgoing}",
+                        id: detail.summary.id,
+                        combatant,
+                        category,
+                        outgoing,
+                        partial: super::death::incomplete(detail.summary.status),
+                    }
+                }
                 for vcr_id in [detail.summary.id] {
                     super::vcr::VcrPanel {
                         key: "vcr-{state.read().revision.session}-{state.read().revision.selection}",
