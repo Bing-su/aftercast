@@ -97,6 +97,8 @@ pub struct UiSettings {
     pub language: String,
     pub theme: String,
     pub notification_blink: bool,
+    pub import_extend_default: bool,
+    pub export_include_logs_default: bool,
     pub main_table_refresh_seconds: u8,
     pub main_table_reverse: bool,
 }
@@ -107,6 +109,8 @@ impl Default for UiSettings {
             language: "ko-KR".into(),
             theme: "mocha".into(),
             notification_blink: true,
+            import_extend_default: false,
+            export_include_logs_default: true,
             main_table_refresh_seconds: 5,
             main_table_reverse: true,
         }
@@ -390,6 +394,14 @@ fn save_ui(document: &mut DocumentMut, ui: &UiSettings) {
     set(&mut document["ui"]["language"], value(&ui.language));
     set(&mut document["ui"]["theme"], value(&ui.theme));
     set(
+        &mut document["ui"]["export_include_logs_default"],
+        value(ui.export_include_logs_default),
+    );
+    set(
+        &mut document["ui"]["import_extend_default"],
+        value(ui.import_extend_default),
+    );
+    set(
         &mut document["ui"]["main_table_reverse"],
         value(ui.main_table_reverse),
     );
@@ -671,6 +683,45 @@ mod tests {
                 .map(String::as_str)
                 .collect::<Vec<_>>(),
             ["first", "middle", "last"]
+        );
+    }
+
+    #[test]
+    fn import_extension_default_migrates_and_survives_restart() {
+        let temp = tempfile::tempdir().expect("app");
+        let root = Utf8Path::from_path(temp.path()).expect("UTF-8");
+        let mut file = ConfigFile::parse("[ui]\ntheme = 'mocha'\n").expect("old config");
+        assert!(!file.settings.ui.import_extend_default);
+        assert!(file.settings.ui.export_include_logs_default);
+        file.settings.ui.import_extend_default = true;
+        file.settings.ui.export_include_logs_default = false;
+        file.save(root).expect("save");
+        assert!(
+            ConfigFile::load(root)
+                .expect("restart")
+                .settings
+                .ui
+                .import_extend_default
+        );
+        assert!(
+            !ConfigFile::load(root)
+                .expect("restart")
+                .settings
+                .ui
+                .export_include_logs_default
+        );
+        let invalid_root = root.join("not-a-directory");
+        std::fs::write(&invalid_root, "synthetic").expect("file instead of directory");
+        let mut unsaved = ConfigFile::load(root).expect("saved defaults");
+        unsaved.settings.ui.import_extend_default = false;
+        assert!(unsaved.save(&invalid_root).is_err());
+        assert!(ConfigFile::parse("[ui]\nimport_extend_default = 'yes'\n").is_err());
+        assert!(
+            ConfigFile::load(root)
+                .expect("unchanged")
+                .settings
+                .ui
+                .import_extend_default
         );
     }
 

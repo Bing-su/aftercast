@@ -49,6 +49,7 @@ struct Picker {
 #[derive(Default)]
 pub(super) struct State {
     draft: Draft,
+    defaults_applied: bool,
     generation: u64,
     picker: Option<Picker>,
     confirmation: Option<(Token, Export)>,
@@ -56,6 +57,12 @@ pub(super) struct State {
     error: Option<String>,
 }
 impl State {
+    pub(super) fn apply_defaults_once(&mut self, include_logs: bool) {
+        if !self.defaults_applied {
+            self.draft.options.include_logs = include_logs;
+            self.defaults_applied = true;
+        }
+    }
     pub(super) fn leave(&mut self) {
         self.confirmation = None;
         self.generation += 1;
@@ -114,6 +121,7 @@ impl AppState {
             },
             _ => return false,
         }
+        self.interchange.defaults_applied = true;
         self.interchange.confirmation = None;
         true
     }

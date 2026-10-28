@@ -896,3 +896,33 @@ async fn character_range_cancel_and_stale(
     assert!(!ui.receive_reparse(token, response, "late", "late"));
     assert!(ui.phase == Phase::Stopping);
 }
+
+#[test]
+fn import_default_is_applied_once_without_overwriting_draft_or_snapshot() {
+    let mut ui = AppState::new("/isolated".into());
+    ui.reparse.apply_defaults_once(true);
+    assert!(ui.reparse.draft.extend);
+    let view = ui.reparse_view();
+    assert!(ui.edit_reparse(view, "reparse-extend", "false".into()));
+    ui.reparse.apply_defaults_once(true);
+    assert!(!ui.reparse.draft.extend);
+    ui.reparse.draft.path = "source.log".into();
+    ui.reparse.draft.file_start = true;
+    ui.reparse.draft.file_end = true;
+    let request = ui.compile_reparse().expect("synthetic path and bounds");
+    ui.reparse.draft.extend = true;
+    assert!(!request.range.extend_to_combat_end());
+    ui.reparse.reset_session();
+    assert!(ui.reparse.draft.extend);
+    ui.reparse.apply_defaults_once(false);
+    assert!(ui.reparse.draft.extend);
+
+    let mut early = AppState::new("/isolated".into());
+    let view = early.reparse_view();
+    assert!(early.edit_reparse(view, "reparse-path", "pending.log".into()));
+    early.reparse.apply_defaults_once(true);
+    assert!(
+        !early.reparse.draft.extend,
+        "late load preserves an edited draft"
+    );
+}

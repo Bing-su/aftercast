@@ -69,8 +69,15 @@ pub(super) struct ReparseState {
     draft: Draft,
     generation: u64,
     pending: Option<(Token, Request)>,
+    defaults_applied: bool,
 }
 impl ReparseState {
+    pub(super) fn apply_defaults_once(&mut self, extend: bool) {
+        if !self.defaults_applied {
+            self.draft.extend = extend;
+            self.defaults_applied = true;
+        }
+    }
     pub(super) fn viewpoint_snapshot(&self) -> Option<Option<aftercast::ImportCharacter>> {
         Some(self.pending.as_ref()?.1.viewpoint.clone())
     }
@@ -126,6 +133,7 @@ impl AppState {
             }
             _ => return false,
         }
+        self.reparse.defaults_applied = true;
         true
     }
     fn reparse_view(&self) -> Token {

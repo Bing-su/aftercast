@@ -353,3 +353,23 @@ fn interchange_render_and_picker_reservations_are_invalidated_before_native_open
     assert!(!ui.receive_interchange_picker(&picker, None));
     assert!(ui.phase == Phase::Stopping);
 }
+
+#[test]
+fn archive_log_default_is_separate_from_request_draft() {
+    let mut ui = AppState::new("/isolated".into());
+    ui.interchange.apply_defaults_once(true);
+    assert!(ui.interchange.draft.options.include_logs);
+    let view = ui.interchange_view();
+    assert!(ui.interchange_edit(view, "logs", "false".into()));
+    ui.interchange.apply_defaults_once(true);
+    assert!(!ui.interchange.draft.options.include_logs);
+    ui.interchange.stop();
+    ui.interchange.apply_defaults_once(true);
+    assert!(!ui.interchange.draft.options.include_logs);
+
+    let mut early = AppState::new("/isolated".into());
+    let view = early.interchange_view();
+    assert!(early.interchange_edit(view, "output", "draft.xml".into()));
+    early.interchange.apply_defaults_once(false);
+    assert!(early.interchange.draft.options.include_logs);
+}

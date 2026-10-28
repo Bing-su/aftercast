@@ -80,6 +80,59 @@ pub(super) fn SettingsPane() -> Element {
             }
             Separator { class: "my-6".to_owned() }
             div { class: "space-y-4",
+                h2 { class: "text-sm font-semibold", {tr("import-defaults")} }
+                div { class: "flex flex-wrap items-center justify-between gap-3",
+                    Label { html_for: "import-extend-default", {tr("import-extend-default")} }
+                    Button {
+                        id: "import-extend-default".to_owned(),
+                        variant: ButtonVariant::Outline,
+                        aria_label: tr("import-extend-default"),
+                        aria_pressed: state.read().settings.ui.import_extend_default,
+                        disabled,
+                        onclick: move |_| {
+                            let current = state.peek().settings.ui.import_extend_default;
+                            state.write().settings.ui.import_extend_default = !current;
+                        },
+                        {
+                            tr(
+                                if state.read().settings.ui.import_extend_default {
+                                    "enabled"
+                                } else {
+                                    "disabled"
+                                },
+                            )
+                        }
+                    }
+                }
+                div { class: "flex flex-wrap items-center justify-between gap-3",
+                    Label { html_for: "export-include-logs-default",
+                        {tr("export-include-logs-default")}
+                    }
+                    Button {
+                        id: "export-include-logs-default".to_owned(),
+                        variant: ButtonVariant::Outline,
+                        aria_label: tr("export-include-logs-default"),
+                        aria_pressed: state.read().settings.ui.export_include_logs_default,
+                        disabled,
+                        onclick: move |_| {
+                            let current = state.peek().settings.ui.export_include_logs_default;
+                            state.write().settings.ui.export_include_logs_default = !current;
+                        },
+                        {
+                            tr(
+                                if state.read().settings.ui.export_include_logs_default {
+                                    "enabled"
+                                } else {
+                                    "disabled"
+                                },
+                            )
+                        }
+                    }
+                }
+                p { class: "text-xs leading-6 text-muted-foreground", {tr("import-defaults-help")} }
+            }
+            Separator { class: "my-6".to_owned() }
+            div { class: "space-y-4",
                 h2 { class: "text-sm font-semibold", {tr("encounter-recording")} }
                 div { class: "flex flex-wrap items-center justify-between gap-3",
                     Label { html_for: "record-encounter-logs", {tr("record-encounter-logs")} }

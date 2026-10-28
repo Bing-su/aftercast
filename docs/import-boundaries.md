@@ -92,8 +92,11 @@ companion selection. The pending view and source snapshot show that accepted
 policy, not a subsequently edited draft. Busy/obsolete-session events cannot
 change it. Existing tab-independent wait/cancel/shutdown handling remains in use.
 History capture separately displays its saved exact inclusive range and never
-inherits raw-import extension. Drafts survive Host stop/tab changes but are not
-persisted across application launches.
+inherits raw-import extension. Drafts survive Host stop/tab changes. The saved application preference supplies the
+combat-extension default on the next application launch; per-operation edits are
+not saved automatically and already admitted requests keep their snapshot. Old
+configs default to false (ACT initializes the checkbox checked), preserving the
+previous aftercast policy. Loading settings late does not overwrite an edited draft.
 
 Controller tests execute against an actual isolated Host with synthetic files:
 all four file/time combinations, strict versus extension, invalid active versus

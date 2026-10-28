@@ -705,3 +705,8 @@ correction-type-damage = Damage
 correction-type-healing = Healing
 correction-type-other = Other
 correction-add-redirect = Add ability redirect
+
+import-defaults = Import and export defaults
+import-extend-default = Continue to the end of combat
+import-defaults-help = Save this default for the next application launch. Each operation can override its default; active requests and history replay are unaffected.
+export-include-logs-default = Include logs in ACT archive exports

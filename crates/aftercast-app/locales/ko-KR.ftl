@@ -705,3 +705,8 @@ correction-type-damage = 피해
 correction-type-healing = 치유
 correction-type-other = 기타
 correction-add-redirect = 기술 귀속 추가
+
+import-defaults = 가져오기·내보내기 기본값
+import-extend-default = 전투 종료까지 계속
+import-defaults-help = 저장한 기본값은 다음 앱 실행부터 적용됩니다. 각 작업 화면에서 요청별로 변경할 수 있으며 진행 중인 작업과 기록 재파싱에는 영향을 주지 않습니다.
+export-include-logs-default = ACT 기록 내보내기에 로그 포함
