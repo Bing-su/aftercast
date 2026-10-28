@@ -118,9 +118,11 @@ namespace Advanced_Combat_Tracker
                     if(setting.Sort?.Secondary is not null)SelectTableColumn(snapshot,setting.Sort.Secondary,true);
                 }
                 var byLevel=options.ToDictionary(level=>level.Level);var clock=Stopwatch.StartNew();var errors=OwnerErrors.Item1;var bytes=0;
+                var selectedRevision=selectiveRevision;
                 void Guard()
                 {
                     if(clock.Elapsed>TimeSpan.FromSeconds(4))throw new TimeoutException("HTML hierarchy render exceeded four seconds");
+                    if(graphs is not null && selectiveRevision!=selectedRevision)throw new InvalidOperationException("Graph selection changed during rendering");
                     foreach(var setting in revisions)RequireTableRevision(setting.Key,setting.Value);
                     if(OwnerErrors.Item1!=errors)throw new InvalidOperationException("HTML hierarchy callback reported an owner-thread error");
                 }

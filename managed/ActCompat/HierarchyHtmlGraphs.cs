@@ -44,7 +44,7 @@ namespace Advanced_Combat_Tracker
                 foreach (var actor in actors)
                 {
                     if (options.OnlyAllies && allies.Count > 0 && !allies.Contains(actor)) continue;
-                    if (options.SelectedCombatants is not null && !options.SelectedCombatants.Contains(actor.Name.ToUpper(), StringComparer.Ordinal)) continue;
+                    if (options.SelectedCombatants is not null && !options.SelectedCombatants.Contains(actor.Name.ToUpper(), StringComparer.Ordinal) || FilterExports && !SelectiveListGetSelected(actor.Name)) continue;
                     check(); string? raw = null; Exception? failure = null;
                     try { raw = sql(actor); } catch (Exception error) { failure = error; }
                     try { check(); } catch (Exception after) when (failure is not null) { throw new AggregateException("Simple SQL callback and validation failed",failure,after); }
@@ -65,7 +65,7 @@ namespace Advanced_Combat_Tracker
                 if (scope == TableLevel.Combatant && seconds < 2 || scope == TableLevel.Category && (options.Rolling ? seconds : seconds / options.Window) < 2) return [];
                 IEnumerable<(string, DamageTypeData?)> categories;
                 if (scope == TableLevel.Combatant)
-                    categories = node.Capture.Rows.Where(row => options.SelectedCombatants is null || options.SelectedCombatants.Contains(((CombatantData)row.Value).Name.ToUpper(), StringComparer.Ordinal))
+                    categories = node.Capture.Rows.Where(row => (options.SelectedCombatants is null || options.SelectedCombatants.Contains(((CombatantData)row.Value).Name.ToUpper(), StringComparer.Ordinal)) && (!FilterExports || SelectiveListGetSelected(((CombatantData)row.Value).Name)))
                         .Select(row => (CombatantData)row.Value).Select(actor => (actor.Name, actor.Items.TryGetValue(CombatantData.DamageTypeDataOutgoingDamage, out var category) ? category : null));
                 else
                 {

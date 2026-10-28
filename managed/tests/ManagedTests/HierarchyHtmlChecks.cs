@@ -120,6 +120,16 @@ internal static class HierarchyHtmlChecks
         Check(Regex.Matches(report.Content,"<polyline").Count==2,"ACT selective name matches aliases with same uppercase name");
         var simple=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings with{Simple=true,SimpleColumn="display-key",OnlyAllies=false});
         Check(Regex.Matches(simple.Content,"<rect").Count==2,"Simple selective name matches aliases");
+        f.Host.ConfigureSelectiveParsing(SelectiveParsingModeEnum.SelectiveGraphsExports, ["B"]);
+        capture=Capture(f);
+        var filtered=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings);
+        Check(!filtered.Content.Contains("<polyline",StringComparison.Ordinal),"global selective graph filter excludes unmatched names");
+        f.Host.ConfigureSelectiveParsing(SelectiveParsingModeEnum.SelectiveGraphsExports, ["A"]);
+        capture=Capture(f);
+        filtered=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings);
+        Check(Regex.Matches(filtered.Content,"<polyline").Count==2,"global graph selection preserves matching aliases");
+        f.Host.ConfigureSelectiveParsing(SelectiveParsingModeEnum.None, []);
+        capture=Capture(f);
         var solo=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Category),settings with{SelectedCombatants=null,Levels=[TableLevel.Category]});
         Check(!solo.Content.Contains(">Category</text>",StringComparison.Ordinal),"unregistered custom category excluded from ACT all selection");
         var calls=f.CellCalls;

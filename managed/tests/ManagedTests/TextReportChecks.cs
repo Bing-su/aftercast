@@ -41,6 +41,7 @@ internal static class TextReportChecks
     {
         HostLifetimeChecks.RunBounded(Presets);
         HostLifetimeChecks.RunBounded(FormattingAndSelection);
+        HostLifetimeChecks.RunBounded(SelectiveExport);
         HostLifetimeChecks.RunBounded(CallbacksAndRevision);
         HostLifetimeChecks.RunBounded(BudgetsAndParser);
         HostLifetimeChecks.RunBounded(ScopeChanges);
@@ -48,6 +49,17 @@ internal static class TextReportChecks
         Console.WriteLine("Owned text reports: ACT unaligned framing/sort/allies, selected identity, owner callbacks, revisions, limits and failure cleanup passed.");
     }
     private static TextReportOptions Options(string player="{name}",bool allies=false,bool info=false,string group="")=>new(player,"Name",allies,info,group);
+    private static void SelectiveExport()
+    {
+        using var f=new Fixture();
+        f.Host.ConfigureSelectiveParsing(SelectiveParsingModeEnum.SelectiveGraphsExports, ["Zed"]);
+        Check(f.Read(Options("{name}", false, true, "group:{group};")).Text == "group:1;Zed\n", "export filter does not change allied totals");
+        f.Host.ConfigureSelectiveParsing(SelectiveParsingModeEnum.SelectiveGraphsExportsAndAlliedTotals, ["Zed"]);
+        Check(f.Read(Options("{name}", false, true, "group:{group};")).Text == "Zed\n", "separate allied total filter");
+        CombatantData.ExportVariables["name"].GetExportString=(actor,_)=>{f.Root.SelectiveListAdd("Alpha");return actor.Name;};
+        Throws<InvalidOperationException>(()=>f.Read(Options()));
+    }
+
     private static void FormattingAndSelection()
     {
         using var f=new Fixture();

@@ -166,7 +166,8 @@ namespace Advanced_Combat_Tracker
             internal string Allied(string key,EncounterData encounter,List<CombatantData> allies,string extra)
             {
                 Check();if(!snapshot.Allied.TryGetValue(key,out var entry))return snapshot.Open+key+snapshot.Close;
-                void Validate() {Check();if(!EncounterData.ExportVariables.TryGetValue(key,out var value)||!ReferenceEquals(entry.Definition,value)||!ReferenceEquals(entry.Callback,value.GetExportString))throw new InvalidOperationException("Report formatter changed during callback");}
+                var captured=allies.ToArray();
+                void Validate() {Check();if(!allies.SequenceEqual(captured,ReferenceEqualityComparer.Instance)||!EncounterData.ExportVariables.TryGetValue(key,out var value)||!ReferenceEquals(entry.Definition,value)||!ReferenceEquals(entry.Callback,value.GetExportString))throw new InvalidOperationException("Report formatter or allies changed during callback");}
                 return Invoke(()=>entry.Callback(encounter,allies,extra),Validate);
             }
             private int CompareOnce(CombatantData left,CombatantData right)

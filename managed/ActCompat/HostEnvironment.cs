@@ -145,6 +145,8 @@ namespace Aftercast.ActCompat
         }
         public void Register(ActPluginData data) => main.Register(data);
         public void BeginClosing() => main.BeginClosing();
+        public void ConfigureSelectiveParsing(SelectiveParsingModeEnum mode, string[] selected) =>
+            RunWithLogReadingSuspended(() => main.ConfigureSelectiveParsing(mode, selected));
         public void ConfigureSpeech(bool enabled) => main.ConfigureSpeech(enabled);
         public byte[] DrainSpeech() => main.DrainSpeech();
         public void ConfigureSound(bool enabled) => main.ConfigureSound(enabled);

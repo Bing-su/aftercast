@@ -45,15 +45,16 @@ public partial class FormActMain
             : new List<CombatantData>();
         if(onlyAllies||alliedInfo) execution?.BindAllies(allies,encounter.GetIsSelective()&&encounter.GetIgnoreEnemies());
         execution?.Check();
+        var exportAllies = FilterAlliedTotals ? allies.Where(actor => SelectiveListGetSelected(actor.Name)).ToList() : allies;
         var output = new StringBuilder();
-        if (alliedInfo && allies.Count > 0)
-            Append(alliesFormat, (key, extra) => execution is not null ? execution.Allied(key, encounter, allies, extra)
+        if (alliedInfo && exportAllies.Count > 0)
+            Append(alliesFormat, (key, extra) => execution is not null ? execution.Allied(key, encounter, exportAllies, extra)
                 : EncounterData.ExportVariables.TryGetValue(key, out var formatter)
-                    ? formatter.GetExportString(encounter, allies, extra) : TextExportFormatterCap1 + key + TextExportFormatterCap2);
+                    ? formatter.GetExportString(encounter, exportAllies, extra) : TextExportFormatterCap1 + key + TextExportFormatterCap2);
         foreach (var actor in actors)
         {
             execution?.Check();
-            if (actor.Name == "Unknown" || onlyAllies && allies.Count > 0 && !allies.Contains(actor)) continue;
+            if (actor.Name == "Unknown" || onlyAllies && allies.Count > 0 && !allies.Contains(actor) || FilterExports && !SelectiveListGetSelected(actor.Name)) continue;
             Append(playerFormat, (key, extra) => execution is not null ? execution.Player(key, actor, extra)
                 : CombatantData.ExportVariables.TryGetValue(key, out var formatter)
                     ? formatter.GetExportString(actor, extra) : TextExportFormatterCap1 + key + TextExportFormatterCap2);

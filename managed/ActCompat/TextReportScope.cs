@@ -16,11 +16,13 @@ public partial class FormActMain
         private readonly KeyValuePair<string,CombatantData>[] members;
         private readonly string character,title,zoneName;
         private readonly bool selective,ignoreEnemies;
+        private readonly long selectionRevision;
         private CombatantData[]? allies;
         private List<CombatantData>? boundAllies;
         private bool allActors;
         internal TextReportScope(FormActMain root,int zoneIndex,int encounterIndex,EncounterData encounter)
         {
+            selectionRevision=root.selectiveRevision;
             this.root=root;this.zoneIndex=zoneIndex;this.encounterIndex=encounterIndex;Encounter=encounter;
             zones=root.combatZones;zoneCount=zones.Count;zone=zones[zoneIndex];populateAll=zone.PopulateAll;
             encounters=zone.Items;encounterCount=encounters.Count;actors=encounter.Items;
@@ -34,7 +36,7 @@ public partial class FormActMain
         {this.allActors=allActors;boundAllies=selected;allies=selected.ToArray();}
         internal void Check()
         {
-            if(!ReferenceEquals(root.combatZones,zones)||zones.Count!=zoneCount||!ReferenceEquals(zones[zoneIndex],zone)||zone.PopulateAll!=populateAll||
+            if(root.selectiveRevision!=selectionRevision||!ReferenceEquals(root.combatZones,zones)||zones.Count!=zoneCount||!ReferenceEquals(zones[zoneIndex],zone)||zone.PopulateAll!=populateAll||
                 !ReferenceEquals(zone.Items,encounters)||encounters.Count!=encounterCount||!ReferenceEquals(encounters[encounterIndex],Encounter)||
                 Encounter.CharName!=character||Encounter.Title!=title||Encounter.ZoneName!=zoneName||Encounter.GetIsSelective()!=selective||Encounter.GetIgnoreEnemies()!=ignoreEnemies||
                 allies is not null&&(!boundAllies!.SequenceEqual(allies,ReferenceEqualityComparer.Instance)||!(allActors?Encounter.Items.Values:Encounter.GetAllies()).SequenceEqual(allies,ReferenceEqualityComparer.Instance))||
