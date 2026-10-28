@@ -1,4 +1,5 @@
 use super::{AppState, Phase, tr};
+mod snippet;
 use crate::components::{Accordion, Button, ButtonVariant, Input, Label};
 use aftercast::{HostHandle, SavedTimer, TimerDefinition, TimerItem, TimerPage, TimerRevision};
 use dioxus::{core::spawn_forever, prelude::*};
@@ -50,6 +51,7 @@ impl Draft {
 }
 #[derive(Default)]
 pub(super) struct EditorState {
+    snippet: snippet::State,
     loaded: bool,
     busy: bool,
     page: Option<TimerPage>,
@@ -437,6 +439,7 @@ pub(super) fn TimersPane() -> Element {
                 p { role: "status", {tr("timer-working")} }
             }
             TimerList {}
+            snippet::Panel {}
             TimerForm {}
         }
     }

@@ -210,6 +210,11 @@ run = [
   '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} custom-trigger-models {{vars.reference_probe}}',
 ]
 
+[tasks."test:spell-snippets"]
+description = "Compare Spell snippet attributes and defaults with genuine ACT"
+depends = ["managed:references"]
+run = '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} spell-snippet {{vars.reference_probe}}'
+
 [tasks."test:data-corrections"]
 description = "Compare headless rename/ability redirect rules with genuine ACT"
 depends = ["managed:references"]

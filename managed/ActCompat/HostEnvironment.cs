@@ -272,6 +272,7 @@ namespace Aftercast.ActCompat
         public NotificationStatus ReadNotificationStatus() => main.ReadNotificationStatus();
         public NotificationChange MarkNotificationsRead(ulong through) => main.MarkNotificationsRead(through);
         public NotificationChange ClearReadNotifications(ulong through) => main.ClearReadNotifications(through);
+        public TimerSnippetPreview PreviewTimerSnippet(string snippet) => timers.PreviewTimerSnippet(snippet);
         public object TimerOperation(int command,ulong revision,string? previousKey,TimerDefinition? definition,
             string? key,int offset,int limit)
         {

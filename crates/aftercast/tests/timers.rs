@@ -201,3 +201,59 @@ async fn normalized_identity(host: &Host) {
         .await
         .expect("delete by managed key");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and fixtures; run mise run test:plugins"]
+async fn spell_snippet_preview_and_import_are_owned_and_persistent(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let xml = "<Spell N='FoO' C='Fixture' T='45' WV='5' RV='-8' OM='T' RD='F' FC='-1' Tt='&lt;note&gt;' SS='silent' WS='warning' />";
+    let preview = host.preview_timer_snippet(xml).await.expect("preview");
+    assert!(!preview.exists);
+    assert_eq!(preview.definition.timer_value, 45);
+    assert_eq!(preview.definition.tooltip, "<note>");
+    let before = host.timer_definitions(0, 16).await.expect("no changes");
+    assert_eq!((before.total, before.retained_frames), (0, 0));
+    host.preview_timer_snippet("<Spell N='x' C='y' T='3601'/>")
+        .await
+        .expect_err("range rejected");
+    host.preview_timer_snippet(
+        "<!DOCTYPE Spell [<!ENTITY x SYSTEM 'file:///etc/passwd'>]><Spell N='&x;' C='y'/>",
+    )
+    .await
+    .expect_err("DTD rejected");
+    host.save_timer_definition(preview.revision, None, &preview.definition)
+        .await
+        .expect("explicit import");
+    assert!(
+        host.preview_timer_snippet("<Spell N='foo' C='fixture'/>")
+            .await
+            .expect("duplicate")
+            .exists
+    );
+    host.save_timer_definition(preview.revision, None, &preview.definition)
+        .await
+        .expect_err("stale revision");
+    assert_eq!(
+        host.timer_definitions(0, 16)
+            .await
+            .expect("no countdown")
+            .retained_frames,
+        0
+    );
+    host.shutdown().await.expect("shutdown");
+    let restarted = Host::start(deployment.config()).await.expect("restart");
+    assert_eq!(
+        restarted
+            .timer_definitions(0, 16)
+            .await
+            .expect("saved")
+            .total,
+        1
+    );
+    restarted
+        .save_timer_definition(preview.revision, None, &preview.definition)
+        .await
+        .expect_err("old session");
+    restarted.shutdown().await.expect("shutdown restart");
+}

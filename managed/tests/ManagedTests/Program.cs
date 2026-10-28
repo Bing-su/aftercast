@@ -536,6 +536,7 @@ internal static class Program
         CustomTriggerChecks.Run();
         TriggerManagementChecks.Run();
         TriggerSnippetChecks.Run();
+        TimerSnippetChecks.Run();
         ArchiveTriggerBudgetChecks.Run();
         NotificationChecks.Run();
         DataCorrectionChecks.Run();

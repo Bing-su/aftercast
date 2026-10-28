@@ -86,9 +86,9 @@ internal sealed partial class PluginSession
     {
         var host = Host();
         object? result = null;
-        void Execute() => result = host.TimerOperation(command,request.Revision,request.PreviousKey,request.Definition,
+        void Execute() => result = command == 5 ? host.PreviewTimerSnippet(request.Snippet ?? throw new ArgumentException("Missing timer snippet")) : host.TimerOperation(command,request.Revision,request.PreviousKey,request.Definition,
             request.Key,request.Offset,request.Limit);
-        if (command == 1) Execute(); else host.RunWithLogReadingSuspended(Execute);
+        if (command is 1 or 5) Execute(); else host.RunWithLogReadingSuspended(Execute);
         return HostJson.Encode(result!);
     });
     internal byte[] NotificationOperation(int command, ulong id, int limit) => OnOwner(() =>

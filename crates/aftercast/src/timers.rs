@@ -63,6 +63,22 @@ pub struct TimerRevision {
     value: u64,
 }
 #[derive(Debug, Clone)]
+pub struct TimerSnippetPreview {
+    pub revision: TimerRevision,
+    pub key: String,
+    pub exists: bool,
+    pub definition: TimerDefinition,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawTimerSnippetPreview {
+    revision: u64,
+    key: String,
+    exists: bool,
+    definition: TimerDefinition,
+}
+
+#[derive(Debug, Clone)]
 pub struct TimerPage {
     pub revision: TimerRevision,
     pub total: u32,
@@ -111,6 +127,27 @@ impl HostHandle {
             total: page.total,
             retained_frames: page.retained_frames,
             items: page.items,
+        })
+    }
+    /// Preview one ACT Spell snippet without changing definitions or starting timers.
+    pub async fn preview_timer_snippet(&self, snippet: &str) -> Result<TimerSnippetPreview, Error> {
+        if snippet.len() > 16384 || snippet.contains('\0') {
+            return Err(invalid("timer snippet exceeds 16 KiB or contains NUL"));
+        }
+        let raw: RawTimerSnippetPreview = self
+            .timer_call(5, &serde_json::json!({"snippet": snippet}))
+            .await?;
+        if raw.revision == 0 || raw.key.is_empty() || raw.key.len() > 4096 {
+            return Err(invalid("invalid timer snippet preview"));
+        }
+        Ok(TimerSnippetPreview {
+            revision: TimerRevision {
+                session: self.session,
+                value: raw.revision,
+            },
+            key: raw.key,
+            exists: raw.exists,
+            definition: raw.definition,
         })
     }
     /// Persists before publication. The previous key is the identity returned by timer_definitions.
