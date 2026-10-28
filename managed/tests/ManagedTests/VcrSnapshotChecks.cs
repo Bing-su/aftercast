@@ -45,10 +45,44 @@ internal static class VcrSnapshotChecks
             if (outgoingRows.Length != 3 || outgoingRows.Any(row => row.Action.Victim != "Target")) throw new Exception("Outgoing category scope");
             var log = host.ReadActionSnapshotLogs(outgoing.Revision, outgoingRows[0].Action.SourceIndex, 1).Page.Items.Single();
             if (log.TimeSorter != outgoingRows[0].Action.TimeSorter) throw new Exception("Category snapshot log provenance");
+            var owner = Environment.CurrentManagedThreadId;
+            DamageTypeData.ColumnDefs["Lookup"] = new("Lookup", true, "TEXT", "lookup", row => {
+                if (Environment.CurrentManagedThreadId != owner || row.Parent?.Name != "Target") throw new Exception("Lookup parent/owner");
+                return $"{row.Type}:{row.Damage}:{row.Swings}";
+            }, _ => "");
+            var categoryCatalog = host.ReadTableColumns(TableLevel.Category);
+            var categoryQuery = new TableQuery(new(TableLevel.Category, id), categoryCatalog.Revision, ["Lookup"]);
+            var categoryTable = host.ReadLookupTable(outgoing.Revision, categoryQuery);
+            if (categoryTable.Total != 1 || categoryTable.Rows[0].Cells[0].Text != "Target:30:2") throw new Exception("Lookup aggregate metrics");
+            var compares = 0;
+            AttackType.ColumnDefs["Lookup"] = new("Lookup", true, "TEXT", "lookup", row => row.Type!, _ => "", (left, right) => { compares++; return string.CompareOrdinal(left.Type, right.Type); });
+            var attackCatalog = host.ReadTableColumns(TableLevel.Attack);
+            var attackQuery = new TableQuery(new(TableLevel.Attack, id), attackCatalog.Revision, ["Lookup"]);
+            ActGlobals.mDSort = ActGlobals.mDSort2 = "Lookup";
+            var attackTable = host.ReadLookupTable(outgoing.Revision, attackQuery, "Target");
+            if (compares == 0 || attackTable.Total != 2 || attackTable.Rows[0].Cells[0].Text != "Strike") throw new Exception("Lookup custom comparison");
+            MasterSwing.ColumnDefs["Lookup"] = new("Lookup", true, "TEXT", "lookup", row => {
+                if (row.Special != "None" || row.Tags.Count != 0 || row.ParentEncounter is not null) throw new Exception("Lookup clone fields");
+                try { host.ReadLookupTable(outgoing.Revision, categoryQuery); throw new Exception("Lookup reentrancy accepted"); } catch (InvalidOperationException) { }
+                return row.Damage.ToString();
+            }, _ => "", (left, right) => 0);
+            var actionCatalog = host.ReadTableColumns(TableLevel.Action);
+            var actionQuery = new TableQuery(new(TableLevel.Action, id), actionCatalog.Revision, ["Lookup"]);
+            var actionTable = host.ReadLookupTable(outgoing.Revision, actionQuery, "Target", "Strike");
+            if (actionTable.Rows.Any(row => row.Cells[0].Error is not null)) throw new Exception("Lookup clone callback failed");
+            MasterSwing.ColumnDefs["ThrowLookup"] = new("ThrowLookup", true, "TEXT", "throw_lookup", _ => throw new InvalidOperationException("synthetic lookup cell"), _ => "", (_, _) => 0);
+            actionCatalog = host.ReadTableColumns(TableLevel.Action);
+            var failedCell = host.ReadLookupTable(outgoing.Revision, new(new(TableLevel.Action, id), actionCatalog.Revision, ["ThrowLookup"]), "Target", "Strike");
+            if (failedCell.Rows.Any(row => row.Cells[0].Error is null)) throw new Exception("Lookup cell exception hidden");
+            AttackType.ColumnDefs["ThrowLookup"] = new("ThrowLookup", true, "TEXT", "throw_lookup", row => row.Type!, _ => "", (_, _) => throw new InvalidOperationException("synthetic lookup comparison"));
+            attackCatalog = host.ReadTableColumns(TableLevel.Attack);
+            var failedSort = host.ReadLookupTable(outgoing.Revision, new(new(TableLevel.Attack, id), attackCatalog.Revision, ["Lookup"], Sort: new("ThrowLookup")), "Target");
+            if (failedSort.SortError is null) throw new Exception("Lookup comparator exception hidden");
             var custom = host.CaptureCategoryActions(id, "{\"Combatant\":\"Source\",\"Category\":\"Custom\",\"Outgoing\":true}")!;
             var customRows = host.ReadActionSnapshot(custom.Revision, 0, 256).Items;
             var originalCustom = root.ZoneList[0].Items.Single().GetCombatant("Source")!.Items["Custom"].Items["All"].Items.Count;
             if (customRows.Length != originalCustom || originalCustom < outgoingRows.Length) throw new Exception($"Custom category entries lost: {customRows.Length} / {originalCustom}");
+            try { host.ReadLookupTable(outgoing.Revision, categoryQuery); throw new Exception("Lookup stale revision accepted"); } catch (InvalidOperationException) { }
             var incoming = host.CaptureCategoryActions(id, "{\"Combatant\":\"Target\",\"Category\":\"Received\",\"Outgoing\":false}")!;
             var incomingRows = host.ReadActionSnapshot(incoming.Revision, 0, 256).Items;
             if (incomingRows.Length != 1 || incomingRows[0].Action.Attacker != "Source") throw new Exception("Incoming category scope");

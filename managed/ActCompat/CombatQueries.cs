@@ -179,6 +179,8 @@ namespace Advanced_Combat_Tracker
         {
             lock (CombatGate)
             {
+                if (activeTableQuery) throw new InvalidOperationException("Snapshot capture is not permitted during table callbacks");
+                ObjectDisposedException.ThrowIf(actionsClosed, this);
                 var encounter = QueryEncounters().Select(item => item.Encounter).FirstOrDefault(item => Identity(item).Id == id);
                 if (encounter is null) return null;
                 IEnumerable<MasterSwing> source;
@@ -209,6 +211,8 @@ namespace Advanced_Combat_Tracker
                 var items = actions.Select(action => new ClassifiedActionData(ProjectAction(action, sources),
                     damage.Contains(action.SwingType), healing.Contains(action.SwingType), action.Damage == Dnum.Death, DeathNumericTooltip(action.Damage.Number))).ToArray();
                 var revision = checked(++nextActionSnapshotRevision);
+                if (lookup is not null) CaptureLookupGraph(revision, encounter, lookup, actions);
+                else lookupGraph = null;
                 actionSnapshot = (revision, items, logs);
                 return new(revision, items.Length);
             }
