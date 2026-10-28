@@ -56,7 +56,7 @@ SVG output instead of emitting invalid geometry or claiming a valid zero graph.
 For Sorting=="Resist", use actions in All, create groups by DamageType, and
 accumulate only positive amounts into group and total. A DamageType beginning
 with localized warded term plus slash is stripped using the native fixed
-Substring(7), not the length of the localized prefix (IL0139..0164). Divide each
+Substring(7), not the length of the localized prefix (IL0139..0164). An action whose group name equals All increments the shared All entry twice, so its positive amount contributes twice to the denominator. Divide each
 non-All group by total (IL017c..026e); zero-valued groups can exist. Culture,
 localization and the fixed-seven quirk need dedicated cases.
 
@@ -104,3 +104,5 @@ fixtures; production implementation/integration has not changed.
 `GraphNumeric.Line` implements the fixture's arithmetic with explicit caller inputs. Its duration limit of 360,000 seconds and 16,384 action limit are aftercast safeguards, not ACT limits; its 1–120 second window follows the observed UI range. Invalid timestamps and out-of-range buckets fail explicitly. The helper does not select source actions, implement ACT's no-data decisions, render graphs, or connect graphs to reports.
 
 ACT initializes the encounter delegate to `GenEncounterGraph` (Simple); a restored setting can subsequently select Advanced. For solo categories, `ValidateLists` adds missing outgoing and incoming registry keys as checked while preserving existing choices and removing obsolete keys. These are dynamic defaults, not a fixed category list.
+
+`GraphNumeric.Share` carries labels and raw, unnormalized finite ratios for a future static renderer. `Distribution` expects callers to exclude the localized All row and to perform SQL parsing and native per-row failure handling. `Resist` groups supplied actions using the current culture and ACT's fixed seven UTF-16-unit prefix removal. Invalid or nonpositive totals and Int64 accumulation overflow are explicit errors; ACT overflow behavior remains unverified. `ActionBars` takes caller-provided selected and TimeSorter comparisons, preserves signed amounts and ordered actions, and returns a separately rounded axis ceiling and relative heights; geometry and float conversion remain renderer responsibilities. These helpers limit inputs to 16,384 entries; axis ceilings exceeding Int64 are rejected. These limits and explicit geometry errors are aftercast safeguards, not ACT limits. Native pixel rendering, callback ownership, sentinel Dnum meanings, and report integration remain unimplemented.
