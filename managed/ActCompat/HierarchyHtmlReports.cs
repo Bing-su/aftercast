@@ -124,6 +124,19 @@ namespace Advanced_Combat_Tracker
                 try
                 {
                     Check();
+                    if(graphs?.SelectedCombatants is { } selectedActors)
+                    {
+                        var actors=capture.Roots.SelectMany(root=>root.Node.Capture.Rows).ToArray();
+                        if(selectedActors.Any(key=>!actors.Any(row=>row.Combatant==key)))throw new InvalidOperationException("Selected graph combatant no longer exists");
+                        var names=actors.Where(row=>selectedActors.Contains(row.Combatant,StringComparer.Ordinal)).Select(row=>((CombatantData)row.Value).Name.ToUpper()).Distinct(StringComparer.Ordinal).ToArray();
+                        graphs=graphs with{SelectedCombatants=names};
+                    }
+                    if(graphs?.SoloCategories is { } selectedCategories)
+                    {
+                        ReadTableColumns(TableLevel.Category);var available=columnSnapshots[TableLevel.Category].Snapshot.Categories;
+                        if(selectedCategories.Any(key=>!available.Any(category=>category.Key==key)))throw new InvalidOperationException("Selected graph category no longer exists");
+                    }
+                    Check();
                     var nodes=capture.Roots.SelectMany(root=>HierarchyNodes(root.Node)).ToArray();
                     // Validate every level/key/sorter before any display callback runs.
                     IEqualityComparer<HierarchyNode> comparer=ReferenceEqualityComparer.Instance;

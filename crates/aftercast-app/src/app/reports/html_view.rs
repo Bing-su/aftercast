@@ -173,6 +173,46 @@ fn GraphEditor() -> Element {
                 }
             }
             if draft.graph_levels.iter().any(|selected| *selected) {
+                if draft.graph_levels[0] || draft.graph_levels[1] {
+                    Button {
+                        variant: ButtonVariant::Outline,
+                        disabled,
+                        onclick: move |_| {
+                            let result = state.write().report_html_graph_candidates_begin(token);
+                            match result {
+                                Ok(work) => super::view::execute(state, work),
+                                Err(key) => state.write().reports.error = Some(tr(key)),
+                            }
+                        },
+                        {tr("html-graph-load-candidates")}
+                    }
+                    if let Some(candidates) = draft.graph_candidates.as_ref() {
+                        if draft.graph_levels[0] {
+                            GraphScope {
+                                token,
+                                disabled,
+                                field: "actors",
+                                label: "html-graph-actors",
+                                available: candidates.actors.clone(),
+                                selected: draft.graph_actors.clone(),
+                            }
+                        }
+                        if draft.graph_levels[1] {
+                            GraphScope {
+                                token,
+                                disabled,
+                                field: "categories",
+                                label: "html-graph-categories",
+                                available: candidates.categories.clone(),
+                                selected: draft.graph_categories.clone(),
+                            }
+                        }
+                    } else {
+                        p { class: "text-xs text-muted-foreground",
+                            {tr("html-graph-candidates-help")}
+                        }
+                    }
+                }
                 GraphField {
                     token,
                     disabled,
@@ -282,6 +322,81 @@ fn GraphEditor() -> Element {
                         field: "ward",
                         label: "html-graph-ward",
                         value: draft.graph_ward.clone(),
+                    }
+                }
+            }
+        }
+    }
+}
+#[component]
+fn GraphScope(
+    token: Token,
+    disabled: bool,
+    field: &'static str,
+    label: &'static str,
+    available: Vec<String>,
+    selected: Option<Vec<String>>,
+) -> Element {
+    let mut state = use_context::<Signal<AppState>>();
+    let mode = if field == "actors" {
+        "actors_mode"
+    } else {
+        "categories_mode"
+    };
+    let mut shown = available.clone();
+    if let Some(values) = &selected {
+        for value in values {
+            if !shown.contains(value) {
+                shown.push(value.clone());
+            }
+        }
+    }
+    rsx! {
+        div { class: "space-y-2",
+            h5 { class: "text-sm font-medium", {tr(label)} }
+            div { class: "flex flex-wrap gap-2",
+                Button {
+                    variant: ButtonVariant::Outline,
+                    disabled,
+                    aria_pressed: Some(selected.is_none()),
+                    onclick: move |_| {
+                        state.write().report_html_graph_scope(token, mode, "all");
+                    },
+                    {tr("html-graph-all-items")}
+                }
+                Button {
+                    variant: ButtonVariant::Outline,
+                    disabled,
+                    aria_pressed: Some(selected.is_some()),
+                    onclick: move |_| {
+                        state.write().report_html_graph_scope(token, mode, "custom");
+                    },
+                    {tr("html-graph-choose")}
+                }
+            }
+            if let Some(chosen) = selected {
+                div { class: "flex flex-wrap gap-2",
+                    for value in shown {
+                        {
+                            let key = value.clone();
+                            let pressed = chosen.contains(&value);
+                            let missing = !available.contains(&value);
+                            rsx! {
+                                Button {
+                                    variant: ButtonVariant::Outline,
+                                    disabled,
+                                    aria_pressed: Some(pressed),
+                                    onclick: move |_| {
+                                        state.write().report_html_graph_scope(token, field, &key);
+                                    },
+                                    "{value}"
+                                    if missing {
+                                        " · "
+                                        {tr("html-graph-missing")}
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -557,6 +672,48 @@ pub(super) fn snapshot(
                 }
             }
             if let Some(graph) = graphs {
+                if graph.levels.contains(&TableLevel::Combatant) {
+                    p {
+                        {tr("html-graph-actors")}
+                        ": "
+                        {
+                            graph
+                                .selected_combatants
+                                .as_ref()
+                                .map_or_else(
+                                    || tr("html-graph-all-items"),
+                                    |values| {
+                                        if values.is_empty() {
+                                            tr("html-graph-no-items")
+                                        } else {
+                                            values.join(", ")
+                                        }
+                                    },
+                                )
+                        }
+                    }
+                }
+                if graph.levels.contains(&TableLevel::Category) {
+                    p {
+                        {tr("html-graph-categories")}
+                        ": "
+                        {
+                            graph
+                                .solo_categories
+                                .as_ref()
+                                .map_or_else(
+                                    || tr("html-graph-all-items"),
+                                    |values| {
+                                        if values.is_empty() {
+                                            tr("html-graph-no-items")
+                                        } else {
+                                            values.join(", ")
+                                        }
+                                    },
+                                )
+                        }
+                    }
+                }
                 p {
                     {tr("html-graph-title")}
                     ": "
@@ -570,7 +727,13 @@ pub(super) fn snapshot(
                     }
                     " · {graph.window}s · "
                     {if graph.rolling { tr("html-graph-rolling") } else { tr("html-graph-bucket") }}
-                    " · {graph.distribution_column} · {graph.action_sort_column} · {graph.all_label} · {graph.ward_prefix}"
+                    " · {graph.all_label}"
+                    if graph.levels.contains(&TableLevel::Attack) {
+                        " · {graph.distribution_column} · {graph.ward_prefix}"
+                    }
+                    if graph.levels.contains(&TableLevel::Action) {
+                        " · {graph.action_sort_column}"
+                    }
                 }
             }
             if graphs.is_none() {

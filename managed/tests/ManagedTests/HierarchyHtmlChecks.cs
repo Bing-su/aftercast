@@ -13,6 +13,7 @@ internal static class HierarchyHtmlChecks
     internal static void Run()
     {
         HostLifetimeChecks.RunBounded(GraphsFromOwnedActions);
+        HostLifetimeChecks.RunBounded(GraphSelectiveNames);
         HostLifetimeChecks.RunBounded(DepthsColumnsAndSourceOrder);
         HostLifetimeChecks.RunBounded(SelectedTreeOrderAndIndependence);
         HostLifetimeChecks.RunBounded(ErrorsMutationAndRecovery);
@@ -69,6 +70,27 @@ internal static class HierarchyHtmlChecks
         capture=Capture(f);Throws<InvalidOperationException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings));
         MasterSwing.ColumnDefs["action-key"].SortComparer=(_,_)=>0;
         capture=Capture(f);Check(f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings).Content.Contains("<svg",StringComparison.Ordinal),"sort reentry releases guard");
+    }
+    private static void GraphSelectiveNames()
+    {
+        using var f=new TableReportChecks.Fixture();
+        var first=f.Encounter.Items["A"];f.Encounter.Items.Clear();f.Encounter.Items.Add("alias",first);
+        var second=new CombatantData("A",f.Encounter);f.Encounter.Items.Add("other",second);f.Known.Add(second);
+        foreach(var actor in new[]{first,second})
+            foreach(var time in new[]{0,3}) actor.AddCombatAction(new MasterSwing(1,false,"None",new Dnum(10),DateTime.UnixEpoch.AddSeconds(time),time,"Strike","A","Fire","Target"));
+        foreach(var actor in f.Encounter.Items.Values)foreach(var category in actor.Items.Values)
+        {f.Known.Add(category);foreach(var attack in category.Items.Values){f.Known.Add(attack);foreach(var action in attack.Items)f.Known.Add(action);}}
+        var custom=first.Items["Category"];var customAll=new AttackType("All",custom);custom.Items["All"]=customAll;f.Known.Add(customAll);
+        foreach(var action in first.Items["Damage"].Items["All"].Items)customAll.Items.Add(action);
+        var capture=Capture(f);var settings=new HierarchyHtmlGraphOptions(1,true,"Resist","unused","All","Warded/",SelectedCombatants:["alias"],Levels:[TableLevel.Combatant]);
+        var report=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings);
+        Check(Regex.Matches(report.Content,"<polyline").Count==2,"ACT selective name matches aliases with same uppercase name");
+        var solo=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Category),settings with{SelectedCombatants=null,Levels=[TableLevel.Category]});
+        Check(!solo.Content.Contains(">Category</text>",StringComparison.Ordinal),"unregistered custom category excluded from ACT all selection");
+        var calls=f.CellCalls;
+        Throws<InvalidOperationException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings with{SelectedCombatants=["missing"]}));
+        Check(f.CellCalls==calls,"missing actor rejected before display callbacks");
+        Throws<InvalidOperationException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Category),settings with{SelectedCombatants=null,SoloCategories=["missing"],Levels=[TableLevel.Category]}));
     }
     private static void DepthsColumnsAndSourceOrder()
     {

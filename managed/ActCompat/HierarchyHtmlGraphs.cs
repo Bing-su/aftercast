@@ -38,12 +38,13 @@ namespace Advanced_Combat_Tracker
                 if (scope == TableLevel.Combatant && seconds < 2 || scope == TableLevel.Category && (options.Rolling ? seconds : seconds / options.Window) < 2) return [];
                 IEnumerable<(string, DamageTypeData?)> categories;
                 if (scope == TableLevel.Combatant)
-                    categories = node.Capture.Rows.Where(row => options.SelectedCombatants is null || options.SelectedCombatants.Contains(row.Combatant, StringComparer.Ordinal))
+                    categories = node.Capture.Rows.Where(row => options.SelectedCombatants is null || options.SelectedCombatants.Contains(((CombatantData)row.Value).Name.ToUpper(), StringComparer.Ordinal))
                         .Select(row => (CombatantData)row.Value).Select(actor => (actor.Name, actor.Items.TryGetValue(CombatantData.DamageTypeDataOutgoingDamage, out var category) ? category : null));
                 else
                 {
                     var rows = node.Capture.Rows;
-                    var ordered = options.SoloCategories is null ? rows : options.SoloCategories.SelectMany(key => rows.Where(row => row.Category == key)).ToArray();
+                    var keys = options.SoloCategories ?? columnSnapshots[TableLevel.Category].Snapshot.Categories.Select(category=>category.Key).Distinct(StringComparer.Ordinal).ToArray();
+                    var ordered = keys.SelectMany(key => rows.Where(row => row.Category == key)).ToArray();
                     categories = ordered.Select(row => (DamageTypeData)row.Value).Select(category => (Invoke(() => category.Type) ?? "", (DamageTypeData?)category));
                 }
                 var series = new List<GraphSvg.LineSeries>();

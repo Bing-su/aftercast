@@ -1,7 +1,7 @@
 use super::*;
 use aftercast::{
-    EncounterSummary, HierarchyHtmlGraphOptions, HierarchyHtmlLevel, TableCatalog, TableLevel,
-    TableSort,
+    EncounterSummary, HierarchyHtmlGraphOptions, HierarchyHtmlLevel, HierarchyHtmlSelection,
+    TableCatalog, TableLevel, TableScope, TableSort,
 };
 pub(super) const LEVELS: [TableLevel; 4] = [
     TableLevel::Combatant,
@@ -68,6 +68,13 @@ impl LevelDraft {
         })
     }
 }
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub(super) struct GraphCandidates {
+    pub encounters: Vec<EncounterId>,
+    pub actors: Vec<String>,
+    pub categories: Vec<String>,
+    pub selection: HierarchyHtmlSelection,
+}
 #[derive(Clone)]
 pub(super) struct Draft {
     pub last: TableLevel,
@@ -83,6 +90,9 @@ pub(super) struct Draft {
     pub graph_action_sort: String,
     pub graph_all: String,
     pub graph_ward: String,
+    pub graph_candidates: Option<GraphCandidates>,
+    pub graph_actors: Option<Vec<String>>,
+    pub graph_categories: Option<Vec<String>>,
 }
 impl Default for Draft {
     fn default() -> Self {
@@ -100,10 +110,60 @@ impl Default for Draft {
             graph_action_sort: String::new(),
             graph_all: "All".into(),
             graph_ward: "Warded/".into(),
+            graph_candidates: None,
+            graph_actors: None,
+            graph_categories: None,
         }
     }
 }
+fn toggle_graph_choice(available: &[String], choice: &mut Option<Vec<String>>, key: &str) -> bool {
+    let Some(selected) = choice.as_mut() else {
+        return false;
+    };
+    if let Some(index) = selected.iter().position(|item| item == key) {
+        selected.remove(index);
+        return true;
+    }
+    if !available.iter().any(|item| item == key) {
+        return false;
+    }
+    selected.push(key.to_owned());
+    selected.sort_by_key(|item| {
+        available
+            .iter()
+            .position(|value| value == item)
+            .unwrap_or(usize::MAX)
+    });
+    true
+}
+fn choice_missing(values: Option<&Vec<String>>, available: &[String]) -> bool {
+    values.is_some_and(|values| values.iter().any(|value| !available.contains(value)))
+}
 impl Draft {
+    fn graph_capture(
+        &self,
+        graph: Option<&HierarchyHtmlGraphOptions>,
+    ) -> Result<Option<GraphCandidates>, &'static str> {
+        let Some(graph) = graph else {
+            return Ok(None);
+        };
+        if graph.selected_combatants.is_none() && graph.solo_categories.is_none() {
+            return Ok(None);
+        }
+        let candidates = self
+            .graph_candidates
+            .as_ref()
+            .ok_or("html-graph-load-candidates")?;
+        if candidates.encounters != self.selected.iter().map(|row| row.id).collect::<Vec<_>>() {
+            return Err("html-graph-load-candidates");
+        }
+        if choice_missing(graph.selected_combatants.as_ref(), &candidates.actors)
+            || choice_missing(graph.solo_categories.as_ref(), &candidates.categories)
+        {
+            return Err("html-graph-missing-choices");
+        }
+        Ok(Some(candidates.clone()))
+    }
     fn graphs(&self) -> Result<Option<HierarchyHtmlGraphOptions>, &'static str> {
         if !self.graph_levels.iter().any(|selected| *selected) {
             Ok(None)
@@ -138,8 +198,12 @@ impl Draft {
                 },
                 all_label: self.graph_all.clone(),
                 ward_prefix: self.graph_ward.clone(),
-                selected_combatants: None,
-                solo_categories: None,
+                selected_combatants: self.graph_levels[0]
+                    .then(|| self.graph_actors.clone())
+                    .flatten(),
+                solo_categories: self.graph_levels[1]
+                    .then(|| self.graph_categories.clone())
+                    .flatten(),
                 levels: LEVELS
                     .into_iter()
                     .zip(self.graph_levels)
@@ -152,6 +216,9 @@ impl Draft {
         self.selected.clear();
         self.owner = None;
         self.catalogs.clear();
+        self.graph_candidates = None;
+        self.graph_actors = None;
+        self.graph_categories = None;
         self.page = 0;
     }
 }
@@ -195,6 +262,7 @@ impl AppState {
             self.reports.html.owner = Some(self.revision.session);
             self.reports.html.selected.push(row);
         }
+        self.reports.html.graph_candidates = None;
         self.reports.leave();
         Ok(true)
     }
@@ -207,6 +275,53 @@ impl AppState {
             if index >= level as usize {
                 *selected = false;
             }
+        }
+        self.reports.leave();
+        true
+    }
+    pub(super) fn report_html_graph_candidates_begin(
+        &mut self,
+        token: Token,
+    ) -> Result<Option<(Token, Request)>, &'static str> {
+        if !self.report_html_editable(token) {
+            return Ok(None);
+        }
+        if self.reports.html.owner != Some(self.revision.session)
+            || self.reports.html.selected.is_empty()
+        {
+            return Err("html-report-select");
+        }
+        self.reports.html.graph_candidates = None;
+        self.reports.table_catalog = None;
+        self.reports.table.selected.clear();
+        self.reports.table.page = 0;
+        Ok(Some(self.report_admit(Request::HtmlGraphCandidates(
+            self.reports.html.selected.clone(),
+        ))))
+    }
+    pub(super) fn report_html_graph_scope(&mut self, token: Token, field: &str, key: &str) -> bool {
+        if !self.report_html_editable(token) {
+            return false;
+        }
+        let draft = &mut self.reports.html;
+        let Some(candidates) = &draft.graph_candidates else {
+            return false;
+        };
+        let (available, choice, mode) = match field {
+            "actors" => (&candidates.actors, &mut draft.graph_actors, false),
+            "categories" => (&candidates.categories, &mut draft.graph_categories, false),
+            "actors_mode" => (&candidates.actors, &mut draft.graph_actors, true),
+            "categories_mode" => (&candidates.categories, &mut draft.graph_categories, true),
+            _ => return false,
+        };
+        if mode {
+            match key {
+                "all" => *choice = None,
+                "custom" => *choice = Some(Vec::new()),
+                _ => return false,
+            }
+        } else if !toggle_graph_choice(available, choice, key) {
+            return false;
         }
         self.reports.leave();
         true
@@ -377,12 +492,66 @@ impl AppState {
                 settings.push(draft.settings(*level, catalog)?);
             }
             let graphs = html.graphs()?;
-            Request::HtmlRender(html.selected.clone(), html.last, settings, graphs)
+            let candidates = html.graph_capture(graphs.as_ref())?;
+            Request::HtmlRender(
+                html.selected.clone(),
+                html.last,
+                settings,
+                graphs,
+                candidates,
+            )
         } else {
             Request::HtmlCatalog
         };
         Ok(Some(self.report_admit(request)))
     }
+}
+
+pub(super) async fn candidates(
+    handle: &HostHandle,
+    selected: &[EncounterSummary],
+) -> Result<GraphCandidates, String> {
+    let ids: Vec<_> = selected.iter().map(|row| row.id).collect();
+    let selection = handle
+        .capture_hierarchy_html(&ids, TableLevel::Action)
+        .await
+        .map_err(|error| error.to_string())?
+        .ok_or("Encounter no longer exists")?;
+    let category_catalog = handle
+        .table_columns(TableLevel::Category)
+        .await
+        .map_err(|error| error.to_string())?;
+    let mut categories = Vec::new();
+    for category in category_catalog.categories {
+        if !categories.contains(&category.key) {
+            categories.push(category.key);
+        }
+    }
+    if categories.len() > 256 {
+        return Err("Graph category candidates exceed 256".into());
+    }
+    let mut actors = Vec::new();
+    for row in selected {
+        let catalog = handle
+            .table_report_catalog(&TableScope::Combatants(row.id))
+            .await
+            .map_err(|error| error.to_string())?
+            .ok_or("Encounter no longer exists")?;
+        for actor in catalog.rows.into_iter().filter_map(|entry| entry.combatant) {
+            if !actors.contains(&actor) {
+                actors.push(actor);
+            }
+            if actors.len() > 256 {
+                return Err("Graph combatant candidates exceed 256".into());
+            }
+        }
+    }
+    Ok(GraphCandidates {
+        encounters: selected.iter().map(|row| row.id).collect(),
+        actors,
+        categories,
+        selection,
+    })
 }
 
 pub(super) async fn catalogs(handle: &HostHandle) -> Result<Reply, String> {
@@ -403,20 +572,25 @@ pub(super) async fn render(
     last: TableLevel,
     settings: &[HierarchyHtmlLevel],
     graphs: Option<&HierarchyHtmlGraphOptions>,
+    expected: Option<&GraphCandidates>,
 ) -> Result<Reply, String> {
     let ids: Vec<_> = selected.iter().map(|row| row.id).collect();
-    let report = match handle
-        .capture_hierarchy_html(
-            &ids,
-            if graphs.is_some() {
-                TableLevel::Action
-            } else {
-                last
-            },
-        )
-        .await
-        .map_err(|error| error.to_string())?
-    {
+    let choice = match expected {
+        Some(expected) if expected.encounters == ids => Some(expected.selection.clone()),
+        Some(_) => return Err("Graph choices changed; reload candidates".into()),
+        None => handle
+            .capture_hierarchy_html(
+                &ids,
+                if graphs.is_some() {
+                    TableLevel::Action
+                } else {
+                    last
+                },
+            )
+            .await
+            .map_err(|error| error.to_string())?,
+    };
+    let report = match choice {
         Some(choice) => Some(
             handle
                 .hierarchy_html_with_graphs(&choice, settings, graphs)

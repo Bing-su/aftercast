@@ -254,7 +254,7 @@ async fn hierarchy_html_reports_ui_contract_bounds_drafts_and_actual_registry_ch
     assert!(f.ui.report_html_page(f.ui.report_token(), 4));
     assert!(!f.ui.report_html_page(f.ui.report_token(), usize::MAX));
     let (token, request) = begin(&mut f);
-    let Request::HtmlRender(selected, _, _, _) = &request else {
+    let Request::HtmlRender(selected, _, _, _, _) = &request else {
         panic!("admitted snapshot")
     };
     assert_eq!(selected.len(), 64);
@@ -475,5 +475,153 @@ async fn hierarchy_html_ui_contract_graph_snapshot_and_no_overwrite() {
     let (token, request) = f.save("graph-report.html");
     assert!(f.ui.report_receive(token, perform(&f.host.handle(), &request).await, ""));
     assert!(f.ui.reports.error.is_some());
+    f.host.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn hierarchy_html_ui_contract_graph_explicit_choices_are_owned_and_stale_safe() {
+    let mut f = Fixture::new_with("HierarchyHtmlPlugin", "0|100\n3|200\n").await;
+    load(&mut f).await;
+    let id = f.ui.encounters[0].id;
+    toggle(&mut f, id);
+    assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "toggle", "0".into()));
+    assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "toggle", "1".into()));
+    let (token, request) =
+        f.ui.report_html_graph_candidates_begin(f.ui.report_token())
+            .unwrap()
+            .unwrap();
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(f.ui.report_receive(token, result, ""));
+    let candidates = f.ui.reports.html.graph_candidates.clone().unwrap();
+    let actor = candidates.actors.first().unwrap().clone();
+    assert!(candidates.categories.iter().any(|key| key == "Damage"));
+    assert!(f.ui.report_html_graph_scope(f.ui.report_token(), "actors_mode", "custom"));
+    assert!(f.ui.report_html_graph_scope(f.ui.report_token(), "actors", &actor));
+    assert!(f.ui.report_html_graph_scope(f.ui.report_token(), "categories_mode", "custom"));
+    assert!(f.ui.report_html_graph_scope(f.ui.report_token(), "categories", "Damage"));
+    let (token, request) = begin(&mut f);
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(f.ui.report_receive(token, result, ""));
+    let content = f.ui.report_preview().unwrap().report.clone();
+    let Content::Html(report, _, _, graphs) = content.as_ref() else {
+        panic!("HTML")
+    };
+    let graph = graphs.as_ref().unwrap();
+    assert_eq!(graph.selected_combatants.as_ref().unwrap(), &[actor]);
+    assert_eq!(graph.solo_categories.as_ref().unwrap(), &["Damage"]);
+    assert!(report.content.contains("<polyline"));
+    f.ui.reports.html.graph_actors = Some(vec!["Missing choice".into()]);
+    assert!(matches!(
+        f.ui.report_html_begin(f.ui.report_token(), true),
+        Err("html-graph-missing-choices")
+    ));
+    assert!(f.ui.report_html_graph_scope(f.ui.report_token(), "actors", "Missing choice"));
+    assert_eq!(f.ui.reports.html.graph_actors, Some(vec![]));
+    f.ui.reports.html.graph_actors = Some(vec!["hidden stale actor".into()]);
+    assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "toggle", "0".into()));
+    let (token, request) = begin(&mut f);
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(f.ui.report_receive(token, result, ""));
+    assert!(
+        f.ui.report_preview().is_some(),
+        "inactive actor choice does not block solo graph"
+    );
+    toggle(&mut f, id);
+    assert!(f.ui.reports.html.graph_candidates.is_none());
+    assert!(f.ui.report_preview().is_none());
+    f.host.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn hierarchy_html_ui_contract_graph_choices_reject_changed_registry() {
+    let mut f = Fixture::new_with("HierarchyHtmlPlugin", "0|100\n3|200\n").await;
+    load(&mut f).await;
+    let id = f.ui.encounters[0].id;
+    toggle(&mut f, id);
+    assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "toggle", "1".into()));
+    let (token, request) =
+        f.ui.report_html_graph_candidates_begin(f.ui.report_token())
+            .unwrap()
+            .unwrap();
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(f.ui.report_receive(token, result, ""));
+    assert!(f.ui.report_html_graph_scope(f.ui.report_token(), "categories_mode", "custom"));
+    assert!(f.ui.report_html_graph_scope(f.ui.report_token(), "categories", "Damage"));
+    let (token, request) = begin(&mut f);
+    let path = f.root.join("synthetic-registry-change.log");
+    std::fs::write(&path, "100|1113\n").unwrap();
+    f.host
+        .import_log(&path)
+        .await
+        .expect("synthetic registry mutation");
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(result.is_err(), "stale registry rejected");
+    assert!(f.ui.report_receive(token, result, ""));
+    assert!(f.ui.report_preview().is_none());
+    f.host.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn hierarchy_html_ui_contract_graph_choices_reject_same_key_actor_replacement() {
+    let mut f = Fixture::new_with("HierarchyHtmlPlugin", "0|100\n3|200\n").await;
+    load(&mut f).await;
+    let id = f.ui.encounters[0].id;
+    toggle(&mut f, id);
+    assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "toggle", "0".into()));
+    let (token, request) =
+        f.ui.report_html_graph_candidates_begin(f.ui.report_token())
+            .unwrap()
+            .unwrap();
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(f.ui.report_receive(token, result, ""));
+    let actor =
+        f.ui.reports
+            .html
+            .graph_candidates
+            .as_ref()
+            .unwrap()
+            .actors
+            .first()
+            .unwrap()
+            .clone();
+    assert!(f.ui.report_html_graph_scope(f.ui.report_token(), "actors_mode", "custom"));
+    assert!(f.ui.report_html_graph_scope(f.ui.report_token(), "actors", &actor));
+    let (token, request) = begin(&mut f);
+    let path = f.root.join("synthetic-actor-replacement.log");
+    std::fs::write(&path, "100|1114\n").unwrap();
+    f.host
+        .import_log(&path)
+        .await
+        .expect("synthetic replacement");
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(result.is_err(), "same-key replacement rejected");
+    assert!(f.ui.report_receive(token, result, ""));
+    assert!(f.ui.report_preview().is_none());
+    f.host.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn hierarchy_html_ui_contract_all_mode_retires_graph_choice_capture() {
+    let mut f = Fixture::new_with("HierarchyHtmlPlugin", "0|100\n3|200\n").await;
+    load(&mut f).await;
+    let id = f.ui.encounters[0].id;
+    toggle(&mut f, id);
+    assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "toggle", "0".into()));
+    let (token, request) =
+        f.ui.report_html_graph_candidates_begin(f.ui.report_token())
+            .unwrap()
+            .unwrap();
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(f.ui.report_receive(token, result, ""));
+    assert!(f.ui.reports.html.graph_candidates.is_some());
+    let (token, request) = begin(&mut f);
+    assert!(f.ui.reports.html.graph_candidates.is_none());
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(f.ui.report_receive(token, result, ""));
+    assert!(f.ui.report_preview().is_some());
     f.host.shutdown().await.unwrap();
 }

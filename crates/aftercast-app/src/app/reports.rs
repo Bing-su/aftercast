@@ -110,11 +110,13 @@ impl Content {
 #[derive(Clone, Debug)]
 enum Request {
     HtmlCatalog,
+    HtmlGraphCandidates(Vec<aftercast::EncounterSummary>),
     HtmlRender(
         Vec<aftercast::EncounterSummary>,
         aftercast::TableLevel,
         Vec<aftercast::HierarchyHtmlLevel>,
         Option<aftercast::HierarchyHtmlGraphOptions>,
+        Option<html::GraphCandidates>,
     ),
     Hierarchy(EncounterId, aftercast::HierarchyXmlDepth, String),
     Catalog,
@@ -139,6 +141,7 @@ enum Request {
 #[derive(Debug)]
 enum Reply {
     HtmlCatalog(Vec<aftercast::TableCatalog>),
+    HtmlGraphCandidates(html::GraphCandidates),
     HtmlReport(
         Option<aftercast::HierarchyHtmlReport>,
         Vec<aftercast::HierarchyHtmlLevel>,
@@ -306,6 +309,9 @@ impl AppState {
         Ok(Some(self.report_admit(request)))
     }
     fn report_admit(&mut self, request: Request) -> (Token, Request) {
+        if matches!(&request, Request::HtmlRender(_, _, _, _, None)) {
+            self.reports.html.graph_candidates = None;
+        }
         self.reports.epoch += 1;
         let token = self.report_token();
         if matches!(request, Request::Save { .. }) {
@@ -343,6 +349,9 @@ impl AppState {
         }
         match result {
             Ok(Reply::HtmlCatalog(catalogs)) => self.receive_report_html_catalogs(catalogs),
+            Ok(Reply::HtmlGraphCandidates(candidates)) => {
+                self.reports.html.graph_candidates = Some(candidates)
+            }
             Ok(Reply::HtmlReport(Some(report), levels, selected, graphs)) => {
                 self.reports.preview = Some(Preview {
                     token,
@@ -452,8 +461,19 @@ impl AppState {
 async fn perform(handle: &HostHandle, request: &Request) -> Result<Reply, String> {
     match request {
         Request::HtmlCatalog => html::catalogs(handle).await,
-        Request::HtmlRender(selected, last, settings, graphs) => {
-            html::render(handle, selected, *last, settings, graphs.as_ref()).await
+        Request::HtmlGraphCandidates(selected) => html::candidates(handle, selected)
+            .await
+            .map(Reply::HtmlGraphCandidates),
+        Request::HtmlRender(selected, last, settings, graphs, candidates) => {
+            html::render(
+                handle,
+                selected,
+                *last,
+                settings,
+                graphs.as_ref(),
+                candidates.as_ref(),
+            )
+            .await
         }
         Request::Hierarchy(target, depth, title) => {
             let report = match handle

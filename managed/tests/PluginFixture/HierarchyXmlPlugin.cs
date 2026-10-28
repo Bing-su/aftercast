@@ -70,6 +70,12 @@ public class HierarchyXmlPlugin:IActPluginV1
         if(!import)throw new InvalidOperationException("Hierarchy fixture requires synthetic import");
         var amount=long.Parse(info.logLine.Split('|')[1],CultureInfo.InvariantCulture);
         if(Html&&amount==1111)CombatantData.ColumnDefs.Remove("registered-b");
+        if(Html&&amount==1113)CombatantData.OutgoingDamageTypeDataObjects["New Synthetic Category"]=new("New Synthetic Category",0,System.Drawing.Color.Red);
+        if(Html&&amount==1114)
+        {
+            var previous=root.ZoneList.SelectMany(zone=>zone.Items).FirstOrDefault(encounter=>encounter.Items.Count>0);
+            if(previous is not null){var key=previous.Items.Keys[0];previous.Items[key]=new CombatantData(previous.Items[key].Name,previous);}
+        }
         if(Html&&amount==1112)CombatantData.ColumnDefs["registered-b"]=new("Re-registered label",true,"TEXT","second",row=>{Own(row);return "re-registered "+row.Name;},Actor,(_,_)=>0);
         if((Html||ExpandedXml)&&amount==999&&!htmlColumns)
         {
