@@ -91,7 +91,7 @@ async fn hierarchy_html_reports_ui_contract_multi_depth_snapshot_and_new_file_by
         let result = perform(&f.host.handle(), &request).await;
         assert!(f.ui.report_receive(token, result, ""));
         let content = f.ui.report_preview().expect("preview").report.clone();
-        let Content::Html(report, settings, selected) = content.as_ref() else {
+        let Content::Html(report, settings, selected, _) = content.as_ref() else {
             panic!("HTML")
         };
         assert_eq!(report.selection.last_level(), level);
@@ -254,7 +254,7 @@ async fn hierarchy_html_reports_ui_contract_bounds_drafts_and_actual_registry_ch
     assert!(f.ui.report_html_page(f.ui.report_token(), 4));
     assert!(!f.ui.report_html_page(f.ui.report_token(), usize::MAX));
     let (token, request) = begin(&mut f);
-    let Request::HtmlRender(selected, _, _) = &request else {
+    let Request::HtmlRender(selected, _, _, _) = &request else {
         panic!("admitted snapshot")
     };
     assert_eq!(selected.len(), 64);
@@ -283,7 +283,7 @@ async fn hierarchy_html_reports_ui_contract_bounds_drafts_and_actual_registry_ch
         [ids[0], next]
     );
     preview(&mut f).await;
-    let Content::Html(report, _, selected) =
+    let Content::Html(report, _, selected, _) =
         f.ui.report_preview()
             .expect("cross-page result")
             .report
@@ -437,4 +437,43 @@ async fn hierarchy_html_reports_ui_contract_bounded_text_preview_saves_full_owne
         content.text().as_bytes()
     );
     f.host.shutdown().await.expect("shutdown");
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn hierarchy_html_ui_contract_graph_snapshot_and_no_overwrite() {
+    let mut f = Fixture::new_with("HierarchyHtmlPlugin", "0|100\n3|200\n").await;
+    load(&mut f).await;
+    let id = f.ui.encounters[0].id;
+    toggle(&mut f, id);
+    let token = f.ui.report_token();
+    assert!(f.ui.report_html_graph_edit(token, "toggle", "3".into()));
+    assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "distribution", "Resist".into()));
+    assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "action_sort", "registered-a".into()));
+    assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "window", "1".into()));
+    let (token, request) = begin(&mut f);
+    assert!(!f.ui.report_html_graph_edit(token, "clear", String::new()));
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(f.ui.report_receive(token, result, ""));
+    let content = f.ui.report_preview().expect("preview").report.clone();
+    let Content::Html(report, settings, _, graphs) = content.as_ref() else {
+        panic!("HTML")
+    };
+    assert_eq!(settings.len(), 4);
+    assert_eq!(graphs.as_ref().unwrap().levels, [TableLevel::Action]);
+    assert!(
+        report.content.contains("<svg")
+            && report.content.contains("<rect")
+            && !report.content.contains("<polyline")
+    );
+    let (token, request) = f.save("graph-report.html");
+    assert!(f.ui.report_receive(token, perform(&f.host.handle(), &request).await, "saved"));
+    assert_eq!(
+        std::fs::read(f.root.join("graph-report.html")).unwrap(),
+        report.content.as_bytes()
+    );
+    let (token, request) = f.save("graph-report.html");
+    assert!(f.ui.report_receive(token, perform(&f.host.handle(), &request).await, ""));
+    assert!(f.ui.reports.error.is_some());
+    f.host.shutdown().await.unwrap();
 }

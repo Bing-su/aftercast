@@ -40,7 +40,9 @@ mod process;
 mod runtime;
 pub use process::{run_child_if_requested, run_child_if_requested_with_audio};
 mod hierarchy_html;
-pub use hierarchy_html::{HierarchyHtmlLevel, HierarchyHtmlReport, HierarchyHtmlSelection};
+pub use hierarchy_html::{
+    HierarchyHtmlGraphOptions, HierarchyHtmlLevel, HierarchyHtmlReport, HierarchyHtmlSelection,
+};
 mod hierarchy_xml;
 mod reports;
 pub use hierarchy_xml::{HierarchyXmlDepth, HierarchyXmlReport, HierarchyXmlSelection};

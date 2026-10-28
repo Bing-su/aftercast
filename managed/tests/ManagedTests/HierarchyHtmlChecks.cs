@@ -44,6 +44,11 @@ internal static class HierarchyHtmlChecks
         Check(html.Contains("<polyline",StringComparison.Ordinal)&&html.Contains("<rect",StringComparison.Ordinal)&&html.Contains("A100 100",StringComparison.Ordinal),"owned line, pie and bars rendered");
         Check(html.Contains("Strike&lt;&amp;",StringComparison.Ordinal)&&!html.Contains("<script",StringComparison.OrdinalIgnoreCase),"graph text escaped");
         Check(f.SqlCalls>0,"distribution uses original SQL callbacks");
+        var shallow=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings with{Levels=[TableLevel.Combatant]});
+        Check(Regex.Matches(shallow.Content,"<table>").Count==1 && shallow.Content.Contains("<polyline",StringComparison.Ordinal) && !shallow.Content.Contains("<rect",StringComparison.Ordinal) && !shallow.Content.Contains("A100 100",StringComparison.Ordinal),"independent shallow table and graph depths");
+        Throws<ArgumentException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings with{Levels=[TableLevel.Action]}));
+        var onlyBars=f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings with{Levels=[TableLevel.Action]});
+        Check(onlyBars.Content.Contains("<rect",StringComparison.Ordinal)&&!onlyBars.Content.Contains("<polyline",StringComparison.Ordinal),"independent action graph");
         var stale=Capture(f,TableLevel.Combatant);Throws<InvalidOperationException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings));
         Throws<ArgumentException>(()=>f.Host.ReadHierarchyHtml(stale.Revision,Options(TableLevel.Combatant),settings));
         capture=Capture(f);AttackType.ColumnDefs["attack-key"].GetSqlData=attack=>{f.Own(attack);throw new IOException("synthetic graph SQL");};
@@ -59,6 +64,7 @@ internal static class HierarchyHtmlChecks
         var selectedHtml=f.Host.ReadHierarchyHtml(capture.Revision,Options(),selecting).Content;f.Callback=null;
         Check(selectedHtml.Contains(">Damage</text>",StringComparison.Ordinal)&&!selectedHtml.Contains(">Healing</text>",StringComparison.Ordinal),"solo selection snapshot respected");
         Throws<ArgumentException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings with{SoloCategories=["Damage","Damage"]}));
+        Throws<ArgumentException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings with{DistributionColumn="Resist", WardPrefix="", Levels=[TableLevel.Attack]}));
         MasterSwing.ColumnDefs["action-key"].SortComparer=(left,right)=>{f.Own(left);f.Own(right);Capture(f);return 0;};
         capture=Capture(f);Throws<InvalidOperationException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings));
         MasterSwing.ColumnDefs["action-key"].SortComparer=(_,_)=>0;

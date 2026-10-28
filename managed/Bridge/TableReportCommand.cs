@@ -37,14 +37,14 @@ public static partial class EntryPoint
         }
         var request = JsonSerializer.Deserialize<TableReportRequest>(json, HostJson.Options)
             ?? throw new ArgumentException("Missing table report request");
-        if(command <= 4 && (request.Html is not null || request.HtmlLevels is not null))throw new ArgumentException("Unexpected HTML hierarchy fields");
+        if(command <= 4 && (request.Html is not null || request.HtmlLevels is not null || request.Graphs is not null))throw new ArgumentException("Unexpected HTML hierarchy fields");
         var valid = command switch
         {
             1 => request.Scope is not null && request.Revision == 0 && request.Options is null && request.Hierarchy is null,
             2 => request.Scope is null && request.Revision != 0 && request.Options is not null && request.Hierarchy is null,
             3 => request.Scope is null && request.Revision == 0 && request.Options is null && request.Hierarchy is {} hierarchy && hierarchy.EncounterId != 0 && Enum.IsDefined(hierarchy.Depth),
             4 => request.Scope is null && request.Revision != 0 && request.Options is null && request.Hierarchy is null,
-            5 => request.Scope is null && request.Revision == 0 && request.Options is null && request.Hierarchy is null && request.HtmlLevels is null && request.Html is {} html && html.Encounters is {Length:>=1 and <=64} ids && ids.All(id=>id!=0) && ids.Distinct().Count()==ids.Length && html.LastLevel is >=TableLevel.Combatant and <=TableLevel.Action,
+            5 => request.Scope is null && request.Revision == 0 && request.Options is null && request.Hierarchy is null && request.HtmlLevels is null && request.Graphs is null && request.Html is {} html && html.Encounters is {Length:>=1 and <=64} ids && ids.All(id=>id!=0) && ids.Distinct().Count()==ids.Length && html.LastLevel is >=TableLevel.Combatant and <=TableLevel.Action,
             6 => request.Scope is null && request.Revision != 0 && request.Options is null && request.Hierarchy is null && request.Html is null && request.HtmlLevels is {} levels && ValidHtmlLevels(levels),
             _ => false
         };
@@ -70,7 +70,7 @@ public static partial class EntryPoint
         return 0;
     });
 }
-internal sealed record TableReportRequest(TableScope? Scope = null, ulong Revision = 0, TableReportOptions? Options = null, HierarchyXmlRequest? Hierarchy = null, HierarchyHtmlRequest? Html = null, HierarchyHtmlLevel[]? HtmlLevels = null);
+internal sealed record TableReportRequest(TableScope? Scope = null, ulong Revision = 0, TableReportOptions? Options = null, HierarchyXmlRequest? Hierarchy = null, HierarchyHtmlRequest? Html = null, HierarchyHtmlLevel[]? HtmlLevels = null, HierarchyHtmlGraphOptions? Graphs = null);
 internal sealed record HierarchyHtmlRequest(ulong[] Encounters,TableLevel LastLevel);
 internal sealed record HierarchyXmlRequest(ulong EncounterId, HierarchyXmlDepth Depth);
 internal static class TableReportEncoding
@@ -149,7 +149,7 @@ internal static class HierarchyHtmlEncoding
     {
         // Original owner callbacks execute once; only owned primitive metadata/source is serialized.
         var catalog=command==5?host.CaptureHierarchyHtml(request.Html!.Encounters,request.Html.LastLevel):null;
-        var report=command==6?host.ReadHierarchyHtml(request.Revision,request.HtmlLevels!):null;
+        var report=command==6?host.ReadHierarchyHtml(request.Revision,request.HtmlLevels!,request.Graphs):null;
         using var stream=new MemoryStream();using var writer=new BinaryWriter(stream,new UTF8Encoding(false,true),true);
         if(command==5)writer.Write(catalog is null?0u:1u);
         if(catalog is not null||report is not null)

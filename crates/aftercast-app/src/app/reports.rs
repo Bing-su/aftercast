@@ -35,6 +35,7 @@ enum Content {
         aftercast::HierarchyHtmlReport,
         Vec<aftercast::HierarchyHtmlLevel>,
         Vec<aftercast::EncounterSummary>,
+        Option<aftercast::HierarchyHtmlGraphOptions>,
     ),
 }
 impl Content {
@@ -57,14 +58,30 @@ impl Content {
     fn description(&self) -> String {
         match self {
             Self::Text(_, options) => format!("Text · {}", options.sorting),
-            Self::Html(report, _, _) => format!(
-                "{} · {} · {} encounters · {} tables · {} rows",
-                super::tr("html-report-title"),
-                super::tr(html::label(report.selection.last_level())),
-                report.selection.encounters().len(),
-                report.selection.table_count(),
-                report.selection.row_count()
-            ),
+            Self::Html(report, levels, _, graphs) => {
+                let label = super::tr(html::label(
+                    levels
+                        .last()
+                        .map_or(aftercast::TableLevel::Combatant, |level| level.level),
+                ));
+                if graphs.is_some() {
+                    format!(
+                        "{} · {} · {} encounters",
+                        super::tr("html-report-title"),
+                        label,
+                        report.selection.encounters().len()
+                    )
+                } else {
+                    format!(
+                        "{} · {} · {} encounters · {} tables · {} rows",
+                        super::tr("html-report-title"),
+                        label,
+                        report.selection.encounters().len(),
+                        report.selection.table_count(),
+                        report.selection.row_count()
+                    )
+                }
+            }
             Self::Hierarchy(report) => format!(
                 "{} · {} · {} tables · {} rows",
                 super::tr("hierarchy-report-title"),
@@ -97,6 +114,7 @@ enum Request {
         Vec<aftercast::EncounterSummary>,
         aftercast::TableLevel,
         Vec<aftercast::HierarchyHtmlLevel>,
+        Option<aftercast::HierarchyHtmlGraphOptions>,
     ),
     Hierarchy(EncounterId, aftercast::HierarchyXmlDepth, String),
     Catalog,
@@ -125,6 +143,7 @@ enum Reply {
         Option<aftercast::HierarchyHtmlReport>,
         Vec<aftercast::HierarchyHtmlLevel>,
         Vec<aftercast::EncounterSummary>,
+        Option<aftercast::HierarchyHtmlGraphOptions>,
     ),
     Hierarchy(Option<aftercast::HierarchyXmlReport>, String),
     Catalog(TextReportCatalog),
@@ -324,11 +343,11 @@ impl AppState {
         }
         match result {
             Ok(Reply::HtmlCatalog(catalogs)) => self.receive_report_html_catalogs(catalogs),
-            Ok(Reply::HtmlReport(Some(report), levels, selected)) => {
+            Ok(Reply::HtmlReport(Some(report), levels, selected, graphs)) => {
                 self.reports.preview = Some(Preview {
                     token,
                     title: "HTML".to_owned(),
-                    report: Arc::new(Content::Html(report, levels, selected)),
+                    report: Arc::new(Content::Html(report, levels, selected, graphs)),
                 });
             }
             Ok(Reply::HtmlReport(None, ..)) => {
@@ -433,8 +452,8 @@ impl AppState {
 async fn perform(handle: &HostHandle, request: &Request) -> Result<Reply, String> {
     match request {
         Request::HtmlCatalog => html::catalogs(handle).await,
-        Request::HtmlRender(selected, last, settings) => {
-            html::render(handle, selected, *last, settings).await
+        Request::HtmlRender(selected, last, settings, graphs) => {
+            html::render(handle, selected, *last, settings, graphs.as_ref()).await
         }
         Request::Hierarchy(target, depth, title) => {
             let report = match handle

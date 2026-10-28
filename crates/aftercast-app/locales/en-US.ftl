@@ -608,3 +608,16 @@ html-report-remove = Remove encounter
 
 html-report-load = Reload columns
 html-report-load-first = Load the registered columns first.
+
+html-graph-title = Graphs (Advanced)
+html-graph-help = Select graph depth independently. Simple graphs and native appearance are not yet supported. Generated SVG is saved as static source.
+html-graph-none = No graphs
+html-graph-window = Average window in seconds (1–120)
+html-graph-rolling = Rolling average
+html-graph-distribution = Distribution column key or Resist
+html-graph-action = Action sorting column key
+html-graph-all = Localized All key
+html-graph-ward = Localized ward prefix
+html-graph-invalid = Enter valid graph settings and required column keys.
+html-graph-sql-help = Listed sort keys may lack SQL callbacks; unsupported columns produce an error.
+html-graph-bucket = Fixed buckets

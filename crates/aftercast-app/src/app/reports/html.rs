@@ -1,5 +1,8 @@
 use super::*;
-use aftercast::{EncounterSummary, HierarchyHtmlLevel, TableCatalog, TableLevel, TableSort};
+use aftercast::{
+    EncounterSummary, HierarchyHtmlGraphOptions, HierarchyHtmlLevel, TableCatalog, TableLevel,
+    TableSort,
+};
 pub(super) const LEVELS: [TableLevel; 4] = [
     TableLevel::Combatant,
     TableLevel::Category,
@@ -73,6 +76,13 @@ pub(super) struct Draft {
     pub owner: Option<u64>,
     pub catalogs: Vec<Arc<TableCatalog>>,
     pub page: usize,
+    pub graph_levels: [bool; 4],
+    pub graph_window: String,
+    pub graph_rolling: bool,
+    pub graph_distribution: String,
+    pub graph_action_sort: String,
+    pub graph_all: String,
+    pub graph_ward: String,
 }
 impl Default for Draft {
     fn default() -> Self {
@@ -83,6 +93,13 @@ impl Default for Draft {
             owner: None,
             catalogs: vec![],
             page: 0,
+            graph_levels: [false; 4],
+            graph_window: "10".into(),
+            graph_rolling: true,
+            graph_distribution: String::new(),
+            graph_action_sort: String::new(),
+            graph_all: "All".into(),
+            graph_ward: "Warded/".into(),
         }
     }
 }
@@ -142,6 +159,45 @@ impl AppState {
             return false;
         }
         self.reports.html.last = level;
+        for (index, selected) in self.reports.html.graph_levels.iter_mut().enumerate() {
+            if index >= level as usize {
+                *selected = false;
+            }
+        }
+        self.reports.leave();
+        true
+    }
+    pub(super) fn report_html_graph_edit(
+        &mut self,
+        token: Token,
+        field: &str,
+        value: String,
+    ) -> bool {
+        if !self.report_html_editable(token) {
+            return false;
+        }
+        let draft = &mut self.reports.html;
+        match field {
+            "toggle" => match value.parse::<usize>() {
+                Ok(index) if index < 4 => {
+                    draft.graph_levels[index] = !draft.graph_levels[index];
+                    if draft.graph_levels[index] && (draft.last as usize) < index + 1 {
+                        draft.last = LEVELS[index];
+                    }
+                }
+                _ => return false,
+            },
+            "clear" => draft.graph_levels = [false; 4],
+            "window" => draft.graph_window = value,
+            "rolling" if value == "true" || value == "false" => {
+                draft.graph_rolling = value == "true"
+            }
+            "distribution" => draft.graph_distribution = value,
+            "action_sort" => draft.graph_action_sort = value,
+            "all" => draft.graph_all = value,
+            "ward" => draft.graph_ward = value,
+            _ => return false,
+        }
         self.reports.leave();
         true
     }
@@ -271,7 +327,49 @@ impl AppState {
                     .ok_or("html-report-load-first")?;
                 settings.push(draft.settings(*level, catalog)?);
             }
-            Request::HtmlRender(html.selected.clone(), html.last, settings)
+            let graphs = if !html.graph_levels.iter().any(|selected| *selected) {
+                None
+            } else {
+                let window = html
+                    .graph_window
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|value| (1..=120).contains(value))
+                    .ok_or("html-graph-invalid")?;
+                if (html.graph_levels[2] && html.graph_distribution.is_empty())
+                    || (html.graph_levels[3] && html.graph_action_sort.is_empty())
+                    || html.graph_all.is_empty()
+                    || (html.graph_levels[2]
+                        && html.graph_distribution == "Resist"
+                        && html.graph_ward.is_empty())
+                {
+                    return Err("html-graph-invalid");
+                }
+                Some(HierarchyHtmlGraphOptions {
+                    window,
+                    rolling: html.graph_rolling,
+                    distribution_column: if html.graph_levels[2] {
+                        html.graph_distribution.clone()
+                    } else {
+                        "Resist".into()
+                    },
+                    action_sort_column: if html.graph_levels[3] {
+                        html.graph_action_sort.clone()
+                    } else {
+                        "unused".into()
+                    },
+                    all_label: html.graph_all.clone(),
+                    ward_prefix: html.graph_ward.clone(),
+                    selected_combatants: None,
+                    solo_categories: None,
+                    levels: LEVELS
+                        .into_iter()
+                        .zip(html.graph_levels)
+                        .filter_map(|(level, selected)| selected.then_some(level))
+                        .collect(),
+                })
+            };
+            Request::HtmlRender(html.selected.clone(), html.last, settings, graphs)
         } else {
             Request::HtmlCatalog
         };
@@ -296,16 +394,24 @@ pub(super) async fn render(
     selected: &[EncounterSummary],
     last: TableLevel,
     settings: &[HierarchyHtmlLevel],
+    graphs: Option<&HierarchyHtmlGraphOptions>,
 ) -> Result<Reply, String> {
     let ids: Vec<_> = selected.iter().map(|row| row.id).collect();
     let report = match handle
-        .capture_hierarchy_html(&ids, last)
+        .capture_hierarchy_html(
+            &ids,
+            if graphs.is_some() {
+                TableLevel::Action
+            } else {
+                last
+            },
+        )
         .await
         .map_err(|error| error.to_string())?
     {
         Some(choice) => Some(
             handle
-                .hierarchy_html(&choice, settings)
+                .hierarchy_html_with_graphs(&choice, settings, graphs)
                 .await
                 .map_err(|error| error.to_string())?,
         ),
@@ -326,5 +432,10 @@ pub(super) async fn render(
             .collect::<Result<Vec<_>, _>>()?,
         None => vec![],
     };
-    Ok(Reply::HtmlReport(report, settings.to_vec(), ordered))
+    Ok(Reply::HtmlReport(
+        report,
+        settings.to_vec(),
+        ordered,
+        graphs.cloned(),
+    ))
 }

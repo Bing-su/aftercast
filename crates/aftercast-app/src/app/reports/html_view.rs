@@ -1,7 +1,10 @@
 use super::super::tr;
 use super::*;
 use crate::components::{Button, ButtonVariant, Input, Label};
-use aftercast::{EncounterSummary, HierarchyHtmlLevel, HierarchyHtmlReport, TableLevel};
+use aftercast::{
+    EncounterSummary, HierarchyHtmlGraphOptions, HierarchyHtmlLevel, HierarchyHtmlReport,
+    TableLevel,
+};
 use dioxus::prelude::*;
 fn begin(mut state: Signal<AppState>, token: Token, render: bool) {
     let result = state.write().report_html_begin(token, render);
@@ -128,8 +131,183 @@ pub(super) fn Editor() -> Element {
             for level in html::LEVELS.into_iter().take(draft.last as usize) {
                 LevelEditor { level }
             }
+            GraphEditor {}
             Button { disabled: !ready, onclick: move |_| begin(state, token, true),
                 {tr("report-generate")}
+            }
+        }
+    }
+}
+#[component]
+fn GraphEditor() -> Element {
+    let mut state = use_context::<Signal<AppState>>();
+    let current = state.read();
+    let token = current.report_token();
+    let disabled = !current.report_html_editable(token);
+    let draft = current.reports.html.clone();
+    drop(current);
+    rsx! {
+        section { class: "space-y-3 rounded-md border border-border p-3",
+            h4 { class: "text-sm font-medium", {tr("html-graph-title")} }
+            p { class: "text-xs text-muted-foreground", {tr("html-graph-help")} }
+            div { class: "flex flex-wrap gap-2",
+                Button {
+                    variant: ButtonVariant::Outline,
+                    disabled,
+                    aria_pressed: Some(!draft.graph_levels.iter().any(|selected| *selected)),
+                    onclick: move |_| {
+                        state.write().report_html_graph_edit(token, "clear", String::new());
+                    },
+                    {tr("html-graph-none")}
+                }
+                for (index, level) in html::LEVELS.into_iter().enumerate() {
+                    Button {
+                        variant: ButtonVariant::Outline,
+                        disabled,
+                        aria_pressed: Some(draft.graph_levels[index]),
+                        onclick: move |_| {
+                            state.write().report_html_graph_edit(token, "toggle", index.to_string());
+                        },
+                        {tr(html::label(level))}
+                    }
+                }
+            }
+            if draft.graph_levels.iter().any(|selected| *selected) {
+                GraphField {
+                    token,
+                    disabled,
+                    field: "window",
+                    label: "html-graph-window",
+                    value: draft.graph_window.clone(),
+                }
+                Button {
+                    variant: ButtonVariant::Outline,
+                    disabled,
+                    aria_pressed: Some(draft.graph_rolling),
+                    onclick: move |_| {
+                        state
+                            .write()
+                            .report_html_graph_edit(
+                                token,
+                                "rolling",
+                                (!draft.graph_rolling).to_string(),
+                            );
+                    },
+                    {tr("html-graph-rolling")}
+                }
+                if draft.graph_levels[2] {
+                    GraphField {
+                        token,
+                        disabled,
+                        field: "distribution",
+                        label: "html-graph-distribution",
+                        value: draft.graph_distribution.clone(),
+                    }
+                    div { class: "flex flex-wrap gap-2",
+                        Button {
+                            variant: ButtonVariant::Outline,
+                            disabled,
+                            onclick: move |_| {
+                                state.write().report_html_graph_edit(token, "distribution", "Resist".into());
+                            },
+                            "Resist"
+                        }
+                        for column in draft
+                            .catalogs
+                            .iter()
+                            .filter(|catalog| catalog.level == TableLevel::Attack)
+                            .flat_map(|catalog| catalog.columns.iter().filter(|column| column.can_sort))
+                        {
+                            {
+                                let key = column.key.clone();
+                                let display = key.clone();
+                                rsx! {
+                                    Button {
+                                        variant: ButtonVariant::Outline,
+                                        disabled,
+                                        onclick: move |_| {
+                                            state.write().report_html_graph_edit(token, "distribution", key.clone());
+                                        },
+                                        "{display}"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                    p { class: "text-xs text-muted-foreground", {tr("html-graph-sql-help")} }
+                }
+                if draft.graph_levels[3] {
+                    GraphField {
+                        token,
+                        disabled,
+                        field: "action_sort",
+                        label: "html-graph-action",
+                        value: draft.graph_action_sort.clone(),
+                    }
+                    div { class: "flex flex-wrap gap-2",
+                        for column in draft
+                            .catalogs
+                            .iter()
+                            .filter(|catalog| catalog.level == TableLevel::Action)
+                            .flat_map(|catalog| catalog.columns.iter().filter(|column| column.can_sort))
+                        {
+                            {
+                                let key = column.key.clone();
+                                let display = key.clone();
+                                rsx! {
+                                    Button {
+                                        variant: ButtonVariant::Outline,
+                                        disabled,
+                                        onclick: move |_| {
+                                            state.write().report_html_graph_edit(token, "action_sort", key.clone());
+                                        },
+                                        "{display}"
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+                GraphField {
+                    token,
+                    disabled,
+                    field: "all",
+                    label: "html-graph-all",
+                    value: draft.graph_all.clone(),
+                }
+                if draft.graph_levels[2] {
+                    GraphField {
+                        token,
+                        disabled,
+                        field: "ward",
+                        label: "html-graph-ward",
+                        value: draft.graph_ward.clone(),
+                    }
+                }
+            }
+        }
+    }
+}
+#[component]
+fn GraphField(
+    token: Token,
+    disabled: bool,
+    field: &'static str,
+    label: &'static str,
+    value: String,
+) -> Element {
+    let mut state = use_context::<Signal<AppState>>();
+    let id = format!("hierarchy-graph-{field}");
+    rsx! {
+        div { class: "space-y-2",
+            Label { html_for: id.clone(), {tr(label)} }
+            Input {
+                id,
+                value,
+                disabled,
+                oninput: move |event: FormEvent| {
+                    state.write().report_html_graph_edit(token, field, event.value());
+                },
             }
         }
     }
@@ -343,6 +521,7 @@ pub(super) fn snapshot(
     report: &HierarchyHtmlReport,
     levels: &[HierarchyHtmlLevel],
     selected: &[EncounterSummary],
+    graphs: Option<&HierarchyHtmlGraphOptions>,
 ) -> Element {
     rsx! {
         div { class: "space-y-2 text-xs text-muted-foreground",
@@ -377,11 +556,30 @@ pub(super) fn snapshot(
                     }
                 }
             }
-            p {
-                "{report.selection.table_count()} "
-                {tr("html-report-counts")}
-                " · {report.selection.row_count()} "
-                {tr("table-report-rows")}
+            if let Some(graph) = graphs {
+                p {
+                    {tr("html-graph-title")}
+                    ": "
+                    {
+                        graph
+                            .levels
+                            .iter()
+                            .map(|level| tr(html::label(*level)))
+                            .collect::<Vec<_>>()
+                            .join(", ")
+                    }
+                    " · {graph.window}s · "
+                    {if graph.rolling { tr("html-graph-rolling") } else { tr("html-graph-bucket") }}
+                    " · {graph.distribution_column} · {graph.action_sort_column} · {graph.all_label} · {graph.ward_prefix}"
+                }
+            }
+            if graphs.is_none() {
+                p {
+                    "{report.selection.table_count()} "
+                    {tr("html-report-counts")}
+                    " · {report.selection.row_count()} "
+                    {tr("table-report-rows")}
+                }
             }
         }
     }

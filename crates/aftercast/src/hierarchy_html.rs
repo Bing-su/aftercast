@@ -36,6 +36,19 @@ pub struct HierarchyHtmlLevel {
     /// Category tables preserve ACT source order and reject a sorter.
     pub sort: Option<TableSort>,
 }
+#[derive(Debug, Clone, PartialEq, Eq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HierarchyHtmlGraphOptions {
+    pub window: u32,
+    pub rolling: bool,
+    pub distribution_column: String,
+    pub action_sort_column: String,
+    pub all_label: String,
+    pub ward_prefix: String,
+    pub selected_combatants: Option<Vec<String>>,
+    pub solo_categories: Option<Vec<String>>,
+    pub levels: Vec<TableLevel>,
+}
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HierarchyHtmlReport {
     pub selection: HierarchyHtmlSelection,
@@ -104,19 +117,72 @@ impl HostHandle {
         selection: &HierarchyHtmlSelection,
         levels: &[HierarchyHtmlLevel],
     ) -> Result<HierarchyHtmlReport, Error> {
+        self.hierarchy_html_with_graphs(selection, levels, None)
+            .await
+    }
+    /// Render explicit graph settings against the same session-owned capture.
+    pub async fn hierarchy_html_with_graphs(
+        &self,
+        selection: &HierarchyHtmlSelection,
+        levels: &[HierarchyHtmlLevel],
+        graphs: Option<&HierarchyHtmlGraphOptions>,
+    ) -> Result<HierarchyHtmlReport, Error> {
         if selection.session != self.session
             || selection.revision == 0
             || !ids_valid(&selection.encounters, self.session)
         {
             return Err(invalid("HTML selection belongs to another session"));
         }
-        if !options_valid(levels, selection.last_level) {
+        let table_last = levels
+            .iter()
+            .map(|level| level.level)
+            .max_by_key(|level| *level as u32)
+            .unwrap_or(TableLevel::Encounter);
+        if !options_valid(
+            levels,
+            if graphs.is_some() {
+                table_last
+            } else {
+                selection.last_level
+            },
+        ) {
             return Err(invalid("invalid HTML levels/columns/sorting"));
+        }
+        if let Some(graph) = graphs {
+            let selections_valid = [&graph.selected_combatants, &graph.solo_categories]
+                .into_iter()
+                .all(|items| {
+                    items.as_ref().is_none_or(|items| {
+                        items.len() <= 256
+                            && items.iter().all(|item| key(item))
+                            && items.iter().collect::<HashSet<_>>().len() == items.len()
+                    })
+                });
+            if selection.last_level != TableLevel::Action
+                || !(1..=120).contains(&graph.window)
+                || !key(&graph.distribution_column)
+                || !key(&graph.action_sort_column)
+                || !key(&graph.all_label)
+                || graph.ward_prefix.len() > 1024
+                || graph.ward_prefix.contains('\0')
+                || (graph.levels.contains(&TableLevel::Attack)
+                    && graph.distribution_column == "Resist"
+                    && graph.ward_prefix.is_empty())
+                || !selections_valid
+                || graph.levels.is_empty()
+                || graph.levels.len() > 4
+                || graph.levels.iter().any(|level| {
+                    *level == TableLevel::Encounter || *level as u32 > table_last as u32
+                })
+                || graph.levels.iter().collect::<HashSet<_>>().len() != graph.levels.len()
+            {
+                return Err(invalid("invalid HTML graph options"));
+            }
         }
         let output = self
             .table_report_call(
                 6,
-                &serde_json::json!({"revision":selection.revision,"htmlLevels":levels}),
+                &serde_json::json!({"revision":selection.revision,"htmlLevels":levels,"graphs":graphs}),
             )
             .await?;
         decode_report(&output, selection)

@@ -234,8 +234,8 @@ pub(in crate::app) fn Panel() -> Element {
                                 }
                             }
                         }
-                        if let Content::Html(report, levels, selected) = preview.report.as_ref() {
-                            {super::html_view::snapshot(report, levels, selected)}
+                        if let Content::Html(report, levels, selected, graphs) = preview.report.as_ref() {
+                            {super::html_view::snapshot(report, levels, selected, graphs.as_ref())}
                         }
                         pre { class: "max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background p-3 text-sm",
                             {preview.report.preview_text()}

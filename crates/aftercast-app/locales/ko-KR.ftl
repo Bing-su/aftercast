@@ -608,3 +608,16 @@ html-report-remove = 전투 제거
 
 html-report-load = 열 다시 불러오기
 html-report-load-first = 등록된 열 목록을 먼저 불러오세요.
+
+html-graph-title = 그래프 (Advanced)
+html-graph-help = 표와 별도로 그래프 깊이를 선택합니다. Simple 그래프와 원본 화면 모양은 아직 지원하지 않습니다. SVG는 정적 소스로 저장됩니다.
+html-graph-none = 그래프 없음
+html-graph-window = 평균 구간 초 (1–120)
+html-graph-rolling = 이동 평균
+html-graph-distribution = 분포 열 키 또는 Resist
+html-graph-action = 액션 정렬 열 키
+html-graph-all = 현지화된 All 키
+html-graph-ward = 현지화된 보호막 접두어
+html-graph-invalid = 올바른 그래프 설정과 필요한 열 키를 입력하세요.
+html-graph-sql-help = 표시된 정렬 키에 SQL 콜백이 없을 수 있으며, 지원하지 않는 열은 오류로 표시됩니다.
+html-graph-bucket = 고정 구간

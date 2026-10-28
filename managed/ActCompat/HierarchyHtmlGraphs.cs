@@ -5,7 +5,7 @@ namespace Aftercast.ActCompat
     // Explicit settings; no inferred plugin columns or localized terms.
     public sealed record HierarchyHtmlGraphOptions(int Window, bool Rolling, string DistributionColumn,
         string ActionSortColumn, string AllLabel, string WardPrefix,
-        string[]? SelectedCombatants = null, string[]? SoloCategories = null);
+        string[]? SelectedCombatants = null, string[]? SoloCategories = null, TableLevel[]? Levels = null);
 }
 
 namespace Advanced_Combat_Tracker

@@ -76,7 +76,9 @@ namespace Advanced_Combat_Tracker
                     if(selection.Length>256||selection.Any(string.IsNullOrEmpty)||selection.Distinct(StringComparer.Ordinal).Count()!=selection.Length)throw new ArgumentException("Invalid graph selection");
                     return selection.ToArray();
                 }
-                graphs=graphs with{SelectedCombatants=CopySelection(graphs.SelectedCombatants),SoloCategories=CopySelection(graphs.SoloCategories)};
+                var graphLevels=graphs.Levels?.ToArray()??[TableLevel.Combatant,TableLevel.Category,TableLevel.Attack,TableLevel.Action];
+                if(graphLevels.Length is <1 or >4 || graphLevels.Distinct().Count()!=graphLevels.Length || graphLevels.Any(level=>level is <TableLevel.Combatant or >TableLevel.Action))throw new ArgumentException("Invalid graph levels");
+                graphs=graphs with{SelectedCombatants=CopySelection(graphs.SelectedCombatants),SoloCategories=CopySelection(graphs.SoloCategories),Levels=graphLevels};
             }
             var options=levels.Select(level=>level is null||level.Columns is null||level.Columns.Length is <1 or >MaximumSelectedColumns?throw new ArgumentException("Missing HTML level/columns"):level with{Columns=level.Columns.ToArray()}).ToArray();
             lock(CombatGate)
@@ -84,20 +86,22 @@ namespace Advanced_Combat_Tracker
                 var capture=hierarchyHtml;
                 if(capture is null||revision==0||capture.Catalog.Revision!=revision)throw new InvalidOperationException("HTML hierarchy revision mismatch");
                 if(graphs is not null && capture.Catalog.LastLevel!=TableLevel.Action)throw new ArgumentException("Graph export requires complete action hierarchy capture");
-                if(options.Length!=(int)capture.Catalog.LastLevel||!options.Select(level=>level.Level).Order().SequenceEqual(Enumerable.Range(1,options.Length).Select(level=>(TableLevel)level)))
+                if(graphs is not null && graphs.Levels!.Any(level=>(int)level>options.Length))throw new ArgumentException("Each graph requires its corresponding table");
+                if(graphs is not null && graphs.Levels!.Contains(TableLevel.Attack) && graphs.DistributionColumn=="Resist" && string.IsNullOrEmpty(graphs.WardPrefix))throw new ArgumentException("Resist graph requires a ward prefix");
+                if((graphs is null && options.Length!=(int)capture.Catalog.LastLevel)||(graphs is not null && options.Length>(int)capture.Catalog.LastLevel)||!options.Select(level=>level.Level).Order().SequenceEqual(Enumerable.Range(1,options.Length).Select(level=>(TableLevel)level)))
                     throw new ArgumentException("Supply each included HTML level exactly once");
                 if(options.Any(level=>level.Level==TableLevel.Category&&level.Sort is not null))throw new ArgumentException("ACT category HTML preserves source order without a sorter");
                 // Validate graph callbacks before any table or graph value callback runs.
                 if(graphs is not null)
                 {
                     ReadTableColumns(TableLevel.Attack);var attackSnapshot=columnSnapshots[TableLevel.Attack].Snapshot;
-                    if(graphs.DistributionColumn!="Resist")
+                    if(graphs.Levels!.Contains(TableLevel.Attack) && graphs.DistributionColumn!="Resist")
                     {
                         var graphColumn=SelectTableColumn(attackSnapshot,graphs.DistributionColumn,true);
                         if(graphColumn.Sql is not AttackType.StringDataCallback || graphColumn.Sort is not Comparison<AttackType>)throw new ArgumentException("Graph distribution requires SQL and sort callbacks");
                     }
                     ReadTableColumns(TableLevel.Action);var actionSnapshot=columnSnapshots[TableLevel.Action].Snapshot;
-                    if(SelectTableColumn(actionSnapshot,graphs.ActionSortColumn,true).Sort is not Comparison<MasterSwing>)throw new ArgumentException("Graph bars require an action sort callback");
+                    if(graphs.Levels!.Contains(TableLevel.Action) && SelectTableColumn(actionSnapshot,graphs.ActionSortColumn,true).Sort is not Comparison<MasterSwing>)throw new ArgumentException("Graph bars require an action sort callback");
                 }
                 // Validate explicit settings even when an empty parent has no child table at that level.
                 var revisions=new Dictionary<TableLevel,ulong>();
@@ -123,7 +127,7 @@ namespace Advanced_Combat_Tracker
                     var nodes=capture.Roots.SelectMany(root=>HierarchyNodes(root.Node)).ToArray();
                     // Validate every level/key/sorter before any display callback runs.
                     IEqualityComparer<HierarchyNode> comparer=ReferenceEqualityComparer.Instance;
-                    var bindings=nodes.ToDictionary(node=>node,node=>
+                    var bindings=nodes.Where(node=>byLevel.ContainsKey(node.Capture.Scope.Level)).ToDictionary(node=>node,node=>
                     {
                         var setting=byLevel[node.Capture.Scope.Level];var columns=ReportColumns(node.Capture,TableReportFormat.StaticHtml,setting.Columns);
                         var primary=setting.Sort is null?null:SelectTableColumn(node.Capture.Columns,setting.Sort.Primary,true);
@@ -131,7 +135,7 @@ namespace Advanced_Combat_Tracker
                         return (columns,setting.Sort,primary,secondary);
                     },comparer);
                     var values=new Dictionary<HierarchyNode,ReportValues>(comparer);
-                    foreach(var node in nodes)
+                    foreach(var node in nodes.Where(node=>bindings.ContainsKey(node)))
                     {
                         var setting=bindings[node];
                         var value=ReadReportValues(node.Capture,TableReportFormat.StaticHtml,[],setting.columns,setting.Sort,setting.primary,setting.secondary,Check);
@@ -149,13 +153,18 @@ namespace Advanced_Combat_Tracker
                         {
                             void Write(HierarchyNode node)
                             {
-                                Check();var data=values[node];var name=string.Join(" | ",new[]{root.Caption}.Concat(node.Names));
-                                writer.Write("<section id=\"h");writer.Write(ordinal++);writer.Write("\"><h2>");writer.Write(E(name));writer.Write("</h2><table><caption>");writer.Write(E(name));writer.Write("</caption><thead><tr>");
-                                foreach(var column in data.Columns){writer.Write("<th>");writer.Write(E(column.Key));writer.Write("</th>");}
-                                writer.Write("</tr></thead><tbody>");
-                                foreach(var row in data.Rows){writer.Write("<tr>");foreach(var cell in row){writer.Write("<td>");writer.Write(E(cell));writer.Write("</td>");}writer.Write("</tr>");}
-                                writer.Write("</tbody></table>");
-                                if(graphs is not null)foreach(var graph in ReadHierarchyGraphs(node,graphs,Check)){Check();writer.Write(graph);Check();}
+                                if((int)node.Capture.Scope.Level>options.Length)return;
+                                Check();var name=string.Join(" | ",new[]{root.Caption}.Concat(node.Names));
+                                writer.Write("<section id=\"h");writer.Write(ordinal++);writer.Write("\"><h2>");writer.Write(E(name));writer.Write("</h2>");
+                                if(values.TryGetValue(node,out var data))
+                                {
+                                    writer.Write("<table><caption>");writer.Write(E(name));writer.Write("</caption><thead><tr>");
+                                    foreach(var column in data.Columns){writer.Write("<th>");writer.Write(E(column.Key));writer.Write("</th>");}
+                                    writer.Write("</tr></thead><tbody>");
+                                    foreach(var row in data.Rows){writer.Write("<tr>");foreach(var cell in row){writer.Write("<td>");writer.Write(E(cell));writer.Write("</td>");}writer.Write("</tr>");}
+                                    writer.Write("</tbody></table>");
+                                }
+                                if(graphs?.Levels?.Contains(node.Capture.Scope.Level)==true)foreach(var graph in ReadHierarchyGraphs(node,graphs,Check)){Check();writer.Write(graph);Check();}
                                 // Child navigation order is source order; an individual table sort does not retarget children.
                                 foreach(var child in node.Children.SelectMany(children=>children))Write(child);
                                 writer.Write("</section>");

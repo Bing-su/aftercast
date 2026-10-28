@@ -1,6 +1,7 @@
 use super::*;
 use aftercast::{
-    EncounterId, HierarchyHtmlLevel, HierarchyXmlDepth, TableLevel, TableScope, TableSort,
+    EncounterId, HierarchyHtmlGraphOptions, HierarchyHtmlLevel, HierarchyXmlDepth, TableLevel,
+    TableScope, TableSort,
 };
 async fn start(deployment: &Deployment, text: &str) -> (Host, EncounterId) {
     let host = Host::start(deployment.config())
@@ -321,4 +322,68 @@ async fn html_worker_maximum_selected_set_and_output_budget_failure_recover(
         .await
         .expect("explicit shallow recovery");
     host.shutdown().await.expect("shutdown");
+}
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and fixture; run mise run test:plugins"]
+async fn html_worker_explicit_graphs_with_independent_table_depth(deployment: Deployment) {
+    let (host, id) = start(&deployment, "0|100\n3|200\n").await;
+    let choice = host
+        .capture_hierarchy_html(&[id], TableLevel::Action)
+        .await
+        .unwrap()
+        .unwrap();
+    let mut options = HierarchyHtmlGraphOptions {
+        window: 1,
+        rolling: true,
+        distribution_column: "Resist".into(),
+        action_sort_column: "registered-a".into(),
+        all_label: "All".into(),
+        ward_prefix: "Warded/".into(),
+        selected_combatants: None,
+        solo_categories: None,
+        levels: vec![TableLevel::Combatant],
+    };
+    let report = host
+        .hierarchy_html_with_graphs(&choice, &levels(TableLevel::Combatant), Some(&options))
+        .await
+        .unwrap();
+    assert_eq!(report.content.matches("<table>").count(), 1);
+    assert!(
+        report.content.contains("<svg")
+            && report.content.contains("<polyline")
+            && report.content.contains("default-src 'none'")
+    );
+    assert!(!report.content.contains("<script") && !report.content.contains(" src=\""));
+    options.levels = vec![
+        TableLevel::Combatant,
+        TableLevel::Category,
+        TableLevel::Attack,
+        TableLevel::Action,
+    ];
+    let report = host
+        .hierarchy_html_with_graphs(&choice, &levels(TableLevel::Action), Some(&options))
+        .await
+        .unwrap();
+    assert!(report.content.contains("<rect") && report.content.contains("A100 100"));
+    options.ward_prefix.clear();
+    assert!(
+        host.hierarchy_html_with_graphs(&choice, &levels(TableLevel::Action), Some(&options))
+            .await
+            .is_err()
+    );
+    options.ward_prefix = "Warded/".into();
+    options.levels = vec![TableLevel::Action];
+    assert!(
+        host.hierarchy_html_with_graphs(&choice, &levels(TableLevel::Combatant), Some(&options))
+            .await
+            .is_err()
+    );
+    let report = host
+        .hierarchy_html_with_graphs(&choice, &levels(TableLevel::Action), Some(&options))
+        .await
+        .unwrap();
+    assert!(report.content.contains("<rect") && !report.content.contains("<polyline"));
+    host.shutdown().await.unwrap();
 }
