@@ -22,6 +22,7 @@ mod specials;
 mod timeline;
 mod timers;
 mod triggers;
+mod vcr;
 
 use std::time::Duration;
 

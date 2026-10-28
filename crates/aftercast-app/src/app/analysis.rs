@@ -75,6 +75,12 @@ pub(super) fn AnalysisPane() -> Element {
                         }
                     }
                 }
+                for vcr_id in [detail.summary.id] {
+                    super::vcr::VcrPanel {
+                        key: "vcr-{state.read().revision.session}-{state.read().revision.selection}",
+                        id: vcr_id,
+                    }
+                }
                 for timeline_id in [detail.summary.id] {
                     super::timeline::TimelinePanel {
                         key: "timeline-{state.read().revision.session}-{state.read().revision.selection}",
