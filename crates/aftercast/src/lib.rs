@@ -9,6 +9,7 @@
 mod archives;
 mod bridge;
 pub use archives::{ActExportOptions, ActFormat};
+mod avoidance_report;
 mod combat;
 mod companions;
 mod death;
@@ -71,6 +72,10 @@ pub use triggers::{
     TriggerRevision,
 };
 
+pub use avoidance_report::{
+    AvoidanceAction, AvoidanceCategory, AvoidanceEvidence, AvoidanceLog, AvoidanceNumber,
+    AvoidanceOutcome, AvoidanceReport, AvoidanceSummary,
+};
 pub use bridge::extract_bridge;
 use camino::Utf8PathBuf;
 pub use combat::{

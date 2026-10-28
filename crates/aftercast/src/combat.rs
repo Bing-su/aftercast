@@ -339,7 +339,7 @@ impl HostHandle {
         self.query_combat_input(mode, id, offset, limit, None).await
     }
 
-    async fn query_combat_input(
+    pub(crate) async fn query_combat_input(
         &self,
         mode: u32,
         id: Option<EncounterId>,
@@ -347,7 +347,8 @@ impl HostHandle {
         limit: u32,
         input: Option<&str>,
     ) -> Result<BytesMut, Error> {
-        if !(1..=256).contains(&limit)
+        let max_limit = if mode == 12 { 65_536 } else { 256 };
+        if !(1..=max_limit).contains(&limit)
             || offset > i32::MAX as u32
             || id.is_some_and(|id| id.session != self.session)
         {

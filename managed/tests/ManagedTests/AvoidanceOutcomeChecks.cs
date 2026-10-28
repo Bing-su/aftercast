@@ -33,6 +33,7 @@ internal static class AvoidanceOutcomeChecks
         }
         finally { CultureInfo.CurrentCulture = previous; }
         HostLifetimeChecks.RunBounded(ProjectCategories);
+        HostLifetimeChecks.RunBounded(EncounterAliasSnapshot);
         Console.WriteLine("Avoidance outcome grouping, sentinel identity and explicit bounds passed.");
     }
     private static void ProjectCategories()
@@ -145,6 +146,12 @@ internal static class AvoidanceOutcomeChecks
                 throw new Exception("Failed capture replaced snapshot");
             CombatantData.SwingTypeToDamageTypeDataLinksOutgoing.Add(1, savedLinks);
             var logCount = encounter.LogLines.Count;
+            encounter.LogLines.Add(new LogLineEntry(DateTime.UnixEpoch, "\ud800", 0, -12346));
+            try { host.CaptureCombatantAvoidance(id, "Target"); throw new Exception("Expected invalid UTF-16 rejection"); }
+            catch (System.Text.EncoderFallbackException) { }
+            if (ActGlobals.blockIsHit != priorBlock || !ReadSnapshot(snapshot).SequenceEqual(bytes))
+                throw new Exception("Invalid text capture changed state");
+            encounter.LogLines.RemoveAt(logCount);
             var huge = new LogLineEntry(DateTime.UnixEpoch, new string('x', 1024 * 1024), 0, -12345);
             encounter.LogLines.AddRange(Enumerable.Repeat(huge, 65));
             try { host.CaptureCombatantAvoidance(id, "Target"); throw new Exception("Expected snapshot byte limit"); }
@@ -194,6 +201,47 @@ internal static class AvoidanceOutcomeChecks
             CombatantData.DamageSwingTypes.Add(99);
             try { AvoidanceOutcomes.ProjectCategories(actor, "All"); throw new Exception("Expected missing mapping"); }
             catch (InvalidDataException) { }
+        }
+        finally { directory.Delete(true); }
+    }
+
+    private static void EncounterAliasSnapshot()
+    {
+        var directory = Directory.CreateTempSubdirectory("aftercast-avoidance-alias-");
+        try
+        {
+            using var host = new HostEnvironment(directory.FullName);
+            Aftercast.Testing.CombatFixture.ConfigureCategories();
+            CombatantData.DamageSwingTypes.Add(1);
+            var root = ActGlobals.oFormActMain!;
+            root.GetDateTimeFromLog = _ => DateTime.UnixEpoch;
+            root.BeforeLogLineRead += (_, info) =>
+            {
+                var value = info.logLine switch {
+                    "hit" => new Dnum(100), "both" => new Dnum(-1, "Source and YOU"),
+                    "you" => new Dnum(-2, "YOU only"), "lower" => new Dnum(-1, "source lower"), _ => new Dnum(-1) };
+                root.SetEncounter(info.detectedTime, "Source", "Target");
+                root.AddCombatAction(new(1, false, "", value, info.detectedTime, root.GlobalTimeSorter, "Strike", "Source", "Physical", "Target"));
+            };
+            var path = Path.Combine(directory.FullName, "input.log");
+            File.WriteAllText(path, "hit\nboth\nyou\nlower\nmiss\n");
+            host.ImportLog(path);
+            var encounter = root.ZoneList[0].Items.Single();
+            encounter.SetAllies(new() { encounter.GetCombatant("Source")! });
+            var id = host.ListEncounters(0, 1).Items.Single().Id;
+            var snapshot = host.CaptureEncounterAvoidance(id)!;
+            var chunk = host.ReadCombatantAvoidance(snapshot.Revision, 0, snapshot.ByteLength);
+            using var json = JsonDocument.Parse(chunk.Bytes);
+            var report = json.RootElement;
+            if (report.GetProperty("scope").GetString() != "encounter" || report.GetProperty("combatant").ValueKind != JsonValueKind.Null)
+                throw new Exception("Encounter scope");
+            var categories = report.GetProperty("categories").EnumerateArray().ToDictionary(item => item.GetProperty("name").GetString()!);
+            if (categories.Count != 2 || !categories.ContainsKey("Source") || !categories.ContainsKey("YOU")) throw new Exception("Active alias groups");
+            var source = categories["Source"].GetProperty("outcomes").EnumerateArray().Select(item => item.GetProperty("Label").GetString()).ToArray();
+            var you = categories["YOU"].GetProperty("outcomes").EnumerateArray().Select(item => item.GetProperty("Label").GetString()).ToArray();
+            if (!source.SequenceEqual(new[] { "Source and YOU" }) || !you.Contains("Source and YOU") || !you.Contains("YOU only") || you.Contains("Miss"))
+                throw new Exception("Overlapping and case-sensitive alias selection");
+            if (categories["YOU"].GetProperty("percentSwings").ValueKind != JsonValueKind.Null) throw new Exception("Encounter percentages must be absent");
         }
         finally { directory.Delete(true); }
     }

@@ -17,13 +17,13 @@ public static partial class EntryPoint
         var offset = Marshal.ReadInt32(buffer, 20);
         var id = unchecked((ulong)Marshal.ReadInt64(buffer, 24));
         var limit = Marshal.ReadInt32(buffer, 32);
-        if (mode is < 1 or > 10 || offset < 0 || limit is < 1 or > 256 ||
-            (mode is 1 or 2 ? id != 0 : id == 0) || (mode is 1 or 3 or 7 or 10 && offset != 0))
+        if (mode is < 1 or > 13 || offset < 0 || limit < 1 || limit > (mode == 12 ? 65536 : 256) ||
+            (mode is 1 or 2 ? id != 0 : id == 0) || (mode is 1 or 3 or 7 or 10 or 11 or 13 && offset != 0))
             throw new ArgumentException("Invalid combat query mode, ID or page");
         for (var field = 36; field < header; field += 4)
             if (Marshal.ReadInt32(buffer, field) != 0) throw new ArgumentException("Combat query output must initially be zero");
         string? incomingCombatant = null;
-        if (mode == 10)
+        if (mode is 10 or 11)
         {
             if (sizeBytes < header + 4) throw new ArgumentException("Missing incoming combatant");
             var length = Marshal.ReadInt32(buffer, header);
@@ -34,7 +34,7 @@ public static partial class EntryPoint
             incomingCombatant = new UTF8Encoding(false, true).GetString(text);
         }
         // Capture changes the active snapshot; reserve its fixed response before admission.
-        if (mode is 7 or 10 && sizeBytes < header + 16)
+        if (mode is 7 or 10 or 11 or 13 && sizeBytes < header + 16)
         {
             Marshal.WriteInt32(buffer, 40, header + 16);
             return 1;
@@ -150,6 +150,19 @@ internal static class CombatQueryEncoding
                 Budget(4); writer.Write((item.RegisteredDamage ? 1u : 0u) | (item.RegisteredHealing ? 2u : 0u) | (item.IsDeath ? 4u : 0u));
                 Text(item.NumericTooltip);
             }
+        }
+        else if (mode is 11 or 13)
+        {
+            var value = mode == 13 ? host?.CaptureEncounterAvoidance(id) : host?.CaptureCombatantAvoidance(id, incomingCombatant!);
+            writer.Write(value is null ? 0u : 1u);
+            if (value is not null) { writer.Write(value.Revision); writer.Write(value.ByteLength); }
+        }
+        else if (mode == 12)
+        {
+            var value = host?.ReadCombatantAvoidance(id, offset, limit)
+                ?? throw new InvalidOperationException("Avoidance snapshot is unavailable");
+            Budget(8L + value.Bytes.Length);
+            writer.Write(value.Total); writer.Write(value.Bytes.Length); writer.Write(value.Bytes);
         }
         else if (mode is 6 or 9)
         {

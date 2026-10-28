@@ -357,3 +357,145 @@ async fn death_analysis_keeps_frozen_action_log_identity(deployment: Deployment)
         .expect_err("replaced death snapshot rejected");
     host.shutdown().await.unwrap();
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10; run mise run test:plugins"]
+async fn avoidance_report_is_session_owned_and_keeps_sample_log_identity(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let plugin = host
+        .create_plugin(
+            PluginConfig::builder()
+                .path(path)
+                .type_name("Aftercast.PluginFixture.AvoidanceImportPlugin")
+                .build(),
+        )
+        .await
+        .expect("plugin");
+    host.initialize_plugin(plugin).await.expect("initialize");
+    let input = deployment.directory().join("avoidance.log");
+    std::fs::write(&input, "0|100|Target\n0|-1|Target\n1|300|Other\n").expect("synthetic");
+    host.import_log(&input).await.expect("import");
+    let id = host
+        .encounters(0, 16)
+        .await
+        .expect("encounters")
+        .items
+        .first()
+        .expect("encounter")
+        .id;
+    let report = host
+        .combatant_avoidance(id, "Target")
+        .await
+        .expect("report")
+        .expect("combatant");
+    assert_eq!(report.combatant.as_deref(), Some("Target"));
+    assert_eq!(report.logs.len(), 3);
+    let category = report
+        .categories
+        .iter()
+        .find(|row| row.name == "Damage")
+        .expect("category");
+    let miss = category
+        .outcomes
+        .iter()
+        .find(|row| row.label == "Miss")
+        .expect("miss");
+    assert_eq!(miss.count, 2);
+    let aftercast::AvoidanceNumber::Finite(total) = miss.estimated_damage else {
+        panic!("finite estimate")
+    };
+    assert_eq!(total, 200.0);
+    for item in &miss.evidence {
+        assert!(!item.used_fallback);
+        assert_eq!(item.action.source_index, 1);
+        assert!(item.samples.iter().any(|row| row.source_index == 0));
+    }
+    assert!(
+        host.combatant_avoidance(id, "not-present")
+            .await
+            .expect("missing query")
+            .is_none()
+    );
+    host.shutdown().await.expect("shutdown");
+    let fresh = Host::start(deployment.config()).await.expect("restart");
+    fresh
+        .combatant_avoidance(id, "Target")
+        .await
+        .expect_err("previous session rejected");
+    fresh.shutdown().await.expect("shutdown");
+}
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10; run mise run test:plugins"]
+async fn encounter_avoidance_preserves_alias_overlap_and_scope(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let plugin = host
+        .create_plugin(
+            PluginConfig::builder()
+                .path(path)
+                .type_name("Aftercast.PluginFixture.AvoidanceImportPlugin")
+                .build(),
+        )
+        .await
+        .expect("plugin");
+    host.initialize_plugin(plugin).await.expect("initialize");
+    let input = deployment.directory().join("avoidance-alias.log");
+    std::fs::write(&input, "0|100|Target\n0|-1|Target|Source and YOU\n1|-2|Target|YOU only\n1|-1|Target|source lower\n1|-1|Target\n").expect("synthetic");
+    host.import_log(&input).await.expect("import");
+    let id = host
+        .encounters(0, 16)
+        .await
+        .expect("encounters")
+        .items
+        .first()
+        .expect("encounter")
+        .id;
+    host.encounter_detail(id)
+        .await
+        .expect("detail")
+        .expect("encounter");
+    let report = host
+        .encounter_avoidance(id)
+        .await
+        .expect("encounter report")
+        .expect("encounter");
+    assert_eq!(report.scope, "encounter");
+    assert!(report.combatant.is_none());
+    let source = report
+        .categories
+        .iter()
+        .find(|item| item.name == "Source")
+        .expect("source alias");
+    let you = report
+        .categories
+        .iter()
+        .find(|item| item.name == "YOU")
+        .expect("YOU alias");
+    assert!(source.swings.is_none() && source.percent_swings.is_none());
+    assert!(
+        source
+            .outcomes
+            .iter()
+            .any(|item| item.label == "Source and YOU")
+    );
+    assert!(
+        you.outcomes
+            .iter()
+            .any(|item| item.label == "Source and YOU")
+    );
+    assert!(you.outcomes.iter().any(|item| item.label == "YOU only"));
+    assert!(
+        !report
+            .categories
+            .iter()
+            .flat_map(|item| &item.outcomes)
+            .any(|item| item.label == "source lower" || item.label == "Miss")
+    );
+    host.shutdown().await.expect("shutdown");
+}
