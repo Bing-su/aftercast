@@ -295,6 +295,7 @@ internal static class Program
             TextReportAbiChecks.Run(session);
             TableReportAbiChecks.Run(session);
             HierarchyXmlAbiChecks.Run(session);
+            HierarchyHtmlAbiChecks.Run(session);
             HistoryAbiChecks.Run(session);
             NotificationAbiChecks.Run(session);
             LogAbiChecks.Run(session);

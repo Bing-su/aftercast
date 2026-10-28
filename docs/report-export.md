@@ -86,7 +86,7 @@ probe are separate evidence, not a claim of native UI execution on Linux.
    the four ACT table-XML roots, and escaped cell values for static HTML. Its
    Bridge/Rust typed table-report selection and isolated-worker synthetic tests are connected.
    The current-table GUI/source preview and shared no-overwrite save are connected. Full HTML hierarchy/depth,
-   the managed static checked-encounter HTML table core is implemented with explicit levels/columns/sorts; its API/GUI and graph/image dimensions remain unfinished. The first managed [task XML hierarchy/depth core](hierarchical-reports.md) is connected with three ACT depth modes, owned topology and synthetic vectors; its Bridge/Rust API and isolated-worker regressions are connected; Rust/UI depth selection, safe source preview and explicit no-overwrite save are connected with actual Host/controller regressions;
+   the managed static checked-encounter HTML table core is implemented with explicit levels/columns/sorts; its Bridge/Rust API and actual isolated-worker regressions are connected; GUI and graph/image dimensions remain unfinished. The first managed [task XML hierarchy/depth core](hierarchical-reports.md) is connected with three ACT depth modes, owned topology and synthetic vectors; its Bridge/Rust API and isolated-worker regressions are connected; Rust/UI depth selection, safe source preview and explicit no-overwrite save are connected with actual Host/controller regressions;
    unsupported choices and security differences are explicit before I/O.
 4. L7c synthetic ODBC/schema/sink work and the shared L9d output preference audit
    remain separate. No external upload/service/real database has been accessed.

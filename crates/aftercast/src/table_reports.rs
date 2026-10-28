@@ -181,8 +181,9 @@ impl HostHandle {
 fn capacity(command: u32) -> usize {
     match command {
         1 => CATALOG_CAPACITY,
-        3 => 4096,
+        3 | 5 => 4096,
         4 => MAX_CONTENT + 32,
+        6 => MAX_CONTENT + 1024,
         _ => REPORT_CAPACITY,
     }
 }

@@ -13,7 +13,7 @@ file writers or network/database services.
 | `IO_XmlFile.ExportXml1` → depth 1 | One selected encounter; `EncounterTable/Row` contains all combatant SQL columns                                                                                                                      | Managed hierarchy XML main table                                                                            |
 | `ExportXml2` → depth 2            | Each actor Row additionally contains `CombatantTable`; each category Row contains `DamageTypeTable` with attack-summary Rows                                                                         | Managed hierarchy XML middle depth; it adds two row levels, not just one                                    |
 | `ExportXml3` → depth 3            | Each attack Row additionally contains `AttackTypeTable` with action Rows                                                                                                                             | Managed hierarchy XML full depth                                                                            |
-| `ThreadExportHTML`                | Checked encounter nodes in tree order, or the single selected encounter; four nested table levels, and four corresponding graph choices                                                              | Managed static multi-encounter HTML is implemented below; Bridge/Rust/GUI remain                            |
+| `ThreadExportHTML`                | Checked encounter nodes in tree order, or the single selected encounter; four nested table levels, and four corresponding graph choices                                                              | Managed static multi-encounter HTML and typed Bridge/Rust worker API are connected below; GUI remains       |
 | `IO_ExportHtml` depth tree        | Tables and graphs each have Encounter → Combatant → DamageType → AttackType nodes, initially checked. Parent/child checks enforce dependencies; the encounter-table root is required by the exporter | Future explicit table/graph depths must preserve dependencies; no ignored depth/graph option is exposed now |
 | HTML graph sizes                  | UI increments 8, range 128..1600 in both axes; defaults X=640, Y=256                                                                                                                                 | Future static renderer must honor exact requested dimensions; no placeholder graph is produced              |
 
@@ -89,11 +89,10 @@ connected below. GUI depth selection and new-file save are connected as describe
 
 ## Remaining existing HTML/graph work, in order
 
-1. Connect the managed multi-encounter static HTML core below through Bridge/Rust
-   and actual isolated-worker tests, then explicit selection/level/key/sort GUI
-   and safe source/no-overwrite save. The managed core reuses guarded display
-   values and owned topology; API and GUI completion must not be inferred from
-   its in-process synthetic tests.
+1. Connect the verified multi-encounter static HTML API to explicit selection/level/key/sort
+   GUI and safe source/no-overwrite save. Managed capture/render, Bridge/Rust and
+   actual isolated-worker synthetic tests are connected below; GUI completion
+   must not be inferred from the managed/API tests.
 2. Graph calculation contracts: `GenEncounterGraphAdv`, `GenCombatantGraph`,
    `GenDamageTypeGraph` and `GenAttackTypeGraph` use time-series actions, graph
    averaging/rolling options, selected graph categories/actors and registered
@@ -272,8 +271,8 @@ reports, empty parents, empty-level registry changes, owner/reentry/Dispose,
 virtual names in capture and initial render (including reported errors and body
 plus structural errors), callback/sort failures, escaping, cell/raw/output limits,
 returning timeout and explicit recovery. No files, clipboard or resources are
-exported by these methods/tests. Bridge/Rust, actual isolated-worker HTML tests
-and GUI/save are subsequent slices. Graph numeric models, SVG/other static
+exported by these methods/tests. Bridge/Rust and actual isolated-worker HTML tests are connected below;
+GUI/save remains a subsequent slice. Graph numeric models, SVG/other static
 rendering, native custom bitmap delegates and Windows visual parity remain
 unimplemented; do not infer their completion from table output.
 
@@ -282,3 +281,58 @@ After the name-guard changes, the dedicated existing XML suite passed; its
 in about 2.024 seconds, then shallow recovery passed. A pre-final-edit whole
 check also passed in 65.50 seconds. These observations do not establish normal
 large-report support; final hook-after checks are recorded in the task checkpoint.
+
+## Bridge/Rust static HTML hierarchy API
+
+`capture_hierarchy_html(&encounters, last_level)` returns an optional opaque
+`HierarchyHtmlSelection` binding this worker session, HTML revision, requested
+level, original tree-order encounter IDs and table/aggregate-row counts. Request
+order is not presumed to be tree order: capture validates exact set equality,
+nonzero/distinct IDs and counts. `hierarchy_html(&selection, &levels)` requires
+exactly one explicit setting per included level; each holds 1..32 distinct
+registration keys and optional sorting (never for Category). The returned source
+metadata must exactly match the captured revision, depth, counts **and order**.
+New/missing captures retire older HTML revisions; XML and current-table captures
+remain independent. Wrong-session IDs/selections are rejected before dispatch.
+
+The existing owner-serialized report transport adds command 5 (capture, fixed
+4096-byte body capacity) and command 6 (render, fixed 16 MiB + 1024 bytes). The
+maximum actual render metadata is 540 bytes including the UTF-8 length and 64
+IDs; source remains at most 16 MiB and is never JSON re-escaped. Requests remain
+bounded by 256 KiB strict UTF-8 JSON and their command's fixed capacity before
+copying. Individual option maxima do not promise that every maximum/escaped-key
+combination fits the total request budget. Unknown/duplicate fields, command
+shape, nonzero owner, enum/level/key/count rules and reserved fields are checked.
+All capture/render operations execute once through `PluginSession.OnOwner`.
+There is no capacity probe, automatic callback retry or silent shallow fallback.
+
+Rust validates exact envelope/session/command, nonzero revision, IDs 1..64,
+tables between encounter count and 1024, aggregate rows <=16384, tables <= rows
+
+- encounter count, and exactly one table per encounter at main depth. It accepts
+  original tree reordering only on capture; reordered render IDs are rejected.
+  Source must be nonempty, strict UTF-8, NUL-free, without trailing bytes and within
+  16 MiB. This is typed transport validation; it is not a sanitizer for arbitrary
+  untrusted HTML. The managed static serializer supplies escaping/CSP.
+
+Three actual isolated-worker regressions use the synthetic hierarchy plugin:
+all four depths, multi-encounter tree order, key/label distinction, explicit
+descending display sort, Unicode/CSP/escaping, repeat, independent XML/current
+captures, retired revisions, removed/missing IDs, Stop and restart; callback,
+malformed-Unicode, cell/sort and returning-timeout failures with explicit recovery;
+64 small encounters and rejection above 64; and actual serialized 16 MiB failure
+using eight synthetic lines/32 explicitly selected expanded display columns,
+followed by shallow recovery. The original XML-mode fixture remains unchanged
+by the derived HTML mode and its worker regressions remain in the same suite.
+ABI tests reject malformed inputs before owner operations; Rust unit/envelope
+tests cover malformed set/order/depth/count/content, exact 16 MiB transport,
+UTF-8/NUL/trailing data, options and command-specific capacities.
+
+An earlier 200-line/two-column output fixture hit the cooperative four-second
+render budget before output size; it was replaced by the independent small-row
+expansion vector rather than extending time limits or accepting timeout as a
+size-bound pass. Counts and 64 small encounters passing do not establish normal
+large-report support. Existing quadratic topology validation and nonreturning
+callback isolation limits still apply. This is synthetic Linux worker/IL evidence,
+not native ACT HTML export, browser rendering, Windows UI or graph equivalence.
+No source, clipboard, file export or network action is performed by these APIs.

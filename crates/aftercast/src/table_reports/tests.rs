@@ -142,7 +142,9 @@ fn rejects_invalid_selection_policy_and_catalogs() {
 fn hierarchy_commands_validate_their_own_envelope_and_capacity() {
     assert_eq!(capacity(3), 4096);
     assert_eq!(capacity(4), MAX_CONTENT + 32);
-    for command in [3, 4] {
+    assert_eq!(capacity(5), 4096);
+    assert_eq!(capacity(6), MAX_CONTENT + 1024);
+    for command in [3, 4, 5, 6] {
         let bound = capacity(command);
         let mut packet = vec![0; HEADER + bound];
         packet[..4].copy_from_slice(&((HEADER + bound) as u32).to_le_bytes());

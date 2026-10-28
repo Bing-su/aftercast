@@ -189,3 +189,6 @@ async fn owned_reports_render_once_fail_explicitly_and_reject_stale_sessions(
 
 #[path = "reports/hierarchy_xml.rs"]
 mod hierarchy_xml;
+
+#[path = "reports/hierarchy_html.rs"]
+mod hierarchy_html;

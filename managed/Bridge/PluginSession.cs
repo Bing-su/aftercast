@@ -39,6 +39,7 @@ internal sealed partial class PluginSession
         return HostJson.Encode(request.Options is null ? host.ReadTextReportCatalog() :
             (object?)host.ReadTextReport(request.EncounterId, request.Revision, request.Options)!);
     });
+    internal byte[] HierarchyHtmlOperation(int command, TableReportRequest request) => OnOwner(() => HierarchyHtmlEncoding.Encode(Host(),command,request));
     internal byte[] HierarchyXmlOperation(int command, TableReportRequest request) => OnOwner(() => HierarchyXmlEncoding.Encode(Host(),command,request));
     internal byte[] TableReportOperation(TableReportRequest request, int capacity) => OnOwner(() => TableReportEncoding.Encode(Host(), request, capacity));
     internal byte[] TableOperation(TableRequest request, int capacity) => OnOwner(() => TableEncoding.Encode(Host(), request, capacity));
