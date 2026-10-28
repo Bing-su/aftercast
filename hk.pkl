@@ -24,3 +24,11 @@ local linters = new Mapping {
 }
 
 steps = linters
+
+hooks {
+    ["commit-msg"] {
+        steps {
+            ["conventional"] = Builtins.check_conventional_commit
+        }
+    }
+}
