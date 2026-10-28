@@ -7,7 +7,7 @@ mod table_settings;
 
 use std::path::PathBuf;
 
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 use dioxus::desktop::{Config, LogicalSize, WindowBuilder, WindowCloseBehaviour};
 use miette::{IntoDiagnostic, Result, miette};
 use tracing_subscriber::EnvFilter;
@@ -23,6 +23,17 @@ struct Cli {
 
 #[derive(Clone)]
 pub struct ApplicationRoot(pub Utf8PathBuf);
+
+fn open_log(root: &Utf8Path) -> Result<tracing_appender::rolling::RollingFileAppender> {
+    let directory = root.join("logs");
+    std::fs::create_dir_all(&directory).into_diagnostic()?;
+    tracing_appender::rolling::Builder::new()
+        .rotation(tracing_appender::rolling::Rotation::DAILY)
+        .filename_prefix("aftercast")
+        .max_log_files(7)
+        .build(directory)
+        .into_diagnostic()
+}
 
 fn main() -> Result<()> {
     let cli = Cli::parse();
@@ -40,12 +51,7 @@ fn main() -> Result<()> {
         .parent()
         .ok_or_else(|| miette!("Executable has no parent directory"))?
         .to_owned();
-    let file = tracing_appender::rolling::Builder::new()
-        .rotation(tracing_appender::rolling::Rotation::DAILY)
-        .filename_prefix("aftercast")
-        .max_log_files(7)
-        .build(root.join("logs"))
-        .into_diagnostic()?;
+    let file = open_log(&root)?;
     let (writer, guard) = tracing_appender::non_blocking(file);
     tracing_subscriber::registry()
         .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")))
@@ -81,6 +87,19 @@ fn main() -> Result<()> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn first_start_prepares_log_directory_and_reports_creation_failure() {
+        let root = tempfile::tempdir().expect("temporary root");
+        let path = Utf8PathBuf::from_path_buf(root.path().to_owned()).expect("UTF-8 temp path");
+        let _writer = open_log(&path).expect("first start");
+        assert!(path.join("logs").is_dir());
+        let blocked = tempfile::tempdir().expect("blocked root");
+        let blocked_path =
+            Utf8PathBuf::from_path_buf(blocked.path().to_owned()).expect("UTF-8 temp path");
+        std::fs::write(blocked_path.join("logs"), b"fixture").expect("synthetic obstacle");
+        open_log(&blocked_path).expect_err("log directory failure");
+    }
 
     #[test]
     fn common_cli_accepts_child_and_rejects_unknown_arguments() {
