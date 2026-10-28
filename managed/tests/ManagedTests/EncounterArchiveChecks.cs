@@ -70,6 +70,8 @@ internal static class EncounterArchiveChecks
                 PrepareInvalidHistory(directory, saved, document => ((XmlElement)document.SelectSingleNode("//Swing")!).RemoveAttribute("TimeSorter"));
                 PrepareInvalidHistory(directory, saved, document => ((XmlElement)document.SelectSingleNode("//Swing")!).SetAttribute("TimeSorter", "invalid"));
                 PrepareInvalidHistory(directory, saved, document => ((XmlElement)document.SelectSingleNode("//Encounter")!).SetAttribute("AftercastDroppedLogLines", "-1"));
+                PrepareInvalidHistory(directory, saved, document => ((XmlElement)document.SelectSingleNode("//Encounter")!).RemoveAttribute("AftercastIgnoreEnemies"));
+                PrepareInvalidHistory(directory, saved, document => ((XmlElement)document.SelectSingleNode("//Encounter")!).SetAttribute("AftercastIgnoreEnemies", "true"));
                 var manual = new EncounterData("Source", "Fixture Zone", root.ActiveZone);
                 manual.Items["GHOST"] = new CombatantData("Ghost", manual);
                 root.ActiveZone.Items.Add(manual);
@@ -160,7 +162,44 @@ internal static class EncounterArchiveChecks
                 Check(partial.ListEncounters(0, 16).Items.Single().Status == EncounterStatus.PartialImport);
             }
             ProjectionSpecialCases();
+            SelectiveHistory();
             Console.WriteLine("ACT XML/gzip imports, atomic history checkpoints, filtered restart restoration and corruption boundaries passed.");
+        }
+        finally { directory.Delete(true); }
+    }
+
+    private static void SelectiveHistory()
+    {
+        var directory = Directory.CreateTempSubdirectory("aftercast-selective-history-");
+        try
+        {
+            using (var host = new HostEnvironment(directory.FullName))
+            {
+                CombatFixture.ConfigureCategories();
+                var root = ActGlobals.oFormActMain!;
+                root.SelectiveListAdd("Source");
+                var zone = root.ZoneList[0];
+                var encounter = new EncounterData("Source", "Fixture", true, zone) { Title = "Selective" };
+                zone.Items.Add(encounter);
+                encounter.StartTimes.Add(DateTime.UnixEpoch);
+                encounter.EndTimes.Add(DateTime.UnixEpoch.AddSeconds(1));
+                encounter.AddCombatAction(new MasterSwing(1, false, "None", new Dnum(100), DateTime.UnixEpoch, 42, "Hit", "Source", "Physical", "Target"));
+                encounter.LogLines.Add(new(DateTime.UnixEpoch, "source line", 0, 42));
+                Check(encounter.Items.Count == 2);
+                Check(host.ArchiveOperation(3, "", 0, false) == 1);
+            }
+            using (var host = new HostEnvironment(directory.FullName))
+            {
+                CombatFixture.ConfigureCategories();
+                var root = ActGlobals.oFormActMain!;
+                Check(!root.SelectiveListGetSelected("Source"));
+                Check(host.ArchiveOperation(4, "", 0, false) == 1);
+                var encounter = root.ZoneList[0].Items.Single();
+                Check(encounter.GetIsSelective() && encounter.GetIgnoreEnemies() && encounter.Items.Count == 2);
+                var id = host.ListEncounters(0, 16).Items.Single().Id;
+                var row = host.ReadEncounterActions(id, 0, 16)!.Items.Single();
+                Check(row.Amount == 100 && row.SourceIndex == 0 && encounter.LogLines.Single().LogLine == "source line");
+            }
         }
         finally { directory.Delete(true); }
     }

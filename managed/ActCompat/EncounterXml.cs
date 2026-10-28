@@ -30,6 +30,8 @@ public partial class FormActMain
                 Attribute("AftercastDroppedLogLines", encounter.DroppedLogLines);
                 Attribute("AftercastLogIdentityKnown", encounter.LogSourceIdentityKnown);
                 Attribute("AftercastClipboardImport", encounter.ClipboardImport);
+                Attribute("AftercastSelectiveParsing", encounter.GetIsSelective());
+                Attribute("AftercastIgnoreEnemies", encounter.GetIgnoreEnemies());
             }
             if (encounter.ZoneName != "Import" && encounter.Parent is { } zone)
             {
@@ -143,6 +145,16 @@ public partial class FormActMain
                     case "Ally": break;
                     default: throw new XmlException("Unexpected encounter child: " + item.Name);
                 }
+            }
+            if (history)
+            {
+                // Reconstruct the recorded graph before restoring its policy: today's list may differ
+                // from the selection which admitted these actions and must not silently filter history.
+                if (element.HasAttribute("AftercastSelectiveParsing") != element.HasAttribute("AftercastIgnoreEnemies"))
+                    throw new XmlException("Incomplete selective parsing metadata");
+                var selective = element.HasAttribute("AftercastSelectiveParsing") && bool.Parse(element.GetAttribute("AftercastSelectiveParsing"));
+                var ignoreEnemies = element.HasAttribute("AftercastIgnoreEnemies") && bool.Parse(element.GetAttribute("AftercastIgnoreEnemies"));
+                encounter.RestoreSelectionPolicy(selective, ignoreEnemies);
             }
             var allies = element.SelectNodes("Ally")!.Cast<XmlElement>().Select(ally => encounter.GetCombatant(ally.InnerText)
                 ?? throw new XmlException("Unknown ally: " + ally.InnerText)).ToList();

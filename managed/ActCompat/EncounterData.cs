@@ -9,8 +9,16 @@ public class EncounterData
     private List<DateTime> startTimes = new();
     private List<DateTime> endTimes = new();
     // The selective overload applies ACT's attacker/victim list policy, e.g. selected attacker actions retain both sides.
-    internal readonly bool SelectiveParsing;
-    internal readonly bool IgnoreEnemies;
+    internal bool SelectiveParsing { get; private set; }
+    internal bool IgnoreEnemies { get; private set; }
+
+    // Private history replay rebuilds already accepted actions before restoring this policy.
+    internal void RestoreSelectionPolicy(bool selective, bool ignoreEnemies)
+    {
+        if (!selective && ignoreEnemies) throw new System.Xml.XmlException("IgnoreEnemies requires selective parsing");
+        SelectiveParsing = selective;
+        IgnoreEnemies = ignoreEnemies;
+    }
 
     public EncounterData(string charName, string zoneName, bool ignoreEnemies, ZoneData parent)
         : this(charName, zoneName, parent)
