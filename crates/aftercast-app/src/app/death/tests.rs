@@ -4,9 +4,13 @@ use aftercast::{EncounterStatus, Host, HostConfig, PluginConfig, extract_bridge}
 use camino::{Utf8Path, Utf8PathBuf};
 use std::sync::Arc;
 
-#[tokio::test(flavor = "current_thread")]
-#[ignore = "requires managed fixture; run mise run test:gui-state"]
-async fn death_ui_contract_actual_host_selection_cancel_late_response_and_source_identity() {
+async fn fixture() -> (
+    tempfile::TempDir,
+    Utf8PathBuf,
+    Host,
+    ContextEndpoint,
+    Arc<WindowLifetime>,
+) {
     let temp = tempfile::tempdir().expect("temporary directory");
     let root = Utf8Path::from_path(temp.path()).expect("UTF8").to_owned();
     let bridge = root.join("bridge");
@@ -55,6 +59,13 @@ async fn death_ui_contract_actual_host_selection_cancel_late_response_and_source
             language: "en".into(),
         },
     };
+    (temp, root, host, endpoint, lifetime)
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn death_ui_contract_actual_host_selection_cancel_late_response_and_source_identity() {
+    let (_temp, root, host, endpoint, lifetime) = fixture().await;
     let analysis = load_analysis(endpoint.clone(), "Target".into())
         .await
         .expect("analysis")
