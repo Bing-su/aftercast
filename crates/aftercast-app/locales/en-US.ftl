@@ -713,3 +713,16 @@ export-include-logs-default = Include logs in ACT archive exports
 
 act-import-trigger-results = Match archive logs against custom triggers
 act-import-trigger-results-help = Record tabbed results only. Parser hooks, audio and timers are not run. This is independent of raw-log import matching.
+
+trigger-snippet-title = ACT trigger snippet
+trigger-snippet-help = Paste or type one ACT Trigger XML element. Preview makes no changes. Spell and Config snippets are unsupported.
+trigger-snippet-input = XML text (up to 16 KiB)
+trigger-snippet-preview = Preview
+trigger-snippet-cancel = Cancel preview
+trigger-snippet-conflict = This trigger already exists; import will not overwrite it.
+trigger-snippet-ready = Ready to import the displayed trigger. No sound or timer runs during import.
+trigger-snippet-import = Import this trigger
+trigger-snippet-imported = Trigger imported
+trigger-snippet-details = Sound type / timer / result tab / active / zone restriction:
+trigger-snippet-sound = Sound data:
+trigger-snippet-timer = Timer / result tab name:

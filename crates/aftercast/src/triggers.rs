@@ -46,6 +46,22 @@ pub struct TriggerRevision {
     value: u64,
 }
 #[derive(Debug, Clone)]
+pub struct TriggerSnippetPreview {
+    pub revision: TriggerRevision,
+    pub key: String,
+    pub exists: bool,
+    pub definition: TriggerDefinition,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RawSnippetPreview {
+    revision: u64,
+    key: String,
+    exists: bool,
+    definition: TriggerDefinition,
+}
+
+#[derive(Debug, Clone)]
 pub struct TriggerPage {
     pub revision: TriggerRevision,
     pub total: u32,
@@ -172,6 +188,34 @@ impl HostHandle {
             original_lines: page.original_lines,
             process_imports: page.process_imports,
             items: page.items,
+        })
+    }
+    /// Preview one ACT Trigger snippet without changing definitions or running effects.
+    pub async fn preview_trigger_snippet(
+        &self,
+        snippet: &str,
+    ) -> Result<TriggerSnippetPreview, Error> {
+        if snippet.len() > 16384 || snippet.contains('\0') {
+            return Err(trigger_error(
+                "trigger snippet exceeds 16 KiB or contains NUL",
+            ));
+        }
+        let raw: RawSnippetPreview = self
+            .trigger_call(9, &serde_json::json!({"snippet": snippet}))
+            .await?;
+        if raw.revision == 0
+            || raw.key != format!("{}|{}", raw.definition.category, raw.definition.regex)
+        {
+            return Err(trigger_error("invalid trigger snippet preview"));
+        }
+        Ok(TriggerSnippetPreview {
+            revision: TriggerRevision {
+                session: self.session,
+                value: raw.revision,
+            },
+            key: raw.key,
+            exists: raw.exists,
+            definition: raw.definition,
         })
     }
     /// Create rejects an existing ACT category|regex key. Edit supplies the original key; rename rejects collisions.

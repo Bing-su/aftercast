@@ -713,3 +713,16 @@ export-include-logs-default = ACT 기록 내보내기에 로그 포함
 
 act-import-trigger-results = 기록 로그를 사용자 트리거와 비교
 act-import-trigger-results-help = 결과 탭만 기록합니다. 파서 훅, 소리와 타이머는 실행하지 않습니다. 원시 로그 가져오기 설정과 별개입니다.
+
+trigger-snippet-title = ACT 트리거 snippet
+trigger-snippet-help = ACT Trigger XML 요소 하나를 입력하세요. 미리보기는 설정을 변경하지 않습니다. Spell과 Config snippet은 지원하지 않습니다.
+trigger-snippet-input = XML 텍스트 (최대 16KiB)
+trigger-snippet-preview = 미리보기
+trigger-snippet-cancel = 미리보기 취소
+trigger-snippet-conflict = 같은 트리거가 이미 있어 덮어쓰지 않습니다.
+trigger-snippet-ready = 표시된 트리거를 가져올 수 있습니다. 가져올 때 소리나 타이머는 실행되지 않습니다.
+trigger-snippet-import = 이 트리거 가져오기
+trigger-snippet-imported = 트리거를 가져왔습니다
+trigger-snippet-details = 소리 종류 / 타이머 / 결과 탭 / 활성 / 지역 제한:
+trigger-snippet-sound = 소리 데이터:
+trigger-snippet-timer = 타이머 / 결과 탭 이름:

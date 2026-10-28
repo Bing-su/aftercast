@@ -74,7 +74,7 @@ pub use timers::{SavedTimer, TimerDefinition, TimerItem, TimerPage, TimerRevisio
 pub use triggers::TriggerResultCursor;
 pub use triggers::{
     TriggerBenchmarkResult, TriggerBenchmarkRow, TriggerCapture, TriggerDefinition, TriggerItem,
-    TriggerPage, TriggerResult, TriggerResultPage, TriggerRevision,
+    TriggerPage, TriggerResult, TriggerResultPage, TriggerRevision, TriggerSnippetPreview,
 };
 
 pub use avoidance_report::{

@@ -62,7 +62,8 @@ internal sealed partial class PluginSession
     {
         var host = Host();
         object result;
-        if (command == 8) result = host.BenchmarkTriggers(request.Revision, request.Snapshot, request.Keys ?? throw new ArgumentException("Missing benchmark selection"));
+        if (command == 9) result = host.PreviewTriggerSnippet(request.Snippet ?? throw new ArgumentException("Missing trigger snippet"));
+        else if (command == 8) result = host.BenchmarkTriggers(request.Revision, request.Snapshot, request.Keys ?? throw new ArgumentException("Missing benchmark selection"));
         else if (command is 1 or 6) result = host.TriggerOperation(command, request.Revision, request.PreviousKey,
             request.Definition, request.Key, request.Offset, request.Limit, request.OriginalLines, request.ProcessImports, request.After);
         else

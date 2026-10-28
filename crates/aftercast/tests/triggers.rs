@@ -256,3 +256,44 @@ async fn archive_trigger_results_are_explicit_and_independent_of_raw_import(
     );
     host.shutdown().await.expect("shutdown");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
+async fn trigger_snippet_preview_is_read_only_and_owned(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let xml = r#"<Trigger R="A&#92;s+&#35;(?&lt;n&gt;[0-9]+)" C="Fixture" SD="&lt;hello&gt;" ST="3" T="T" TN="Timer" Ta="T" />"#;
+    let preview = host.preview_trigger_snippet(xml).await.expect("preview");
+    assert_eq!(preview.definition.regex, r"A\s+#(?<n>[0-9]+)");
+    assert_eq!(preview.definition.sound_data, "<hello>");
+    assert!(!preview.exists);
+    assert_eq!(host.triggers(0, 16).await.expect("no mutation").total, 0);
+    host.preview_trigger_snippet("<Spell N='x' C='y'/>")
+        .await
+        .expect_err("unsupported spell");
+    host.preview_trigger_snippet(
+        "<!DOCTYPE Trigger [<!ENTITY x SYSTEM 'file:///etc/passwd'>]><Trigger R='&x;' C='y'/>",
+    )
+    .await
+    .expect_err("DTD prohibited");
+    host.save_trigger(preview.revision, None, &preview.definition)
+        .await
+        .expect("explicit import");
+    assert!(
+        host.preview_trigger_snippet(xml)
+            .await
+            .expect("duplicate preview")
+            .exists
+    );
+    host.save_trigger(preview.revision, None, &preview.definition)
+        .await
+        .expect_err("stale revision");
+    host.shutdown().await.expect("stop");
+    let restarted = Host::start(deployment.config()).await.expect("restart");
+    assert_eq!(restarted.triggers(0, 16).await.expect("persisted").total, 1);
+    restarted
+        .save_trigger(preview.revision, None, &preview.definition)
+        .await
+        .expect_err("old session");
+    restarted.shutdown().await.expect("stop restart");
+}

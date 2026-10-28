@@ -1,4 +1,5 @@
 use super::{AppState, Phase, tr};
+mod snippet;
 use crate::components::{Accordion, Button, ButtonVariant, Input, Label};
 use aftercast::{
     HostHandle, TriggerDefinition, TriggerItem, TriggerPage, TriggerResultCursor,
@@ -9,6 +10,7 @@ const PAGE: u32 = 16;
 
 #[derive(Default)]
 pub(super) struct EditorState {
+    snippet: snippet::State,
     loaded: bool,
     results_loaded: bool,
     busy: bool,
@@ -145,6 +147,7 @@ pub(super) fn TriggersPane() -> Element {
             } else {
                 p { "Select an encounter in Analysis to benchmark its retained logs." }
             }
+            snippet::Panel {}
             TriggerForm {}
             TriggerResults {}
         }
