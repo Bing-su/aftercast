@@ -45,23 +45,20 @@ async fn load(
     endpoint: ContextEndpoint,
     scope: Scope,
 ) -> Result<Option<Arc<AvoidanceReport>>, String> {
-    if !endpoint.valid() {
-        return Err("Session ended".to_owned());
-    }
-    let result = match scope {
-        Scope::Combatant(name) => {
-            endpoint
-                .handle
-                .combatant_avoidance(endpoint.id, &name)
-                .await
+    super::log_window::guard(&endpoint, async {
+        match scope {
+            Scope::Combatant(name) => {
+                endpoint
+                    .handle
+                    .combatant_avoidance(endpoint.id, &name)
+                    .await
+            }
+            Scope::Encounter => endpoint.handle.encounter_avoidance(endpoint.id).await,
         }
-        Scope::Encounter => endpoint.handle.encounter_avoidance(endpoint.id).await,
-    }
-    .map_err(|error| error.to_string());
-    if !endpoint.valid() {
-        return Err("Session changed".to_owned());
-    }
-    result.map(|report| report.map(Arc::new))
+        .map_err(|error| error.to_string())
+        .map(|report| report.map(Arc::new))
+    })
+    .await
 }
 fn number(value: &AvoidanceNumber) -> String {
     match value {

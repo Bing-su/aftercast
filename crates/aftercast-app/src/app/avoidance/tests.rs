@@ -122,18 +122,7 @@ async fn avoidance_ui_contract_actual_host_snapshot_selection_and_lifecycle() {
         source_text(&report, selection.source),
         Some("0|-1|Target|Source and YOU")
     );
-    let mut future = Box::pin(load(endpoint.clone(), Scope::Encounter));
-    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
-    assert!(std::future::Future::poll(future.as_mut(), &mut context).is_pending());
-    lifetime.invalidate();
-    assert_eq!(future.await.expect_err("late response"), "Session changed");
-    let fresh = ContextEndpoint {
-        generation: lifetime.generation(),
-        ..endpoint
-    };
-    let mut cancelled = Box::pin(load(fresh.clone(), Scope::Combatant("Target".into())));
-    assert!(std::future::Future::poll(cancelled.as_mut(), &mut context).is_pending());
-    drop(cancelled);
+    let fresh = crate::app::log_window::verify_delayed_lifecycle(endpoint, &lifetime).await;
     assert!(
         load(fresh.clone(), Scope::Combatant("Target".into()))
             .await

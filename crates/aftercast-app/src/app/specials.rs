@@ -21,18 +21,15 @@ async fn load(
     endpoint: ContextEndpoint,
     combatant: String,
 ) -> Result<Option<Arc<SpecialReport>>, String> {
-    if !endpoint.valid() {
-        return Err("Session ended".into());
-    }
-    let result = endpoint
-        .handle
-        .special_report(endpoint.id, &combatant)
-        .await
-        .map_err(|error| error.to_string());
-    if !endpoint.valid() {
-        return Err("Session changed".into());
-    }
-    result.map(|report| report.map(Arc::new))
+    super::log_window::guard(&endpoint, async {
+        endpoint
+            .handle
+            .special_report(endpoint.id, &combatant)
+            .await
+            .map_err(|error| error.to_string())
+            .map(|report| report.map(Arc::new))
+    })
+    .await
 }
 fn source_text(report: &SpecialReport, source: Option<(usize, i32)>) -> Option<&str> {
     let (index, sorter) = source?;

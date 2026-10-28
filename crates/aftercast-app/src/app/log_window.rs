@@ -52,6 +52,49 @@ impl ContextEndpoint {
     }
 }
 
+pub(super) async fn guard<T>(
+    endpoint: &ContextEndpoint,
+    future: impl std::future::Future<Output = Result<T, String>>,
+) -> Result<T, String> {
+    if !endpoint.valid() {
+        return Err("Session ended".into());
+    }
+    let result = future.await;
+    if !endpoint.valid() {
+        return Err("Session changed".into());
+    }
+    result
+}
+
+#[cfg(test)]
+pub(super) async fn verify_delayed_lifecycle(
+    endpoint: ContextEndpoint,
+    lifetime: &WindowLifetime,
+) -> ContextEndpoint {
+    let (sender, receiver) = tokio::sync::oneshot::channel::<()>();
+    let mut pending = Box::pin(guard(&endpoint, async move {
+        receiver.await.expect("release");
+        Ok(())
+    }));
+    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
+    assert!(std::future::Future::poll(pending.as_mut(), &mut context).is_pending());
+    lifetime.invalidate();
+    sender.send(()).expect("release");
+    assert_eq!(pending.await.expect_err("late response"), "Session changed");
+    let fresh = ContextEndpoint {
+        generation: lifetime.generation(),
+        ..endpoint
+    };
+    let (_sender, receiver) = tokio::sync::oneshot::channel::<()>();
+    let mut cancelled = Box::pin(guard(&fresh, async move {
+        receiver.await.expect("release");
+        Ok(())
+    }));
+    assert!(std::future::Future::poll(cancelled.as_mut(), &mut context).is_pending());
+    drop(cancelled);
+    fresh
+}
+
 #[derive(Clone, Copy, Default, PartialEq)]
 pub(super) struct InitialPage {
     pub logs: bool,

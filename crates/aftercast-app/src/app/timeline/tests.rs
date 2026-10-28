@@ -123,18 +123,7 @@ async fn timeline_ui_contract_actual_host_snapshot_range_and_lifecycle() {
             .revision,
         loaded.revision
     );
-    let mut pending = Box::pin(load(endpoint.clone(), options));
-    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
-    assert!(std::future::Future::poll(pending.as_mut(), &mut context).is_pending());
-    lifetime.invalidate();
-    assert_eq!(pending.await.expect_err("late response"), "Session changed");
-    let fresh = ContextEndpoint {
-        generation: lifetime.generation(),
-        ..endpoint
-    };
-    let mut cancelled = Box::pin(load(fresh.clone(), options));
-    assert!(std::future::Future::poll(cancelled.as_mut(), &mut context).is_pending());
-    drop(cancelled);
+    let fresh = crate::app::log_window::verify_delayed_lifecycle(endpoint, &lifetime).await;
     assert!(
         load(fresh.clone(), options)
             .await

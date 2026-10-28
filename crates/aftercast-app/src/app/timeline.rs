@@ -91,18 +91,15 @@ async fn load(
     endpoint: ContextEndpoint,
     options: TimelineOptions,
 ) -> Result<Option<Arc<TimelineReport>>, String> {
-    if !endpoint.valid() {
-        return Err("Session ended".into());
-    }
-    let result = endpoint
-        .handle
-        .timeline(endpoint.id, options)
-        .await
-        .map_err(|error| error.to_string());
-    if !endpoint.valid() {
-        return Err("Session changed".into());
-    }
-    result.map(|report| report.map(Arc::new))
+    super::log_window::guard(&endpoint, async {
+        endpoint
+            .handle
+            .timeline(endpoint.id, options)
+            .await
+            .map_err(|error| error.to_string())
+            .map(|report| report.map(Arc::new))
+    })
+    .await
 }
 fn point_time(report: &TimelineReport, point: usize) -> Option<(f64, f64)> {
     if point >= report.points as usize {
@@ -471,9 +468,11 @@ fn TimelineResults(
                             ) {
                                 spawn(async move {
                                     if pending.try_resolve().await.is_err() {
-                                        tracing::error!("failed to open timeline logs");
+                                        state.write().error = Some("Failed to open timeline logs.".into());
                                     }
                                 });
+                            } else {
+                                state.write().error = Some("Session ended.".into());
                             }
                         },
                         "Open logs for range"

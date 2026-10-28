@@ -99,18 +99,7 @@ async fn specials_ui_contract_actual_host_snapshot_sources_and_lifecycle() {
         .expect("combatant");
     assert_ne!(report.revision, replacement.revision);
     assert_eq!(source_text(&report, source), Some("1|100|Target||Crit"));
-    let mut pending = Box::pin(load(endpoint.clone(), "Source".into()));
-    let mut context = std::task::Context::from_waker(std::task::Waker::noop());
-    assert!(std::future::Future::poll(pending.as_mut(), &mut context).is_pending());
-    lifetime.invalidate();
-    assert_eq!(pending.await.expect_err("late response"), "Session changed");
-    let fresh = ContextEndpoint {
-        generation: lifetime.generation(),
-        ..endpoint
-    };
-    let mut cancelled = Box::pin(load(fresh.clone(), "Source".into()));
-    assert!(std::future::Future::poll(cancelled.as_mut(), &mut context).is_pending());
-    drop(cancelled);
+    let fresh = crate::app::log_window::verify_delayed_lifecycle(endpoint, &lifetime).await;
     assert!(
         load(fresh.clone(), "Source".into())
             .await
