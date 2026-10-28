@@ -22,7 +22,7 @@ public partial class FormActMain
             if (combatStateInitialized) throw new InvalidOperationException("Combat state is already initialized.");
             // ACT reserves index zero for imported encounters, then adds the initial live zone.
             combatZones = new() { new(now, "Import", false, false, false) };
-            combatZone = new(now, "Unknown Zone", true, false, false);
+            combatZone = new(now, "Unknown Zone", true, RecordSelective, RecordStrict);
             combatZones.Add(combatZone);
             // Retain actual zone grouping context without claiming a UI/history database implementation.
             zoneContext = ("Unknown Zone", now);
@@ -57,14 +57,16 @@ public partial class FormActMain
                 if (existing is not null) combatZone = existing;
                 else
                 {
-                    combatZone = new(zoneContext.Name == currentZone ? zoneContext.Start : time, currentZone, true, false, false);
+                    combatZone = new(zoneContext.Name == currentZone ? zoneContext.Start : time, currentZone, true, RecordSelective, RecordStrict);
                     var insert = combatZones.Count;
                     for (var index = 1; index < combatZones.Count; index++)
                         if (combatZones[index].StartTime > time) { insert = index; break; }
                     combatZones.Insert(insert, combatZone);
                 }
             }
-            var encounter = new EncounterData(ActGlobals.charName!, currentZone, combatZone);
+            var encounter = RecordSelective
+                ? new EncounterData(ActGlobals.charName!, currentZone, RecordStrict, combatZone)
+                : new EncounterData(ActGlobals.charName!, currentZone, combatZone);
             combatZone.ActiveEncounter = encounter;
             combatZone.Items.Add(encounter);
             if (importingLogs) Identity(encounter).Status = Aftercast.ActCompat.CombatSnapshotStatus.Importing;

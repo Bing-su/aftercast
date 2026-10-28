@@ -105,8 +105,10 @@ namespace Aftercast.ActCompat
         private readonly FormSpellTimers timers;
         private readonly FormEncounterLogs encounterLogs;
         private bool disposed;
-        public HostEnvironment(string directory, Action? pumpCallbacks = null, Func<bool>? isDispatchingCallback = null)
+        public HostEnvironment(string directory, Action? pumpCallbacks = null, Func<bool>? isDispatchingCallback = null,
+            SelectiveParsingModeEnum selectiveMode = SelectiveParsingModeEnum.None, string[]? selectedCombatants = null)
         {
+            FormActMain.ValidateSelectiveParsing(selectiveMode, selectedCombatants ?? []);
             main = new(new DirectoryInfo(directory));
             main.InitializeAudio();
             main.PumpCallbacks = pumpCallbacks;
@@ -135,6 +137,7 @@ namespace Aftercast.ActCompat
             // The original parser substitutes this ACT alias for the current player's actor name.
             ActGlobals.charName = "YOU";
             RegistrationLifetime.Reset();
+            main.ConfigureSelectiveParsing(selectiveMode, selectedCombatants ?? []);
             RegistrationLifetime.InitializeHostCategoryNames();
             DefaultColumns.Initialize();
             main.CurrentZone = "Unknown Zone";

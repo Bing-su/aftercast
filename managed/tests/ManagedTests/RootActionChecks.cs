@@ -27,10 +27,10 @@ internal static class RootActionChecks
         internal readonly HostEnvironment Environment;
         internal readonly FormActMain Root;
         internal string LogPath => Path.Combine(directory.FullName, "Network.log");
-        internal Fixture(OwnerContext? context = null)
+        internal Fixture(OwnerContext? context = null, SelectiveParsingModeEnum selectiveMode = SelectiveParsingModeEnum.None, string[]? selected = null)
         {
             Environment = new(directory.FullName, context is null ? null : () => context.Pump(),
-                context is null ? null : () => context.IsDispatching);
+                context is null ? null : () => context.IsDispatching, selectiveMode, selected);
             Root = ActGlobals.oFormActMain!;
             CombatFixture.ConfigureCategories();
             Root.LastKnownTime = Epoch;
@@ -50,6 +50,8 @@ internal static class RootActionChecks
     internal static void Run()
     {
         HostLifetimeChecks.RunBounded(Pipeline);
+        HostLifetimeChecks.RunBounded(SelectiveRouting);
+        HostLifetimeChecks.RunBounded(SelectiveImport);
         HostLifetimeChecks.RunBounded(IdleBoundary);
         HostLifetimeChecks.RunBounded(IdleOptions);
         HostLifetimeChecks.RunBounded(IdleTimer);
@@ -66,6 +68,55 @@ internal static class RootActionChecks
         HostLifetimeChecks.RunBounded(RejectCrossPipelineJoin);
         HostLifetimeChecks.RunBounded(BacklogContinues);
         Console.WriteLine("Root combat hooks, admitted-action draining, idle boundaries, pumped shutdown and backlog continuation passed.");
+    }
+
+    private static void SelectiveRouting()
+    {
+        foreach (var mode in Enum.GetValues<SelectiveParsingModeEnum>())
+        {
+            using var fixture = new Fixture(selectiveMode: mode, selected: ["Source"]);
+            var root = fixture.Root;
+            Check(root.SelectiveListGetMode() == mode && root.SelectiveListGetSelected("SOURCE"));
+            var selective = mode is SelectiveParsingModeEnum.SelectiveEncounters or SelectiveParsingModeEnum.SelectiveEncountersStrict;
+            Check(root.SetEncounter(Epoch, "Other", "Target") == !selective);
+            if (!selective) fixture.Environment.EndCombat();
+            Check(root.SetEncounter(Epoch.AddSeconds(1), "Other", "Source"));
+            root.AddCombatAction(new MasterSwing(1, false, "None", new Dnum(100), Epoch.AddSeconds(1), 1, "Hit", "Other", "Physical", "Source"));
+            var before = root.LastHostileTime;
+            Check(root.SetEncounter(Epoch.AddSeconds(2), "Nobody", "Target") == !selective);
+            if (selective) Check(root.LastHostileTime == before);
+            Check(root.SetEncounter(Epoch.AddSeconds(3), "Source", "Target"));
+            root.AddCombatAction(new MasterSwing(1, false, "None", new Dnum(200), Epoch.AddSeconds(3), 2, "Hit", "Source", "Physical", "Target"));
+            fixture.Environment.EndCombat();
+            var encounter = root.ActiveZone.ActiveEncounter!;
+            Check(encounter.GetIsSelective() == selective);
+            Check(encounter.GetIgnoreEnemies() == (mode == SelectiveParsingModeEnum.SelectiveEncountersStrict));
+            Check(encounter.GetCombatant("Source") is not null);
+            Check((encounter.GetCombatant("Other") is null) == (mode == SelectiveParsingModeEnum.SelectiveEncountersStrict));
+        }
+        Throws<ArgumentException>(() => { using var invalid = new HostEnvironment(Path.GetTempPath(), selectiveMode: (SelectiveParsingModeEnum)99); });
+        Check(ActGlobals.oFormActMain is null);
+    }
+
+    private static void SelectiveImport()
+    {
+        using var fixture = new Fixture(selectiveMode: SelectiveParsingModeEnum.SelectiveEncountersStrict, selected: ["Source"]);
+        var root = fixture.Root;
+        root.TimeStampLen = 0;
+        root.OnLogLineRead += (import, line) =>
+        {
+            Check(import);
+            var pair = line.logLine.Split('|');
+            if (root.SetEncounter(Epoch, pair[0], pair[1]))
+                root.AddCombatAction(new MasterSwing(1, false, "None", new Dnum(100), Epoch,
+                    root.GlobalTimeSorter, "Hit", pair[0], "Physical", pair[1]));
+        };
+        File.WriteAllText(fixture.LogPath, "Other|Target\nOther|Source\nSource|Target\n");
+        fixture.Environment.ImportLog(fixture.LogPath);
+        var encounter = root.ZoneList[0].Items.Single();
+        Check(encounter.GetIsSelective() && encounter.GetIgnoreEnemies());
+        Check(encounter.GetCombatant("Other") is null && encounter.GetCombatant("Source") is not null);
+        Check(encounter.GetCombatant("Source")!.AllOut["All"].Items.Count == 1);
     }
 
     private static void Pipeline()

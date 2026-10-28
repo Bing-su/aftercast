@@ -39,6 +39,9 @@ public partial class FormActMain
             {
                 EnsureCombatOpen();
                 EnsureCombatTransitionIdle();
+                // ACT checks either participant before starting, and while a selective encounter remains active.
+                if ((!inCombat && RecordSelective || inCombat && combatZone.ActiveEncounter!.GetIsSelective()) &&
+                    !SelectiveListGetSelected(attacker) && !SelectiveListGetSelected(victim)) return false;
                 if (!(inCombat && silenceCutSeconds > 0 &&
                       (time - lastSetEncounter).TotalSeconds > silenceCutSeconds && !actionsIdle.IsSet))
                 {
