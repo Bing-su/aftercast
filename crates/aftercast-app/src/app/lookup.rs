@@ -377,6 +377,17 @@ pub(super) fn LookupPanel(
     }
 }
 
+#[derive(Clone, PartialEq, Eq)]
+pub(super) struct RequestState {
+    pub(super) offset: u32,
+    pub(super) sort: Option<TableSort>,
+    pub(super) columns: Option<Vec<String>>,
+    pub(super) epoch: u64,
+}
+pub(super) fn request_is_current(requested: &RequestState, current: &RequestState) -> bool {
+    requested == current
+}
+
 #[derive(Clone)]
 struct LookupEndpoint(ContextEndpoint);
 impl PartialEq for LookupEndpoint {
@@ -387,6 +398,13 @@ impl PartialEq for LookupEndpoint {
     }
 }
 
+#[derive(Clone, Debug)]
+pub(super) struct AggregateData {
+    pub(super) page: TablePage,
+    catalog: aftercast::TableCatalog,
+}
+
+#[cfg(test)]
 pub(super) async fn load_aggregate(
     endpoint: &ContextEndpoint,
     snapshot: ActionSnapshot,
@@ -396,24 +414,71 @@ pub(super) async fn load_aggregate(
     offset: u32,
     sort: Option<TableSort>,
 ) -> Result<TablePage, String> {
+    load_aggregate_selected(
+        endpoint,
+        snapshot,
+        scope,
+        peer,
+        skill,
+        RequestState {
+            offset,
+            sort,
+            columns: None,
+            epoch: 0,
+        },
+    )
+    .await
+    .map(|result| result.page)
+}
+
+pub(super) async fn load_aggregate_selected(
+    endpoint: &ContextEndpoint,
+    snapshot: ActionSnapshot,
+    scope: TableScope,
+    peer: Option<String>,
+    skill: Option<String>,
+    request: RequestState,
+) -> Result<AggregateData, String> {
     guard(endpoint, async {
+        let RequestState {
+            offset,
+            sort,
+            columns: selected,
+            ..
+        } = request;
         let catalog = endpoint
             .handle
             .table_columns(scope.level())
             .await
             .map_err(|error| error.to_string())?;
-        let mut columns: Vec<String> = catalog
-            .columns
-            .iter()
-            .filter(|column| column.default_visible && column.can_read)
-            .take(32)
-            .map(|column| column.key.clone())
-            .collect();
-        if columns.is_empty()
-            && let Some(column) = catalog.columns.iter().find(|column| column.can_read)
-        {
-            columns.push(column.key.clone());
-        }
+        let columns: Vec<String> = if let Some(selected) = selected {
+            if selected.is_empty()
+                || selected.len() > 32
+                || selected.iter().any(|key| {
+                    !catalog
+                        .columns
+                        .iter()
+                        .any(|column| column.key == *key && column.can_read)
+                })
+            {
+                return Err("Selected columns are unavailable; reload the table.".into());
+            }
+            selected
+        } else {
+            let mut defaults: Vec<String> = catalog
+                .columns
+                .iter()
+                .filter(|column| column.default_visible && column.can_read)
+                .take(32)
+                .map(|column| column.key.clone())
+                .collect();
+            if defaults.is_empty()
+                && let Some(column) = catalog.columns.iter().find(|column| column.can_read)
+            {
+                defaults.push(column.key.clone());
+            }
+            defaults
+        };
         if columns.is_empty() {
             return Err("No readable plugin columns are registered for this table.".into());
         }
@@ -425,11 +490,12 @@ pub(super) async fn load_aggregate(
             limit: 16,
             sort,
         };
-        endpoint
+        let page = endpoint
             .handle
             .lookup_table_rows(snapshot, &query, peer.as_deref(), skill.as_deref())
             .await
-            .map_err(|error| error.to_string())
+            .map_err(|error| error.to_string())?;
+        Ok(AggregateData { page, catalog })
     })
     .await
 }
@@ -455,6 +521,8 @@ fn AggregateTable(
     mut selected_row: Signal<Option<usize>>,
 ) -> Element {
     let mut offset = use_signal(|| 0u32);
+    let mut selected_columns = use_signal(|| None::<Vec<String>>);
+    let mut request_epoch = use_signal(|| 0u64);
     let mut sort = use_signal(|| None::<TableSort>);
     let peer_value = peer.clone();
     let skill = attack
@@ -484,9 +552,27 @@ fn AggregateTable(
         let scope = scope.clone();
         let peer = peer_value.clone();
         let skill = request_skill.clone();
-        let offset = offset();
-        let sort = sort();
-        async move { load_aggregate(&endpoint, snapshot, scope, peer, skill, offset, sort).await }
+        let requested = RequestState {
+            offset: offset(),
+            sort: sort(),
+            columns: selected_columns(),
+            epoch: request_epoch(),
+        };
+        async move {
+            let result =
+                load_aggregate_selected(&endpoint, snapshot, scope, peer, skill, requested.clone())
+                    .await;
+            let current = RequestState {
+                offset: offset(),
+                sort: sort(),
+                columns: selected_columns(),
+                epoch: request_epoch(),
+            };
+            if !request_is_current(&requested, &current) {
+                return Err("Lookup request was superseded.".into());
+            }
+            result
+        }
     });
     let pending = matches!(*resource.state().read(), UseResourceState::Pending);
     let stopped = matches!(*resource.state().read(), UseResourceState::Stopped);
@@ -501,13 +587,19 @@ fn AggregateTable(
             Button {
                 variant: ButtonVariant::Outline,
                 disabled: !pending,
-                onclick: move |_| resource.cancel(),
+                onclick: move |_| {
+                    request_epoch.set(request_epoch().wrapping_add(1));
+                    resource.cancel();
+                },
                 "Cancel table request"
             }
             Button {
                 variant: ButtonVariant::Outline,
                 disabled: pending,
-                onclick: move |_| resource.restart(),
+                onclick: move |_| {
+                    request_epoch.set(request_epoch().wrapping_add(1));
+                    resource.restart();
+                },
                 "Retry table"
             }
             if stopped {
@@ -522,112 +614,152 @@ fn AggregateTable(
                     None => rsx! {
                         p { "Table unavailable." }
                     },
-                    Some(Ok(page)) => rsx! {
-                        if let Some(error) = page.sort_error {
-                            p { role: "alert", "Plugin sort failed: {error:?}" }
-                        }
-                        p { "{page.total} rows; offset {offset}" }
-                        div { class: "flex flex-wrap gap-2",
-                            for column in page.columns.iter().filter(|column| column.can_sort) {
+                    Some(Ok(result)) => {
+                        let page = result.page;
+                        let catalog = result.catalog;
+                        let visible: Vec<String> = page
+                            .columns
+                            .iter()
+                            .map(|column| column.key.clone())
+                            .collect();
+                        rsx! {
+                            if let Some(error) = page.sort_error {
+                                p { role: "alert", "Plugin sort failed: {error:?}" }
+                            }
+                            p { "{page.total} rows; offset {offset}" }
+                            Accordion {
+                                class: "border border-border rounded-md".to_owned(),
+                                default_open: false,
+                                trigger_class: "px-3 py-2".to_owned(),
+                                header: rsx! { "Choose columns" },
+                                for column in catalog.columns.iter().filter(|column| column.can_read) {
+                                    {
+                                        let key = column.key.clone();
+                                        let mut next = visible.clone();
+                                        let checked = next.contains(&key);
+                                        let disabled = (checked && next.len() == 1) || (!checked && next.len() >= 32);
+                                        rsx! {
+                                            Button {
+                                                variant: ButtonVariant::Outline,
+                                                aria_pressed: checked,
+                                                disabled,
+                                                onclick: move |_| {
+                                                    if checked {
+                                                        next.retain(|item| item != &key);
+                                                    } else {
+                                                        next.push(key.clone());
+                                                    }
+                                                    selected_columns.set(Some(next.clone()));
+                                                    offset.set(0);
+                                                },
+                                                "{column.label} [{column.key}]"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            div { class: "flex flex-wrap gap-2",
+                                for column in page.columns.iter().filter(|column| column.can_sort) {
+                                    {
+                                        let key = column.key.clone();
+                                        rsx! {
+                                            Button {
+                                                variant: ButtonVariant::Outline,
+                                                onclick: move |_| {
+                                                    let descending = sort()
+                                                        .as_ref()
+                                                        .is_none_or(|current| current.primary != key || !current.descending);
+                                                    sort.set(
+                                                        Some(TableSort {
+                                                            primary: key.clone(),
+                                                            secondary: None,
+                                                            descending,
+                                                        }),
+                                                    );
+                                                    offset.set(0);
+                                                },
+                                                "Sort: {column.label}"
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                            p { class: "text-xs text-muted-foreground",
+                                for column in &page.columns {
+                                    span { "{column.label} | " }
+                                }
+                            }
+                            for row in &page.rows {
                                 {
-                                    let key = column.key.clone();
+                                    let identity = aggregate_row_label(row);
+                                    let peer_name = row.combatant.clone();
+                                    let attack_name = row.attack.clone();
+                                    let values = row
+                                        .cells
+                                        .iter()
+                                        .map(|cell| {
+                                            if cell.error.is_some() {
+                                                "ERROR".to_owned()
+                                            } else {
+                                                cell.text.clone().unwrap_or_default()
+                                            }
+                                        })
+                                        .collect::<Vec<_>>()
+                                        .join(" | ");
+                                    let can_open = skill.is_none();
                                     rsx! {
                                         Button {
                                             variant: ButtonVariant::Outline,
+                                            disabled: !can_open,
                                             onclick: move |_| {
-                                                let descending = sort()
-                                                    .as_ref()
-                                                    .is_none_or(|current| current.primary != key || !current.descending);
-                                                sort.set(
-                                                    Some(TableSort {
-                                                        primary: key.clone(),
-                                                        secondary: None,
-                                                        descending,
-                                                    }),
-                                                );
-                                                offset.set(0);
-                                            },
-                                            "Sort: {column.label}"
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        p { class: "text-xs text-muted-foreground",
-                            for column in &page.columns {
-                                span { "{column.label} | " }
-                            }
-                        }
-                        for row in &page.rows {
-                            {
-                                let identity = aggregate_row_label(row);
-                                let peer_name = row.combatant.clone();
-                                let attack_name = row.attack.clone();
-                                let values = row
-                                    .cells
-                                    .iter()
-                                    .map(|cell| {
-                                        if cell.error.is_some() {
-                                            "ERROR".to_owned()
-                                        } else {
-                                            cell.text.clone().unwrap_or_default()
-                                        }
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join(" | ");
-                                let can_open = skill.is_none();
-                                rsx! {
-                                    Button {
-                                        variant: ButtonVariant::Outline,
-                                        disabled: !can_open,
-                                        onclick: move |_| {
-                                            if let Some(name) = peer_name.clone() {
-                                                if let Some(skill) = attack_name.clone() {
-                                                    selected_attack.set(Some((skill, false)));
-                                                } else {
-                                                    selected_peer.set(Some(name));
-                                                    selected_attack.set(None);
+                                                if let Some(name) = peer_name.clone() {
+                                                    if let Some(skill) = attack_name.clone() {
+                                                        selected_attack.set(Some((skill, false)));
+                                                    } else {
+                                                        selected_peer.set(Some(name));
+                                                        selected_attack.set(None);
+                                                    }
+                                                    selected_row.set(None);
+                                                    offset.set(0);
+                                                    sort.set(None);
                                                 }
-                                                selected_row.set(None);
-                                                offset.set(0);
-                                                sort.set(None);
-                                            }
-                                        },
-                                        "{identity}: {values}"
+                                            },
+                                            "{identity}: {values}"
+                                        }
                                     }
                                 }
                             }
+                            div { class: "flex gap-2",
+                                Button {
+                                    variant: ButtonVariant::Outline,
+                                    disabled: offset() == 0,
+                                    onclick: move |_| offset.set(offset().saturating_sub(16)),
+                                    "Previous"
+                                }
+                                Button {
+                                    variant: ButtonVariant::Outline,
+                                    disabled: offset().saturating_add(16) >= page.total,
+                                    onclick: move |_| offset.set(offset().saturating_add(16)),
+                                    "Next"
+                                }
+                                Button {
+                                    variant: ButtonVariant::Outline,
+                                    disabled: peer.is_none(),
+                                    onclick: move |_| {
+                                        if attack.is_some() {
+                                            selected_attack.set(None);
+                                        } else {
+                                            selected_peer.set(None);
+                                        }
+                                        selected_row.set(None);
+                                        offset.set(0);
+                                        sort.set(None);
+                                    },
+                                    "Back"
+                                }
+                            }
                         }
-                        div { class: "flex gap-2",
-                            Button {
-                                variant: ButtonVariant::Outline,
-                                disabled: offset() == 0,
-                                onclick: move |_| offset.set(offset().saturating_sub(16)),
-                                "Previous"
-                            }
-                            Button {
-                                variant: ButtonVariant::Outline,
-                                disabled: offset().saturating_add(16) >= page.total,
-                                onclick: move |_| offset.set(offset().saturating_add(16)),
-                                "Next"
-                            }
-                            Button {
-                                variant: ButtonVariant::Outline,
-                                disabled: peer.is_none(),
-                                onclick: move |_| {
-                                    if attack.is_some() {
-                                        selected_attack.set(None);
-                                    } else {
-                                        selected_peer.set(None);
-                                    }
-                                    selected_row.set(None);
-                                    offset.set(0);
-                                    sort.set(None);
-                                },
-                                "Back"
-                            }
-                        }
-                    },
+                    }
                 }
             }
         }

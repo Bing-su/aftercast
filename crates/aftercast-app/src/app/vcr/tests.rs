@@ -289,6 +289,7 @@ async fn lookup_table_ui_contract_uses_revision_sort_pages_and_session() {
         page.rows.first().and_then(|row| row.combatant.as_deref()),
         Some("Target")
     );
+    verify_lookup_columns(&endpoint, report.snapshot, root.clone()).await;
     let empty = super::super::lookup::load_aggregate(
         &endpoint,
         report.snapshot,
@@ -344,4 +345,75 @@ async fn lookup_table_ui_contract_uses_revision_sort_pages_and_session() {
         .await
         .expect_err("session");
     host.shutdown().await.expect("shutdown");
+}
+
+#[test]
+fn lookup_request_state_rejects_canceled_and_superseded_results() {
+    use super::super::lookup::{RequestState, request_is_current};
+    let initial = RequestState {
+        offset: 0,
+        sort: None,
+        columns: Some(vec!["fixture".into()]),
+        epoch: 1,
+    };
+    assert!(request_is_current(&initial, &initial));
+    let mut newer = initial.clone();
+    newer.offset = 16;
+    assert!(!request_is_current(&initial, &newer));
+    newer = initial.clone();
+    newer.sort = Some(aftercast::TableSort {
+        primary: "fixture".into(),
+        secondary: None,
+        descending: true,
+    });
+    assert!(!request_is_current(&initial, &newer));
+    newer = initial.clone();
+    newer.columns = Some(vec!["other".into()]);
+    assert!(!request_is_current(&initial, &newer));
+    newer = initial.clone();
+    newer.epoch += 1;
+    assert!(!request_is_current(&initial, &newer));
+}
+
+async fn verify_lookup_columns(
+    endpoint: &ContextEndpoint,
+    snapshot: aftercast::ActionSnapshot,
+    root: aftercast::TableScope,
+) {
+    let selected = super::super::lookup::RequestState {
+        offset: 0,
+        sort: None,
+        columns: Some(vec!["fixture".into()]),
+        epoch: 0,
+    };
+    let picked = super::super::lookup::load_aggregate_selected(
+        endpoint,
+        snapshot,
+        root.clone(),
+        None,
+        None,
+        selected.clone(),
+    )
+    .await
+    .expect("selected column");
+    assert_eq!(
+        picked
+            .page
+            .columns
+            .first()
+            .map(|column| column.key.as_str()),
+        Some("fixture")
+    );
+    let mut missing = selected;
+    missing.columns = Some(vec!["missing-column".into()]);
+    super::super::lookup::load_aggregate_selected(
+        endpoint,
+        snapshot,
+        root.clone(),
+        None,
+        None,
+        missing,
+    )
+    .await
+    .expect_err("missing column");
 }
