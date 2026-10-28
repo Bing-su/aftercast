@@ -715,3 +715,118 @@ async fn recast_worker_keeps_modifier_evidence_and_frozen_sources(deployment: De
         .expect_err("stale session");
     fresh.shutdown().await.expect("shutdown");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10; run mise run test:plugins"]
+async fn vcr_worker_copies_actions_and_logs_without_replaying(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let plugin = host
+        .create_plugin(
+            PluginConfig::builder()
+                .path(path)
+                .type_name("Aftercast.PluginFixture.VcrImportPlugin")
+                .build(),
+        )
+        .await
+        .expect("plugin");
+    host.initialize_plugin(plugin).await.expect("initialize");
+    let input = deployment.directory().join("vcr.log");
+    std::fs::write(
+        &input,
+        "0|100|Strike|Source|Target\n5|50|Strike|Source|Target\n10|25|Strike|Source|Target\n",
+    )
+    .expect("synthetic");
+    host.import_log(&input).await.expect("import");
+    let id = host.encounters(0, 16).await.expect("encounters").items[0].id;
+    let frozen = host
+        .vcr_snapshot(id)
+        .await
+        .expect("capture")
+        .expect("encounter");
+    assert_eq!(frozen.logs.len(), 3);
+    let frame = aftercast::vcr_frame(&frozen, 5, 5, &["Damage".into()], true, true).expect("frame");
+    assert!(
+        frame
+            .edges
+            .iter()
+            .any(|edge| edge.from == "Source" && edge.to == "Target" && edge.amount == 150)
+    );
+    let replacement = host
+        .vcr_snapshot(id)
+        .await
+        .expect("capture")
+        .expect("encounter");
+    assert_ne!(frozen.revision, replacement.revision);
+    assert_eq!(frozen.logs.len(), 3);
+    host.shutdown().await.expect("shutdown");
+    let fresh = Host::start(deployment.config()).await.expect("restart");
+    fresh.vcr_snapshot(id).await.expect_err("stale session");
+    fresh.shutdown().await.expect("shutdown");
+}
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10; run mise run test:plugins"]
+async fn vcr_live_refresh_does_not_change_frozen_import(deployment: Deployment) {
+    use std::io::Write;
+    let host = Host::start(deployment.config()).await.expect("host");
+    let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let plugin = host
+        .create_plugin(
+            PluginConfig::builder()
+                .path(path)
+                .type_name("Aftercast.PluginFixture.VcrLivePlugin")
+                .build(),
+        )
+        .await
+        .expect("plugin");
+    host.initialize_plugin(plugin).await.expect("initialize");
+    let input = deployment.directory().join("import.log");
+    std::fs::write(&input, "0|100\n2|200\n").expect("synthetic import");
+    host.import_log(&input).await.expect("import");
+    let id = host.encounters(0, 16).await.expect("encounters").items[0].id;
+    let frozen = host
+        .vcr_snapshot(id)
+        .await
+        .expect("capture")
+        .expect("import");
+    let live_file = deployment.state.join("live.log");
+    std::fs::OpenOptions::new()
+        .append(true)
+        .open(&live_file)
+        .expect("live fixture")
+        .write_all(b"0|50\n2|75\n")
+        .expect("append");
+    let marker = deployment.state.join("live.accepted");
+    let started = std::time::Instant::now();
+    while !std::fs::read_to_string(&marker).is_ok_and(|s| s == "2|75") {
+        host.session_id().await.expect("pump");
+        assert!(
+            started.elapsed() < std::time::Duration::from_secs(5),
+            "synthetic live fixture timed out"
+        );
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let live = host
+        .live_combat()
+        .await
+        .expect("live query")
+        .expect("active");
+    let current = host
+        .vcr_snapshot(live.summary.id)
+        .await
+        .expect("capture")
+        .expect("live");
+    assert!(!current.summary.is_import);
+    assert!(frozen.summary.is_import);
+    assert_ne!(current.summary.id, frozen.summary.id);
+    assert_eq!(frozen.logs.len(), 2);
+    assert_eq!(current.logs.len(), 2);
+    assert_eq!(frozen.logs[1].text, "2|200");
+    assert_eq!(current.logs[1].text, "2|75");
+    host.shutdown().await.expect("shutdown");
+}

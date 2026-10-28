@@ -217,3 +217,9 @@ pub use recast::{
     RecastCalculation, RecastRequest, RecastRow, RecastSnapshot, RecastTime, recast_calculate,
     recast_initial_selection,
 };
+
+mod vcr;
+pub use vcr::{
+    VcrAction, VcrActor, VcrCategory, VcrClock, VcrEdge, VcrFrame, VcrMode, VcrNode, VcrSnapshot,
+    vcr_frame,
+};

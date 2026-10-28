@@ -347,7 +347,7 @@ impl HostHandle {
         limit: u32,
         input: Option<&str>,
     ) -> Result<BytesMut, Error> {
-        let max_limit = if matches!(mode, 12 | 15 | 17 | 19) {
+        let max_limit = if matches!(mode, 12 | 15 | 17 | 19 | 21) {
             65_536
         } else {
             256

@@ -546,6 +546,7 @@ internal static class Program
         SpecialsChecks.Run();
         TimelineNumericChecks.Run();
         RecastSnapshotChecks.Run();
+        VcrSnapshotChecks.Run();
         RootCombatStateChecks.Run();
         RootActionChecks.Run();
         HitRateColumnChecks.Run();
