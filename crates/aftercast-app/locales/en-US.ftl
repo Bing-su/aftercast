@@ -790,3 +790,10 @@ audio-misc-beep = Beep
 audio-misc-wav = WAV
 audio-misc-tts = Speech
 audio-misc-text = WAV path or spoken text
+
+report-profiles = Local text profiles
+report-profiles-help = Profiles store templates and the registered sort key. Saving an existing name replaces that profile. Reload formats before generating; missing plugin keys cause an error.
+report-profile-name = Profile name
+report-profile-save = Save current profile
+report-profile-invalid = Enter a valid profile name and bounded templates (maximum 32 profiles).
+report-sort-missing = The saved sort key is not currently registered. Load its plugin or choose another key.

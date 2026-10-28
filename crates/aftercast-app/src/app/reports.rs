@@ -179,6 +179,8 @@ pub(super) struct State {
     confirmation: Option<(Token, Preview, Utf8PathBuf)>,
     error: Option<String>,
     preset_page: usize,
+    profile_name: String,
+    profile_applied: bool,
 }
 impl State {
     pub(super) fn leave(&mut self) {
@@ -235,7 +237,10 @@ impl AppState {
         match field {
             "player" => self.reports.draft.player_format = value,
             "allied" => self.reports.draft.allies_format = value,
-            "sort" => self.reports.draft.sorting = value,
+            "sort" => {
+                self.reports.draft.sorting = value;
+                self.reports.profile_applied = false;
+            }
             "only" if value == "true" || value == "false" => {
                 self.reports.draft.show_only_allies = value == "true"
             }
@@ -259,6 +264,48 @@ impl AppState {
         self.reports.leave();
         true
     }
+    fn report_profile_name(&mut self, token: Token, name: String) -> bool {
+        if token != self.report_token() || !self.report_ready() {
+            return false;
+        }
+        self.reports.profile_name = name;
+        true
+    }
+    fn report_profile_apply(&mut self, token: Token, name: &str) -> bool {
+        if token != self.report_token() || !self.report_ready() {
+            return false;
+        }
+        let Some(profile) = self
+            .file
+            .as_ref()
+            .and_then(|file| file.settings.text_profiles.get(name))
+            .cloned()
+        else {
+            return false;
+        };
+        self.reports.draft = profile;
+        self.reports.profile_name = name.to_owned();
+        self.reports.profile_applied = true;
+        self.reports.edited = true;
+        self.reports.leave();
+        true
+    }
+    fn report_profile_prepare_save(&mut self, token: Token) -> Result<bool, &'static str> {
+        if token != self.report_token() || !self.report_ready() || !self.can_save_settings() {
+            return Ok(false);
+        }
+        let name = self.reports.profile_name.trim().to_owned();
+        if !crate::config::valid_text_profile(&name, &self.reports.draft)
+            || (!self.settings.text_profiles.contains_key(&name)
+                && self.settings.text_profiles.len() >= 32)
+        {
+            return Err("report-profile-invalid");
+        }
+        self.settings
+            .text_profiles
+            .insert(name, self.reports.draft.clone());
+        Ok(true)
+    }
     fn report_preset(&mut self, token: Token, index: Option<usize>) -> bool {
         if token != self.report_token() || !self.report_ready() {
             return false;
@@ -277,6 +324,7 @@ impl AppState {
             return false;
         };
         self.reports.draft = options;
+        self.reports.profile_applied = false;
         self.reports.edited = true;
         self.reports.leave();
         true
@@ -292,6 +340,12 @@ impl AppState {
         let request = if render {
             let target = self.selected.ok_or("report-select")?;
             let catalog = self.reports.catalog.clone().ok_or("report-load-first")?;
+            if self.reports.profile_applied
+                && !self.reports.draft.sorting.is_empty()
+                && !catalog.sort_columns.contains(&self.reports.draft.sorting)
+            {
+                return Err("report-sort-missing");
+            }
             let title = self
                 .encounters
                 .iter()

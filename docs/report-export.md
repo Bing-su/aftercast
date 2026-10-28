@@ -24,6 +24,24 @@ missing compatibility overloads or claim their options are implemented. The cata
 `TextExportFormats` in registration order, with selection copied into explicit GUI
 drafts. L9d output preferences remain separate. Do not invent presets from column labels.
 
+## Local text profiles
+
+The text-report panel can save up to 32 explicitly named local profiles in the
+app's existing settings file. Each copies the current player and allied templates,
+sort registration key, and ally flags; it does not retain encounter IDs, plugin
+objects, catalog revisions, or output destinations. An old settings file starts
+with no local profiles. Applying one only changes the editor draft. Saving an
+existing name explicitly replaces it; failed settings writes leave the prior file
+and editor draft intact. These local profiles are separate from ACT/plugin preset
+registration and are not automatically transmitted or copied to the clipboard.
+
+Generation still uses the current session's catalog and existing managed ACT
+formatting path. A saved nonempty sort key missing from that catalog is reported
+instead of silently applying the original fallback sort; this is an intentional
+safety difference for restored profiles. Unknown format variables retain the
+existing ACT-compatible formatter behavior. Native ACT comparison remains the
+separately configured Windows test; no external destination is accessed.
+
 ## First managed text-report slice
 
 `HostEnvironment.ReadTextReportCatalog()` returns a caller-owned catalog of

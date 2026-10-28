@@ -16,6 +16,7 @@ pub struct Settings {
     pub tables: BTreeMap<String, crate::table_settings::Preferences>,
     pub graphs: GraphSettings,
     pub audio: AudioPreferences,
+    pub text_profiles: BTreeMap<String, aftercast::TextReportOptions>,
 }
 
 impl Default for Settings {
@@ -27,6 +28,7 @@ impl Default for Settings {
             tables: BTreeMap::new(),
             graphs: GraphSettings::default(),
             audio: AudioPreferences::default(),
+            text_profiles: BTreeMap::new(),
         }
     }
 }
@@ -225,6 +227,14 @@ impl Settings {
         {
             return Err(miette!("Audio volume must be 0..100"));
         }
+        if self.text_profiles.len() > 32
+            || self
+                .text_profiles
+                .iter()
+                .any(|(name, profile)| !valid_text_profile(name, profile))
+        {
+            return Err(miette!("Invalid text report profile"));
+        }
         if self.schema_version != 1 {
             return Err(miette!(
                 "Unsupported config schema_version: {}",
@@ -390,6 +400,7 @@ impl ConfigFile {
             );
         }
         save_graphs(&mut self.document, &settings.graphs);
+        save_text_profiles(&mut self.document, &settings.text_profiles)?;
         save_tables(&mut self.document, &settings.tables)?;
         let path = root.join("config.toml");
         let mut temporary = tempfile::NamedTempFile::new_in(root).into_diagnostic()?;
@@ -534,6 +545,57 @@ fn save_graphs(document: &mut DocumentMut, graph: &GraphSettings) {
     } else if let Some(table) = document["graphs"].as_table_like_mut() {
         table.remove("solo_categories");
     }
+}
+
+pub(crate) fn valid_text_profile(name: &str, profile: &aftercast::TextReportOptions) -> bool {
+    !name.trim().is_empty()
+        && name.len() <= 80
+        && !name.chars().any(char::is_control)
+        && profile.player_format.len() <= 16384
+        && profile.allies_format.len() <= 16384
+        && profile.sorting.len() <= 256
+        && !profile.sorting.chars().any(char::is_control)
+}
+
+fn save_text_profiles(
+    document: &mut DocumentMut,
+    profiles: &BTreeMap<String, aftercast::TextReportOptions>,
+) -> Result<()> {
+    use toml_edit::{Item, Table};
+    if profiles.is_empty() && !document.as_table().contains_key("text_profiles") {
+        return Ok(());
+    }
+    let table = document
+        .as_table_mut()
+        .entry("text_profiles")
+        .or_insert(Item::Table(Table::new()))
+        .as_table_like_mut()
+        .ok_or_else(|| miette!("text_profiles must be a table"))?;
+    let removed = table
+        .iter()
+        .filter(|(key, _)| !profiles.contains_key(*key))
+        .map(|(key, _)| key.to_owned())
+        .collect::<Vec<_>>();
+    for name in removed {
+        table.remove(&name);
+    }
+    for (name, profile) in profiles {
+        let profile_table = table
+            .entry(name)
+            .or_insert(Item::Table(Table::new()))
+            .as_table_like_mut()
+            .ok_or_else(|| miette!("text profile must be a table"))?;
+        for (key, item) in [
+            ("playerFormat", value(&profile.player_format)),
+            ("alliesFormat", value(&profile.allies_format)),
+            ("sorting", value(&profile.sorting)),
+            ("showOnlyAllies", value(profile.show_only_allies)),
+            ("showAlliedInfo", value(profile.show_allied_info)),
+        ] {
+            set(profile_table.entry(key).or_insert(Item::None), item);
+        }
+    }
+    Ok(())
 }
 
 fn save_tables(
@@ -1104,6 +1166,45 @@ mod tests {
         assert_eq!(
             fs::read_to_string(root.join("config.toml")).expect("original"),
             source
+        );
+    }
+}
+
+#[cfg(test)]
+mod text_profile_checks {
+    use super::*;
+    #[test]
+    fn profiles_validate_migrate_and_preserve_failed_save() {
+        let temporary = tempfile::tempdir().expect("temp");
+        let root = Utf8Path::from_path(temporary.path()).expect("UTF8");
+        let mut file = ConfigFile::load(root).expect("old config");
+        assert!(file.settings.text_profiles.is_empty());
+        file.settings.text_profiles.insert(
+            "첫 프로필".into(),
+            aftercast::TextReportOptions {
+                player_format: "{name:5}".into(),
+                sorting: "plugin-key".into(),
+                ..Default::default()
+            },
+        );
+        file.save(root).expect("save");
+        let mut reopened = ConfigFile::load(root).expect("reload");
+        assert_eq!(
+            reopened.settings.text_profiles["첫 프로필"].sorting,
+            "plugin-key"
+        );
+        reopened
+            .settings
+            .text_profiles
+            .insert("".into(), Default::default());
+        assert!(reopened.save(root).is_err());
+        assert_eq!(
+            ConfigFile::load(root)
+                .expect("preserved")
+                .settings
+                .text_profiles
+                .len(),
+            1
         );
     }
 }

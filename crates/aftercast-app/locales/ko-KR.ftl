@@ -790,3 +790,10 @@ audio-misc-beep = 비프음
 audio-misc-wav = WAV
 audio-misc-tts = 음성
 audio-misc-text = WAV 경로 또는 음성 문구
+
+report-profiles = 로컬 텍스트 프로필
+report-profiles-help = 템플릿과 등록된 정렬 키를 저장합니다. 같은 이름으로 저장하면 해당 프로필을 덮어씁니다. 생성 전에 형식을 다시 불러오세요. 플러그인 키가 없으면 오류가 표시됩니다.
+report-profile-name = 프로필 이름
+report-profile-save = 현재 프로필 저장
+report-profile-invalid = 올바른 이름과 길이 제한을 확인하세요 (최대 32개).
+report-sort-missing = 저장된 정렬 키가 현재 등록되어 있지 않습니다. 해당 플러그인을 불러오거나 다른 키를 선택하세요.

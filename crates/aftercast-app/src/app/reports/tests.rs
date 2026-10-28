@@ -281,3 +281,74 @@ mod hierarchy;
 
 #[path = "html_tests.rs"]
 mod html;
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn text_profiles_persist_and_reject_stale_or_missing_keys() {
+    let mut f = Fixture::new().await;
+    f.ui.file = Some(crate::config::ConfigFile::load(&f.root).expect("config"));
+    f.load().await;
+    let stale = f.ui.report_token();
+    assert!(f.ui.report_edit(stale, "player", "{name} {damage}".into()));
+    assert!(!f.ui.report_profile_name(stale, "stale".into()));
+    assert!(f.ui.report_profile_name(f.ui.report_token(), "한글".into()));
+    assert!(
+        f.ui.report_profile_prepare_save(f.ui.report_token())
+            .expect("prepare")
+    );
+    assert!(
+        !f.ui.report_profile_apply(f.ui.report_token(), "한글"),
+        "pending settings are not saved profiles"
+    );
+    let _attempt = f.ui.begin_settings_save().expect("save attempt");
+    f.ui.receive_settings_save(
+        Err(miette::miette!("synthetic write failure")),
+        "saved".into(),
+    );
+    assert!(!f.ui.report_profile_apply(f.ui.report_token(), "한글"));
+    assert_eq!(f.ui.reports.draft.player_format, "{name} {damage}");
+    let (root, file) = f.ui.begin_settings_save().expect("retry");
+    f.ui.receive_settings_save(file.save(&root), "saved".into());
+    assert!(f.ui.report_profile_apply(f.ui.report_token(), "한글"));
+    assert_eq!(f.ui.reports.draft.player_format, "{name} {damage}");
+    f.preview().await;
+    assert!(
+        !f.ui
+            .report_preview()
+            .expect("preview")
+            .report
+            .text()
+            .is_empty()
+    );
+    let stored = crate::config::ConfigFile::load(&f.root).expect("restart");
+    assert_eq!(
+        stored
+            .settings
+            .text_profiles
+            .get("한글")
+            .expect("profile")
+            .player_format,
+        "{name} {damage}"
+    );
+    let old = f.ui.report_token();
+    f.ui.revision.session += 1;
+    assert!(!f.ui.report_profile_apply(old, "한글"));
+    f.ui.revision.session -= 1;
+    assert!(f.ui.report_edit(
+        f.ui.report_token(),
+        "sort",
+        "unregistered-plugin-key".into()
+    ));
+    assert!(
+        f.ui.report_profile_prepare_save(f.ui.report_token())
+            .expect("prepare")
+    );
+    let (root, file) = f.ui.begin_settings_save().expect("save");
+    f.ui.receive_settings_save(file.save(&root), "saved".into());
+    assert!(f.ui.report_profile_apply(f.ui.report_token(), "한글"));
+    assert!(matches!(
+        f.ui.report_begin(f.ui.report_token(), true),
+        Err("report-sort-missing")
+    ));
+    f.host.shutdown().await.expect("shutdown");
+}

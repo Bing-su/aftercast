@@ -43,6 +43,16 @@ pub(in crate::app) fn Panel() -> Element {
     let confirmation = current.reports.confirmation.clone();
     let error = current.reports.error.clone();
     let page = current.reports.preset_page;
+    let profile_name = current.reports.profile_name.clone();
+    let profiles = current
+        .file
+        .as_ref()
+        .map(|file| &file.settings.text_profiles)
+        .into_iter()
+        .flat_map(|profiles| profiles.keys())
+        .cloned()
+        .collect::<Vec<_>>();
+    let can_save = current.can_save_settings();
     let blocked = pending.is_some() || !matches!(current.phase, Phase::Idle | Phase::Ready);
     drop(current);
     rsx! {
@@ -62,6 +72,49 @@ pub(in crate::app) fn Panel() -> Element {
                     disabled: !ready,
                     onclick: move |_| begin(state, token, false),
                     {tr("report-load")}
+                }
+                div { class: "space-y-2",
+                    h3 { class: "text-sm font-medium", {tr("report-profiles")} }
+                    p { class: "text-xs text-muted-foreground", {tr("report-profiles-help")} }
+                    Label { html_for: "report-profile-name", {tr("report-profile-name")} }
+                    Input {
+                        id: "report-profile-name".to_owned(),
+                        value: profile_name,
+                        disabled: !ready,
+                        oninput: move |event: FormEvent| {
+                            state.write().report_profile_name(token, event.value());
+                        },
+                    }
+                    Button {
+                        variant: ButtonVariant::Outline,
+                        disabled: !ready || !can_save,
+                        onclick: move |_| {
+                            let result = state.write().report_profile_prepare_save(token);
+                            match result {
+                                Ok(true) => super::super::save_settings(state),
+                                Ok(false) => {}
+                                Err(key) => state.write().reports.error = Some(tr(key)),
+                            }
+                        },
+                        {tr("report-profile-save")}
+                    }
+                    div { class: "flex flex-wrap gap-2",
+                        for name in profiles {
+                            {
+                                let selected = name.clone();
+                                rsx! {
+                                    Button {
+                                        variant: ButtonVariant::Outline,
+                                        disabled: !ready,
+                                        onclick: move |_| {
+                                            state.write().report_profile_apply(token, &selected);
+                                        },
+                                        {name}
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
                 if let Some(catalog) = catalog {
                     div { class: "space-y-3",
