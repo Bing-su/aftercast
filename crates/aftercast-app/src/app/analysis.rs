@@ -80,10 +80,7 @@ pub(super) fn AnalysisPane() -> Element {
                         key: "{state.read().revision.session}-{state.read().revision.selection}-{combatant}",
                         id: detail.summary.id,
                         combatant,
-                        partial: matches!(
-                            detail.summary.status,
-                            aftercast::EncounterStatus::PartialImport | aftercast::EncounterStatus::Importing
-                        ),
+                        partial: super::death::incomplete(detail.summary.status),
                     }
                 }
                 Accordion {
