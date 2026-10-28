@@ -139,6 +139,7 @@ mod tests {
                 registered_damage: damage,
                 registered_healing: healing,
                 is_death,
+                numeric_tooltip: String::new(),
             };
             let mut actions = scenario["actions"]
                 .as_array()
