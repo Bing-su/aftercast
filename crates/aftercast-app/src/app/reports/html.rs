@@ -104,6 +104,50 @@ impl Default for Draft {
     }
 }
 impl Draft {
+    fn graphs(&self) -> Result<Option<HierarchyHtmlGraphOptions>, &'static str> {
+        if !self.graph_levels.iter().any(|selected| *selected) {
+            Ok(None)
+        } else {
+            let window = self
+                .graph_window
+                .parse::<u32>()
+                .ok()
+                .filter(|value| (1..=120).contains(value))
+                .ok_or("html-graph-invalid")?;
+            if (self.graph_levels[2] && self.graph_distribution.is_empty())
+                || (self.graph_levels[3] && self.graph_action_sort.is_empty())
+                || self.graph_all.is_empty()
+                || (self.graph_levels[2]
+                    && self.graph_distribution == "Resist"
+                    && self.graph_ward.is_empty())
+            {
+                return Err("html-graph-invalid");
+            }
+            Ok(Some(HierarchyHtmlGraphOptions {
+                window,
+                rolling: self.graph_rolling,
+                distribution_column: if self.graph_levels[2] {
+                    self.graph_distribution.clone()
+                } else {
+                    "Resist".into()
+                },
+                action_sort_column: if self.graph_levels[3] {
+                    self.graph_action_sort.clone()
+                } else {
+                    "unused".into()
+                },
+                all_label: self.graph_all.clone(),
+                ward_prefix: self.graph_ward.clone(),
+                selected_combatants: None,
+                solo_categories: None,
+                levels: LEVELS
+                    .into_iter()
+                    .zip(self.graph_levels)
+                    .filter_map(|(level, selected)| selected.then_some(level))
+                    .collect(),
+            }))
+        }
+    }
     pub fn stop(&mut self) {
         self.selected.clear();
         self.owner = None;
@@ -179,10 +223,15 @@ impl AppState {
         let draft = &mut self.reports.html;
         match field {
             "toggle" => match value.parse::<usize>() {
-                Ok(index) if index < 4 => {
-                    draft.graph_levels[index] = !draft.graph_levels[index];
-                    if draft.graph_levels[index] && (draft.last as usize) < index + 1 {
-                        draft.last = LEVELS[index];
+                Ok(index) => {
+                    let (Some(selected), Some(level)) =
+                        (draft.graph_levels.get_mut(index), LEVELS.get(index))
+                    else {
+                        return false;
+                    };
+                    *selected = !*selected;
+                    if *selected && (draft.last as usize) < index + 1 {
+                        draft.last = *level;
                     }
                 }
                 _ => return false,
@@ -327,48 +376,7 @@ impl AppState {
                     .ok_or("html-report-load-first")?;
                 settings.push(draft.settings(*level, catalog)?);
             }
-            let graphs = if !html.graph_levels.iter().any(|selected| *selected) {
-                None
-            } else {
-                let window = html
-                    .graph_window
-                    .parse::<u32>()
-                    .ok()
-                    .filter(|value| (1..=120).contains(value))
-                    .ok_or("html-graph-invalid")?;
-                if (html.graph_levels[2] && html.graph_distribution.is_empty())
-                    || (html.graph_levels[3] && html.graph_action_sort.is_empty())
-                    || html.graph_all.is_empty()
-                    || (html.graph_levels[2]
-                        && html.graph_distribution == "Resist"
-                        && html.graph_ward.is_empty())
-                {
-                    return Err("html-graph-invalid");
-                }
-                Some(HierarchyHtmlGraphOptions {
-                    window,
-                    rolling: html.graph_rolling,
-                    distribution_column: if html.graph_levels[2] {
-                        html.graph_distribution.clone()
-                    } else {
-                        "Resist".into()
-                    },
-                    action_sort_column: if html.graph_levels[3] {
-                        html.graph_action_sort.clone()
-                    } else {
-                        "unused".into()
-                    },
-                    all_label: html.graph_all.clone(),
-                    ward_prefix: html.graph_ward.clone(),
-                    selected_combatants: None,
-                    solo_categories: None,
-                    levels: LEVELS
-                        .into_iter()
-                        .zip(html.graph_levels)
-                        .filter_map(|(level, selected)| selected.then_some(level))
-                        .collect(),
-                })
-            };
+            let graphs = html.graphs()?;
             Request::HtmlRender(html.selected.clone(), html.last, settings, graphs)
         } else {
             Request::HtmlCatalog

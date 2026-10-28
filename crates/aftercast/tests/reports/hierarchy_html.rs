@@ -368,18 +368,14 @@ async fn html_worker_explicit_graphs_with_independent_table_depth(deployment: De
         .unwrap();
     assert!(report.content.contains("<rect") && report.content.contains("A100 100"));
     options.ward_prefix.clear();
-    assert!(
-        host.hierarchy_html_with_graphs(&choice, &levels(TableLevel::Action), Some(&options))
-            .await
-            .is_err()
-    );
+    host.hierarchy_html_with_graphs(&choice, &levels(TableLevel::Action), Some(&options))
+        .await
+        .expect_err("empty ward prefix");
     options.ward_prefix = "Warded/".into();
     options.levels = vec![TableLevel::Action];
-    assert!(
-        host.hierarchy_html_with_graphs(&choice, &levels(TableLevel::Combatant), Some(&options))
-            .await
-            .is_err()
-    );
+    host.hierarchy_html_with_graphs(&choice, &levels(TableLevel::Combatant), Some(&options))
+        .await
+        .expect_err("graph requires corresponding table");
     let report = host
         .hierarchy_html_with_graphs(&choice, &levels(TableLevel::Action), Some(&options))
         .await

@@ -160,11 +160,11 @@ fn GraphEditor() -> Element {
                     },
                     {tr("html-graph-none")}
                 }
-                for (index, level) in html::LEVELS.into_iter().enumerate() {
+                for (index, (level, selected)) in html::LEVELS.into_iter().zip(draft.graph_levels).enumerate() {
                     Button {
                         variant: ButtonVariant::Outline,
                         disabled,
-                        aria_pressed: Some(draft.graph_levels[index]),
+                        aria_pressed: Some(selected),
                         onclick: move |_| {
                             state.write().report_html_graph_edit(token, "toggle", index.to_string());
                         },

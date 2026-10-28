@@ -66,6 +66,13 @@ fn ids_valid(ids: &[EncounterId], session: u64) -> bool {
 fn key(value: &str) -> bool {
     !value.is_empty() && value.len() <= 1024 && !value.contains('\0')
 }
+fn graph_selection_valid(items: &Option<Vec<String>>) -> bool {
+    items.as_ref().is_none_or(|items| {
+        items.len() <= 256
+            && items.iter().all(|item| key(item))
+            && items.iter().collect::<HashSet<_>>().len() == items.len()
+    })
+}
 fn options_valid(levels: &[HierarchyHtmlLevel], last: TableLevel) -> bool {
     levels.len() == last as usize
         && levels
@@ -149,15 +156,8 @@ impl HostHandle {
             return Err(invalid("invalid HTML levels/columns/sorting"));
         }
         if let Some(graph) = graphs {
-            let selections_valid = [&graph.selected_combatants, &graph.solo_categories]
-                .into_iter()
-                .all(|items| {
-                    items.as_ref().is_none_or(|items| {
-                        items.len() <= 256
-                            && items.iter().all(|item| key(item))
-                            && items.iter().collect::<HashSet<_>>().len() == items.len()
-                    })
-                });
+            let selections_valid = graph_selection_valid(&graph.selected_combatants)
+                && graph_selection_valid(&graph.solo_categories);
             if selection.last_level != TableLevel::Action
                 || !(1..=120).contains(&graph.window)
                 || !key(&graph.distribution_column)
