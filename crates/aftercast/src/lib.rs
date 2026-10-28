@@ -211,3 +211,9 @@ pub use specials_report::{SpecialReport, SpecialRow};
 
 mod timeline;
 pub use timeline::{TimelineLog, TimelineOptions, TimelineReport, TimelineRow, TimelineSeries};
+
+mod recast;
+pub use recast::{
+    RecastCalculation, RecastRequest, RecastRow, RecastSnapshot, RecastTime, recast_calculate,
+    recast_initial_selection,
+};

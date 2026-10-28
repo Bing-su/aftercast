@@ -1,0 +1,109 @@
+{
+  "cases": [
+    {
+      "name": "minimum-not-median",
+      "seconds": [0, 30, 90],
+      "modified": [null, null, null],
+      "restrict": false,
+      "useModifier": false,
+      "initial": [true, true, true],
+      "selected": [true, true, true],
+      "intervals": [30, 60],
+      "histogram": [
+        [30, 1],
+        [60, 1]
+      ],
+      "minimum": 30
+    },
+    {
+      "name": "raw-versus-checked",
+      "seconds": [0, 1, 2, 13, 25],
+      "modified": [null, null, null, null, null],
+      "restrict": true,
+      "useModifier": false,
+      "initial": [true, false, false, false, true],
+      "selected": [true, false, false, true, true],
+      "intervals": [13, 12],
+      "histogram": [
+        [12, 1],
+        [13, 1]
+      ],
+      "minimum": 12
+    },
+    {
+      "name": "histogram-limit-not-minimum",
+      "seconds": [0, 121, 244],
+      "modified": [null, null, null],
+      "restrict": true,
+      "useModifier": false,
+      "initial": [true, true, true],
+      "selected": [true, true, true],
+      "intervals": [121, 123],
+      "histogram": [],
+      "minimum": 121
+    },
+    {
+      "name": "modifier-and-reserved-sentinel",
+      "seconds": [0, 30, 12375],
+      "modified": [true, false, null],
+      "restrict": false,
+      "useModifier": true,
+      "initial": [true, true, true],
+      "selected": [true, true, true],
+      "intervals": [20, 12345],
+      "histogram": [
+        [20, 1],
+        [12345, 1]
+      ],
+      "minimum": 20
+    },
+    {
+      "name": "sentinel-fallback",
+      "seconds": [0, 12345],
+      "modified": [null, null],
+      "restrict": false,
+      "useModifier": false,
+      "initial": [true, true],
+      "selected": [true, true],
+      "intervals": [12345],
+      "histogram": [[12345, 1]],
+      "minimum": null
+    },
+    {
+      "name": "equal-time-and-empty-selection",
+      "seconds": [0, 0, 1],
+      "modified": [null, null, null],
+      "restrict": false,
+      "useModifier": false,
+      "initial": [true, false, false],
+      "selected": [false, false, false],
+      "intervals": [],
+      "histogram": [],
+      "minimum": null
+    },
+    {
+      "name": "float32-with-inactive-present-modifier",
+      "seconds": [0, 16777217],
+      "modified": [false, null],
+      "restrict": false,
+      "useModifier": true,
+      "initial": [true, true],
+      "selected": [true, true],
+      "intervals": [16777216],
+      "histogram": [[16777216, 1]],
+      "minimum": null
+    },
+    {
+      "name": "sorter-order-time-regression",
+      "seconds": [10, 0, 5],
+      "modified": [null, null, null],
+      "restrict": false,
+      "useModifier": false,
+      "initial": [true, false, true],
+      "selected": [true, true, true],
+      "intervals": [-10, 5],
+      "histogram": [[5, 1]],
+      "minimum": 5
+    }
+  ]
+}

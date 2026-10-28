@@ -634,3 +634,84 @@ async fn timeline_worker_keeps_grouped_rates_and_logs_owned(deployment: Deployme
         .expect_err("stale session");
     fresh.shutdown().await.expect("shutdown");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10; run mise run test:plugins"]
+async fn recast_worker_keeps_modifier_evidence_and_frozen_sources(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let plugin = host
+        .create_plugin(
+            PluginConfig::builder()
+                .path(path)
+                .type_name("Aftercast.PluginFixture.RecastImportPlugin")
+                .build(),
+        )
+        .await
+        .expect("plugin");
+    host.initialize_plugin(plugin).await.expect("initialize");
+    let input = deployment.directory().join("recast.log");
+    std::fs::write(&input, "0|100|Strike|Source|Target\n5|0|Traumatic Swipe|Enemy|Source\n5|-1|Strike|Source|Target\n10|100|Strike|Source|Target\n12|-10|Killing|Source|Enemy\n15|-1|Strike|Source|Target\n20|100|Strike|Source|Target\n").expect("synthetic");
+    host.import_log(&input).await.expect("import");
+    let id = host.encounters(0, 16).await.expect("encounters").items[0].id;
+    let request = aftercast::RecastRequest {
+        combatant: "Source".into(),
+        category: "Damage".into(),
+        attack: "Strike".into(),
+        outgoing: true,
+        modifier: true,
+    };
+    let report = host
+        .recast_snapshot(id, &request)
+        .await
+        .expect("capture")
+        .expect("attack");
+    assert_eq!(
+        report
+            .rows
+            .iter()
+            .map(|row| row.modified)
+            .collect::<Vec<_>>(),
+        vec![
+            Some(false),
+            Some(false),
+            Some(true),
+            Some(false),
+            Some(false)
+        ]
+    );
+    assert_eq!(report.rows[1].action.amount, -1);
+    assert_eq!(report.rows[2].action.source_index, 3);
+    assert_eq!(
+        report.rows[2]
+            .modifier_evidence
+            .as_ref()
+            .expect("swipe")
+            .source_index,
+        1
+    );
+    assert_eq!(report.logs[1].text, "5|0|Traumatic Swipe|Enemy|Source");
+    let times = report.times();
+    let selected = aftercast::recast_initial_selection(&times, false).expect("selection");
+    let calculation =
+        aftercast::recast_calculate(&times, &selected, false, true).expect("calculate");
+    assert_eq!(calculation.intervals, [5, 5, 3, 5]);
+    assert_eq!(calculation.minimum, Some(3));
+    let mut wrong = request.clone();
+    wrong.outgoing = false;
+    assert!(
+        host.recast_snapshot(id, &wrong)
+            .await
+            .expect("wrong direction")
+            .is_none()
+    );
+    host.shutdown().await.expect("shutdown");
+    let fresh = Host::start(deployment.config()).await.expect("restart");
+    fresh
+        .recast_snapshot(id, &request)
+        .await
+        .expect_err("stale session");
+    fresh.shutdown().await.expect("shutdown");
+}
