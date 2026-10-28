@@ -86,6 +86,10 @@ pub(super) struct Draft {
     pub graph_levels: [bool; 4],
     pub graph_window: String,
     pub graph_rolling: bool,
+    pub graph_simple: bool,
+    pub graph_simple_column: String,
+    pub graph_only_allies: bool,
+    pub graph_totals: bool,
     pub graph_distribution: String,
     pub graph_action_sort: String,
     pub graph_all: String,
@@ -106,6 +110,10 @@ impl Default for Draft {
             graph_levels: [false; 4],
             graph_window: "10".into(),
             graph_rolling: true,
+            graph_simple: true,
+            graph_simple_column: String::new(),
+            graph_only_allies: true,
+            graph_totals: true,
             graph_distribution: String::new(),
             graph_action_sort: String::new(),
             graph_all: "All".into(),
@@ -168,13 +176,18 @@ impl Draft {
         if !self.graph_levels.iter().any(|selected| *selected) {
             Ok(None)
         } else {
-            let window = self
-                .graph_window
-                .parse::<u32>()
-                .ok()
-                .filter(|value| (1..=120).contains(value))
-                .ok_or("html-graph-invalid")?;
-            if (self.graph_levels[2] && self.graph_distribution.is_empty())
+            let needs_window = self.graph_levels[1] || (self.graph_levels[0] && !self.graph_simple);
+            let window = if needs_window {
+                self.graph_window
+                    .parse::<u32>()
+                    .ok()
+                    .filter(|value| (1..=120).contains(value))
+                    .ok_or("html-graph-invalid")?
+            } else {
+                10
+            };
+            if (self.graph_levels[0] && self.graph_simple && self.graph_simple_column.is_empty())
+                || (self.graph_levels[2] && self.graph_distribution.is_empty())
                 || (self.graph_levels[3] && self.graph_action_sort.is_empty())
                 || self.graph_all.is_empty()
                 || (self.graph_levels[2]
@@ -186,6 +199,10 @@ impl Draft {
             Ok(Some(HierarchyHtmlGraphOptions {
                 window,
                 rolling: self.graph_rolling,
+                simple: self.graph_simple,
+                simple_column: self.graph_simple_column.clone(),
+                only_allies: self.graph_only_allies,
+                totals: self.graph_totals,
                 distribution_column: if self.graph_levels[2] {
                     self.graph_distribution.clone()
                 } else {
@@ -352,6 +369,12 @@ impl AppState {
                 _ => return false,
             },
             "clear" => draft.graph_levels = [false; 4],
+            "simple" if value == "true" || value == "false" => draft.graph_simple = value == "true",
+            "simple_column" => draft.graph_simple_column = value,
+            "only_allies" if value == "true" || value == "false" => {
+                draft.graph_only_allies = value == "true"
+            }
+            "totals" if value == "true" || value == "false" => draft.graph_totals = value == "true",
             "window" => draft.graph_window = value,
             "rolling" if value == "true" || value == "false" => {
                 draft.graph_rolling = value == "true"

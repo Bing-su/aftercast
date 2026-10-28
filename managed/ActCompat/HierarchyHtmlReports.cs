@@ -94,6 +94,11 @@ namespace Advanced_Combat_Tracker
                 // Validate graph callbacks before any table or graph value callback runs.
                 if(graphs is not null)
                 {
+                    if(graphs.Simple && graphs.Levels!.Contains(TableLevel.Combatant))
+                    {
+                        ReadTableColumns(TableLevel.Combatant);var simple=SelectTableColumn(columnSnapshots[TableLevel.Combatant].Snapshot,graphs.SimpleColumn,true);
+                        if(simple.Sql is not CombatantData.StringDataCallback || simple.Sort is not Comparison<CombatantData>)throw new ArgumentException("Simple graph requires SQL and sort callbacks");
+                    }
                     ReadTableColumns(TableLevel.Attack);var attackSnapshot=columnSnapshots[TableLevel.Attack].Snapshot;
                     if(graphs.Levels!.Contains(TableLevel.Attack) && graphs.DistributionColumn!="Resist")
                     {

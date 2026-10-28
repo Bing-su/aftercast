@@ -5,7 +5,8 @@ namespace Aftercast.ActCompat
     // Explicit settings; no inferred plugin columns or localized terms.
     public sealed record HierarchyHtmlGraphOptions(int Window, bool Rolling, string DistributionColumn,
         string ActionSortColumn, string AllLabel, string WardPrefix,
-        string[]? SelectedCombatants = null, string[]? SoloCategories = null, TableLevel[]? Levels = null);
+        string[]? SelectedCombatants = null, string[]? SoloCategories = null, TableLevel[]? Levels = null,
+        bool Simple = false, string SimpleColumn = "", bool OnlyAllies = true, bool Totals = true);
 }
 
 namespace Advanced_Combat_Tracker
@@ -28,6 +29,32 @@ namespace Advanced_Combat_Tracker
             }
             var scope = node.Capture.Scope.Level;
             var encounter = node.Capture.Guard.Encounter;
+            if (scope == TableLevel.Combatant && options.Simple)
+            {
+                var binding = SelectTableColumn(node.Capture.Columns, options.SimpleColumn, true);
+                if (binding.Sql is not CombatantData.StringDataCallback sql || binding.Sort is not Comparison<CombatantData> compare) throw new InvalidDataException("Simple graph requires SQL and sorting callbacks");
+                var actors = node.Capture.Rows.Select(row => (CombatantData)row.Value).ToList();
+                var useAllActors = Invoke(() => encounter.GetIsSelective() && encounter.GetIgnoreEnemies());
+                var allies = options.OnlyAllies ? Invoke(() => useAllActors ? encounter.Items.Values.ToList() : encounter.GetAllies()) : [];
+                if (options.OnlyAllies) node.Capture.Guard.BindAllies(allies,useAllActors);
+                try
+                {
+                actors.Sort((a,b) => Invoke(() => compare(a,b))); actors.Reverse();
+                var items = new List<GraphNumeric.SimpleValue>();
+                foreach (var actor in actors)
+                {
+                    if (options.OnlyAllies && allies.Count > 0 && !allies.Contains(actor)) continue;
+                    if (options.SelectedCombatants is not null && !options.SelectedCombatants.Contains(actor.Name.ToUpper(), StringComparer.Ordinal)) continue;
+                    check(); string? raw = null; Exception? failure = null;
+                    try { raw = sql(actor); } catch (Exception error) { failure = error; }
+                    try { check(); } catch (Exception after) when (failure is not null) { throw new AggregateException("Simple SQL callback and validation failed",failure,after); }
+                    if (failure is null && double.TryParse(raw, NumberStyles.Float | NumberStyles.AllowThousands, CultureInfo.GetCultureInfo("en-US"), out var value)) items.Add(new(actor.Name,value));
+                }
+                var result = GraphNumeric.Simple(items); check();
+                return result is null ? [GraphSvg.Empty("Encounter",actors.Count == 0 ? "No actors" : "No positive values")] : [GraphSvg.Simple("Encounter", result, options.Totals)];
+                }
+                finally { node.Capture.Guard.ClearAllies(); }
+            }
             if (scope is TableLevel.Combatant or TableLevel.Category)
             {
                 var start = Invoke(() => encounter.StartTime); var end = Invoke(() => encounter.EndTime);

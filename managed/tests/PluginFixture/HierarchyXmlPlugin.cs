@@ -55,6 +55,7 @@ public class HierarchyXmlPlugin:IActPluginV1
     }
     private void ConfigureHtml()
     {
+        CombatantData.ColumnDefs["simple-numeric"]=new("Simple numeric",false,"FLOAT","simple",Actor,row=>{Own(row);return row.Damage.ToString(CultureInfo.InvariantCulture);},(left,right)=>{Own(left);Own(right);return string.CompareOrdinal(left.Name,right.Name);});
         CombatantData.ColumnDefs["registered-a"].GetCellData=Actor;
         CombatantData.ColumnDefs["registered-b"].GetCellData=row=>{Own(row);return "<script>alert('x')</script><img src=x onerror=boom>&\""+row.Name;};
         CombatantData.ColumnDefs["registered-a"].SortComparer=(left,right)=>{Own(left);Own(right);if(left.Damage==222||right.Damage==222)throw new Exception("synthetic hierarchy sort failure");return string.CompareOrdinal(left.Name,right.Name);};

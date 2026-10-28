@@ -107,6 +107,26 @@ public static class GraphSvg
         }
         return Finish(b);
     }
+    public static string Empty(string label, string message)
+    {
+        var b = Start(label); b.Append("<text x=\"40\" y=\"128\">").Append(E(message)).Append("</text>"); return Finish(b);
+    }
+    public static string Simple(string label, GraphNumeric.SimpleResult data, bool totals)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        if (data.Values.Length > Limit || data.Axis <= 0 || !double.IsFinite(data.Axis)) throw new InvalidDataException("Invalid Simple graph");
+        var b = Start(label, Math.Max(256, 260 + data.Values.Length * 16.0));
+        b.Append("<path d=\"M40 20V200H620\" fill=\"none\" stroke=\"black\"/><text x=\"8\" y=\"18\">").Append(N(data.Axis)).Append("</text>");
+        var width = 580.0 / Math.Max(1, data.Values.Length);
+        for (var i = 0; i < data.Values.Length; i++)
+        {
+            var value = data.Values[i]; var height = (value.Value / data.Axis) * 180;
+            b.Append("<rect fill=\"#3568a8\" x=\"").Append(N(40 + width * i)).Append("\" y=\"").Append(N(200-height)).Append("\" width=\"").Append(N(width)).Append("\" height=\"").Append(N(height)).Append("\"><title>").Append(E(value.Name)).Append(": ").Append(N(value.Value)).Append("</title></rect><text x=\"40\" y=\"").Append(N(260+i*16)).Append("\">").Append(E(value.Name)).Append("</text>");
+            if (b.Length > MaxBytes) throw new InvalidDataException("Graph SVG exceeds 2 MiB");
+        }
+        if (totals) b.Append("<text x=\"400\" y=\"40\"><tspan x=\"400\">Total: ").Append(E(data.Total.ToString("0,0",CultureInfo.CurrentCulture))).Append("</tspan><tspan x=\"400\" dy=\"16\">AVG: ").Append(E(data.Average.ToString("0,0.00",CultureInfo.CurrentCulture))).Append("</tspan></text>");
+        return Finish(b);
+    }
     public static string Bars(string label, GraphNumeric.Bars bars)
     {
         ArgumentNullException.ThrowIfNull(bars);

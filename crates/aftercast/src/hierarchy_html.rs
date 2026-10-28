@@ -48,6 +48,10 @@ pub struct HierarchyHtmlGraphOptions {
     pub selected_combatants: Option<Vec<String>>,
     pub solo_categories: Option<Vec<String>>,
     pub levels: Vec<TableLevel>,
+    pub simple: bool,
+    pub simple_column: String,
+    pub only_allies: bool,
+    pub totals: bool,
 }
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HierarchyHtmlReport {
@@ -169,6 +173,9 @@ impl HostHandle {
                     && graph.distribution_column == "Resist"
                     && graph.ward_prefix.is_empty())
                 || !selections_valid
+                || (graph.simple
+                    && graph.levels.contains(&TableLevel::Combatant)
+                    && !key(&graph.simple_column))
                 || graph.levels.is_empty()
                 || graph.levels.len() > 4
                 || graph.levels.iter().any(|level| {

@@ -344,6 +344,10 @@ async fn html_worker_explicit_graphs_with_independent_table_depth(deployment: De
         selected_combatants: None,
         solo_categories: None,
         levels: vec![TableLevel::Combatant],
+        simple: false,
+        simple_column: String::new(),
+        only_allies: true,
+        totals: true,
     };
     let report = host
         .hierarchy_html_with_graphs(&choice, &levels(TableLevel::Combatant), Some(&options))

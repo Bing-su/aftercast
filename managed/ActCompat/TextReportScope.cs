@@ -29,6 +29,7 @@ public partial class FormActMain
             members=actors.Take(16385).ToArray();
             if(members.Length>16384||members.Any(pair=>pair.Value is null))throw new InvalidDataException("Invalid or oversized report combatant scope");
         }
+        internal void ClearAllies(){allies=null;boundAllies=null;allActors=false;}
         internal void BindAllies(List<CombatantData> selected,bool allActors)
         {this.allActors=allActors;boundAllies=selected;allies=selected.ToArray();}
         internal void Check()

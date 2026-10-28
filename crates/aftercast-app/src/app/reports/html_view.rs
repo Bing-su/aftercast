@@ -173,6 +173,84 @@ fn GraphEditor() -> Element {
                 }
             }
             if draft.graph_levels.iter().any(|selected| *selected) {
+                if draft.graph_levels[0] {
+                    Button {
+                        variant: ButtonVariant::Outline,
+                        disabled,
+                        aria_pressed: Some(draft.graph_simple),
+                        onclick: move |_| {
+                            state
+                                .write()
+                                .report_html_graph_edit(token, "simple", (!draft.graph_simple).to_string());
+                        },
+                        {
+                            if draft.graph_simple {
+                                tr("html-graph-simple")
+                            } else {
+                                tr("html-graph-advanced")
+                            }
+                        }
+                    }
+                    if draft.graph_simple {
+                        GraphField {
+                            token,
+                            disabled,
+                            field: "simple_column",
+                            label: "html-graph-simple-column",
+                            value: draft.graph_simple_column.clone(),
+                        }
+                        div { class: "flex flex-wrap gap-2",
+                            for column in draft
+                                .catalogs
+                                .iter()
+                                .filter(|catalog| catalog.level == TableLevel::Combatant)
+                                .flat_map(|catalog| catalog.columns.iter().filter(|column| column.can_sort))
+                            {
+                                {
+                                    let key = column.key.clone();
+                                    let display = key.clone();
+                                    rsx! {
+                                        Button {
+                                            variant: ButtonVariant::Outline,
+                                            disabled,
+                                            onclick: move |_| {
+                                                state.write().report_html_graph_edit(token, "simple_column", key.clone());
+                                            },
+                                            "{display}"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        p { class: "text-xs text-muted-foreground", {tr("html-graph-sql-help")} }
+                        Button {
+                            variant: ButtonVariant::Outline,
+                            disabled,
+                            aria_pressed: Some(draft.graph_only_allies),
+                            onclick: move |_| {
+                                state
+                                    .write()
+                                    .report_html_graph_edit(
+                                        token,
+                                        "only_allies",
+                                        (!draft.graph_only_allies).to_string(),
+                                    );
+                            },
+                            {tr("html-graph-allies")}
+                        }
+                        Button {
+                            variant: ButtonVariant::Outline,
+                            disabled,
+                            aria_pressed: Some(draft.graph_totals),
+                            onclick: move |_| {
+                                state
+                                    .write()
+                                    .report_html_graph_edit(token, "totals", (!draft.graph_totals).to_string());
+                            },
+                            {tr("html-graph-totals")}
+                        }
+                    }
+                }
                 if draft.graph_levels[0] || draft.graph_levels[1] {
                     Button {
                         variant: ButtonVariant::Outline,
@@ -688,7 +766,20 @@ pub(super) fn snapshot(
 
 fn graph_snapshot(graph: &HierarchyHtmlGraphOptions) -> Element {
     rsx! {
+        if graph.simple && graph.levels.contains(&TableLevel::Combatant) {
+            p {
+                {tr("html-graph-simple")}
+                ": {graph.simple_column} · "
+                {tr("html-graph-allies")}
+                ": {graph.only_allies} · "
+                {tr("html-graph-totals")}
+                ": {graph.totals}"
+            }
+        }
         if graph.levels.contains(&TableLevel::Combatant) {
+            if !graph.simple {
+                p { {tr("html-graph-advanced")} }
+            }
             p {
                 {tr("html-graph-actors")}
                 ": "
@@ -741,8 +832,12 @@ fn graph_snapshot(graph: &HierarchyHtmlGraphOptions) -> Element {
                     .collect::<Vec<_>>()
                     .join(", ")
             }
-            " · {graph.window}s · "
-            {if graph.rolling { tr("html-graph-rolling") } else { tr("html-graph-bucket") }}
+            if graph.levels.contains(&TableLevel::Category)
+                || (graph.levels.contains(&TableLevel::Combatant) && !graph.simple)
+            {
+                " · {graph.window}s · "
+                {if graph.rolling { tr("html-graph-rolling") } else { tr("html-graph-bucket") }}
+            }
             " · {graph.all_label}"
             if graph.levels.contains(&TableLevel::Attack) {
                 " · {graph.distribution_column} · {graph.ward_prefix}"

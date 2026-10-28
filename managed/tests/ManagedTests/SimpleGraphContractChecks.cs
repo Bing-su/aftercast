@@ -54,6 +54,14 @@ internal static class SimpleGraphContractChecks
         try { Aftercast.ActCompat.GraphNumeric.Simple([new("a",double.MaxValue),new("b",double.MaxValue)]);throw new Exception("Expected overflow rejection"); } catch(InvalidDataException) { }
         _=Aftercast.ActCompat.GraphNumeric.Simple(Enumerable.Repeat(new Aftercast.ActCompat.GraphNumeric.SimpleValue("a",1),16384));
         try { Aftercast.ActCompat.GraphNumeric.Simple(Enumerable.Repeat(new Aftercast.ActCompat.GraphNumeric.SimpleValue("a",1),16385));throw new Exception("Expected row limit"); } catch(InvalidDataException) { }
+        var previous=CultureInfo.CurrentCulture;
+        try
+        {
+            CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("de-DE");
+            var svg=Aftercast.ActCompat.GraphSvg.Simple("<Simple>",Aftercast.ActCompat.GraphNumeric.Simple([new("<A>",1234.5)])!,true);
+            if(!svg.Contains("&lt;Simple&gt;",StringComparison.Ordinal)||!svg.Contains("Total: 1.235",StringComparison.Ordinal)||!svg.Contains("AVG: 1.234,50",StringComparison.Ordinal)||!svg.Contains("<tspan",StringComparison.Ordinal))throw new Exception("Simple SVG escaping or culture");
+        }
+        finally { CultureInfo.CurrentCulture=previous; }
         var infinity=double.Parse(CultureInfo.GetCultureInfo("en-US").NumberFormat.PositiveInfinitySymbol,CultureInfo.GetCultureInfo("en-US"));
         if(!(infinity>0)||!double.IsPositiveInfinity(Math.Ceiling(infinity)*1.1)||double.Parse("NaN",CultureInfo.GetCultureInfo("en-US"))>0)throw new Exception("Simple unordered/Infinity semantics");
         if(!double.IsPositiveInfinity(double.MaxValue+double.MaxValue))throw new Exception("Simple sum overflow semantics");

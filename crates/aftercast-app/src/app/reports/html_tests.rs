@@ -486,6 +486,7 @@ async fn hierarchy_html_ui_contract_graph_explicit_choices_are_owned_and_stale_s
     let id = f.ui.encounters[0].id;
     toggle(&mut f, id);
     assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "toggle", "0".into()));
+    assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "simple", "false".into()));
     assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "toggle", "1".into()));
     let (token, request) =
         f.ui.report_html_graph_candidates_begin(f.ui.report_token())
@@ -520,6 +521,7 @@ async fn hierarchy_html_ui_contract_graph_explicit_choices_are_owned_and_stale_s
     assert_eq!(f.ui.reports.html.graph_actors, Some(vec![]));
     f.ui.reports.html.graph_actors = Some(vec!["hidden stale actor".into()]);
     assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "toggle", "0".into()));
+    assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "simple", "false".into()));
     let (token, request) = begin(&mut f);
     let result = perform(&f.host.handle(), &request).await;
     assert!(f.ui.report_receive(token, result, ""));
@@ -571,6 +573,7 @@ async fn hierarchy_html_ui_contract_graph_choices_reject_same_key_actor_replacem
     let id = f.ui.encounters[0].id;
     toggle(&mut f, id);
     assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "toggle", "0".into()));
+    assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "simple", "false".into()));
     let (token, request) =
         f.ui.report_html_graph_candidates_begin(f.ui.report_token())
             .unwrap()
@@ -611,6 +614,7 @@ async fn hierarchy_html_ui_contract_all_mode_retires_graph_choice_capture() {
     let id = f.ui.encounters[0].id;
     toggle(&mut f, id);
     assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "toggle", "0".into()));
+    assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "simple", "false".into()));
     let (token, request) =
         f.ui.report_html_graph_candidates_begin(f.ui.report_token())
             .unwrap()
@@ -677,5 +681,57 @@ async fn hierarchy_html_ui_contract_graph_candidates_retire_table_selection() {
     let result = perform(&f.host.handle(), &request).await;
     assert!(f.ui.report_receive(token, result, ""));
     assert!(f.ui.reports.html.graph_candidates.is_some());
+    f.host.shutdown().await.unwrap();
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn hierarchy_html_ui_contract_simple_graph_snapshot_and_save() {
+    let mut f = Fixture::new_with("HierarchyHtmlPlugin", "0|100\n3|200\n").await;
+    load(&mut f).await;
+    let id = f.ui.encounters[0].id;
+    toggle(&mut f, id);
+    assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "toggle", "0".into()));
+    assert!(f.ui.report_html_graph_edit(
+        f.ui.report_token(),
+        "simple_column",
+        "simple-numeric".into()
+    ));
+    assert!(f.ui.report_html_graph_edit(f.ui.report_token(), "window", "unused-invalid".into()));
+    let (token, request) = begin(&mut f);
+    assert!(
+        !f.ui.report_html_graph_edit(token, "totals", "false".into()),
+        "pending snapshot is immutable"
+    );
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(f.ui.report_receive(token, result, ""));
+    let preview =
+        f.ui.report_preview()
+            .expect("Simple preview")
+            .report
+            .clone();
+    let Content::Html(report, _, _, graph) = preview.as_ref() else {
+        panic!("HTML")
+    };
+    assert!(
+        graph.as_ref().unwrap().simple
+            && report.content.contains("<rect")
+            && report.content.contains("AVG:")
+    );
+    let (token, request) = f.save("simple-graph.html");
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(f.ui.report_receive(token, result, "saved"));
+    assert_eq!(
+        std::fs::read(f.root.join("simple-graph.html")).unwrap(),
+        report.content.as_bytes()
+    );
+    let (token, request) = f.save("simple-graph.html");
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(f.ui.report_receive(token, result, ""));
+    assert!(f.ui.reports.error.is_some());
+    let (token, request) = begin(&mut f);
+    assert!(f.ui.report_cancel(token));
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(!f.ui.report_receive(token, result, ""));
     f.host.shutdown().await.unwrap();
 }

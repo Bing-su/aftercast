@@ -12,6 +12,8 @@ internal static class HierarchyHtmlChecks
     private static HierarchyHtmlCatalog Capture(TableReportChecks.Fixture f,TableLevel last=TableLevel.Action,ulong[]? ids=null)=>f.Host.CaptureHierarchyHtml(ids??[f.Id],last)??throw new Exception("missing HTML scope");
     internal static void Run()
     {
+        HostLifetimeChecks.RunBounded(SimpleOwnedGraph);
+        HostLifetimeChecks.RunBounded(SimpleFailureGuard);
         HostLifetimeChecks.RunBounded(GraphsFromOwnedActions);
         HostLifetimeChecks.RunBounded(GraphSelectiveNames);
         HostLifetimeChecks.RunBounded(DepthsColumnsAndSourceOrder);
@@ -24,6 +26,36 @@ internal static class HierarchyHtmlChecks
         HostLifetimeChecks.RunBounded(StaleVirtualNameIsNotInvoked);
         HostLifetimeChecks.RunBounded(PrivateNodeIdentityDoesNotCallPluginHash);
         Console.WriteLine("Owned hierarchy HTML: checked-set tree order, four table levels, display keys/sort, escaped static source, revisions, bounds and failure cleanup passed.");
+    }
+    private static void SimpleOwnedGraph()
+    {
+        using var f=new TableReportChecks.Fixture();
+        CombatantData.ColumnDefs["display-key"].GetSqlData=actor=>f.Sql(actor,actor.Name switch {"A"=>"10.2","B"=>"0.5",_=>"0"});
+        var settings=new HierarchyHtmlGraphOptions(1,true,"Resist","unused","All","Warded/",Levels:[TableLevel.Combatant],Simple:true,SimpleColumn:"display-key",OnlyAllies:false);
+        var capture=Capture(f);var report=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings);
+        Check(Regex.Matches(report.Content,"<rect").Count==2 && report.Content.Contains("12.1",StringComparison.Ordinal),"Simple SQL graph and axis");
+        Check(report.Content.Contains("Total: 11",StringComparison.Ordinal),"Simple totals displayed");
+        var calls=f.CellCalls;Throws<ArgumentException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings with{SimpleColumn="missing"}));
+        Check(f.CellCalls==calls,"Simple key validated before cells");
+        _=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings with{OnlyAllies=true});
+        _=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings with{OnlyAllies=false});
+        CombatantData.ColumnDefs["display-key"].GetSqlData=actor=>actor.Name=="C" ? throw new IOException("synthetic row failure") : f.Sql(actor,"5");
+        capture=Capture(f);report=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings);
+        Check(Regex.Matches(report.Content,"<rect").Count==2,"Simple skips SQL row failures");
+        CombatantData.ColumnDefs["display-key"].GetSqlData=actor=>f.Sql(actor,"0");
+        capture=Capture(f);report=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings);
+        Check(report.Content.Contains("No positive values",StringComparison.Ordinal),"Simple empty values explicit");
+        f.Encounter.Items.Clear();capture=Capture(f);report=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings);
+        Check(report.Content.Contains("No actors",StringComparison.Ordinal),"Simple empty actors explicit");
+    }
+    private static void SimpleFailureGuard()
+    {
+        using var f=new TableReportChecks.Fixture();
+        var settings=new HierarchyHtmlGraphOptions(1,true,"Resist","unused","All","Warded/",Levels:[TableLevel.Combatant],Simple:true,SimpleColumn:"display-key",OnlyAllies:false);
+        CombatantData.ColumnDefs["display-key"].GetSqlData=actor=>f.Sql(actor,"NaN");
+        var capture=Capture(f);Throws<InvalidDataException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings));
+        CombatantData.ColumnDefs["display-key"].GetSqlData=actor=>{f.Own(actor);f.Encounter.Items.Clear();throw new IOException("synthetic mutation");};
+        capture=Capture(f);Throws<AggregateException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings));
     }
     private static void GraphsFromOwnedActions()
     {
@@ -82,9 +114,12 @@ internal static class HierarchyHtmlChecks
         {f.Known.Add(category);foreach(var attack in category.Items.Values){f.Known.Add(attack);foreach(var action in attack.Items)f.Known.Add(action);}}
         var custom=first.Items["Category"];var customAll=new AttackType("All",custom);custom.Items["All"]=customAll;f.Known.Add(customAll);
         foreach(var action in first.Items["Damage"].Items["All"].Items)customAll.Items.Add(action);
+        CombatantData.ColumnDefs["display-key"].GetSqlData=actor=>f.Sql(actor,"10");
         var capture=Capture(f);var settings=new HierarchyHtmlGraphOptions(1,true,"Resist","unused","All","Warded/",SelectedCombatants:["alias"],Levels:[TableLevel.Combatant]);
         var report=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings);
         Check(Regex.Matches(report.Content,"<polyline").Count==2,"ACT selective name matches aliases with same uppercase name");
+        var simple=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Combatant),settings with{Simple=true,SimpleColumn="display-key",OnlyAllies=false});
+        Check(Regex.Matches(simple.Content,"<rect").Count==2,"Simple selective name matches aliases");
         var solo=f.Host.ReadHierarchyHtml(capture.Revision,Options(TableLevel.Category),settings with{SelectedCombatants=null,Levels=[TableLevel.Category]});
         Check(!solo.Content.Contains(">Category</text>",StringComparison.Ordinal),"unregistered custom category excluded from ACT all selection");
         var calls=f.CellCalls;
