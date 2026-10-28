@@ -68,7 +68,7 @@ async fn fixture() -> (
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires managed fixture; run mise run test:gui-state"]
-async fn vcr_controller_owns_capture_and_rejects_late_results() {
+async fn vcr_ui_contract_owns_capture_and_rejects_late_results() {
     let (_temp, root, host, endpoint, lifetime) = fixture().await;
     let mut controller = State::default();
     let token = controller.begin().expect("capture");
