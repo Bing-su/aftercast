@@ -24,7 +24,10 @@ internal static class ConfigBatchXml
         if (root.HasAttribute("Xml"))
         {
             if (root.Attributes.Count != 1 || root.ChildNodes.Count != 0) throw new InvalidDataException("Invalid Config wrapper");
-            root = Document(root.GetAttribute("Xml"));
+            var embedded = root.GetAttribute("Xml");
+            // ACT rejects this case-sensitive text before parsing a shared Config snippet.
+            if (embedded.Contains("logFilePath", StringComparison.Ordinal)) throw new InvalidDataException("Config snippet contains a forbidden path setting");
+            root = Document(embedded);
         }
         if (root.Attributes.Count != 0) throw new InvalidDataException("Unsupported Config attributes");
         var parts = root.ChildNodes.Cast<XmlNode>().ToArray();

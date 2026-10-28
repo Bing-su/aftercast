@@ -2,7 +2,8 @@
 
 The pinned ACT `SaveNewSettings` writes a `Config` containing `CustomTriggers`,
 `SpellTimers` and unrelated application sections; shared Config snippets embed
-that XML in the `Xml` attribute. ACT loads sections and may update existing keys
+that XML in the `Xml` attribute. As in ACT, shared wrappers are rejected when
+their decoded `Xml` contains the case-sensitive string `logFilePath`. ACT loads sections and may update existing keys
 or continue after individual failures. Aftercast accepts either the embedded form
 or a direct `Config`, but only if it contains exactly one `CustomTriggers` or one
 `SpellTimers` section. It rejects mixed sections, unknown settings and attributes,

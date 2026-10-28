@@ -26,6 +26,10 @@ internal static class ConfigBatchChecks
                 Check(preview.Items.Length == 2 && preview.Conflicts.Length == 0 && main.ReadTriggers(0,16).Total == 0, "Preview changed trigger registry");
                 var wrapped = "<Config Xml=\"" + SecurityElement.Escape(trigger) + "\"/>";
                 Check(main.PreviewTriggerConfig(wrapped).Items.Length == 2, "ACT Config wrapper not decoded");
+                var forbidden = "<Config><CustomTriggers><Trigger Regex='logFilePath' Category='Fixture'/></CustomTriggers></Config>";
+                var forbiddenWrapper = "<Config Xml=\"" + SecurityElement.Escape(forbidden) + "\"/>";
+                Reject(() => main.PreviewTriggerConfig(forbiddenWrapper));
+                Check(main.PreviewTriggerConfig(forbidden).Items.Length == 1, "Direct allowlisted Config should not be treated as a shared wrapper");
                 foreach (var bad in new[] { "<Config><CustomTriggers><Trigger Regex='x' Category='y'/><Trigger Regex='[' Category='y'/></CustomTriggers></Config>", "<Config><CustomTriggers><Trigger Regex='x' Category='y'/><Trigger Regex='x' Category='y'/></CustomTriggers></Config>", "<Config><CustomTriggers/><SpellTimers/></Config>", "<Config><SettingsSerializer/></Config>", "<!DOCTYPE Config [<!ENTITY x SYSTEM 'file:///etc/passwd'>]><Config><CustomTriggers/></Config>", "<Config><CustomTriggers>" + string.Concat(Enumerable.Repeat("<Trigger Regex='x' Category='y'/>",33)) + "</CustomTriggers></Config>", new string('x',16385) }) Reject(() => main.PreviewTriggerConfig(bad));
                 var values = preview.Items.Select(item => item.Definition).ToArray();
                 var triggerPath = Path.Combine(directory.FullName,"CustomTriggers.xml");
