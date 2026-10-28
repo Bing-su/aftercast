@@ -223,3 +223,6 @@ pub use vcr::{
     VcrAction, VcrActor, VcrCategory, VcrClock, VcrEdge, VcrFrame, VcrMode, VcrNode, VcrSnapshot,
     vcr_frame,
 };
+
+/// In-memory encounter log search and copy-text generation.
+pub mod log_search;
