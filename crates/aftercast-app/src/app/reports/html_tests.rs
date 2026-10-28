@@ -652,3 +652,30 @@ async fn hierarchy_html_ui_contract_all_mode_retires_graph_choice_capture() {
     );
     f.host.shutdown().await.unwrap();
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn hierarchy_html_ui_contract_graph_candidates_retire_table_selection() {
+    let mut f = Fixture::new_with("HierarchyHtmlPlugin", "0|100\n3|200\n").await;
+    load(&mut f).await;
+    let id = f.ui.encounters[0].id;
+    toggle(&mut f, id);
+    let (token, request) =
+        f.ui.report_table_begin(f.ui.report_token(), false)
+            .unwrap()
+            .unwrap();
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(f.ui.report_receive(token, result, ""));
+    assert!(f.ui.report_table_catalog().is_some());
+    assert!(f.ui.report_table_edit(f.ui.report_token(), "row", "0".into()));
+    let (token, request) =
+        f.ui.report_html_graph_candidates_begin(f.ui.report_token())
+            .unwrap()
+            .unwrap();
+    assert!(f.ui.report_table_catalog().is_none());
+    assert!(f.ui.reports.table.selected.is_empty());
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(f.ui.report_receive(token, result, ""));
+    assert!(f.ui.reports.html.graph_candidates.is_some());
+    f.host.shutdown().await.unwrap();
+}
