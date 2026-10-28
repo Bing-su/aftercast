@@ -32,18 +32,43 @@ public partial class FormActMain
     {
         CombatToggleEventArgs? info;
         bool import;
-        lock (CombatGate)
+        // A split must observe all earlier admitted actions before reading encounter.EndTime.
+        while (true)
         {
-            EnsureCombatOpen();
-            EnsureCombatTransitionIdle();
-            idleTimerTicks = 0;
-            idleGeneration++;
-            info = BeginEncounterState(time, CurrentZone);
-            if (info is null) return true;
-            startingCombat = true;
-            combatTransitionOwner = Environment.CurrentManagedThreadId;
-            combatTransitionsIdle.Reset();
-            import = importingLogs;
+            lock (CombatGate)
+            {
+                EnsureCombatOpen();
+                EnsureCombatTransitionIdle();
+                if (!(inCombat && silenceCutSeconds > 0 &&
+                      (time - lastSetEncounter).TotalSeconds > silenceCutSeconds && !actionsIdle.IsSet))
+                {
+                    idleTimerTicks = 0;
+                    idleGeneration++;
+                    bool alreadyInCombat = inCombat;
+                    info = BeginEncounterState(time, CurrentZone);
+                    if (!alreadyInCombat) lastSetEncounter = LastKnownTime;
+                    if (silenceCutSeconds > 0 && (time - lastSetEncounter).TotalSeconds > silenceCutSeconds)
+                    {
+                        var encounter = combatZone.ActiveEncounter!;
+                        var end = encounter.EndTime;
+                        encounter.EndTimes.Add(end);
+                        encounter.StartTimes.Add(time);
+                        if (combatZone.PopulateAll)
+                        {
+                            combatZone.Items[0].EndTimes.Add(end);
+                            combatZone.Items[0].StartTimes.Add(time);
+                        }
+                    }
+                    if (silenceCutSeconds > 0) lastSetEncounter = time;
+                    if (info is null) return true;
+                    startingCombat = true;
+                    combatTransitionOwner = Environment.CurrentManagedThreadId;
+                    combatTransitionsIdle.Reset();
+                    import = importingLogs;
+                    break;
+                }
+            }
+            WaitForCombatActions();
         }
         try { NotifyCombatToggle(OnCombatStart, import, info); }
         finally
@@ -229,6 +254,14 @@ public partial class FormActMain
             }
         }
         // The original force flag controls UI/export paths; an embedded library performs neither automatically.
+    }
+
+    private int silenceCutSeconds;
+    private DateTime lastSetEncounter;
+    internal void ConfigureSilenceCut(int seconds)
+    {
+        if (seconds is < 0 or > 60) throw new ArgumentOutOfRangeException(nameof(seconds));
+        lock (CombatGate) { silenceCutSeconds = seconds; }
     }
 
     private bool idleEndEnabled = true;

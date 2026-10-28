@@ -100,6 +100,11 @@ impl Host {
                 "idle end threshold must be 2–600 seconds".into(),
             ));
         }
+        if config.silence_cut_seconds > 60 {
+            return Err(Error::InvalidPluginRequest(
+                "silence cut threshold must be 0–60 seconds".into(),
+            ));
+        }
         let (sender, receiver) = mpsc::sync_channel(QUEUE_CAPACITY);
         let (ready, initialized) = oneshot::channel::<u64>();
         let (finished, completion) = oneshot::channel();

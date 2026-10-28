@@ -304,3 +304,45 @@ async fn assert_canceled_range_partial(
     assert_eq!(partial.status, aftercast::EncounterStatus::PartialImport);
     assert!(partial.damage > 0);
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
+async fn silence_cut_is_session_owned_and_applies_to_imported_rates(deployment: Deployment) {
+    use aftercast::HostConfig;
+    let input = deployment.directory().join("silence.log");
+    std::fs::write(&input, "0|100|Strike|Source|Target\n6|100|Strike|Source|Target\n13|100|Strike|Source|Target\n14|100|Strike|Source|Target\n").expect("synthetic input");
+    let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let mut old_id = None;
+    for (cut, expected) in [(6, 7), (0, 14)] {
+        let config = HostConfig::builder()
+            .application_executable(common::application())
+            .dotnet_root(std::env::var("DOTNET_ROOT").expect("dotnet"))
+            .bridge_directory(&deployment.bridge)
+            .data_directory(&deployment.state)
+            .idle_end_enabled(false)
+            .silence_cut_seconds(cut)
+            .build();
+        let host = Host::start(config).await.expect("host");
+        if let Some(id) = old_id {
+            host.encounter_detail(id).await.expect_err("old session");
+        }
+        let plugin = host
+            .create_plugin(
+                PluginConfig::builder()
+                    .path(path.clone())
+                    .type_name("Aftercast.PluginFixture.VcrImportPlugin")
+                    .build(),
+            )
+            .await
+            .expect("plugin");
+        host.initialize_plugin(plugin).await.expect("initialize");
+        host.import_log(&input).await.expect("import");
+        let page = host.encounters(0, 16).await.expect("encounters");
+        assert_eq!(page.total, 1);
+        assert_eq!(page.items[0].duration_ticks, expected * 10_000_000);
+        old_id = Some(page.items[0].id);
+        host.shutdown().await.expect("shutdown");
+    }
+}

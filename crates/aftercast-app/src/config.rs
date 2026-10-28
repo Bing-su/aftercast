@@ -118,6 +118,8 @@ pub struct HostSettings {
     pub disabled_plugins: Vec<String>,
     pub record_encounter_logs: bool,
     pub original_logline_view_logs: bool,
+    pub silence_cut_enabled: bool,
+    pub silence_cut_seconds: u8,
     pub idle_end_enabled: bool,
     pub idle_timer_enabled: bool,
     pub idle_end_seconds: u16,
@@ -132,6 +134,8 @@ impl Default for HostSettings {
             disabled_plugins: Vec::new(),
             record_encounter_logs: true,
             original_logline_view_logs: false,
+            silence_cut_enabled: false,
+            silence_cut_seconds: 6,
             idle_end_enabled: true,
             idle_timer_enabled: true,
             idle_end_seconds: 6,
@@ -179,6 +183,9 @@ impl Settings {
             return Err(miette!(
                 "Duplicate configured plugin path; each entry must have a unique path"
             ));
+        }
+        if !(1..=60).contains(&self.host.silence_cut_seconds) {
+            return Err(miette!("Silence cut threshold must be 1–60 seconds"));
         }
         if !(2..=600).contains(&self.host.idle_end_seconds) {
             return Err(miette!("Idle end threshold must be 2–600 seconds"));
@@ -258,6 +265,14 @@ impl ConfigFile {
         set(
             &mut self.document["host"]["original_logline_view_logs"],
             value(settings.host.original_logline_view_logs),
+        );
+        set(
+            &mut self.document["host"]["silence_cut_enabled"],
+            value(settings.host.silence_cut_enabled),
+        );
+        set(
+            &mut self.document["host"]["silence_cut_seconds"],
+            value(i64::from(settings.host.silence_cut_seconds)),
         );
         set(
             &mut self.document["host"]["idle_end_enabled"],
@@ -584,6 +599,34 @@ mod tests {
                 .map(String::as_str)
                 .collect::<Vec<_>>(),
             ["first", "middle", "last"]
+        );
+    }
+
+    #[test]
+    fn silence_cut_options_persist_and_reject_invalid_limits() {
+        let temp = tempfile::tempdir().expect("app");
+        let root = Utf8Path::from_path(temp.path()).expect("UTF-8");
+        let mut file = ConfigFile::load(root).expect("defaults");
+        assert!(!file.settings.host.silence_cut_enabled);
+        assert_eq!(file.settings.host.silence_cut_seconds, 6);
+        file.settings.host.silence_cut_enabled = true;
+        file.settings.host.silence_cut_seconds = 12;
+        file.save(root).expect("save");
+        let mut file = ConfigFile::load(root).expect("restart");
+        assert!(file.settings.host.silence_cut_enabled);
+        assert_eq!(file.settings.host.silence_cut_seconds, 12);
+        for invalid in [0, 61] {
+            file.settings.host.silence_cut_seconds = invalid;
+            file.settings.validate().expect_err("invalid limit");
+        }
+        assert!(file.save(root).is_err());
+        assert_eq!(
+            ConfigFile::load(root)
+                .expect("unchanged")
+                .settings
+                .host
+                .silence_cut_seconds,
+            12
         );
     }
 

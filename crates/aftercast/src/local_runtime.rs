@@ -31,6 +31,15 @@ fn acquire_lease() -> Result<ActiveLease, Error> {
     Ok(guard((), |_| ACTIVE.store(false, Ordering::Release)))
 }
 
+fn host_option_flags(config: &HostConfig) -> u64 {
+    u64::from(!config.record_encounter_logs)
+        | (u64::from(config.original_logline_view_logs) << 1)
+        | (u64::from(!config.idle_end_enabled) << 2)
+        | (u64::from(config.idle_end_seconds) << 3)
+        | (u64::from(!config.idle_timer_enabled) << 13)
+        | (u64::from(config.silence_cut_seconds) << 14)
+}
+
 // Own native delegates and thread affinity until managed shutdown has completed.
 pub(crate) struct ManagedSession {
     entry: ManagedFunctionWithDefaultSignature,
@@ -153,11 +162,7 @@ impl ManagedSession {
         }
         let data_directory = canonicalize(&config.data_directory)?;
         let mut request = plugin_packet(host.session, data_directory.as_str(), None)?;
-        let recording_flags = u64::from(!config.record_encounter_logs)
-            | (u64::from(config.original_logline_view_logs) << 1)
-            | (u64::from(!config.idle_end_enabled) << 2)
-            | (u64::from(config.idle_end_seconds) << 3)
-            | (u64::from(!config.idle_timer_enabled) << 13);
+        let recording_flags = host_option_flags(&config);
         request
             .get_mut(32..40)
             .ok_or_else(|| Error::InvalidPluginRequest("missing host recording flags".into()))?

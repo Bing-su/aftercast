@@ -641,3 +641,7 @@ idle-end-heading = 전투 자동 종료
 idle-end-seconds = 마지막 적대 행동 후 대기 시간(초)
 idle-timer-heading = 실제 경과 시간으로도 종료
 idle-end-help = 호스트를 중지하고 저장하면 다음 시작부터 적용됩니다. 실제 시간 종료도 전투 자동 종료를 켜야 동작합니다.
+
+silence-cut-heading = 전투 행동이 없는 구간의 시간 제외
+silence-cut-seconds = 구간 분리 기준(초)
+silence-cut-help = 다음 전투 행동까지의 간격이 기준을 초과하면 행동이 없는 구간을 전투 시간에서 제외하여 초당 수치에도 반영합니다. 중지 후 저장하면 다음 시작에 적용됩니다.

@@ -18,6 +18,11 @@ impl RunningHost {
             settings.host.idle_end_enabled,
             settings.host.idle_end_seconds,
             settings.host.idle_timer_enabled,
+            if settings.host.silence_cut_enabled {
+                settings.host.silence_cut_seconds
+            } else {
+                0
+            },
         );
         let (deployment, dotnet_root) = tokio::task::spawn_blocking(move || {
             let runtime = if settings.host.dotnet_root == "dotnet" {
@@ -42,6 +47,7 @@ impl RunningHost {
                 .idle_end_enabled(recording.2)
                 .idle_end_seconds(recording.3)
                 .idle_timer_enabled(recording.4)
+                .silence_cut_seconds(recording.5)
                 .build(),
         )
         .await

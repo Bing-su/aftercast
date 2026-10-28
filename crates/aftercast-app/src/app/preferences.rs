@@ -194,6 +194,44 @@ pub(super) fn SettingsPane() -> Element {
                 p { class: "text-xs leading-6 text-muted-foreground", {tr("idle-end-help")} }
             }
             Separator { class: "my-6".to_owned() }
+            div { class: "space-y-3",
+                h2 { class: "text-sm font-semibold", {tr("silence-cut-heading")} }
+                Button {
+                    variant: ButtonVariant::Outline,
+                    disabled: disabled || state.read().phase != Phase::Idle,
+                    aria_pressed: state.read().settings.host.silence_cut_enabled,
+                    onclick: move |_| {
+                        let current = state.peek().settings.host.silence_cut_enabled;
+                        state.write().settings.host.silence_cut_enabled = !current;
+                    },
+                    {
+                        tr(
+                            if state.read().settings.host.silence_cut_enabled {
+                                "enabled"
+                            } else {
+                                "disabled"
+                            },
+                        )
+                    }
+                }
+                Label { html_for: "silence-cut-seconds", {tr("silence-cut-seconds")} }
+                select {
+                    id: "silence-cut-seconds",
+                    class: "h-9 max-w-full rounded-md border border-border bg-background px-2",
+                    disabled: disabled || state.read().phase != Phase::Idle,
+                    value: state.read().settings.host.silence_cut_seconds.to_string(),
+                    onchange: move |event| {
+                        if let Ok(seconds) = event.value().parse::<u8>() && (1..=60).contains(&seconds) {
+                            state.write().settings.host.silence_cut_seconds = seconds;
+                        }
+                    },
+                    for seconds in 1..=60 {
+                        option { value: seconds.to_string(), "{seconds}" }
+                    }
+                }
+                p { class: "text-xs leading-6 text-muted-foreground", {tr("silence-cut-help")} }
+            }
+            Separator { class: "my-6".to_owned() }
             div { class: "flex gap-2",
                 Button {
                     id: "save-settings",

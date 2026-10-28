@@ -641,3 +641,7 @@ idle-end-heading = Automatic encounter end
 idle-end-seconds = Seconds after last hostile action
 idle-timer-heading = Also end using elapsed time
 idle-end-help = Save while stopped; the next host applies these settings. The elapsed-time option also requires automatic encounter end to be enabled.
+
+silence-cut-heading = Pause encounter duration during silence
+silence-cut-seconds = Gap threshold (seconds)
+silence-cut-help = When a later combat action exceeds this gap, elapsed silence is omitted from encounter duration and rates. Save while stopped to apply on next start.

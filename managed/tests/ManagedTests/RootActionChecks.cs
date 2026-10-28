@@ -54,6 +54,9 @@ internal static class RootActionChecks
         HostLifetimeChecks.RunBounded(IdleOptions);
         HostLifetimeChecks.RunBounded(IdleTimer);
         HostLifetimeChecks.RunBounded(IdleTimerDuringImport);
+        HostLifetimeChecks.RunBounded(SilenceSegments);
+        HostLifetimeChecks.RunBounded(SilenceImport);
+        HostLifetimeChecks.RunBounded(SilenceEmpty);
         HostLifetimeChecks.RunBounded(EndCommand);
         HostLifetimeChecks.RunBounded(AdmittedProducerDuringEnd);
         HostLifetimeChecks.RunBounded(PumpedShutdown);
@@ -254,6 +257,78 @@ internal static class RootActionChecks
         File.WriteAllText(fixture.LogPath, "synthetic\n");
         fixture.Environment.ImportLog(fixture.LogPath);
         Check(observed);
+    }
+
+    private static void SilenceSegments()
+    {
+        using var fixture = new Fixture();
+        var root = fixture.Root;
+        fixture.Environment.ConfigureSilenceCut(6);
+        Throws<ArgumentOutOfRangeException>(() => fixture.Environment.ConfigureSilenceCut(61));
+        CombatantData.SwingTypeToDamageTypeDataLinksOutgoing[3] = ["Healing"];
+        CombatantData.SwingTypeToDamageTypeDataLinksIncoming[3] = ["Received"];
+        foreach (int time in new[] { 0, 6, 13, 14, 22, 23 })
+        {
+            root.SetEncounter(Epoch.AddSeconds(time), "Source", "Target");
+            root.AddCombatAction(Swing(100, time, time));
+        }
+        root.AddCombatAction(new MasterSwing(3, false, "", new Dnum(80), Epoch.AddSeconds(23), 100, "Heal", "Source", "Healing", "Target"));
+        fixture.Environment.EndCombat();
+        var encounter = root.ActiveZone.ActiveEncounter!;
+        Check(encounter.StartTimes.SequenceEqual(new[] { Epoch, Epoch.AddSeconds(13), Epoch.AddSeconds(22) }));
+        Check(encounter.EndTimes.SequenceEqual(new[] { Epoch.AddSeconds(6), Epoch.AddSeconds(14), Epoch.AddSeconds(23) }));
+        Check(encounter.Duration == TimeSpan.FromSeconds(8));
+        var all = root.ActiveZone.Items[0];
+        Check(all.StartTimes.SequenceEqual(encounter.StartTimes) && all.EndTimes.SequenceEqual(encounter.EndTimes));
+        var data = fixture.Environment.ReadCombatSnapshot(0)!;
+        Check(data.DurationTicks == TimeSpan.FromSeconds(8).Ticks);
+        var actor = data.Combatants.Single(item => item.Name == "Source");
+        Check(actor.Damage == 600 && actor.Healed == 80 && actor.EncDPS == 75 && actor.EncHPS == 10);
+        using var xml = new MemoryStream();
+        root.EncountersToXml(new List<EncounterData> { encounter }, xml, false);
+        xml.Position = 0;
+        var restored = root.XmlToEncounters(xml).Single();
+        Check(restored.Duration == encounter.Duration);
+        Check(restored.StartTimes.SequenceEqual(encounter.StartTimes) && restored.EndTimes.SequenceEqual(encounter.EndTimes));
+        Check(fixture.Environment.ArchiveOperation(3, "", 0, false) == 1);
+        fixture.Environment.Dispose();
+        using var restarted = new HostEnvironment(Path.GetDirectoryName(fixture.LogPath)!);
+        CombatFixture.ConfigureCategories();
+        CombatantData.SwingTypeToDamageTypeDataLinksOutgoing[3] = ["Healing"];
+        CombatantData.SwingTypeToDamageTypeDataLinksIncoming[3] = ["Received"];
+        Check(restarted.ArchiveOperation(4, "", 0, false) == 1);
+        var history = ActGlobals.oFormActMain!.ZoneList[0].Items.Single();
+        Check(history.Duration == TimeSpan.FromSeconds(8));
+        Check(history.StartTimes.SequenceEqual(encounter.StartTimes) && history.EndTimes.SequenceEqual(encounter.EndTimes));
+    }
+
+    private static void SilenceImport()
+    {
+        using var fixture = new Fixture();
+        var root = fixture.Root;
+        fixture.Environment.ConfigureSilenceCut(6);
+        root.TimeStampLen = 0;
+        root.OnLogLineRead += (import, line) =>
+        {
+            if (!import) return;
+            int seconds = int.Parse(line.logLine, System.Globalization.CultureInfo.InvariantCulture);
+            root.LastKnownTime = Epoch.AddSeconds(seconds);
+            root.SetEncounter(root.LastKnownTime, "Source", "Target");
+            root.AddCombatAction(Swing(100, seconds, seconds));
+        };
+        File.WriteAllText(fixture.LogPath, "0\n6\n13\n14\n");
+        fixture.Environment.ImportLog(fixture.LogPath);
+        Check(root.ZoneList[0].Items.Single().Duration == TimeSpan.FromSeconds(7));
+    }
+
+    private static void SilenceEmpty()
+    {
+        using var fixture = new Fixture();
+        fixture.Environment.ConfigureSilenceCut(6);
+        fixture.Root.SetEncounter(Epoch, "Source", "Target");
+        fixture.Root.SetEncounter(Epoch.AddSeconds(10), "Source", "Target");
+        fixture.Environment.EndCombat();
+        Check(fixture.Root.ActiveZone.ActiveEncounter!.Duration == TimeSpan.Zero);
     }
 
     private static void AdmittedProducerDuringEnd()

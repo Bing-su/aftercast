@@ -236,6 +236,7 @@ namespace Aftercast.ActCompat
         public CombatPage<ClassifiedActionData> ReadActionSnapshot(ulong revision, int offset, int limit) => main.ReadActionSnapshot(revision, offset, limit);
         public EncounterLogPageData ReadActionSnapshotLogs(ulong revision, int offset, int limit) => main.ReadActionSnapshotLogs(revision, offset, limit);
         public EncounterLogPageData? ReadEncounterLogs(ulong id, int offset, int limit) => main.ReadEncounterLogs(id, offset, limit);
+        public void ConfigureSilenceCut(int seconds) => main.ConfigureSilenceCut(seconds);
         public void ConfigureIdleEnd(bool enabled, int seconds, bool timerEnabled = true) => main.ConfigureIdleEnd(enabled, seconds, timerEnabled);
         public void AdvanceIdleTimer() => main.AdvanceIdleTimer(System.Diagnostics.Stopwatch.GetTimestamp());
         public void ConfigureRecording(bool enabled, bool original)
