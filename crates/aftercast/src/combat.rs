@@ -324,6 +324,59 @@ impl HostHandle {
         Ok(page)
     }
 
+    /// Capture encounter logs without applying the action-count limit.
+    pub async fn capture_log_snapshot(
+        &self,
+        id: EncounterId,
+    ) -> Result<Option<ActionSnapshot>, Error> {
+        let payload = self.query_combat(24, Some(id), 0, 1).await?;
+        self.decode_action_snapshot(&payload)
+    }
+
+    /// Search one frozen log snapshot using ACT's .NET text or regex semantics.
+    pub async fn search_snapshot_logs(
+        &self,
+        snapshot: ActionSnapshot,
+        pattern: &str,
+        regex: bool,
+        log_type: Option<i32>,
+    ) -> Result<Vec<u32>, Error> {
+        if snapshot.session != self.session {
+            return Err(Error::InvalidCombatRequest(
+                "snapshot belongs to another session".into(),
+            ));
+        }
+        let input =
+            serde_json::json!({"Pattern":pattern,"Regex":regex,"Type":log_type}).to_string();
+        if input.len() > 4096 {
+            return Err(Error::InvalidCombatRequest(
+                "search pattern exceeds request limit".into(),
+            ));
+        }
+        let id = EncounterId {
+            session: snapshot.session,
+            value: snapshot.revision,
+        };
+        let payload = self
+            .query_combat_input(23, Some(id), 0, 1, Some(&input))
+            .await?;
+        let mut reader = Reader(&payload);
+        let count = reader.u32()?;
+        if count > 65536 {
+            return Err(invalid("too many log matches"));
+        }
+        let mut indices = Vec::with_capacity(count as usize);
+        for _ in 0..count {
+            let index = reader.u32()?;
+            if index >= 65536 || indices.last().is_some_and(|last| *last >= index) {
+                return Err(invalid("invalid log match order"));
+            }
+            indices.push(index);
+        }
+        reader.finish()?;
+        Ok(indices)
+    }
+
     /// Reads the same frozen log list referenced by action snapshot source indices.
     pub async fn action_snapshot_logs(
         &self,

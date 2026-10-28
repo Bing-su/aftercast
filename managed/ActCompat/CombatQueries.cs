@@ -175,7 +175,9 @@ namespace Advanced_Combat_Tracker
             return CaptureActions(id, request.Combatant, request);
         }
 
-        private ActionSnapshotData? CaptureActions(ulong id, string? incomingCombatant, LookupRequest? lookup = null)
+        internal ActionSnapshotData? CaptureLogSnapshot(ulong id) => CaptureActions(id, null, logsOnly: true);
+
+        private ActionSnapshotData? CaptureActions(ulong id, string? incomingCombatant, LookupRequest? lookup = null, bool logsOnly = false)
         {
             lock (CombatGate)
             {
@@ -184,7 +186,8 @@ namespace Advanced_Combat_Tracker
                 var encounter = QueryEncounters().Select(item => item.Encounter).FirstOrDefault(item => Identity(item).Id == id);
                 if (encounter is null) return null;
                 IEnumerable<MasterSwing> source;
-                if (incomingCombatant is null) source = EncounterActions(encounter);
+                if (logsOnly) source = [];
+                else if (incomingCombatant is null) source = EncounterActions(encounter);
                 else
                 {
                     var combatant = encounter.GetCombatant(incomingCombatant);
@@ -226,6 +229,33 @@ namespace Advanced_Combat_Tracker
                 if (actionSnapshot is not { } snapshot || snapshot.Revision != revision)
                     throw new InvalidOperationException("Action snapshot is stale");
                 return new(snapshot.Items.Length, snapshot.Items.Skip(offset).Take(limit).ToArray());
+            }
+        }
+
+        private sealed record LogSearchRequest(string Pattern, bool Regex, int? Type);
+        internal int[] SearchSnapshotLogs(ulong revision, string json)
+        {
+            var request = System.Text.Json.JsonSerializer.Deserialize<LogSearchRequest>(json) ?? throw new InvalidDataException("Missing log search");
+            if (request.Pattern is null || request.Pattern.Length > 4096) throw new ArgumentException("Invalid search pattern");
+            lock (CombatGate)
+            {
+                ObjectDisposedException.ThrowIf(actionsClosed, this);
+                if (actionSnapshot is not { } snapshot || snapshot.Revision != revision) throw new InvalidOperationException("Action snapshot is stale");
+                var regex = request.Regex ? new System.Text.RegularExpressions.Regex(request.Pattern, System.Text.RegularExpressions.RegexOptions.IgnoreCase, TimeSpan.FromMilliseconds(25)) : null;
+                var needle = request.Regex ? "" : request.Pattern.ToUpper();
+                var clock = System.Diagnostics.Stopwatch.StartNew();
+                long bytes = 0;
+                var found = new List<int>();
+                for (var index = 0; index < snapshot.Logs.Page.Items.Length; index++)
+                {
+                    if (clock.Elapsed > TimeSpan.FromSeconds(2)) throw new TimeoutException("Log search exceeded two seconds");
+                    var line = snapshot.Logs.Page.Items[index];
+                    bytes += System.Text.Encoding.UTF8.GetByteCount(line.Text);
+                    if (bytes > 16 * 1024 * 1024) throw new InvalidDataException("Log search exceeds 16 MiB");
+                    if (request.Type is not null && line.Type != request.Type) continue;
+                    if (regex is null ? line.Text.ToUpper().Contains(needle) : regex.IsMatch(line.Text)) found.Add(index);
+                }
+                return found.ToArray();
             }
         }
 

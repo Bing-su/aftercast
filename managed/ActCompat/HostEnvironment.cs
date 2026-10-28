@@ -229,6 +229,8 @@ namespace Aftercast.ActCompat
         public AvoidanceSnapshotChunk ReadCombatantAvoidance(ulong revision, int offset, int limit) => main.ReadCombatantAvoidance(revision, offset, limit);
         public ActionSnapshotData? CaptureActionSnapshot(ulong id) => main.CaptureActionSnapshot(id);
         public ActionSnapshotData? CaptureIncomingActionSnapshot(ulong id, string combatant) => main.CaptureIncomingActionSnapshot(id, combatant);
+        public ActionSnapshotData? CaptureLogSnapshot(ulong id) => main.CaptureLogSnapshot(id);
+        public int[] SearchSnapshotLogs(ulong revision, string json) => main.SearchSnapshotLogs(revision, json);
         public ActionSnapshotData? CaptureCategoryActions(ulong id, string json) => main.CaptureCategoryActions(id, json);
         public TablePageData ReadLookupTable(ulong revision, TableQuery query, string? peer = null, string? skill = null) => main.ReadLookupTable(revision, query, peer, skill);
         public CombatPage<ClassifiedActionData> ReadActionSnapshot(ulong revision, int offset, int limit) => main.ReadActionSnapshot(revision, offset, limit);

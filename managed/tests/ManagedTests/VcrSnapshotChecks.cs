@@ -78,6 +78,11 @@ internal static class VcrSnapshotChecks
             attackCatalog = host.ReadTableColumns(TableLevel.Attack);
             var failedSort = host.ReadLookupTable(outgoing.Revision, new(new(TableLevel.Attack, id), attackCatalog.Revision, ["Lookup"], Sort: new("ThrowLookup")), "Target");
             if (failedSort.SortError is null) throw new Exception("Lookup comparator exception hidden");
+            var literalSearch = System.Text.Json.JsonSerializer.Serialize(new { Pattern = "|1|", Regex = false, Type = (int?)null });
+            if (!host.SearchSnapshotLogs(outgoing.Revision, literalSearch).SequenceEqual(new[] { 0, 1, 3 })) throw new Exception("Snapshot literal search");
+            var regexSearch = System.Text.Json.JsonSerializer.Serialize(new { Pattern = @"^[02]\|", Regex = true, Type = (int?)null });
+            if (!host.SearchSnapshotLogs(outgoing.Revision, regexSearch).SequenceEqual(new[] { 0, 1 })) throw new Exception("Snapshot regex search");
+            try { host.SearchSnapshotLogs(outgoing.Revision, System.Text.Json.JsonSerializer.Serialize(new { Pattern = "(", Regex = true, Type = (int?)null })); throw new Exception("Invalid regex accepted"); } catch (ArgumentException) { }
             var custom = host.CaptureCategoryActions(id, "{\"Combatant\":\"Source\",\"Category\":\"Custom\",\"Outgoing\":true}")!;
             var customRows = host.ReadActionSnapshot(custom.Revision, 0, 256).Items;
             var originalCustom = root.ZoneList[0].Items.Single().GetCombatant("Source")!.Items["Custom"].Items["All"].Items.Count;
@@ -88,6 +93,13 @@ internal static class VcrSnapshotChecks
             if (incomingRows.Length != 1 || incomingRows[0].Action.Attacker != "Source") throw new Exception("Incoming category scope");
             try { host.ReadActionSnapshot(outgoing.Revision, 0, 1); throw new Exception("Old category snapshot accepted"); } catch (InvalidOperationException) { }
             if (host.CaptureCategoryActions(id, "{\"Combatant\":\"Source\",\"Category\":\"Damage\",\"Outgoing\":false}") is not null) throw new Exception("Wrong direction accepted");
+            var encounter = root.ZoneList[0].Items.Single();
+            encounter.LogLines.Add(new LogLineEntry(DateTime.UnixEpoch, new string('a', 8192) + "!", 42, 999999));
+            var logOnly = host.CaptureLogSnapshot(id)!;
+            if (logOnly.Total != 0 || host.ReadActionSnapshotLogs(logOnly.Revision, 0, 256).Page.Total != 5) throw new Exception("Log-only capture");
+            var typeSearch = System.Text.Json.JsonSerializer.Serialize(new { Pattern = "", Regex = false, Type = (int?)42 });
+            if (!host.SearchSnapshotLogs(logOnly.Revision, typeSearch).SequenceEqual(new[] { 4 })) throw new Exception("Snapshot type filter");
+            try { host.SearchSnapshotLogs(logOnly.Revision, System.Text.Json.JsonSerializer.Serialize(new { Pattern = "^(a+)+$", Regex = true, Type = (int?)42 })); throw new Exception("Regex timeout not enforced"); } catch (System.Text.RegularExpressions.RegexMatchTimeoutException) { }
             root.ZoneList[0].Items.Single().GetCombatant("Target")!.AllInc["All"].Items.Clear();
             if (!bytes.SequenceEqual(host.ReadVcr(snapshot.Revision, 0, 65536).Bytes)) throw new Exception("VCR snapshot mutated");
             var replacement = host.CaptureVcr(id)!;
