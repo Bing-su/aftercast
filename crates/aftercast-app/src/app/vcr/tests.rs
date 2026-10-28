@@ -441,6 +441,22 @@ async fn log_search_ui_contract_owns_snapshot_and_rejects_stale() {
             .expect("regex"),
         [1]
     );
+    assert!(
+        endpoint
+            .handle
+            .search_snapshot_logs(frozen.snapshot, "no such line", false, None)
+            .await
+            .expect("empty result")
+            .is_empty()
+    );
+    assert!(
+        endpoint
+            .handle
+            .search_snapshot_logs(frozen.snapshot, "", false, Some(i32::MAX))
+            .await
+            .expect("empty type")
+            .is_empty()
+    );
     endpoint
         .handle
         .search_snapshot_logs(frozen.snapshot, "(", true, None)
