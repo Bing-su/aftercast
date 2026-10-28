@@ -118,6 +118,40 @@ public class AttackType
         }
     }
 
+    public Dictionary<string, int> GetAttackSpecials()
+    {
+        var ordered = new List<MasterSwing>(Items);
+        ordered.Sort(static (left, right) =>
+        {
+            var order = left.TimeSorter.CompareTo(right.TimeSorter);
+            return order != 0 ? order : left.Time.CompareTo(right.Time);
+        });
+        var seen = new List<string>();
+        var counts = new Dictionary<string, int>();
+        foreach (var action in ordered)
+        {
+            // shortcut: ACT localization overrides need ActGlobals.Trans; use its built-in English term.
+            if (action.Special == "None") seen.Clear();
+            if (!seen.Contains(action.Special))
+            {
+                Increment(action.Special);
+                if (action.Special != "None")
+                {
+                    Increment("ANY");
+                    if (!seen.Contains("ONCE")) { Increment("ONCE"); seen.Add("ONCE"); }
+                }
+            }
+            seen.Add(action.Special);
+        }
+        return counts;
+
+        void Increment(string key)
+        {
+            counts.TryGetValue(key, out var count);
+            counts[key] = unchecked(count + 1);
+        }
+    }
+
     public void Trim() => Items.TrimExcess();
 
     public static Dictionary<string, ColumnDef> ColumnDefs = new();

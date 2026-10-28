@@ -543,6 +543,7 @@ internal static class Program
         HistoryLifecycleChecks.Run();
         EncounterLogChecks.Run();
         AvoidanceOutcomeChecks.Run();
+        SpecialsChecks.Run();
         RootCombatStateChecks.Run();
         RootActionChecks.Run();
         HitRateColumnChecks.Run();

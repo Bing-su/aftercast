@@ -1,0 +1,28 @@
+{
+  "cases": [
+    {
+      "name": "segments-and-sort",
+      "rows": [
+        [4, "None"],
+        [2, "Crit"],
+        [1, "None"],
+        [3, "Crit"],
+        [5, "Flurry"],
+        [6, "Crit"],
+        [7, "None"]
+      ],
+      "expected": { "None": 3, "Crit": 2, "Flurry": 1, "ANY": 3, "ONCE": 2 }
+    },
+    { "name": "empty", "rows": [], "expected": {} },
+    {
+      "name": "reserved-name-collisions",
+      "rows": [
+        [1, "ANY"],
+        [2, "ONCE"],
+        [3, "None"],
+        [4, "ONCE"]
+      ],
+      "expected": { "ANY": 3, "ONCE": 3, "None": 1 }
+    }
+  ]
+}
