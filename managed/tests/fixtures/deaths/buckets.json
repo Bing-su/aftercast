@@ -1,0 +1,132 @@
+{
+  "deathOffsetTicks": 7500000,
+  "damageTypes": [1, 3],
+  "healingTypes": [2, 3],
+  "scenarios": [
+    {
+      "name": "whole-second-boundaries-and-overlap",
+      "actions": [
+        {
+          "offsetTicks": -90000001,
+          "sorter": 0,
+          "swingType": 1,
+          "amount": "1000"
+        },
+        {
+          "offsetTicks": -90000000,
+          "sorter": 1,
+          "swingType": 1,
+          "amount": "10"
+        },
+        {
+          "offsetTicks": 0,
+          "sorter": 2,
+          "swingType": 3,
+          "amount": "30"
+        },
+        {
+          "offsetTicks": 9999999,
+          "sorter": 3,
+          "swingType": 1,
+          "amount": "20"
+        },
+        {
+          "offsetTicks": 0,
+          "sorter": 4,
+          "swingType": 2,
+          "amount": "5"
+        },
+        {
+          "offsetTicks": 7500000,
+          "sorter": 5,
+          "swingType": 1,
+          "amount": "-10"
+        },
+        {
+          "offsetTicks": 10000000,
+          "sorter": 6,
+          "swingType": 1,
+          "amount": "1000"
+        }
+      ],
+      "expected": [
+        {
+          "index": 0,
+          "damage": "50",
+          "healing": "35",
+          "tooltipRows": 5,
+          "tooltipSorters": [2, 2, 3, 4, 5]
+        },
+        {
+          "index": 9,
+          "damage": "10",
+          "healing": "0",
+          "tooltipRows": 1,
+          "tooltipSorters": [1]
+        }
+      ]
+    },
+    {
+      "name": "signed-specials-and-wrapping",
+      "actions": [
+        {
+          "offsetTicks": 0,
+          "sorter": 0,
+          "swingType": 1,
+          "amount": "9223372036854775807"
+        },
+        {
+          "offsetTicks": 0,
+          "sorter": 1,
+          "swingType": 1,
+          "amount": "1"
+        },
+        {
+          "offsetTicks": 0,
+          "sorter": 2,
+          "swingType": 1,
+          "amount": "5"
+        },
+        {
+          "offsetTicks": 0,
+          "sorter": 3,
+          "swingType": 1,
+          "amount": "-1"
+        },
+        {
+          "offsetTicks": 0,
+          "sorter": 4,
+          "swingType": 1,
+          "amount": "-10"
+        },
+        {
+          "offsetTicks": 0,
+          "sorter": 5,
+          "swingType": 1,
+          "amount": "-9"
+        },
+        {
+          "offsetTicks": 0,
+          "sorter": 6,
+          "swingType": 3,
+          "amount": "2"
+        },
+        {
+          "offsetTicks": 0,
+          "sorter": 7,
+          "swingType": 4,
+          "amount": "-99"
+        }
+      ],
+      "expected": [
+        {
+          "index": 0,
+          "damage": "7",
+          "healing": "2",
+          "tooltipRows": 8,
+          "tooltipSorters": [0, 1, 2, 3, 4, 5, 6, 6]
+        }
+      ]
+    }
+  ]
+}
