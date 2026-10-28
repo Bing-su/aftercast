@@ -77,7 +77,7 @@ pub use combat::{
     ActionSnapshot, AttackSummary, ClassifiedAction, EncounterAction, EncounterDetail, EncounterId,
     EncounterLog, EncounterLogs, EncounterPage, EncounterStatus, EncounterSummary, SourceLogLink,
 };
-pub use death::{DeathBucket, DeathReport, death_report, sort_incoming_actions};
+pub use death::{DeathAnalysis, DeathBucket, DeathReport, death_report, sort_incoming_actions};
 pub use diagnostics::HostDiagnostics;
 pub use host::{Host, HostHandle};
 pub use import::{

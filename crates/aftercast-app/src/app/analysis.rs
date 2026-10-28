@@ -75,6 +75,17 @@ pub(super) fn AnalysisPane() -> Element {
                         }
                     }
                 }
+                if let Some(combatant) = state.read().combatant.clone() {
+                    super::death::DeathPanel {
+                        key: "{state.read().revision.session}-{state.read().revision.selection}-{combatant}",
+                        id: detail.summary.id,
+                        combatant,
+                        partial: matches!(
+                            detail.summary.status,
+                            aftercast::EncounterStatus::PartialImport | aftercast::EncounterStatus::Importing
+                        ),
+                    }
+                }
                 Accordion {
                     class: "contribution-panel mt-5 border border-border rounded-md".to_owned(),
                     default_open: true,

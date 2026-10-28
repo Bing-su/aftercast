@@ -1,6 +1,7 @@
 mod analysis;
 mod clipboard_import;
 mod companions;
+mod death;
 mod encounter_context;
 mod history;
 mod history_sources;

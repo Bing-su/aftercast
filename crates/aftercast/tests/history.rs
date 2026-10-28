@@ -200,6 +200,13 @@ async fn history_snapshots_select_exact_archives_and_preserve_log_identity(deplo
     host.action_snapshot_logs(snapshot, 0, 1)
         .await
         .expect_err("replaced log snapshot rejected");
+    let death_data = host
+        .death_analysis(id, &actions.items[0].victim)
+        .await
+        .expect("death analysis")
+        .expect("combatant");
+    assert!(death_data.deaths.is_empty());
+    assert_eq!(death_data.retained_logs, 2);
     let incoming = host
         .capture_incoming_action_snapshot(id, &actions.items[0].victim)
         .await
@@ -311,4 +318,40 @@ async fn stale_index(host: &Host, deployment: &Deployment, page: &aftercast::His
         0
     );
     std::fs::write(index, bytes).expect("restore fixture");
+}
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10; run mise run test:plugins"]
+async fn death_analysis_keeps_frozen_action_log_identity(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    parser(&host).await;
+    let input = deployment.directory().join("death.log");
+    std::fs::write(&input, "0|100\n0|-10\n").expect("synthetic log");
+    host.import_log(&input).await.expect("import");
+    let id = host.encounters(0, 16).await.unwrap().items[0].id;
+    let analysis = host.death_analysis(id, "Target").await.unwrap().unwrap();
+    assert_eq!(analysis.deaths.len(), 1);
+    let death = &analysis.actions[analysis.deaths[0]].action;
+    assert_eq!(death.amount, -10);
+    let SourceLogLink::Retained(offset) = death.source else {
+        panic!("death log missing")
+    };
+    let log = host
+        .action_snapshot_logs(analysis.snapshot, offset, 1)
+        .await
+        .unwrap();
+    assert_eq!(log.page.items[0].time_sorter, death.time_sorter);
+    assert_eq!(log.page.items[0].text, "0|-10");
+    let _replacement = host
+        .capture_incoming_action_snapshot(id, "Target")
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        host.action_snapshot_logs(analysis.snapshot, offset, 1)
+            .await
+            .is_err()
+    );
+    host.shutdown().await.unwrap();
 }
