@@ -3,10 +3,10 @@ using System.Drawing;
 namespace Aftercast.ActCompat
 {
     public sealed record TableScope(TableLevel Level, ulong EncounterId = 0,
-        string? Combatant = null, string? Category = null, string? Attack = null);
+        string? Combatant = null, string? Category = null, string? Attack = null, bool ZoneAnchor = false);
     public sealed record TableSort(string Primary, string? Secondary = null, bool Descending = false);
     public sealed record TableQuery(TableScope Scope, ulong Revision, string[] Columns,
-        int Offset = 0, int Limit = 16, TableSort? Sort = null);
+        int Offset = 0, int Limit = 16, TableSort? Sort = null, bool? MainDescending = null);
     public sealed record TableCellData(string? Text, int? ForegroundArgb, int? BackgroundArgb, string? Error);
     // Index belongs to this scope snapshot only; it is not a persistent action identity or a source-log link.
     public sealed record TableRowData(int Index, ulong EncounterId, string? Combatant, string? Category,
@@ -33,7 +33,7 @@ namespace Advanced_Combat_Tracker
             ArgumentNullException.ThrowIfNull(scope);
             if (!Enum.IsDefined(scope.Level)) throw new ArgumentOutOfRangeException(nameof(scope));
             var depth = (int)scope.Level;
-            if ((depth == 0 ? scope.EncounterId != 0 : scope.EncounterId == 0) ||
+            if ((depth == 0 ? scope.ZoneAnchor != (scope.EncounterId != 0) : scope.EncounterId == 0 || scope.ZoneAnchor) ||
                 (depth >= 2 ? scope.Combatant is null : scope.Combatant is not null) ||
                 (depth >= 3 ? scope.Category is null : scope.Category is not null) ||
                 (depth >= 4 ? scope.Attack is null : scope.Attack is not null))
@@ -54,7 +54,10 @@ namespace Advanced_Combat_Tracker
         private IEnumerable<TableSource>? TableSources(TableScope scope)
         {
             if (scope.Level == TableLevel.Encounter)
-                return QueryEncounters().Select(item => new TableSource(item.Encounter, Identity(item.Encounter).Id));
+            {
+                if (!scope.ZoneAnchor) return QueryEncounters().Select(item => new TableSource(item.Encounter, Identity(item.Encounter).Id));
+                return QueryZone(scope.EncounterId)?.Select(item => new TableSource(item.Encounter, Identity(item.Encounter).Id));
+            }
             var encounter = TableEncounter(scope.EncounterId);
             if (encounter is null) return null;
             if (scope.Level == TableLevel.Combatant)
@@ -193,8 +196,17 @@ namespace Advanced_Combat_Tracker
                 if (catalog.Revision != query.Revision) throw new TableQueryInvalidatedException("Column catalog revision mismatch");
                 var snapshot = columnSnapshots[query.Scope.Level].Snapshot;
                 var columns = keys.Select(key => SelectTableColumn(snapshot, key)).ToArray();
-                var primary = query.Sort is null ? null : SelectTableColumn(snapshot, query.Sort.Primary, true);
-                var secondary = query.Sort?.Secondary is null ? null : SelectTableColumn(snapshot, query.Sort.Secondary, true);
+                if (query.MainDescending is not null && query.Scope.Level is not (TableLevel.Combatant or TableLevel.Attack or TableLevel.Action))
+                    throw new ArgumentException("Main sorting is unavailable at this table level");
+                string? defaultPrimary = query.MainDescending is null ? null : query.Scope.Level switch {
+                    TableLevel.Combatant => ActGlobals.eDSort, TableLevel.Attack => ActGlobals.mDSort,
+                    TableLevel.Action => ActGlobals.aTSort, _ => null };
+                string? defaultSecondary = query.MainDescending is null ? null : query.Scope.Level switch {
+                    TableLevel.Combatant => ActGlobals.eDSort2, TableLevel.Attack => ActGlobals.mDSort2,
+                    TableLevel.Action => ActGlobals.aTSort2, _ => null };
+                ColumnBinding? DefaultBinding(string? key) => key is null ? null : snapshot.Bindings.FirstOrDefault(value => value.Metadata.Key == key);
+                var primary = query.Sort is null ? DefaultBinding(defaultPrimary) : SelectTableColumn(snapshot, query.Sort.Primary, true);
+                var secondary = query.Sort is null ? DefaultBinding(defaultSecondary) : query.Sort.Secondary is null ? null : SelectTableColumn(snapshot, query.Sort.Secondary, true);
                 var source = TableSources(query.Scope);
                 if (source is null) return null;
                 var rows = source.Take(MaximumTableRows + 1).ToArray();
@@ -211,12 +223,20 @@ namespace Advanced_Combat_Tracker
             var level = query.Scope.Level;
             int Compare(int left, int right)
             {
-                var value = CompareTableRows(level, snapshot, primary!, rows[left].Value, rows[right].Value);
-                return value != 0 || secondary is null ? value : CompareTableRows(level, snapshot, secondary, rows[left].Value, rows[right].Value);
+                var value = primary is null ? 0 : CompareTableRows(level, snapshot, primary, rows[left].Value, rows[right].Value);
+                if (value == 0 && secondary is not null) value = CompareTableRows(level, snapshot, secondary, rows[left].Value, rows[right].Value);
+                if (value != 0 || query.MainDescending is null) return value;
+                return (rows[left].Value, rows[right].Value) switch {
+                    (CombatantData a, CombatantData b) => a.Damage.CompareTo(b.Damage),
+                    (AttackType a, AttackType b) => a.Damage.CompareTo(b.Damage),
+                    (MasterSwing a, MasterSwing b) => a.TimeSorter != b.TimeSorter ? a.TimeSorter.CompareTo(b.TimeSorter) : a.Time.CompareTo(b.Time),
+                    _ => 0 };
+
             }
             string? sortError = null;
-            var order = primary is null ? Enumerable.Range(0, rows.Length).ToArray()
-                : TableOrdering.Order(rows.Length, Compare, query.Sort!.Descending, error => WriteExceptionLog(error, "Plugin table sort"), out sortError);
+            var order = primary is null && query.MainDescending is null ? Enumerable.Range(0, rows.Length).ToArray()
+                : TableOrdering.Order(rows.Length, Compare, query.MainDescending ?? query.Sort!.Descending,
+                    error => WriteExceptionLog(error, "Plugin table sort"), out sortError, reverseTies: query.MainDescending is not null);
             RequireTableRevision(level, query.Revision);
             var diagnosed = new HashSet<string>(StringComparer.Ordinal);
             var result = new List<TableRowData>();

@@ -654,3 +654,7 @@ main-table-refresh-help = 0으로 설정하면 자동 갱신을 끕니다. 수�
 
 main-table-reverse = 전투 표 공통 정렬 방향
 main-table-reverse-help = 전투원·기술·액션 표에서 선택한 정렬 콜백에 적용됩니다. 정렬을 선택하지 않은 표는 원래 순서를 유지합니다.
+
+table-selected-zone = 선택한 전투가 속한 Zone의 전투
+table-show-selected-zone = 이 전투의 Zone 보기
+table-show-all-zones = 모든 Zone 보기

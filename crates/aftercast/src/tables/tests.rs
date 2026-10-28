@@ -233,3 +233,41 @@ fn malformed_binary_counts_flags_text_and_cell_status_are_rejected() {
     drop(unsolicited.splice(offset..offset + 4, sort_error));
     decode::page(&unsolicited, 9, &query()).expect_err("unsolicited sort status");
 }
+
+#[test]
+fn main_sort_decoder_keeps_general_unsorted_contract_strict() {
+    let mut page = Vec::new();
+    page.put_u32_le(1);
+    page.put_u32_le(1);
+    page.put_u64_le(7);
+    page.put_u32_le(2);
+    page.put_u32_le(1);
+    column(&mut page, "fixture");
+    text(&mut page, None);
+    page.put_u32_le(1);
+    page.put_u32_le(1);
+    page.put_u64_le(3);
+    text(&mut page, Some("ACTOR"));
+    text(&mut page, None);
+    text(&mut page, None);
+    page.put_u32_le(0);
+    page.put_u32_le(1);
+    text(&mut page, Some("value"));
+    page.put_u32_le(0);
+    page.put_u32_le(0);
+    text(&mut page, None);
+    let mut request = query();
+    request.limit = 1;
+    decode::page(&page, 9, &request).expect_err("ordinary unsorted order");
+    assert_eq!(
+        decode::main_page(&page, 9, &request)
+            .expect("main")
+            .expect("scope")
+            .rows[0]
+            .index,
+        1
+    );
+    let last = page.len() - 1;
+    page.truncate(last);
+    decode::main_page(&page, 9, &request).expect_err("truncated");
+}

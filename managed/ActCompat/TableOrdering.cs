@@ -6,7 +6,7 @@ internal static class TableOrdering
     private sealed class OrderingFailure(string code) : Exception(code);
     private const int MaximumEvaluations = 500_000, MaximumObservedPairs = 262_144;
     internal static int[] Order(int count, Func<int, int, int> compare, bool descending,
-        Action<Exception> diagnose, out string? error)
+        Action<Exception> diagnose, out string? error, bool reverseTies = false)
     {
         var original = Enumerable.Range(0, count).ToArray();
         error = null;
@@ -19,7 +19,7 @@ internal static class TableOrdering
                 if (++evaluations > MaximumEvaluations) throw new OrderingFailure("comparison-budget");
                 return Math.Sign(compare(left, right));
             }
-            int Compare(int left, int right)
+            int CheckedSign(int left, int right)
             {
                 var sign = Evaluate(left, right);
                 if (sign != -Evaluate(right, left) || left == right && sign != 0)
@@ -38,23 +38,37 @@ internal static class TableOrdering
                         observations.Add(key, canonical);
                     }
                 }
+                return sign;
+            }
+            int Compare(int left, int right)
+            {
+                var sign = CheckedSign(left, right);
                 return sign == 0 ? left.CompareTo(right) : descending ? -sign : sign;
             }
             for (var index = 0; index < count; index++) Compare(index, index);
             var order = original.ToArray();
-            var scratch = new int[count];
-            for (var width = 1; width < count; width *= 2)
+            if (reverseTies)
             {
-                for (var start = 0; start < count; start += width * 2)
+                // ACT uses List.Sort and then Reverse, including its runtime's equal-key ordering.
+                Array.Sort(order, (left, right) => CheckedSign(left, right));
+                if (descending) Array.Reverse(order);
+            }
+            else
+            {
+                var scratch = new int[count];
+                for (var width = 1; width < count; width *= 2)
                 {
-                    var middle = Math.Min(start + width, count);
-                    var end = Math.Min(start + width * 2, count);
-                    var left = start; var right = middle;
-                    for (var destination = start; destination < end; destination++)
-                        scratch[destination] = left < middle && (right == end || Compare(order[left], order[right]) <= 0)
-                            ? order[left++] : order[right++];
+                    for (var start = 0; start < count; start += width * 2)
+                    {
+                        var middle = Math.Min(start + width, count);
+                        var end = Math.Min(start + width * 2, count);
+                        var left = start; var right = middle;
+                        for (var destination = start; destination < end; destination++)
+                            scratch[destination] = left < middle && (right == end || Compare(order[left], order[right]) <= 0)
+                                ? order[left++] : order[right++];
+                    }
+                    (order, scratch) = (scratch, order);
                 }
-                (order, scratch) = (scratch, order);
             }
             // Exhaust small tables; on larger tables validate observed pairs and every adjacent result.
             if (count <= 64)
@@ -86,7 +100,9 @@ internal static class TableOrdering
         catch (TableQueryInvalidatedException) { throw; }
         catch (Exception failure)
         {
-            error = failure is OrderingFailure ? failure.Message : "sort-callback-error";
+            if (failure is InvalidOperationException { InnerException: TableQueryInvalidatedException invalidated }) throw invalidated;
+            var reason = failure is InvalidOperationException { InnerException: OrderingFailure bounded } ? bounded : failure;
+            error = reason is OrderingFailure ? reason.Message : "sort-callback-error";
             diagnose(failure);
             return original;
         }

@@ -183,6 +183,21 @@ pub(super) fn page(
     session: u64,
     query: &TableQuery,
 ) -> Result<Option<TablePage>, Error> {
+    page_impl(bytes, session, query, false)
+}
+pub(super) fn main_page(
+    bytes: &[u8],
+    session: u64,
+    query: &TableQuery,
+) -> Result<Option<TablePage>, Error> {
+    page_impl(bytes, session, query, true)
+}
+fn page_impl(
+    bytes: &[u8],
+    session: u64,
+    query: &TableQuery,
+    main_sort: bool,
+) -> Result<Option<TablePage>, Error> {
     let mut reader = Reader(bytes);
     if !reader.boolean()? {
         reader.finish()?;
@@ -209,7 +224,7 @@ pub(super) fn page(
         Some("comparison-budget") => Some(TableSortError::ComparisonBudget),
         _ => return Err(invalid("unknown sort error")),
     };
-    if sort_error.is_some() && query.sort.is_none() {
+    if sort_error.is_some() && query.sort.is_none() && !main_sort {
         return Err(invalid("unsolicited sort error"));
     }
     let count = reader.u32()?;
@@ -223,7 +238,8 @@ pub(super) fn page(
         let row = row(&mut reader, session, query, columns.len())?;
         if row.index >= total
             || !seen.insert(row.index)
-            || (sort_error.is_some() || query.sort.is_none()) && row.index != query.offset + ordinal
+            || (sort_error.is_some() || query.sort.is_none() && !main_sort)
+                && row.index != query.offset + ordinal
         {
             return Err(invalid("invalid/duplicate original row ordinal"));
         }

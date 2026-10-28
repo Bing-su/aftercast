@@ -117,6 +117,8 @@ internal static class TableValueChecks
     {
         using var fixture = new Fixture();
         LevelsAndOrdering(fixture);
+        MainDefaultOrdering(fixture);
+        ZoneScope(fixture);
         CellFailures(fixture);
         ReentryAndMutation(fixture);
         SortingFailures(fixture);
@@ -124,6 +126,51 @@ internal static class TableValueChecks
         ComparisonBudget(fixture);
         Console.WriteLine("Original-object owner-thread table cells/colors, bounded sorting, invalidation and failures passed.");
     }
+    private static void ZoneScope(Fixture fixture)
+    {
+        var scope = new TableScope(TableLevel.Encounter, fixture.Id, ZoneAnchor: true);
+        var query = fixture.Query(scope);
+        Check(fixture.Read(query).Total == 1);
+        Check(fixture.Host.ListZoneEncounters(fixture.Id, 0, 1)!.Total == 1);
+        Throws<ArgumentException>(() => fixture.Host.ReadTable(fixture.Query(new TableScope(TableLevel.Encounter, fixture.Id))));
+        var zone = fixture.Root.ZoneList[0];
+        Check(zone.Items.Remove(fixture.Encounter));
+        try { Check(fixture.Host.ReadTable(query) is null && fixture.Host.ListZoneEncounters(fixture.Id, 0, 1) is null); }
+        finally { zone.Items.Add(fixture.Encounter); }
+    }
+
+    private static void MainDefaultOrdering(Fixture fixture)
+    {
+        var query = fixture.Query(columns: ["name"]);
+        var ordinary = fixture.Read(query);
+        var descending = fixture.Read(query with { MainDescending = true });
+        var ascending = fixture.Read(query with { MainDescending = false });
+        Check(descending.Rows[0].Combatant == "A" && ascending.Rows[^1].Combatant == "A");
+        Check(ordinary.Rows.Select(row => row.Index).SequenceEqual(Enumerable.Range(0, ordinary.Total)));
+        Check(descending.Rows.Select(row => row.Index).SequenceEqual(ascending.Rows.Select(row => row.Index).Reverse()));
+        int calls = 0;
+        CombatantData.ColumnDefs["EncDPS"] = new("ACT default", true, "TEXT", "value", value => value.Name, _ => "sql",
+            (left, right) => { calls++; return StringComparer.Ordinal.Compare(left.Name, right.Name); });
+        var registered = fixture.Read(fixture.Query(columns: ["name"]) with { MainDescending = false });
+        Check(calls > 0 && registered.Rows[0].Combatant == "A");
+        CombatantData.ColumnDefs["EncDPS"] = new("bad", true, "TEXT", "value", value => value.Name, _ => "sql",
+            (_, _) => throw new InvalidOperationException("synthetic comparison"));
+        var failed = fixture.Read(fixture.Query(columns: ["name"]) with { MainDescending = true });
+        Check(failed.SortError == "sort-callback-error" && failed.Rows.Select(row => row.Index).SequenceEqual(Enumerable.Range(0, failed.Total)));
+        CombatantData.ColumnDefs.Remove("EncDPS");
+        var ordering = typeof(HostEnvironment).Assembly.GetType("Aftercast.ActCompat.TableOrdering", true)!;
+        var method = ordering.GetMethod("Order", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+        foreach (int count in new[] { 3, 24 })
+        {
+            var expected = Enumerable.Range(0, count).ToList();
+            expected.Sort((_, _) => 0); expected.Reverse();
+            object?[] args = [count, (Func<int, int, int>)((_, _) => 0), true, (Action<Exception>)(_ => { }), null, true];
+            var actual = (int[])method.Invoke(null, args)!;
+            Check(args[4] is null && actual.SequenceEqual(expected));
+            if (count == 24) Check(string.Join(",", actual) == "23,22,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15,16,17,18,19,20,21,0");
+        }
+    }
+
     private static void LevelsAndOrdering(Fixture fixture)
     {
         var scopes = new[] { new TableScope(TableLevel.Encounter), new(TableLevel.Combatant, fixture.Id),

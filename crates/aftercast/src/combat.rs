@@ -165,6 +165,24 @@ impl HostHandle {
         Ok(page)
     }
 
+    /// Lists encounters in the ACT zone owning a retained encounter. None means the anchor was removed.
+    pub async fn zone_encounters(
+        &self,
+        anchor: EncounterId,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Option<EncounterPage<EncounterSummary>>, Error> {
+        let payload = self.query_combat(25, Some(anchor), offset, limit).await?;
+        let mut reader = Reader(&payload);
+        let page = if reader.present()? {
+            Some(reader.page(limit, offset, |reader| reader.summary(self.session))?)
+        } else {
+            None
+        };
+        reader.finish()?;
+        Ok(page)
+    }
+
     /// Reads a retained encounter and its participants. None means the graph no longer contains it.
     /// Results own their data after later actions, imports and shutdown; they are fresh graph reads.
     pub async fn encounter_detail(

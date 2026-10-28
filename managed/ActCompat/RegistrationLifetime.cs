@@ -34,6 +34,7 @@ internal static class RegistrationLifetime
         CombatantData.DamageTypeDataOutgoingCures = "";
         // Each host starts with ACT's built-in calculation defaults, not the previous plugin's options.
         ActGlobals.mainTableShowCommas = true;
+        ActGlobals.eDSort = ActGlobals.eDSort2 = "EncDPS";
         ActGlobals.blockIsHit = true;
         ActGlobals.disableIncrementalCaching = false;
         ActGlobals.restrictToAll = false;

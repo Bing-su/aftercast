@@ -17,7 +17,7 @@ public static partial class EntryPoint
         var offset = Marshal.ReadInt32(buffer, 20);
         var id = unchecked((ulong)Marshal.ReadInt64(buffer, 24));
         var limit = Marshal.ReadInt32(buffer, 32);
-        if (mode is < 1 or > 24 || offset < 0 || limit < 1 || limit > (mode is 12 or 15 or 17 or 19 or 21 ? 65536 : 256) ||
+        if (mode is < 1 or > 25 || offset < 0 || limit < 1 || limit > (mode is 12 or 15 or 17 or 19 or 21 ? 65536 : 256) ||
             (mode is 1 or 2 ? id != 0 : id == 0) || (mode is 1 or 3 or 7 or 10 or 11 or 13 or 14 or 16 or 18 or 20 or 22 or 23 or 24 && offset != 0))
             throw new ArgumentException("Invalid combat query mode, ID or page");
         for (var field = 36; field < header; field += 4)
@@ -91,6 +91,16 @@ internal static class CombatQueryEncoding
             var page = host?.ListEncounters(offset, limit) ?? new(0, []);
             writer.Write(page.Total); writer.Write(page.Items.Length);
             foreach (var value in page.Items) Summary(value);
+        }
+        else if (mode == 25)
+        {
+            var page = host?.ListZoneEncounters(id, offset, limit);
+            writer.Write(page is null ? 0u : 1u);
+            if (page is not null)
+            {
+                writer.Write(page.Total); writer.Write(page.Items.Length);
+                foreach (var value in page.Items) Summary(value);
+            }
         }
         else if (mode == 4)
         {

@@ -47,6 +47,17 @@ namespace Advanced_Combat_Tracker
                     if (seen.Add(zone.Items[index])) yield return (zone.Items[index], ReferenceEquals(zone, combatZones[0]));
         }
 
+        // An encounter ID anchors an actual ZoneList object, never a guessed name or timestamp.
+        private IEnumerable<(EncounterData Encounter, bool Import)>? QueryZone(ulong anchorId)
+        {
+            var anchor = TableEncounter(anchorId);
+            if (anchor is null) return null;
+            var zone = combatZones.FirstOrDefault(item => item.Items.Skip(item.PopulateAll ? 1 : 0).Any(entry => ReferenceEquals(entry, anchor)));
+            if (zone is null) return null;
+            var imported = ReferenceEquals(zone, combatZones[0]);
+            return zone.Items.Skip(zone.PopulateAll ? 1 : 0).Distinct<EncounterData>(ReferenceEqualityComparer.Instance).Select(item => (item, imported));
+        }
+
         private EncounterSummaryData Summarize(EncounterData encounter, bool import)
         {
             var identity = Identity(encounter);
@@ -59,6 +70,24 @@ namespace Advanced_Combat_Tracker
             return new(identity.Id, import, status, encounter.ZoneName, encounter.Title,
                 encounter.CharName, encounter.StartTime, encounter.EndTime, encounter.Duration.Ticks,
                 encounter.Damage, encounter.Healed, encounter.Items.Count);
+        }
+
+        internal CombatPage<EncounterSummaryData>? ListZoneEncounters(ulong anchorId, int offset, int limit)
+        {
+            ValidateCombatPage(offset, limit);
+            lock (CombatGate)
+            {
+                var source = QueryZone(anchorId);
+                if (source is null) return null;
+                var total = 0;
+                var items = new List<EncounterSummaryData>();
+                foreach (var (encounter, import) in source)
+                {
+                    if (total >= offset && items.Count < limit) items.Add(Summarize(encounter, import));
+                    total = checked(total + 1);
+                }
+                return new(total, items.ToArray());
+            }
         }
 
         internal CombatPage<EncounterSummaryData> ListEncounters(int offset, int limit)

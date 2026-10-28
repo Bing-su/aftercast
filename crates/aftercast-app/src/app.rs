@@ -585,6 +585,19 @@ fn stop(mut state: Signal<AppState>) {
     });
 }
 
+async fn list_encounters(
+    handle: &HostHandle,
+    anchor: Option<EncounterId>,
+    offset: u32,
+) -> Result<aftercast::EncounterPage<EncounterSummary>, aftercast::Error> {
+    match anchor {
+        Some(anchor) => handle.zone_encounters(anchor, offset, 128).await?.ok_or(
+            aftercast::Error::InvalidCombatRequest("Selected zone is no longer available".into()),
+        ),
+        None => handle.encounters(offset, 128).await,
+    }
+}
+
 fn refresh(mut state: Signal<AppState>, offset: u32) {
     if state.read().phase != Phase::Ready || state.read().loading {
         return;
@@ -593,13 +606,17 @@ fn refresh(mut state: Signal<AppState>, offset: u32) {
         return;
     };
     let session = state.read().revision.session;
+    let zone_anchor = state.read().plugin_tables.zone_anchor();
     state.write().loading = true;
     spawn(async move {
-        let result = handle.encounters(offset, 128).await;
+        let result = list_encounters(&handle, zone_anchor, offset).await;
         if state.read().revision.session != session {
             return;
         }
         state.write().loading = false;
+        if state.read().plugin_tables.zone_anchor() != zone_anchor {
+            return;
+        }
         match result {
             Ok(page) => {
                 let mut state = state.write();

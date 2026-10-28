@@ -72,6 +72,7 @@ pub(super) struct BrowserState {
     base: Option<TableScope>,
     scope: Option<TableScope>,
     history: Vec<TableScope>,
+    zone_anchor: Option<aftercast::EncounterId>,
     editors: BTreeMap<String, Editor>,
     pending: Option<Token>,
     auto_fallback: Option<View>,
@@ -91,9 +92,13 @@ impl BrowserState {
         self.frame = None;
         self.error = None;
     }
+    pub(super) fn zone_anchor(&self) -> Option<aftercast::EncounterId> {
+        self.zone_anchor
+    }
     pub(super) fn reset_session(&mut self) {
         self.invalidate();
         self.auto_fallback = None;
+        self.zone_anchor = None;
         self.base = None;
         self.scope = None;
         self.history.clear();
@@ -119,7 +124,10 @@ fn base_scope(state: &AppState) -> TableScope {
             combatant: actor.clone(),
         },
         (Some(encounter), None, _) => TableScope::Combatants(encounter),
-        _ => TableScope::Encounters,
+        _ => state
+            .plugin_tables
+            .zone_anchor
+            .map_or(TableScope::Encounters, TableScope::Zone),
     }
 }
 pub(super) fn scope(state: &AppState) -> TableScope {
@@ -184,6 +192,27 @@ impl AppState {
         if fallback || table {
             self.plugin_tables.invalidate();
         }
+    }
+    fn select_zone(&mut self, anchor: Option<aftercast::EncounterId>) -> bool {
+        if !idle(self) {
+            return false;
+        }
+        if anchor.is_some() && self.selected != anchor {
+            return false;
+        }
+        self.plugin_tables.zone_anchor = anchor;
+        self.plugin_tables.history.clear();
+        self.plugin_tables.invalidate();
+        self.selected = None;
+        self.detail = None;
+        self.combatant = None;
+        self.category = None;
+        self.attacks.clear();
+        self.encounters.clear();
+        self.total = 0;
+        self.offset = 0;
+        self.revision.selection += 1;
+        true
     }
     fn begin_table(&mut self, mode: Mode) -> Option<(Token, Preferences)> {
         if !idle(self) {
@@ -463,10 +492,12 @@ async fn read(
     };
     let (mut page, mut missing) = (None, false);
     if let Some(query) = query {
-        page = handle
-            .table_rows(&query)
-            .await
-            .map_err(|error| error.to_string())?;
+        page = if let Some(reverse) = token.reverse {
+            handle.main_table_rows(&query, reverse).await
+        } else {
+            handle.table_rows(&query).await
+        }
+        .map_err(|error| error.to_string())?;
         missing = page.is_none();
     }
     Ok(Loaded {
@@ -488,7 +519,18 @@ fn load(mut state: Signal<AppState>, mode: Mode, offset: u32) {
     };
     spawn_forever(async move {
         let result = read(&handle, &token, preferences, offset).await;
-        state.write().receive_table(token, result);
+        let accepted = state.write().receive_table(token, result);
+        let current = state.read();
+        let refresh_sidebar = accepted
+            && current.screen == "analysis"
+            && !current.exit_requested
+            && scope(&current).level() == aftercast::TableLevel::Encounter
+            && (current.plugin_tables.zone_anchor.is_some() || current.encounters.is_empty());
+        let sidebar_offset = current.offset;
+        drop(current);
+        if refresh_sidebar {
+            refresh_fallback(state, sidebar_offset);
+        }
     });
 }
 impl AppState {
@@ -535,11 +577,12 @@ fn refresh_fallback(mut state: Signal<AppState>, offset: u32) {
     let Some(handle) = state.read().handle() else {
         return;
     };
+    let anchor = state.read().plugin_tables.zone_anchor;
     let Some((expected, revision)) = state.write().begin_auto_fallback() else {
         return;
     };
     spawn_forever(async move {
-        let result = handle.encounters(offset, 128).await;
+        let result = super::list_encounters(&handle, anchor, offset).await;
         state
             .write()
             .receive_auto_fallback(expected, revision, offset, result);

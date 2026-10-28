@@ -25,6 +25,7 @@ pub(super) fn move_key(preferences: &mut Preferences, key: &str, up: bool) {
 fn context(scope: &TableScope) -> String {
     match scope {
         TableScope::Encounters => tr("table-all-encounters"),
+        TableScope::Zone(_) => tr("table-selected-zone"),
         TableScope::Combatants(_) => tr("table-retained-encounter"),
         TableScope::Categories { combatant, .. } => combatant.clone(),
         TableScope::Attacks {
@@ -186,6 +187,8 @@ pub(super) fn Panel() -> Element {
         .is_some_and(|editor| editor.draft != editor.applied);
     let file_available = current.file.is_some();
     let history = !current.plugin_tables.history.is_empty();
+    let selected = current.selected;
+    let zone_selected = current.plugin_tables.zone_anchor.is_some();
     drop(current);
     rsx! {
         section { class: "my-5 space-y-4", "aria-label": tr("table-plugin-title"),
@@ -204,6 +207,26 @@ pub(super) fn Panel() -> Element {
                         }
                     },
                     {tr("table-refresh")}
+                }
+                if let Some(anchor) = selected {
+                    Button {
+                        variant: ButtonVariant::Outline,
+                        disabled: !idle,
+                        onclick: move |_| {
+                            state.write().select_zone(Some(anchor));
+                        },
+                        {tr("table-show-selected-zone")}
+                    }
+                }
+                if zone_selected {
+                    Button {
+                        variant: ButtonVariant::Ghost,
+                        disabled: !idle,
+                        onclick: move |_| {
+                            state.write().select_zone(None);
+                        },
+                        {tr("table-show-all-zones")}
+                    }
                 }
                 Button {
                     variant: ButtonVariant::Ghost,

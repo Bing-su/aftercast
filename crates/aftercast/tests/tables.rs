@@ -426,3 +426,83 @@ async fn comma_option_reaches_plugin_formatting_without_rewriting_literal_cells(
         host.shutdown().await.expect("stop");
     }
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and fixture; run mise run test:plugins"]
+async fn zone_scope_uses_owned_identity_even_for_equal_zone_names(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let id = host
+        .create_plugin(plugin("ZoneFixturePlugin"))
+        .await
+        .expect("plugin");
+    host.initialize_plugin(id).await.expect("initialize");
+    let page = host.encounters(0, 16).await.expect("all");
+    assert_eq!(page.total, 4);
+    assert!(
+        page.items
+            .iter()
+            .all(|encounter| encounter.zone == "Same Zone")
+    );
+    let first = page.items[0].id;
+    let second = page.items[2].id;
+    let a = host
+        .zone_encounters(first, 0, 1)
+        .await
+        .expect("zone")
+        .expect("anchor");
+    let b = host
+        .zone_encounters(second, 0, 1)
+        .await
+        .expect("zone")
+        .expect("anchor");
+    assert_eq!((a.total, b.total), (2, 2));
+    assert_eq!(a.items[0].id, first);
+    assert_eq!(b.items[0].id, second);
+    assert_ne!(
+        host.zone_encounters(first, 1, 1)
+            .await
+            .expect("next")
+            .expect("zone")
+            .items[0]
+            .id,
+        first
+    );
+    let qa = query(&host, TableScope::Zone(first), &["fixture"]).await;
+    let qb = query(&host, TableScope::Zone(second), &["fixture"]).await;
+    assert_eq!(
+        host.table_rows(&qa)
+            .await
+            .expect("table")
+            .expect("zone")
+            .total,
+        2
+    );
+    assert_eq!(
+        host.table_rows(&qb)
+            .await
+            .expect("table")
+            .expect("zone")
+            .rows[0]
+            .encounter,
+        second
+    );
+    host.deinitialize_plugin(id).await.expect("remove zones");
+    assert!(
+        host.zone_encounters(first, 0, 1)
+            .await
+            .expect("removed")
+            .is_none()
+    );
+    host.table_rows(&qa)
+        .await
+        .expect_err("removed column revision");
+    host.shutdown().await.expect("stop");
+    let fresh = Host::start(deployment.config()).await.expect("restart");
+    fresh
+        .zone_encounters(first, 0, 1)
+        .await
+        .expect_err("old session");
+    fresh.table_rows(&qa).await.expect_err("old table session");
+    fresh.shutdown().await.expect("shutdown");
+}

@@ -491,6 +491,12 @@ async fn global_reverse_changes_only_selected_main_table_comparator() {
     ui.revision.session = 1;
     ui.selected = Some(encounter);
     receive(&host, &mut ui, Mode::Refresh).await;
+    assert_eq!(page(&ui).rows[0].combatant.as_deref(), Some("SOURCE"));
+    ui.settings.ui.main_table_reverse = false;
+    receive(&host, &mut ui, Mode::Refresh).await;
+    assert_eq!(page(&ui).rows[0].combatant.as_deref(), Some("TARGET"));
+    ui.settings.ui.main_table_reverse = true;
+    receive(&host, &mut ui, Mode::Refresh).await;
     assert!(ui.edit_table(view(&ui), |draft| draft.primary = Some("fixture".into())));
     receive(&host, &mut ui, Mode::Apply).await;
     let descending = page(&ui)
@@ -517,4 +523,64 @@ async fn global_reverse_changes_only_selected_main_table_comparator() {
     assert!(!uses_global_reverse(TableLevel::Encounter));
     assert!(!uses_global_reverse(TableLevel::Category));
     host.shutdown().await.expect("shutdown");
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and actual synthetic Host; run mise run test:gui-state"]
+async fn zone_ui_contract_preserves_identity_paging_and_rejects_late_results() {
+    let temporary = tempfile::tempdir().expect("fixture");
+    let root = Utf8Path::from_path(temporary.path()).expect("UTF8");
+    let config = config(root);
+    let host = Host::start(config.clone()).await.expect("host");
+    let id = host.create_plugin(PluginConfig::builder().path(Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll"))
+        .type_name("Aftercast.PluginFixture.ZoneFixturePlugin").build()).await.expect("plugin");
+    host.initialize_plugin(id).await.expect("init");
+    let rows = host.encounters(0, 16).await.expect("encounters").items;
+    let (first, second) = (rows[0].id, rows[2].id);
+    let mut ui = AppState::new(root.to_owned());
+    ui.phase = Phase::Ready;
+    ui.revision.session = 1;
+    ui.selected = Some(first);
+    ui.offset = 128;
+    assert!(ui.select_zone(Some(first)));
+    assert!(ui.selected.is_none() && ui.offset == 0);
+    assert!(matches!(scope(&ui), TableScope::Zone(id) if id == first));
+    let (old, prefs) = ui.begin_table(Mode::Auto).expect("first zone");
+    let old_result = read(&host, &old, prefs, 0).await;
+    ui.retire_table_view();
+    ui.selected = Some(second);
+    assert!(ui.select_zone(Some(second)));
+    assert!(!ui.receive_table(old, old_result));
+    let (token, prefs) = ui.begin_table(Mode::Refresh).expect("second zone");
+    let loaded = read(&host, &token, prefs, 1).await.expect("second page");
+    assert_eq!(loaded.page.as_ref().expect("page").total, 2);
+    assert_eq!(
+        loaded.page.as_ref().expect("page").rows[0].encounter,
+        rows[3].id
+    );
+    assert!(ui.receive_table(token, Ok(loaded)));
+    let (fallback, stamp) = ui.begin_auto_fallback().expect("fallback");
+    let page = host
+        .zone_encounters(second, 0, 1)
+        .await
+        .expect("zone")
+        .expect("anchor");
+    assert_eq!(page.total, 2);
+    ui.retire_table_view();
+    assert!(!ui.receive_auto_fallback(fallback, stamp, 0, Ok(page)));
+    assert!(ui.select_zone(None));
+    assert!(matches!(scope(&ui), TableScope::Encounters));
+    ui.selected = Some(first);
+    assert!(ui.select_zone(Some(first)));
+    ui.revision.session += 1;
+    ui.plugin_tables.reset_session();
+    assert!(matches!(scope(&ui), TableScope::Encounters));
+    host.shutdown().await.expect("stop");
+    let fresh = Host::start(config).await.expect("restart");
+    fresh
+        .zone_encounters(first, 0, 1)
+        .await
+        .expect_err("old session");
+    fresh.shutdown().await.expect("shutdown");
 }

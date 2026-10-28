@@ -56,6 +56,8 @@ pub struct TableCatalog {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum TableScope {
     Encounters,
+    /// Zone identified by a retained encounter in the current session.
+    Zone(EncounterId),
     Combatants(EncounterId),
     Categories {
         encounter: EncounterId,
@@ -76,7 +78,7 @@ pub enum TableScope {
 impl TableScope {
     pub fn level(&self) -> TableLevel {
         match self {
-            Self::Encounters => TableLevel::Encounter,
+            Self::Encounters | Self::Zone(_) => TableLevel::Encounter,
             Self::Combatants(_) => TableLevel::Combatant,
             Self::Categories { .. } => TableLevel::Category,
             Self::Attacks { .. } => TableLevel::Attack,
@@ -92,7 +94,7 @@ impl TableScope {
         Option<&str>,
     ) {
         match self {
-            Self::Encounters => (None, None, None, None),
+            Self::Encounters | Self::Zone(_) => (None, None, None, None),
             Self::Combatants(id) => (Some(*id), None, None, None),
             Self::Categories {
                 encounter,
@@ -176,10 +178,16 @@ impl TableQuery {
     fn request(&self, session: u64) -> Result<serde_json::Value, Error> {
         let level = self.scope.level();
         let (id, actor, category, attack) = self.scope.parts();
+        let zone_anchor = if let TableScope::Zone(anchor) = self.scope {
+            Some(anchor)
+        } else {
+            None
+        };
         if self.revision.session != session
             || self.revision.level != level
             || self.revision.value == 0
             || id.is_some_and(|id| id.session != session)
+            || zone_anchor.is_some_and(|id| id.session != session)
         {
             return Err(invalid(
                 "scope/revision belongs to another host session or table level",
@@ -212,7 +220,7 @@ impl TableQuery {
             return Err(invalid("invalid table sort key"));
         }
         Ok(serde_json::json!({"query":{
-            "scope":{"level":level,"encounterId":id.map_or(0, |id| id.value), "combatant":actor,"category":category,"attack":attack},
+            "scope":{"level":level,"encounterId":id.or(zone_anchor).map_or(0, |id| id.value), "zoneAnchor":zone_anchor.is_some(), "combatant":actor,"category":category,"attack":attack},
             "revision":self.revision.value,"columns":self.columns,"offset":self.offset,"limit":self.limit,"sort":self.sort
         }}))
     }
@@ -231,6 +239,29 @@ impl HostHandle {
         let request = query.request(self.session)?;
         let output = self.table_call(2, &request).await?;
         decode::page(&output, self.session, query)
+    }
+    /// Main-table ACT comparison, including default callbacks and reverse tie order.
+    pub async fn main_table_rows(
+        &self,
+        query: &TableQuery,
+        descending: bool,
+    ) -> Result<Option<TablePage>, Error> {
+        if !matches!(
+            query.scope.level(),
+            TableLevel::Combatant | TableLevel::Attack | TableLevel::Action
+        ) {
+            return Err(invalid(
+                "main sorting requires combatant, attack or action scope",
+            ));
+        }
+        let mut request = query.request(self.session)?;
+        request
+            .get_mut("query")
+            .and_then(serde_json::Value::as_object_mut)
+            .ok_or_else(|| invalid("missing table query"))?
+            .insert("mainDescending".into(), descending.into());
+        let output = self.table_call(2, &request).await?;
+        decode::main_page(&output, self.session, query)
     }
     /// Read an ACT lookup graph owned by the captured action snapshot.
     pub async fn lookup_table_rows(

@@ -654,3 +654,7 @@ main-table-refresh-help = Zero disables automatic refresh; manual refresh remain
 
 main-table-reverse = Main table sort direction
 main-table-reverse-help = Applies to selected combatant, attack, and action sort callbacks. Tables without a selected sort retain their source order.
+
+table-selected-zone = Encounters in the selected encounter’s zone
+table-show-selected-zone = Show this encounter’s zone
+table-show-all-zones = Show all zones
