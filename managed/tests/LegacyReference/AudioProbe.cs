@@ -1,6 +1,5 @@
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Windows.Forms;
 using Advanced_Combat_Tracker;
 
 namespace Aftercast.LegacyReference;
@@ -29,15 +28,18 @@ public static class AudioProbe
                 GC.SuppressFinalize(options);
                 foreach (var controlField in field.FieldType.GetFields(fields))
                 {
-                    if (controlField.FieldType != typeof(TrackBar) && controlField.FieldType != typeof(RadioButton) && controlField.FieldType != typeof(CheckedListBox)) continue;
-                    var control = (Control)Activator.CreateInstance(controlField.FieldType)!;
-                    controls.Add(control);
-                    if (control is TrackBar bar) { bar.Maximum = 100; bar.Value = controlField.Name == "tbarTtsVol" ? 37 : 61; }
+                    if (controlField.FieldType.FullName is not ("System.Windows.Forms.TrackBar" or "System.Windows.Forms.RadioButton" or "System.Windows.Forms.CheckedListBox")) continue;
+                    var control = Activator.CreateInstance(controlField.FieldType)!;
+                    controls.Add((IDisposable)control);
+                    if (controlField.FieldType.FullName == "System.Windows.Forms.TrackBar") { controlField.FieldType.GetProperty("Maximum")!.SetValue(control, 100); controlField.FieldType.GetProperty("Value")!.SetValue(control, controlField.Name == "tbarTtsVol" ? 37 : 61); }
                     controlField.SetValue(options, control);
                 }
                 field.SetValue(main, options);
             }
             Set(main, "ttsLock", new object()); Set(main, "ttsAsyncMax", 50);
+            Set(main, "speechRuleGate", new object());
+            var rules = typeof(FormActMain).GetField("speechRules", fields);
+            if (rules is not null) rules.SetValue(main, Array.CreateInstance(rules.FieldType.GetElementType()!, 0));
             Set(main, "actExe", new FileInfo(typeof(FormActMain).Assembly.Location));
             Set(main, "SoundVolume", 61); Set(main, "TtsVolume", 37);
             var translations = typeof(FormSpellTimers).GetField("Trans", fields);
@@ -63,7 +65,7 @@ public static class AudioProbe
             var soundOptions = typeof(FormActMain).GetField("opSound", fields)?.GetValue(main);
             if (soundOptions is not null)
                 foreach (var name in new[] { "rbSndStartTTS", "rbSndWarnTTS", "rbSndTimerTTS" })
-                    ((RadioButton)soundOptions.GetType().GetField(name, fields)!.GetValue(soundOptions)!).Checked = true;
+                    { var button = soundOptions.GetType().GetField(name, fields)!.GetValue(soundOptions)!; button.GetType().GetProperty("Checked")!.SetValue(button, true); }
             Cue(0, " "); Cue(1, ""); Cue(2, "ignored");
             if (main.MakeAbsolutePathString("nested/effect.wav", directory.FullName) != Path.GetFullPath(Path.Combine(directory.FullName, "nested/effect.wav")))
                 throw new Exception("Relative sound path resolution changed");

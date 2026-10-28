@@ -35,7 +35,7 @@ internal static class Program
     {
         var mode = args[0];
         // Only the original-reference test calls ACT UI types before startup; ABI modes exercise normal binding.
-        if (OperatingSystem.IsLinux() && mode is "act" or "recorded-actions" or "selective-parsing" or "custom-trigger-models" or "data-corrections" or "encounter-xml" or "history-records")
+        if (OperatingSystem.IsLinux() && mode is "audio" or "act" or "recorded-actions" or "selective-parsing" or "custom-trigger-models" or "data-corrections" or "encounter-xml" or "history-records")
         {
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.dll"));
             AssemblyLoadContext.Default.LoadFromAssemblyPath(Path.Combine(AppContext.BaseDirectory, "System.Windows.Forms.DataVisualization.dll"));
