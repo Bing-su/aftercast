@@ -53,6 +53,7 @@ internal static class Program
                 "report-export-policy" when args.Length == 3 => ReportExportPolicyMode(actPath),
                 "values" when args.Length == 3 => DnumValues.Run(act),
                 "death-buckets" when args.Length == 4 => DeathBuckets.Run(act, args[3]),
+                "avoidance-outcomes" when args.Length == 4 => AvoidanceOutcomesProbe.Run(act, args[3]),
                 "actions" when args.Length == 3 => AggregateValues.Run(act),
                 "contracts" when args.Length == 4 => RunContracts(args[3]),
                 "recorded-actions" when args.Length == 5 => RunRecordedActions(args[3], args[4]),

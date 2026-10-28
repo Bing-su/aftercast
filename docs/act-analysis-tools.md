@@ -11,6 +11,8 @@ The installed reference SHA-256 was checked again:
 Local reference extracts are retained under
 `target/design-reference-act/current/` and are not distributed source files.
 
+The first avoidance outcome grouping slice and its remaining reference questions are documented in [avoidance-outcome-contract](avoidance-outcome-contract.md).
+
 ## Workflow and design targets
 
 | Tool / origin                      | Reference behavior found in code                                                                                                                                                                                                                                                                                                                                                                                                               | Target for the next B-based design                                                                                                                                                                                                                                                                   |
