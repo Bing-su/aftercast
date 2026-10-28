@@ -126,6 +126,13 @@ async fn vcr_controller_owns_capture_and_rejects_late_results() {
             .revision,
         snapshot.revision
     );
+    let token = controller.begin().expect("before close");
+    controller.close();
+    controller.receive(token, Ok(Some(snapshot.clone())), false);
+    assert!(controller.snapshot.is_none());
+    let token = controller.begin().expect("reopen");
+    controller.receive(token, Ok(Some(snapshot.clone())), false);
+    assert_eq!(controller.clock.position, 0);
     let fresh = crate::app::log_window::verify_delayed_lifecycle(endpoint, &lifetime).await;
     assert!(
         load(&fresh, false)

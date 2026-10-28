@@ -53,6 +53,11 @@ impl State {
         self.clock.mode = VcrMode::Paused;
         self.clock.linked = false;
     }
+    fn close(&mut self) {
+        self.cancel();
+        self.snapshot = None;
+        self.selected.clear();
+    }
     fn follow_snapshot(&mut self, snapshot: &VcrSnapshot) {
         if self.lookback.parse::<u32>().is_ok_and(|value| value < 1) {
             self.lookback = "1".into();
@@ -229,6 +234,13 @@ pub(super) fn VcrPanel(id: EncounterId) -> Element {
                             variant: ButtonVariant::Outline,
                             onclick: move |_| state.write().cancel(),
                             "Cancel"
+                        }
+                    }
+                    if current.snapshot.is_some() {
+                        Button {
+                            variant: ButtonVariant::Outline,
+                            onclick: move |_| state.write().close(),
+                            "Close VCR"
                         }
                     }
                 }
