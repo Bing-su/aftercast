@@ -392,3 +392,11 @@ timeout/16 MiB errors with explicit recovery, and a real >64 KiB report whose
 full source is saved. These use temporary synthetic files only. Native desktop
 clicks, Windows UI, native ACT HTML exporter and graph visual equivalence remain
 unverified; process startup smoke does not establish those behaviors.
+
+The final GUI aggregate check also exposed the older XML 200-line/two-column
+serialized-size worker fixture reaching its four-second render timeout first.
+The XML worker and XML controller size regressions now use a separate derived
+expanded-SQL fixture with eight synthetic lines and 32 extra action SQL columns.
+Normal XML fixture behavior, production bounds and timeout behavior are unchanged.
+The assertion still requires the actual serialized 16 MiB error and explicit
+shallow recovery; timeout is not accepted as a size-test success.

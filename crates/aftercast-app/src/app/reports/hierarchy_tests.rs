@@ -130,9 +130,14 @@ async fn hierarchy_reports_ui_contract_callback_timeout_and_output_errors_preser
     for (text, message) in [
         ("0|666\n".to_owned(), "synthetic hierarchy SQL failure"),
         ("0|444\n".to_owned(), "exceeded"),
-        ((0..200).map(|n| format!("{n}|999\n")).collect(), "16 MiB"),
+        ((0..8).map(|n| format!("{n}|999\n")).collect(), "16 MiB"),
     ] {
-        let mut f = Fixture::new_with("HierarchyXmlPlugin", &text).await;
+        let plugin = if text.contains("999") {
+            "HierarchyXmlExpandedPlugin"
+        } else {
+            "HierarchyXmlPlugin"
+        };
+        let mut f = Fixture::new_with(plugin, &text).await;
         assert!(f.ui.report_hierarchy_depth(f.ui.report_token(), Depth::AllTables));
         let (token, request) = begin(&mut f);
         let reply = perform(&f.host.handle(), &request).await;

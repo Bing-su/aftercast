@@ -1,6 +1,13 @@
 use super::*;
 use aftercast::{HierarchyXmlDepth, TableReportFormat, TableReportOptions, TableScope};
 async fn start(deployment: &Deployment, text: &str) -> (Host, aftercast::EncounterId) {
+    start_with(deployment, text, "HierarchyXmlPlugin").await
+}
+async fn start_with(
+    deployment: &Deployment,
+    text: &str,
+    plugin: &str,
+) -> (Host, aftercast::EncounterId) {
     let host = Host::start(deployment.config())
         .await
         .expect("isolated worker");
@@ -8,7 +15,7 @@ async fn start(deployment: &Deployment, text: &str) -> (Host, aftercast::Encount
         .path(Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join(
             "../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll",
         ))
-        .type_name("Aftercast.PluginFixture.HierarchyXmlPlugin")
+        .type_name(format!("Aftercast.PluginFixture.{plugin}"))
         .build();
     let id = host.create_plugin(config).await.expect("synthetic plugin");
     host.initialize_plugin(id).await.expect("initialize");
@@ -218,10 +225,10 @@ async fn hierarchy_worker_errors_timeout_and_explicit_recovery(deployment: Deplo
 async fn hierarchy_worker_output_budget_is_error_and_shallower_capture_recovers(
     deployment: Deployment,
 ) {
-    let text = (0..200)
+    let text = (0..8)
         .map(|index| format!("{index}|999\n"))
         .collect::<String>();
-    let (host, encounter) = start(&deployment, &text).await;
+    let (host, encounter) = start_with(&deployment, &text, "HierarchyXmlExpandedPlugin").await;
     let selection = host
         .capture_hierarchy_xml(encounter, HierarchyXmlDepth::AllTables)
         .await

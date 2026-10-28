@@ -8,6 +8,7 @@ namespace Aftercast.PluginFixture;
 public class HierarchyXmlPlugin:IActPluginV1
 {
     protected virtual bool Html=>false;
+    protected virtual bool ExpandedXml=>false;
     private const string Source="Source日本😀",Target="Target한글😀\r\n<&>";
     private FormActMain root=null!;private int owner;private bool delayed,expanded,htmlColumns;
     private FormActMain.DateTimeLogParser? parser;private string? previousCharacter;
@@ -70,7 +71,7 @@ public class HierarchyXmlPlugin:IActPluginV1
         var amount=long.Parse(info.logLine.Split('|')[1],CultureInfo.InvariantCulture);
         if(Html&&amount==1111)CombatantData.ColumnDefs.Remove("registered-b");
         if(Html&&amount==1112)CombatantData.ColumnDefs["registered-b"]=new("Re-registered label",true,"TEXT","second",row=>{Own(row);return "re-registered "+row.Name;},Actor,(_,_)=>0);
-        if(Html&&amount==999&&!htmlColumns)
+        if((Html||ExpandedXml)&&amount==999&&!htmlColumns)
         {
             htmlColumns=true;
             for(var index=0;index<32;index++)
@@ -96,3 +97,7 @@ public class HierarchyXmlPlugin:IActPluginV1
 
 public sealed class HierarchyHtmlPlugin:HierarchyXmlPlugin
 {protected override bool Html=>true;}
+
+// Keep normal XML behavior unchanged; isolate serialized-size checks from large-row timing.
+public sealed class HierarchyXmlExpandedPlugin:HierarchyXmlPlugin
+{protected override bool ExpandedXml=>true;}
