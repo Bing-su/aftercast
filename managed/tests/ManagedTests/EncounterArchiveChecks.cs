@@ -141,7 +141,7 @@ internal static class EncounterArchiveChecks
             var partialDirectory = Directory.CreateDirectory(Path.Combine(directory.FullName, "partial-state"));
             var partialLog = Path.Combine(directory.FullName, "partial.log");
             File.WriteAllText(partialLog, "fixture\n");
-            using (var partial = new HostEnvironment(partialDirectory.FullName))
+            using (var partial = new HostEnvironment(partialDirectory.FullName, selectiveMode: SelectiveParsingModeEnum.SelectiveEncountersStrict, selectedCombatants: ["Source"]))
             {
                 CombatFixture.ConfigureCategories();
                 var root = ActGlobals.oFormActMain!;
@@ -160,6 +160,10 @@ internal static class EncounterArchiveChecks
                 CombatFixture.ConfigureCategories();
                 Check(partial.ArchiveOperation(4, "", 0, false) == 1);
                 Check(partial.ListEncounters(0, 16).Items.Single().Status == EncounterStatus.PartialImport);
+                var restored = ActGlobals.oFormActMain!.ZoneList[0].Items.Single();
+                Check(restored.GetIsSelective() && restored.GetIgnoreEnemies());
+                var id = partial.ListEncounters(0, 16).Items.Single().Id;
+                Check(partial.ReadEncounterActions(id, 0, 16)!.Items.Single().Amount == 100);
             }
             ProjectionSpecialCases();
             SelectiveHistory();

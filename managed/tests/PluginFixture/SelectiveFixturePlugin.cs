@@ -8,11 +8,13 @@ namespace Aftercast.PluginFixture;
 public sealed class SelectiveFixturePlugin : IActPluginV1
 {
     private FormActMain root = null!;
+    private FormActMain.DateTimeLogParser? previousParser;
     public void InitPlugin(TabPage page, Label status)
     {
         root = ActGlobals.oFormActMain!;
         status.Text = root.SelectiveListGetMode().ToString();
         root.TimeStampLen = 0;
+        previousParser = root.GetDateTimeFromLog;
         root.GetDateTimeFromLog = line => DateTime.UnixEpoch.AddSeconds(int.Parse(line.Split('|')[0], CultureInfo.InvariantCulture));
         CombatFixture.ConfigureCategories();
         CombatantData.ColumnDefs["selective-name"] = new("Name", true, "TEXT", "name", actor => actor.Name, actor => actor.Name,
@@ -30,6 +32,7 @@ public sealed class SelectiveFixturePlugin : IActPluginV1
     public void DeInitPlugin()
     {
         root.BeforeLogLineRead -= Read;
+        root.GetDateTimeFromLog = previousParser!;
         CombatantData.ColumnDefs.Remove("selective-name");
         CombatantData.ExportVariables.Remove("selective-name");
     }
