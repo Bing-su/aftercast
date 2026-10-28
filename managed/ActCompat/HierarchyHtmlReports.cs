@@ -4,7 +4,7 @@ using System.Text;
 
 namespace Aftercast.ActCompat
 {
-    // Four table levels, unlike task XML's three depth choices. Graphs are a separate unsupported slice.
+    // Four table levels, unlike task XML's three depth choices; managed graphs are explicit opt-in.
     public sealed record HierarchyHtmlCatalog(ulong Revision,ulong[] Encounters,TableLevel LastLevel,int Tables,int Rows);
     public sealed record HierarchyHtmlLevel(TableLevel Level,string[] Columns,TableSort? Sort=null);
     public sealed record HierarchyHtmlReport(ulong Revision,ulong[] Encounters,TableLevel LastLevel,int Tables,int Rows,string Content);
@@ -62,19 +62,43 @@ namespace Advanced_Combat_Tracker
                 finally{activeTableQuery=false;}
             }
         }
-        internal HierarchyHtmlReport ReadHierarchyHtml(ulong revision,HierarchyHtmlLevel[] levels)
+        internal HierarchyHtmlReport ReadHierarchyHtml(ulong revision,HierarchyHtmlLevel[] levels,HierarchyHtmlGraphOptions? graphs=null)
         {
             EnsureTextReportOwner();ArgumentNullException.ThrowIfNull(levels);
             if(levels.Length is <1 or >4)throw new ArgumentException("Supply one to four HTML levels");
             // Caller-owned option arrays cannot change an admitted render via a callback.
+            if(graphs is not null && (graphs.Window is <1 or >120 || string.IsNullOrEmpty(graphs.DistributionColumn) || string.IsNullOrEmpty(graphs.ActionSortColumn) || string.IsNullOrEmpty(graphs.AllLabel) || graphs.WardPrefix is null))throw new ArgumentException("Invalid HTML graph options");
+            if(graphs is not null)
+            {
+                static string[]? CopySelection(string[]? selection)
+                {
+                    if(selection is null)return null;
+                    if(selection.Length>256||selection.Any(string.IsNullOrEmpty)||selection.Distinct(StringComparer.Ordinal).Count()!=selection.Length)throw new ArgumentException("Invalid graph selection");
+                    return selection.ToArray();
+                }
+                graphs=graphs with{SelectedCombatants=CopySelection(graphs.SelectedCombatants),SoloCategories=CopySelection(graphs.SoloCategories)};
+            }
             var options=levels.Select(level=>level is null||level.Columns is null||level.Columns.Length is <1 or >MaximumSelectedColumns?throw new ArgumentException("Missing HTML level/columns"):level with{Columns=level.Columns.ToArray()}).ToArray();
             lock(CombatGate)
             {
                 var capture=hierarchyHtml;
                 if(capture is null||revision==0||capture.Catalog.Revision!=revision)throw new InvalidOperationException("HTML hierarchy revision mismatch");
+                if(graphs is not null && capture.Catalog.LastLevel!=TableLevel.Action)throw new ArgumentException("Graph export requires complete action hierarchy capture");
                 if(options.Length!=(int)capture.Catalog.LastLevel||!options.Select(level=>level.Level).Order().SequenceEqual(Enumerable.Range(1,options.Length).Select(level=>(TableLevel)level)))
                     throw new ArgumentException("Supply each included HTML level exactly once");
                 if(options.Any(level=>level.Level==TableLevel.Category&&level.Sort is not null))throw new ArgumentException("ACT category HTML preserves source order without a sorter");
+                // Validate graph callbacks before any table or graph value callback runs.
+                if(graphs is not null)
+                {
+                    ReadTableColumns(TableLevel.Attack);var attackSnapshot=columnSnapshots[TableLevel.Attack].Snapshot;
+                    if(graphs.DistributionColumn!="Resist")
+                    {
+                        var graphColumn=SelectTableColumn(attackSnapshot,graphs.DistributionColumn,true);
+                        if(graphColumn.Sql is not AttackType.StringDataCallback || graphColumn.Sort is not Comparison<AttackType>)throw new ArgumentException("Graph distribution requires SQL and sort callbacks");
+                    }
+                    ReadTableColumns(TableLevel.Action);var actionSnapshot=columnSnapshots[TableLevel.Action].Snapshot;
+                    if(SelectTableColumn(actionSnapshot,graphs.ActionSortColumn,true).Sort is not Comparison<MasterSwing>)throw new ArgumentException("Graph bars require an action sort callback");
+                }
                 // Validate explicit settings even when an empty parent has no child table at that level.
                 var revisions=new Dictionary<TableLevel,ulong>();
                 foreach(var setting in options)
@@ -131,6 +155,7 @@ namespace Advanced_Combat_Tracker
                                 writer.Write("</tr></thead><tbody>");
                                 foreach(var row in data.Rows){writer.Write("<tr>");foreach(var cell in row){writer.Write("<td>");writer.Write(E(cell));writer.Write("</td>");}writer.Write("</tr>");}
                                 writer.Write("</tbody></table>");
+                                if(graphs is not null)foreach(var graph in ReadHierarchyGraphs(node,graphs,Check)){Check();writer.Write(graph);Check();}
                                 // Child navigation order is source order; an individual table sort does not retarget children.
                                 foreach(var child in node.Children.SelectMany(children=>children))Write(child);
                                 writer.Write("</section>");

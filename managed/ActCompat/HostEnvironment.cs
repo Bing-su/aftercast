@@ -187,7 +187,7 @@ namespace Aftercast.ActCompat
         public ImportProgress ImportProgress => main.CurrentImportProgress;
         public ImportResult? AdvanceImport(bool cancel) => main.AdvanceImport(cancel);
         public HierarchyHtmlCatalog? CaptureHierarchyHtml(ulong[] encounters,TableLevel lastLevel) => main.CaptureHierarchyHtml(encounters,lastLevel);
-        public HierarchyHtmlReport ReadHierarchyHtml(ulong revision,HierarchyHtmlLevel[] levels) => main.ReadHierarchyHtml(revision,levels);
+        public HierarchyHtmlReport ReadHierarchyHtml(ulong revision,HierarchyHtmlLevel[] levels,HierarchyHtmlGraphOptions? graphs=null) => main.ReadHierarchyHtml(revision,levels,graphs);
         public HierarchyXmlCatalog? CaptureHierarchyXml(ulong encounterId,HierarchyXmlDepth depth) => main.CaptureHierarchyXml(encounterId,depth);
         public HierarchyXmlReport ReadHierarchyXml(ulong revision) => main.ReadHierarchyXml(revision);
         public TableReportCatalog? ReadTableReportCatalog(TableScope scope) => main.ReadTableReportCatalog(scope);

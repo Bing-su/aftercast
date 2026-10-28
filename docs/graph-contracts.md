@@ -1,8 +1,7 @@
 # ACT graph numeric contracts for implementation
 
 Reference: ACT 3.8.5.288, pinned repository executable. Evidence is method IL,
-not native GDI+/WinForms execution. Production graph rendering/API/GUI remain
-unimplemented. These four routes must not share one generic rolling-series model.
+not native GDI+/WinForms execution. Managed static SVG rendering and opt-in hierarchy integration exist; Bridge/Rust/GUI graph options and native rendering remain unimplemented. These four routes must not share one generic rolling-series model.
 
 | Route                | Input and ordering                                                                                                                                                        | Numeric result                                                                               |
 | -------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |

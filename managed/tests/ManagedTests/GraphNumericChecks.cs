@@ -71,6 +71,7 @@ internal static class GraphNumericChecks
         if (ties.Ordered[0].Label != "early") throw new Exception("Time tie-break mismatch");
         if (GraphNumeric.ActionBars([], (_, _) => 0, (_, _) => 0).AxisCeiling != 2) throw new Exception("Empty bars mismatch");
         Expect<InvalidDataException>(() => GraphNumeric.ActionBars(Enumerable.Repeat(new GraphNumeric.BarAction("x", 1, DateTime.UnixEpoch), 16385), (_, _) => 0, (_, _) => 0));
+        GraphSvgChecks.Run();
         Console.WriteLine("Production graph numeric arithmetic matches explicit ACT fixtures.");
     }
 }

@@ -12,6 +12,7 @@ internal static class HierarchyHtmlChecks
     private static HierarchyHtmlCatalog Capture(TableReportChecks.Fixture f,TableLevel last=TableLevel.Action,ulong[]? ids=null)=>f.Host.CaptureHierarchyHtml(ids??[f.Id],last)??throw new Exception("missing HTML scope");
     internal static void Run()
     {
+        HostLifetimeChecks.RunBounded(GraphsFromOwnedActions);
         HostLifetimeChecks.RunBounded(DepthsColumnsAndSourceOrder);
         HostLifetimeChecks.RunBounded(SelectedTreeOrderAndIndependence);
         HostLifetimeChecks.RunBounded(ErrorsMutationAndRecovery);
@@ -22,6 +23,46 @@ internal static class HierarchyHtmlChecks
         HostLifetimeChecks.RunBounded(StaleVirtualNameIsNotInvoked);
         HostLifetimeChecks.RunBounded(PrivateNodeIdentityDoesNotCallPluginHash);
         Console.WriteLine("Owned hierarchy HTML: checked-set tree order, four table levels, display keys/sort, escaped static source, revisions, bounds and failure cleanup passed.");
+    }
+    private static void GraphsFromOwnedActions()
+    {
+        using var f=new TableReportChecks.Fixture();
+        f.Encounter.Items.Remove("B"); f.Encounter.Items.Remove("C");
+        var actor=f.Encounter.Items["A"];
+        foreach(var time in new[]{0,3}) actor.AddCombatAction(new MasterSwing(1,false,"None",new Dnum(10),DateTime.UnixEpoch.AddSeconds(time),time,"Strike<&", "A", "Fire", "Target"));
+        foreach(var category in actor.Items.Values)
+        {
+            f.Known.Add(category);
+            foreach(var attack in category.Items.Values){f.Known.Add(attack);foreach(var action in attack.Items)f.Known.Add(action);}
+        }
+        AttackType.ColumnDefs["attack-key"].GetSqlData=attack=>f.Sql(attack,"10");
+        var settings=new HierarchyHtmlGraphOptions(1,true,"attack-key","action-key","All","Warded/");
+        var capture=Capture(f);var cellCalls=f.CellCalls;
+        Throws<ArgumentException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings with{DistributionColumn="missing"}));
+        Check(f.CellCalls==cellCalls,"invalid graph column rejected before value callbacks");
+        var html=f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings).Content;
+        Check(html.Contains("<polyline",StringComparison.Ordinal)&&html.Contains("<rect",StringComparison.Ordinal)&&html.Contains("A100 100",StringComparison.Ordinal),"owned line, pie and bars rendered");
+        Check(html.Contains("Strike&lt;&amp;",StringComparison.Ordinal)&&!html.Contains("<script",StringComparison.OrdinalIgnoreCase),"graph text escaped");
+        Check(f.SqlCalls>0,"distribution uses original SQL callbacks");
+        var stale=Capture(f,TableLevel.Combatant);Throws<InvalidOperationException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings));
+        Throws<ArgumentException>(()=>f.Host.ReadHierarchyHtml(stale.Revision,Options(TableLevel.Combatant),settings));
+        capture=Capture(f);AttackType.ColumnDefs["attack-key"].GetSqlData=attack=>{f.Own(attack);throw new IOException("synthetic graph SQL");};
+        capture=Capture(f);Throws<IOException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings));
+        AttackType.ColumnDefs["attack-key"].GetSqlData=attack=>attack.Type == "All" ? f.Sql(attack,"10") : throw new IOException("non-All row failure");
+        capture=Capture(f);Check(f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings).Content.Contains("<svg",StringComparison.Ordinal),"non-All SQL exception drops row");
+        AttackType.ColumnDefs["attack-key"].GetSqlData=attack=>{f.Own(attack);if(attack.Type=="All"){attack.Items.Clear();throw new IOException("mutating SQL");}return "10";};
+        capture=Capture(f);Throws<AggregateException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings));
+        AttackType.ColumnDefs["attack-key"].GetSqlData=attack=>f.Sql(attack,"10");
+        capture=Capture(f);Check(f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings).Content.Contains("<svg",StringComparison.Ordinal),"recovery after callback failure");
+        var selected=new[]{"Damage"};var selecting=settings with{SelectedCombatants=["A"],SoloCategories=selected};
+        capture=Capture(f);f.Callback=()=>selected[0]="Healing";
+        var selectedHtml=f.Host.ReadHierarchyHtml(capture.Revision,Options(),selecting).Content;f.Callback=null;
+        Check(selectedHtml.Contains(">Damage</text>",StringComparison.Ordinal)&&!selectedHtml.Contains(">Healing</text>",StringComparison.Ordinal),"solo selection snapshot respected");
+        Throws<ArgumentException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings with{SoloCategories=["Damage","Damage"]}));
+        MasterSwing.ColumnDefs["action-key"].SortComparer=(left,right)=>{f.Own(left);f.Own(right);Capture(f);return 0;};
+        capture=Capture(f);Throws<InvalidOperationException>(()=>f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings));
+        MasterSwing.ColumnDefs["action-key"].SortComparer=(_,_)=>0;
+        capture=Capture(f);Check(f.Host.ReadHierarchyHtml(capture.Revision,Options(),settings).Content.Contains("<svg",StringComparison.Ordinal),"sort reentry releases guard");
     }
     private static void DepthsColumnsAndSourceOrder()
     {
