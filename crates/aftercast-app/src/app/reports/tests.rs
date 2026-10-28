@@ -278,3 +278,6 @@ mod tables;
 
 #[path = "hierarchy_tests.rs"]
 mod hierarchy;
+
+#[path = "html_tests.rs"]
+mod html;

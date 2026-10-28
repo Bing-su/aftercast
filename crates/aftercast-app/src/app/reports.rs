@@ -4,6 +4,8 @@ use camino::Utf8PathBuf;
 use std::sync::Arc;
 mod file;
 mod hierarchy;
+mod html;
+mod html_view;
 mod table_view;
 mod tables;
 #[cfg(test)]
@@ -29,6 +31,11 @@ enum Content {
     Text(TextReport, TextReportOptions),
     Table(aftercast::TableReport, aftercast::TableReportOptions),
     Hierarchy(aftercast::HierarchyXmlReport),
+    Html(
+        aftercast::HierarchyHtmlReport,
+        Vec<aftercast::HierarchyHtmlLevel>,
+        Vec<aftercast::EncounterSummary>,
+    ),
 }
 impl Content {
     fn text(&self) -> &str {
@@ -36,6 +43,7 @@ impl Content {
             Self::Text(report, _) => &report.text,
             Self::Table(report, _) => &report.content,
             Self::Hierarchy(report) => &report.content,
+            Self::Html(report, ..) => &report.content,
         }
     }
     fn preview_text(&self) -> &str {
@@ -49,6 +57,14 @@ impl Content {
     fn description(&self) -> String {
         match self {
             Self::Text(_, options) => format!("Text · {}", options.sorting),
+            Self::Html(report, _, _) => format!(
+                "{} · {} · {} encounters · {} tables · {} rows",
+                super::tr("html-report-title"),
+                super::tr(html::label(report.selection.last_level())),
+                report.selection.encounters().len(),
+                report.selection.table_count(),
+                report.selection.row_count()
+            ),
             Self::Hierarchy(report) => format!(
                 "{} · {} · {} tables · {} rows",
                 super::tr("hierarchy-report-title"),
@@ -76,6 +92,12 @@ impl Content {
 }
 #[derive(Clone, Debug)]
 enum Request {
+    HtmlCatalog,
+    HtmlRender(
+        Vec<aftercast::EncounterSummary>,
+        aftercast::TableLevel,
+        Vec<aftercast::HierarchyHtmlLevel>,
+    ),
     Hierarchy(EncounterId, aftercast::HierarchyXmlDepth, String),
     Catalog,
     TableCatalog(aftercast::TableScope),
@@ -98,6 +120,12 @@ enum Request {
 }
 #[derive(Debug)]
 enum Reply {
+    HtmlCatalog(Vec<aftercast::TableCatalog>),
+    HtmlReport(
+        Option<aftercast::HierarchyHtmlReport>,
+        Vec<aftercast::HierarchyHtmlLevel>,
+        Vec<aftercast::EncounterSummary>,
+    ),
     Hierarchy(Option<aftercast::HierarchyXmlReport>, String),
     Catalog(TextReportCatalog),
     TableCatalog(Option<aftercast::TableReportCatalog>),
@@ -117,6 +145,7 @@ enum Reply {
 pub(super) struct State {
     epoch: u64,
     hierarchy: hierarchy::Draft,
+    html: html::Draft,
     table: tables::Draft,
     table_catalog: Option<Arc<aftercast::TableReportCatalog>>,
     catalog: Option<TextReportCatalog>,
@@ -143,6 +172,7 @@ impl State {
         self.pending = None;
         self.catalog = None;
         self.table_catalog = None;
+        self.html.stop();
         self.error = None;
     }
 }
@@ -293,6 +323,17 @@ impl AppState {
             return false;
         }
         match result {
+            Ok(Reply::HtmlCatalog(catalogs)) => self.receive_report_html_catalogs(catalogs),
+            Ok(Reply::HtmlReport(Some(report), levels, selected)) => {
+                self.reports.preview = Some(Preview {
+                    token,
+                    title: "HTML".to_owned(),
+                    report: Arc::new(Content::Html(report, levels, selected)),
+                });
+            }
+            Ok(Reply::HtmlReport(None, ..)) => {
+                self.reports.error = Some("report-unavailable".into())
+            }
             Ok(Reply::Hierarchy(Some(report), title)) => {
                 self.reports.preview = Some(Preview {
                     token,
@@ -391,6 +432,10 @@ impl AppState {
 }
 async fn perform(handle: &HostHandle, request: &Request) -> Result<Reply, String> {
     match request {
+        Request::HtmlCatalog => html::catalogs(handle).await,
+        Request::HtmlRender(selected, last, settings) => {
+            html::render(handle, selected, *last, settings).await
+        }
         Request::Hierarchy(target, depth, title) => {
             let report = match handle
                 .capture_hierarchy_xml(*target, *depth)

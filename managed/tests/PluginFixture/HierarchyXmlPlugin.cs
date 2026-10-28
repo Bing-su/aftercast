@@ -68,6 +68,8 @@ public class HierarchyXmlPlugin:IActPluginV1
     {
         if(!import)throw new InvalidOperationException("Hierarchy fixture requires synthetic import");
         var amount=long.Parse(info.logLine.Split('|')[1],CultureInfo.InvariantCulture);
+        if(Html&&amount==1111)CombatantData.ColumnDefs.Remove("registered-b");
+        if(Html&&amount==1112)CombatantData.ColumnDefs["registered-b"]=new("Re-registered label",true,"TEXT","second",row=>{Own(row);return "re-registered "+row.Name;},Actor,(_,_)=>0);
         if(Html&&amount==999&&!htmlColumns)
         {
             htmlColumns=true;

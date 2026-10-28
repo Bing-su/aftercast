@@ -589,3 +589,22 @@ hierarchy-report-help = 선택한 전투의 SQL 열을 등록 순서로 출력�
 hierarchy-report-main = 기본 표
 hierarchy-report-summary = 분류·공격 요약
 hierarchy-report-all = 액션 포함 전체 표
+
+html-report-title = 전투 계층 HTML
+html-report-help = 명시적으로 선택한 전투들의 정적 중첩 표입니다. 각 깊이는 앞 단계를 모두 포함합니다. 단계별 표시 열 등록 key를 1~32개 선택하세요. label과 정확한 key를 함께 표시합니다. 그래프는 포함하지 않습니다. 원문은 텍스트로만 미리 보고 새 파일로만 저장합니다. 콜백·시간·출력 한도 실패는 오류로 표시하며, 취소는 콜백을 중단하지 않고 결과를 폐기합니다.
+html-report-select = 전투 1~64개 선택
+html-report-select-help = 현재 전투 목록 페이지의 후보입니다. 목록 페이지를 바꿔도 선택을 유지하며 클릭 순서 대신 원래 트리 순서로 생성합니다. 아래 선택 항목에서 제거할 수 있습니다. 전투를 자동 선택하지 않습니다.
+html-report-limit = 전투는 최대 64개까지 선택할 수 있습니다.
+html-report-main = 전투원 표까지
+html-report-categories = 분류 표까지
+html-report-attacks = 공격 요약까지
+html-report-actions = 액션 표까지
+html-report-category-order = ACT 분류 표는 원래 순서를 유지하며 정렬을 지원하지 않습니다.
+html-report-missing = 선택한 열 또는 정렬 key를 사용할 수 없습니다. 열 목록을 새로 읽고 보존된 초안을 수정하세요.
+html-report-snapshot = 생성된 전투 순서와 요청 설정(이름은 선택 당시 표시명):
+html-report-counts = 표
+
+html-report-remove = 전투 제거
+
+html-report-load = 열 다시 불러오기
+html-report-load-first = 등록된 열 목록을 먼저 불러오세요.

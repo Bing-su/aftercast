@@ -589,3 +589,22 @@ hierarchy-report-help = Selected encounter, SQL columns in registration order. T
 hierarchy-report-main = Main table
 hierarchy-report-summary = Category and attack summaries
 hierarchy-report-all = All tables including actions
+
+html-report-title = Encounter hierarchy HTML
+html-report-help = Static nested tables for an explicit encounter set. Every depth includes preceding levels. Choose 1–32 registered display keys per level; labels are shown beside exact keys. Graphs are not included. Generated source is previewed as text and saved only as a new file. Callback/time/output failures are explicit; cancel discards a result without interrupting callbacks.
+html-report-select = Select 1–64 encounters
+html-report-select-help = These are the current encounter-list page candidates. Selections persist across list pages; generation uses original tree order, not click order. Remove a selected entry below. No encounter is selected automatically.
+html-report-limit = Select at most 64 encounters.
+html-report-main = Through combatant tables
+html-report-categories = Through category tables
+html-report-attacks = Through attack summaries
+html-report-actions = Through action tables
+html-report-category-order = ACT category tables preserve source order and do not accept sorting.
+html-report-missing = A selected column or sort key is unavailable. Reload columns and revise the preserved draft.
+html-report-snapshot = Generated encounter order and admitted settings (names shown at selection time):
+html-report-counts = tables
+
+html-report-remove = Remove encounter
+
+html-report-load = Reload columns
+html-report-load-first = Load the registered columns first.

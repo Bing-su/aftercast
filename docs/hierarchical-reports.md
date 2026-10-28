@@ -1,4 +1,4 @@
-# Hierarchical report contracts and managed task-XML slice
+# Hierarchical report contracts and table workflows
 
 Reference: ACT 3.8.5.288, SHA-256
 `934fc00d0a3c8325b0f7445358860b4c013c5dab3d8fff012512acf6502dd657`.
@@ -8,14 +8,14 @@ file writers or network/database services.
 
 ## Existing ACT options: separate XML and HTML contracts
 
-| Route                             | Verified scope and structure                                                                                                                                                                         | Current bounded implementation                                                                              |
-| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `IO_XmlFile.ExportXml1` → depth 1 | One selected encounter; `EncounterTable/Row` contains all combatant SQL columns                                                                                                                      | Managed hierarchy XML main table                                                                            |
-| `ExportXml2` → depth 2            | Each actor Row additionally contains `CombatantTable`; each category Row contains `DamageTypeTable` with attack-summary Rows                                                                         | Managed hierarchy XML middle depth; it adds two row levels, not just one                                    |
-| `ExportXml3` → depth 3            | Each attack Row additionally contains `AttackTypeTable` with action Rows                                                                                                                             | Managed hierarchy XML full depth                                                                            |
-| `ThreadExportHTML`                | Checked encounter nodes in tree order, or the single selected encounter; four nested table levels, and four corresponding graph choices                                                              | Managed static multi-encounter HTML and typed Bridge/Rust worker API are connected below; GUI remains       |
-| `IO_ExportHtml` depth tree        | Tables and graphs each have Encounter → Combatant → DamageType → AttackType nodes, initially checked. Parent/child checks enforce dependencies; the encounter-table root is required by the exporter | Future explicit table/graph depths must preserve dependencies; no ignored depth/graph option is exposed now |
-| HTML graph sizes                  | UI increments 8, range 128..1600 in both axes; defaults X=640, Y=256                                                                                                                                 | Future static renderer must honor exact requested dimensions; no placeholder graph is produced              |
+| Route                             | Verified scope and structure                                                                                                                                                                         | Current bounded implementation                                                                                              |
+| --------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| `IO_XmlFile.ExportXml1` → depth 1 | One selected encounter; `EncounterTable/Row` contains all combatant SQL columns                                                                                                                      | Managed hierarchy XML main table                                                                                            |
+| `ExportXml2` → depth 2            | Each actor Row additionally contains `CombatantTable`; each category Row contains `DamageTypeTable` with attack-summary Rows                                                                         | Managed hierarchy XML middle depth; it adds two row levels, not just one                                                    |
+| `ExportXml3` → depth 3            | Each attack Row additionally contains `AttackTypeTable` with action Rows                                                                                                                             | Managed hierarchy XML full depth                                                                                            |
+| `ThreadExportHTML`                | Checked encounter nodes in tree order, or the single selected encounter; four nested table levels, and four corresponding graph choices                                                              | Managed static multi-encounter HTML, typed worker API and Rust/UI selection/editor/source/new-file save are connected below |
+| `IO_ExportHtml` depth tree        | Tables and graphs each have Encounter → Combatant → DamageType → AttackType nodes, initially checked. Parent/child checks enforce dependencies; the encounter-table root is required by the exporter | Future explicit table/graph depths must preserve dependencies; no ignored depth/graph option is exposed now                 |
+| HTML graph sizes                  | UI increments 8, range 128..1600 in both axes; defaults X=640, Y=256                                                                                                                                 | Future static renderer must honor exact requested dimensions; no placeholder graph is produced                              |
 
 These task-tab XML reports are distinct from both the four current-table context
 menu XML routes and ACT encounter archive/interchange XML/gzip. XML task export
@@ -89,10 +89,10 @@ connected below. GUI depth selection and new-file save are connected as describe
 
 ## Remaining existing HTML/graph work, in order
 
-1. Connect the verified multi-encounter static HTML API to explicit selection/level/key/sort
-   GUI and safe source/no-overwrite save. Managed capture/render, Bridge/Rust and
-   actual isolated-worker synthetic tests are connected below; GUI completion
-   must not be inferred from the managed/API tests.
+1. Static HTML table hierarchy is connected through managed capture/render,
+   Bridge/Rust and the explicit multi-encounter/level/key/sort GUI with safe source
+   preview/no-overwrite save. Actual Host/controller regressions are documented
+   below; native clicks and Windows visual QA remain separate.
 2. Graph calculation contracts: `GenEncounterGraphAdv`, `GenCombatantGraph`,
    `GenDamageTypeGraph` and `GenAttackTypeGraph` use time-series actions, graph
    averaging/rolling options, selected graph categories/actors and registered
@@ -272,7 +272,7 @@ virtual names in capture and initial render (including reported errors and body
 plus structural errors), callback/sort failures, escaping, cell/raw/output limits,
 returning timeout and explicit recovery. No files, clipboard or resources are
 exported by these methods/tests. Bridge/Rust and actual isolated-worker HTML tests are connected below;
-GUI/save remains a subsequent slice. Graph numeric models, SVG/other static
+GUI/save is connected below. Graph numeric models, SVG/other static
 rendering, native custom bitmap delegates and Windows visual parity remain
 unimplemented; do not infer their completion from table output.
 
@@ -336,3 +336,59 @@ large-report support. Existing quadratic topology validation and nonreturning
 callback isolation limits still apply. This is synthetic Linux worker/IL evidence,
 not native ACT HTML export, browser rendering, Windows UI or graph equivalence.
 No source, clipboard, file export or network action is performed by these APIs.
+
+## Hierarchy HTML GUI/source save
+
+The reports panel uses the incumbent Rust/UI-adapted Dioxus Button/Input/Label
+components. Its separate HTML editor explicitly selects 1..64 encounters from
+the current backend encounter-list page, with 16 candidates per editor page.
+Selections retain session-owned IDs and selection-time display names across
+backend page replacements. Selected entries remain removable when absent from
+the current candidates. No default encounter, label-based matching or missing-ID
+substitution is performed. Four depth choices include preceding table levels.
+
+Load columns reads metadata for all four row types without value/color callbacks.
+Only untouched column drafts receive readable/default-visible keys; explicit
+empty/ordered selections and sort inputs survive reload, error and navigation.
+Each level supports 1..32 exact registration keys with labels beside them,
+selected order controls and missing/unreadable-key display. Sort inputs must
+resolve to registered comparers, secondary needs primary, and Category has no
+sort controls because ACT preserves its source order. Missing keys block admission
+after metadata refresh; changes after a stale metadata load fail explicitly in
+the guarded worker. Re-registration of an exact key can satisfy the preserved
+draft on explicit reload; similarly named labels are never substituted.
+
+Generate copies selected descriptors, depth and level settings into one admitted
+request, captures and renders once, then orders result descriptors by the worker's
+returned original tree IDs. The source preview shows admitted keys/sort/direction,
+depth/counts and returned encounter order, not current mutable controls. Display
+names are explicitly labeled as names shown at selection time; original HTML
+captions remain in the owned source. Catalogs share Arc metadata in the UI.
+
+The existing report token/session/selection/epoch machine serializes duplicate
+requests and rejects late results after main encounter selection, cancellation,
+navigation or Stop. Cancel discards output without preempting callbacks and
+pending admission remains held until its reply. Stop clears selected IDs and
+catalogs, preserving depth/key/sort draft intent; a new session requires explicit
+encounter selection and metadata reload. Source/confirmation is invalidated by
+semantic edits. Saving reuses complete owned UTF-8, explicit path/confirmation,
+same-directory staging, cancellation permit and atomic no-clobber publication.
+Existing destinations are untouched, failed saves retain source, and already
+admitted publication may finish after Stop while stale UI replies are ignored.
+
+HTML is never executed: the shared pre text preview is at most 64 KiB at a UTF-8
+boundary; save uses the entire owned source. There are no graph, browser, external
+resource, upload or clipboard actions in this flow. Time/output failures produce
+errors and preserve draft intent with no partial save or automatic retry/fallback.
+1..64 selection admission is not a large-workload latency/capacity promise.
+
+Five actual isolated-Host controller regressions cover multi-selection in reverse
+click order, all four depths, admitted options versus pending edits, exact new-file
+bytes/no overwrite, cancel/navigation/main selection/session/late catalog, stale
+confirmation, missing-parent save, 64 admission/65 rejection, backend candidate
+page replacement, selected-ID removal outside current candidates, explicit empty
+columns, actual synthetic registry removal/re-registration, callback/returning
+timeout/16 MiB errors with explicit recovery, and a real >64 KiB report whose
+full source is saved. These use temporary synthetic files only. Native desktop
+clicks, Windows UI, native ACT HTML exporter and graph visual equivalence remain
+unverified; process startup smoke does not establish those behaviors.

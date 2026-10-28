@@ -191,6 +191,7 @@ pub(in crate::app) fn Panel() -> Element {
                 }
                 super::table_view::Editor {}
                 super::hierarchy::Editor {}
+                super::html_view::Editor {}
                 if let Some((active, _)) = pending {
                     div { class: "flex items-center gap-3", role: "status",
                         p { class: "text-sm text-muted-foreground", {tr("report-working")} }
@@ -232,6 +233,9 @@ pub(in crate::app) fn Panel() -> Element {
                                         .unwrap_or_else(|| "—".into())
                                 }
                             }
+                        }
+                        if let Content::Html(report, levels, selected) = preview.report.as_ref() {
+                            {super::html_view::snapshot(report, levels, selected)}
                         }
                         pre { class: "max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-background p-3 text-sm",
                             {preview.report.preview_text()}
