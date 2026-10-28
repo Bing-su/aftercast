@@ -9,6 +9,7 @@ mod history_sources;
 mod import_progress;
 mod import_text;
 mod interchange;
+mod log_search_panel;
 mod log_window;
 mod lookup;
 mod notifications;

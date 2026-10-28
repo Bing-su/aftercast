@@ -417,3 +417,54 @@ async fn verify_lookup_columns(
     .await
     .expect_err("missing column");
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn log_search_ui_contract_owns_snapshot_and_rejects_stale() {
+    use super::super::log_search_panel::{State, capture};
+    let (_temp, _root, host, endpoint, lifetime) = fixture().await;
+    let frozen = capture(&endpoint).await.expect("capture").expect("logs");
+    assert_eq!(frozen.rows.len(), 3);
+    assert_eq!(
+        endpoint
+            .handle
+            .search_snapshot_logs(frozen.snapshot, "STRIKE", false, None)
+            .await
+            .expect("text"),
+        [0, 1, 2]
+    );
+    assert_eq!(
+        endpoint
+            .handle
+            .search_snapshot_logs(frozen.snapshot, "^5\\|", true, None)
+            .await
+            .expect("regex"),
+        [1]
+    );
+    endpoint
+        .handle
+        .search_snapshot_logs(frozen.snapshot, "(", true, None)
+        .await
+        .expect_err("invalid regex");
+    let mut controller = State::default();
+    let first = controller.start();
+    controller.cancel();
+    assert!(!controller.current(first));
+    let older = controller.start();
+    let newer = controller.start();
+    assert!(!controller.current(older));
+    assert!(controller.current(newer));
+    endpoint
+        .handle
+        .capture_log_snapshot(endpoint.id)
+        .await
+        .expect("replace");
+    endpoint
+        .handle
+        .search_snapshot_logs(frozen.snapshot, "Strike", false, None)
+        .await
+        .expect_err("stale");
+    lifetime.invalidate();
+    capture(&endpoint).await.err().expect("closed session");
+    host.shutdown().await.expect("shutdown");
+}

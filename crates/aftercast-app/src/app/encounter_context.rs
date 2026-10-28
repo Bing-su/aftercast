@@ -286,6 +286,10 @@ pub(super) fn ContextBrowser(
                     }
                 }
                 if logs_view {
+                    super::log_search_panel::SearchPanel {
+                        key: "search-{endpoint.read().generation}-{endpoint.read().id:?}",
+                        endpoint: super::log_search_panel::Endpoint(endpoint.read().clone()),
+                    }
                     if let Some(logs) = logs {
                         p {
                             role: "status",
