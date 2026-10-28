@@ -48,6 +48,7 @@ internal static class Program
             case "contracts": Contracts(); break;
             case "clipboard-import": Platform.Prepare(); ClipboardImportChecks.Run(); break;
             case "live-companions": Platform.Prepare(); LiveCompanionChecks.Run(); break;
+            case "simple-graph-contract": SimpleGraphContractChecks.Run(); break;
             case "graph-numeric": GraphNumericChecks.Run(); break;
             case "hierarchy-html": Platform.Prepare(); HierarchyHtmlChecks.Run(); break;
             case "hierarchy-xml": Platform.Prepare(); HierarchyXmlChecks.Run(); break;

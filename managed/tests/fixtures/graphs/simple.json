@@ -1,0 +1,130 @@
+{
+  "reference": "ACT 3.8.5.288 GenEncounterGraph IL; rows are declared ascending comparer order, no ties",
+  "cases": [
+    {
+      "name": "reverse comparer and fractional axis",
+      "onlyAllies": false,
+      "selective": false,
+      "ignoreEnemies": false,
+      "exportSelected": false,
+      "rows": [
+        ["A", "0.5", true, true],
+        ["B", "10.2", false, true]
+      ],
+      "expected": ["B", "A"],
+      "axis": 12.1,
+      "total": 10.7,
+      "average": 5.35
+    },
+    {
+      "name": "empty allies means no ally exclusion",
+      "onlyAllies": true,
+      "selective": false,
+      "ignoreEnemies": false,
+      "exportSelected": false,
+      "rows": [["A", "10", false, false]],
+      "expected": ["A"],
+      "axis": 11,
+      "total": 10,
+      "average": 10
+    },
+    {
+      "name": "nonempty allies filter",
+      "onlyAllies": true,
+      "selective": false,
+      "ignoreEnemies": false,
+      "exportSelected": false,
+      "rows": [
+        ["A", "10", true, false],
+        ["B", "20", false, true]
+      ],
+      "expected": ["A"],
+      "axis": 11,
+      "total": 10,
+      "average": 10
+    },
+    {
+      "name": "selective ignore enemies treats all as allies",
+      "onlyAllies": true,
+      "selective": true,
+      "ignoreEnemies": true,
+      "exportSelected": false,
+      "rows": [
+        ["A", "10", true, false],
+        ["B", "20", false, false]
+      ],
+      "expected": ["B", "A"],
+      "axis": 22,
+      "total": 30,
+      "average": 15
+    },
+    {
+      "name": "export selection independent of ally checkbox",
+      "onlyAllies": false,
+      "selective": false,
+      "ignoreEnemies": false,
+      "exportSelected": true,
+      "rows": [
+        ["A", "10", true, false],
+        ["B", "20", false, true]
+      ],
+      "expected": ["B"],
+      "axis": 22,
+      "total": 20,
+      "average": 20
+    },
+    {
+      "name": "row failures nonpositive and NaN excluded",
+      "onlyAllies": false,
+      "selective": false,
+      "ignoreEnemies": false,
+      "exportSelected": false,
+      "rows": [
+        ["A", "callback-error", false, true],
+        ["B", "bad", false, true],
+        ["C", "NaN", false, true],
+        ["D", "-1", false, true],
+        ["E", "0", false, true],
+        ["F", "1,234.5", false, true]
+      ],
+      "expected": ["F"],
+      "axis": 1358.5,
+      "total": 1234.5,
+      "average": 1234.5
+    },
+    {
+      "name": "empty input no-data",
+      "onlyAllies": true,
+      "selective": false,
+      "ignoreEnemies": false,
+      "exportSelected": false,
+      "rows": [],
+      "expected": [],
+      "noData": "no-data"
+    },
+    {
+      "name": "actors but no accepted values",
+      "onlyAllies": false,
+      "selective": false,
+      "ignoreEnemies": false,
+      "exportSelected": false,
+      "rows": [["A", "0", false, true]],
+      "expected": [],
+      "noData": "no-damage"
+    }
+  ],
+  "totals": [
+    {
+      "culture": "en-US",
+      "sum": 1234.5,
+      "count": 2,
+      "text": "Total: 1,235\nAVG: 617.25"
+    },
+    {
+      "culture": "de-DE",
+      "sum": 1234.5,
+      "count": 2,
+      "text": "Total: 1.235\nAVG: 617,25"
+    }
+  ]
+}
