@@ -246,6 +246,13 @@ namespace Aftercast.ActCompat
         public CombatPage<ClassifiedActionData> ReadActionSnapshot(ulong revision, int offset, int limit) => main.ReadActionSnapshot(revision, offset, limit);
         public EncounterLogPageData ReadActionSnapshotLogs(ulong revision, int offset, int limit) => main.ReadActionSnapshotLogs(revision, offset, limit);
         public EncounterLogPageData? ReadEncounterLogs(ulong id, int offset, int limit) => main.ReadEncounterLogs(id, offset, limit);
+        public Aftercast.ActCompat.CorrectionSnapshot ReadCorrections() => main.ReadCorrections();
+        public Aftercast.ActCompat.CorrectionSnapshot SaveCorrections(ulong revision, Aftercast.ActCompat.RenameDefinition[] renames, Aftercast.ActCompat.RedirectDefinition[] redirects)
+        {
+            Aftercast.ActCompat.CorrectionSnapshot? result = null;
+            RunWithLogReadingSuspended(() => result = main.SaveCorrections(revision, renames, redirects));
+            return result!;
+        }
         public void ConfigureMainTableCommas(bool enabled) => ActGlobals.mainTableShowCommas = enabled;
         public void ConfigureZeroDamageHits(bool enabled) => ActGlobals.blockIsHit = enabled;
         public void ConfigureSilenceCut(int seconds) => main.ConfigureSilenceCut(seconds);

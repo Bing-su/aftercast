@@ -46,6 +46,7 @@ internal static class Program
         {
             case "bridge": Bridge(); break;
             case "contracts": Contracts(); break;
+            case "corrections-edit": Platform.Prepare(); CorrectionManagementChecks.Run(); break;
             case "clipboard-import": Platform.Prepare(); ClipboardImportChecks.Run(); break;
             case "live-companions": Platform.Prepare(); LiveCompanionChecks.Run(); break;
             case "simple-graph-contract": SimpleGraphContractChecks.Run(); break;
@@ -536,6 +537,7 @@ internal static class Program
         TriggerManagementChecks.Run();
         NotificationChecks.Run();
         DataCorrectionChecks.Run();
+        CorrectionManagementChecks.Run();
         EncounterArchiveChecks.Run();
         HistoryDiscoveryChecks.Run();
         HistorySourceChecks.Run();
