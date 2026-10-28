@@ -68,6 +68,8 @@ namespace Advanced_Combat_Tracker
             var capture=CaptureReportTable(scope)??throw new InvalidOperationException("Hierarchy scope disappeared");
             captures.Add(capture);
             rows=checked(rows+capture.Rows.Length);if(rows>16384)throw new InvalidDataException("Hierarchy exceeds 16384 aggregate rows");
+            // Each row at a non-leaf level requires at least one more table.
+            if(scope.Level<last&&capture.Rows.Length>1024-tables)throw new InvalidDataException("Hierarchy exceeds 1024 tables");
             var children=new HierarchyNode[capture.Rows.Length][];
             for(var index=0;index<children.Length;index++)
             {
