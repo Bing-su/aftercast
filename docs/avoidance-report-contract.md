@@ -142,3 +142,20 @@ capture or session replacement. UI can then page immutable report rows/samples
 using this narrow boundary. No further product decision is needed for these
 contracts; native layout and custom localization remain separate verification.
 Independent review is still quota-blocked and has not been retried.
+
+### Managed category projection status
+
+`AvoidanceOutcomes.ProjectCategories` now projects a selected combatant's actual
+incoming individual skill entries using registered outgoing category links. The
+original category container was verified as `Dictionary<string, DamageTypeData>`;
+category-name identity is ordinal, unlike the culture-sensitive outcome-key
+`SortedList`. It preserves duplicate links, and if an action in a non-All skill
+entry has had its AttackType changed to All, each link contributes twice to the
+projected All list. Missing mappings fail explicitly. Limits are 4,096 registered
+swings, 16,384 total category links, 1,024 distinct categories and 16,384 projected
+rows; these are aftercast safeguards, not ACT defaults. The returned action
+references are only an intermediate owner-thread projection: caller must hold
+CombatGate and copy them before publishing. It is not a report snapshot, Bridge
+API or GUI yet. Synthetic managed tests cover duplicate routing, missing mappings,
+All-key mutation, ordinal Unicode keys and category count bounds. Native report
+execution and independent review remain pending.
