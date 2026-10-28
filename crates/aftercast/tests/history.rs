@@ -499,3 +499,67 @@ async fn encounter_avoidance_preserves_alias_overlap_and_scope(deployment: Deplo
     );
     host.shutdown().await.expect("shutdown");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10; run mise run test:plugins"]
+async fn special_report_worker_preserves_groups_and_sources(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let plugin = host
+        .create_plugin(
+            PluginConfig::builder()
+                .path(path)
+                .type_name("Aftercast.PluginFixture.AvoidanceImportPlugin")
+                .build(),
+        )
+        .await
+        .expect("plugin");
+    host.initialize_plugin(plugin).await.expect("initialize");
+    let input = deployment.directory().join("specials.log");
+    std::fs::write(&input, "0|100|Target||None\n1|100|Target||Crit\n2|100|Target||Crit\n3|100|Target||None\n4|100|Target||Flurry\n").expect("synthetic");
+    host.import_log(&input).await.expect("import");
+    let id = host.encounters(0, 16).await.expect("encounters").items[0].id;
+    let report = host
+        .special_report(id, "Source")
+        .await
+        .expect("report")
+        .expect("source");
+    let row = report
+        .rows
+        .iter()
+        .find(|row| row.key == "Strike(Crit)")
+        .expect("pair");
+    assert_eq!(
+        (row.occurrences, row.swings, row.total_swings),
+        (Some(1), 2, Some(5))
+    );
+    assert_eq!(row.evidence[0].source_index, 1);
+    assert_eq!(report.logs[1].text, "1|100|Target||Crit");
+    let skill = report
+        .rows
+        .iter()
+        .find(|row| row.group == "skill")
+        .expect("skill");
+    assert_eq!((skill.occurrences, skill.swings), (Some(2), 3));
+    assert!(
+        report
+            .rows
+            .iter()
+            .any(|row| row.group == "special" && row.key == "Flurry")
+    );
+    assert!(
+        host.special_report(id, "missing")
+            .await
+            .expect("missing")
+            .is_none()
+    );
+    host.shutdown().await.expect("shutdown");
+    let fresh = Host::start(deployment.config()).await.expect("restart");
+    fresh
+        .special_report(id, "Source")
+        .await
+        .expect_err("stale session");
+    fresh.shutdown().await.expect("shutdown");
+}

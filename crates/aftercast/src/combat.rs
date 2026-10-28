@@ -347,7 +347,7 @@ impl HostHandle {
         limit: u32,
         input: Option<&str>,
     ) -> Result<BytesMut, Error> {
-        let max_limit = if mode == 12 { 65_536 } else { 256 };
+        let max_limit = if matches!(mode, 12 | 15) { 65_536 } else { 256 };
         if !(1..=max_limit).contains(&limit)
             || offset > i32::MAX as u32
             || id.is_some_and(|id| id.session != self.session)

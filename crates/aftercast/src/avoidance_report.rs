@@ -13,7 +13,7 @@ pub enum AvoidanceNumber {
     Special(String),
 }
 impl AvoidanceNumber {
-    fn valid(&self) -> bool {
+    pub(crate) fn valid(&self) -> bool {
         match self {
             Self::Finite(n) => n.is_finite(),
             Self::Special(s) => matches!(s.as_str(), "NaN" | "Infinity" | "-Infinity"),

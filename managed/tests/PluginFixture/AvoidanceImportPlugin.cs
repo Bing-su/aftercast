@@ -29,7 +29,8 @@ public class AvoidanceImportPlugin : IActPluginV1
         var amount = long.Parse(parts[1], CultureInfo.InvariantCulture);
         root!.SetEncounter(info.detectedTime, "Source", parts[2]);
         var label = parts.Length > 3 ? parts[3] : "";
-        root.AddCombatAction(new(1, false, "", new Dnum(amount, label), info.detectedTime,
+        var special = parts.Length > 4 ? parts[4] : "";
+        root.AddCombatAction(new(1, false, special, new Dnum(amount, label), info.detectedTime,
             root.GlobalTimeSorter, "Strike", "Source", "Physical", parts[2]));
     }
     public void DeInitPlugin()
