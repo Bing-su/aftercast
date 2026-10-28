@@ -70,15 +70,19 @@ public partial class FormActMain
         {
             case 1:
                 var bytes = await ArchiveIo(asynchronous, () => ExpandEncounterFile(ReadBoundedFile(text)));
-                List<EncounterData> encounters;
-                int count;
                 lock (CombatGate)
                 {
-                    encounters = DecodeEncounterXml(bytes);
-                    count = AttachArchives(encounters.Select(encounter => (encounter, (StoredEncounter?)null)));
+                    var sorter = GlobalTimeSorter;
+                    try
+                    {
+                        var encounters = DecodeEncounterXml(bytes);
+                        var results = processTriggers ? PrepareArchiveTriggers(encounters) : null;
+                        var count = AttachArchives(encounters.Select(encounter => (encounter, (StoredEncounter?)null)));
+                        if (results is not null) CommitArchiveTriggers(results);
+                        return count;
+                    }
+                    catch { GlobalTimeSorter = sorter; throw; }
                 }
-                if (processTriggers) ProcessArchiveTriggers(encounters);
-                return count;
             case 2: return await ExportEncounterAsync(text, id, compressed, asynchronous, includeLogs);
             case 3: return await SaveEncounterHistoryAsync(asynchronous);
             case 4: return await RestoreEncounterHistoryAsync(text, asynchronous);

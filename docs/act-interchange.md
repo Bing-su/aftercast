@@ -61,8 +61,11 @@ text option, category filter and .NET regex engine to retained archive logs and
 records tabbed import results without audio, speech, timers or parser hooks.
 The settings default is saved separately and takes effect on the next application
 launch; the per-request choice is snapshotted at admission. Older settings and the
-legacy API default to off. The original native UI/thread was not run. Regexes have
-a 100 ms per-match timeout and input is capped at 64 MiB, but there is currently
-no aggregate matching deadline; a very large archive or many slow expressions can
-hold the owner thread for a long time. Accepted archive work is drained on stop
-and cannot be canceled after admission.
+legacy API default to off. The original native UI/thread was not run. Matching is staged before publication:
+more than 1,024 registered or 32 active triggers, 10,000 lines, 16 MiB of log
+text, a 100 ms regex timeout or a two-second aggregate budget rejects the import
+without attaching encounters or emitting staged results. The time budget is
+cooperative between regex calls; a call can run up to its 100 ms timeout beyond
+the budget, and XML decoding itself has a separate 64 MiB input limit. Accepted
+archive work is drained on stop and cannot be canceled after admission. A
+rejected matching attempt can be retried after changing the input or settings.

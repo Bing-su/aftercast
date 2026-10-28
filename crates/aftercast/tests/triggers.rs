@@ -208,5 +208,51 @@ async fn archive_trigger_results_are_explicit_and_independent_of_raw_import(
             .items
             .is_empty()
     );
+    let before = host.encounters(0, 16).await.expect("encounters").total;
+    let line = "<LogLine Type=\"1\" Time=\"2020-01-01T00:00:00\" Line=\"0|123\" />";
+    let oversized = format!(
+        "<Encounters><Encounter Name=\"budget\">{}</Encounter></Encounters>",
+        line.repeat(10_001)
+    );
+    std::fs::write(&file, oversized).expect("bounded fixture");
+    let error = host
+        .import_act_with_trigger_results(&file, true)
+        .await
+        .expect_err("line budget");
+    assert!(error.to_string().contains("10000"), "{error}");
+    assert_eq!(
+        host.encounters(0, 16)
+            .await
+            .expect("unchanged encounters")
+            .total,
+        before
+    );
+    assert!(
+        host.trigger_results(None, 16)
+            .await
+            .expect("no staged results")
+            .items
+            .is_empty()
+    );
+    std::fs::write(
+        &file,
+        format!("<Encounters><Encounter Name=\"retry\">{line}</Encounter></Encounters>"),
+    )
+    .expect("retry fixture");
+    host.import_act_with_trigger_results(&file, true)
+        .await
+        .expect("retry once");
+    assert_eq!(
+        host.encounters(0, 16).await.expect("retry count").total,
+        before + 1
+    );
+    assert_eq!(
+        host.trigger_results(None, 16)
+            .await
+            .expect("retry result")
+            .items
+            .len(),
+        1
+    );
     host.shutdown().await.expect("shutdown");
 }
