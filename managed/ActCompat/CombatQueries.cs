@@ -166,7 +166,16 @@ namespace Advanced_Combat_Tracker
         internal ActionSnapshotData? CaptureIncomingActionSnapshot(ulong id, string combatant) =>
             CaptureActions(id, combatant ?? throw new ArgumentNullException(nameof(combatant)));
 
-        private ActionSnapshotData? CaptureActions(ulong id, string? incomingCombatant)
+        private sealed record LookupRequest(string Combatant, string Category, bool Outgoing);
+        internal ActionSnapshotData? CaptureCategoryActions(ulong id, string json)
+        {
+            var request = System.Text.Json.JsonSerializer.Deserialize<LookupRequest>(json) ?? throw new InvalidDataException("Missing category selection");
+            if (request.Combatant is null || request.Category is null) throw new InvalidDataException("Missing category selection");
+            ValidateAvoidanceText(request.Combatant); ValidateAvoidanceText(request.Category);
+            return CaptureActions(id, request.Combatant, request);
+        }
+
+        private ActionSnapshotData? CaptureActions(ulong id, string? incomingCombatant, LookupRequest? lookup = null)
         {
             lock (CombatGate)
             {
@@ -178,7 +187,13 @@ namespace Advanced_Combat_Tracker
                 {
                     var combatant = encounter.GetCombatant(incomingCombatant);
                     if (combatant is null) return null;
-                    source = combatant.AllInc.TryGetValue("All", out var all) ? all.Items : [];
+                    if (lookup is not null)
+                    {
+                        if (!combatant.Items.TryGetValue(lookup.Category, out var category) || category.Outgoing != lookup.Outgoing) return null;
+                        if (!ReferenceEquals(category.Parent, combatant)) throw new InvalidDataException("Category ownership changed");
+                        source = category.Items.TryGetValue("All", out var all) ? all.Items : [];
+                    }
+                    else source = combatant.AllInc.TryGetValue("All", out var all) ? all.Items : [];
                 }
                 var actions = source.Take(MaximumSnapshotActions + 1).ToArray();
                 if (actions.Length > MaximumSnapshotActions)

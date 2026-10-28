@@ -17,13 +17,13 @@ public static partial class EntryPoint
         var offset = Marshal.ReadInt32(buffer, 20);
         var id = unchecked((ulong)Marshal.ReadInt64(buffer, 24));
         var limit = Marshal.ReadInt32(buffer, 32);
-        if (mode is < 1 or > 21 || offset < 0 || limit < 1 || limit > (mode is 12 or 15 or 17 or 19 or 21 ? 65536 : 256) ||
-            (mode is 1 or 2 ? id != 0 : id == 0) || (mode is 1 or 3 or 7 or 10 or 11 or 13 or 14 or 16 or 18 or 20 && offset != 0))
+        if (mode is < 1 or > 22 || offset < 0 || limit < 1 || limit > (mode is 12 or 15 or 17 or 19 or 21 ? 65536 : 256) ||
+            (mode is 1 or 2 ? id != 0 : id == 0) || (mode is 1 or 3 or 7 or 10 or 11 or 13 or 14 or 16 or 18 or 20 or 22 && offset != 0))
             throw new ArgumentException("Invalid combat query mode, ID or page");
         for (var field = 36; field < header; field += 4)
             if (Marshal.ReadInt32(buffer, field) != 0) throw new ArgumentException("Combat query output must initially be zero");
         string? incomingCombatant = null;
-        if (mode is 10 or 11 or 14 or 16 or 18)
+        if (mode is 10 or 11 or 14 or 16 or 18 or 22)
         {
             if (sizeBytes < header + 4) throw new ArgumentException("Missing incoming combatant");
             var length = Marshal.ReadInt32(buffer, header);
@@ -34,7 +34,7 @@ public static partial class EntryPoint
             incomingCombatant = new UTF8Encoding(false, true).GetString(text);
         }
         // Capture changes the active snapshot; reserve its fixed response before admission.
-        if (mode is 7 or 10 or 11 or 13 or 14 or 16 or 18 or 20 && sizeBytes < header + 16)
+        if (mode is 7 or 10 or 11 or 13 or 14 or 16 or 18 or 20 or 22 && sizeBytes < header + 16)
         {
             Marshal.WriteInt32(buffer, 40, header + 16);
             return 1;
@@ -128,9 +128,9 @@ internal static class CombatQueryEncoding
                 }
             }
         }
-        else if (mode is 7 or 10)
+        else if (mode is 7 or 10 or 22)
         {
-            var value = mode == 10 ? host?.CaptureIncomingActionSnapshot(id, incomingCombatant!) : host?.CaptureActionSnapshot(id);
+            var value = mode == 22 ? host?.CaptureCategoryActions(id, incomingCombatant!) : mode == 10 ? host?.CaptureIncomingActionSnapshot(id, incomingCombatant!) : host?.CaptureActionSnapshot(id);
             writer.Write(value is null ? 0u : 1u);
             if (value is not null) { writer.Write(value.Revision); writer.Write(value.Total); }
         }

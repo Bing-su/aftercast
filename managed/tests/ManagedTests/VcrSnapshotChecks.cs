@@ -12,6 +12,9 @@ internal static class VcrSnapshotChecks
         {
             using var host = new HostEnvironment(directory.FullName);
             Aftercast.Testing.CombatFixture.ConfigureCategories();
+            CombatantData.OutgoingDamageTypeDataObjects["Custom"] = new("Custom", -1, System.Drawing.Color.Red);
+            CombatantData.SwingTypeToDamageTypeDataLinksOutgoing[1].Add("Custom");
+            CombatantData.SwingTypeToDamageTypeDataLinksOutgoing[1].Add("Custom");
             CombatantData.DamageTypeDataNonSkillDamage = "Damage";
             CombatantData.DamageSwingTypes.Add(1); CombatantData.HealingSwingTypes.Add(2);
             CombatantData.SwingTypeToDamageTypeDataLinksOutgoing[2] = new() { "Healing" };
@@ -37,6 +40,20 @@ internal static class VcrSnapshotChecks
             if (report.RootElement.GetProperty("logs").GetArrayLength() != 4 || actor.GetProperty("incoming")[1].GetProperty("action").GetProperty("SourceIndex").GetInt32() != 1)
                 throw new Exception("VCR log identity");
             if (eventCount != beforeActions || logCount != beforeLogs) throw new Exception("VCR replayed events");
+            var outgoing = host.CaptureCategoryActions(id, "{\"Combatant\":\"Source\",\"Category\":\"Damage\",\"Outgoing\":true}")!;
+            var outgoingRows = host.ReadActionSnapshot(outgoing.Revision, 0, 256).Items;
+            if (outgoingRows.Length != 3 || outgoingRows.Any(row => row.Action.Victim != "Target")) throw new Exception("Outgoing category scope");
+            var log = host.ReadActionSnapshotLogs(outgoing.Revision, outgoingRows[0].Action.SourceIndex, 1).Page.Items.Single();
+            if (log.TimeSorter != outgoingRows[0].Action.TimeSorter) throw new Exception("Category snapshot log provenance");
+            var custom = host.CaptureCategoryActions(id, "{\"Combatant\":\"Source\",\"Category\":\"Custom\",\"Outgoing\":true}")!;
+            var customRows = host.ReadActionSnapshot(custom.Revision, 0, 256).Items;
+            var originalCustom = root.ZoneList[0].Items.Single().GetCombatant("Source")!.Items["Custom"].Items["All"].Items.Count;
+            if (customRows.Length != originalCustom || originalCustom < outgoingRows.Length) throw new Exception($"Custom category entries lost: {customRows.Length} / {originalCustom}");
+            var incoming = host.CaptureCategoryActions(id, "{\"Combatant\":\"Target\",\"Category\":\"Received\",\"Outgoing\":false}")!;
+            var incomingRows = host.ReadActionSnapshot(incoming.Revision, 0, 256).Items;
+            if (incomingRows.Length != 1 || incomingRows[0].Action.Attacker != "Source") throw new Exception("Incoming category scope");
+            try { host.ReadActionSnapshot(outgoing.Revision, 0, 1); throw new Exception("Old category snapshot accepted"); } catch (InvalidOperationException) { }
+            if (host.CaptureCategoryActions(id, "{\"Combatant\":\"Source\",\"Category\":\"Damage\",\"Outgoing\":false}") is not null) throw new Exception("Wrong direction accepted");
             root.ZoneList[0].Items.Single().GetCombatant("Target")!.AllInc["All"].Items.Clear();
             if (!bytes.SequenceEqual(host.ReadVcr(snapshot.Revision, 0, 65536).Bytes)) throw new Exception("VCR snapshot mutated");
             var replacement = host.CaptureVcr(id)!;

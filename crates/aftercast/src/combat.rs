@@ -248,6 +248,28 @@ impl HostHandle {
         self.decode_action_snapshot(&payload)
     }
 
+    /// Captures exactly the selected ACT category's All actions and matching logs.
+    pub async fn capture_category_actions(
+        &self,
+        id: EncounterId,
+        combatant: &str,
+        category: &str,
+        outgoing: bool,
+    ) -> Result<Option<ActionSnapshot>, Error> {
+        let input =
+            serde_json::json!({"Combatant": combatant, "Category": category, "Outgoing": outgoing})
+                .to_string();
+        if input.len() > 4096 {
+            return Err(Error::InvalidCombatRequest(
+                "category selection exceeds 4096 bytes".into(),
+            ));
+        }
+        let payload = self
+            .query_combat_input(22, Some(id), 0, 1, Some(&input))
+            .await?;
+        self.decode_action_snapshot(&payload)
+    }
+
     fn decode_action_snapshot(&self, payload: &[u8]) -> Result<Option<ActionSnapshot>, Error> {
         let mut reader = Reader(payload);
         let snapshot = if reader.present()? {
