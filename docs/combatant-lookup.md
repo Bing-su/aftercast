@@ -4,7 +4,7 @@ ACT `FormByCombatantLookup.ShowLookup` copies the selected category’s `All` ac
 
 Aftercast captures the selected category and matching source logs together under the combat lock using the existing action snapshot lifecycle. Rows and log identities are bounded by the existing 16,384-action and 65,536-log limits; a later action snapshot invalidates the handle and reports an error instead of returning another snapshot’s log. The interface shows a partial-import notice and dropped log count, lets the user select peer, skill and action, and pages action rows. It does not replay logs through the parser.
 
-The first implementation lists peers and skills alphabetically and actions by descending time sorter/time. ACT sorts aggregate tables by configured ACT column comparers; its peer/skill aggregate metric tables and plugin column comparers are not yet reproduced. The original form and physical UI interactions remain unverified on Windows; independent review remains pending because of the existing quota limit.
+The original-form comparison and physical UI interactions remain unverified on Windows; independent review remains pending because of the existing quota limit. The separate plain action list orders by descending time sorter/time.
 
 ## Managed aggregate table core
 
@@ -14,4 +14,4 @@ The first implementation lists peers and skills alphabetically and actions by de
 
 Limits: 16,384 admitted actions, 4,096 peers, 32 selected columns, 256 returned rows, 32,768 derived action rows, existing 4 KiB cell/8 MiB response text and comparison budgets. Replacement action capture, closed host or changed column catalog is rejected; snapshot capture and lifecycle reentry are blocked during callbacks. Arbitrary native callback hangs or direct mutation of plugin-accessible objects are not prevented by this managed guard.
 
-These contracts were checked against decompiled ACT ShowLookup/AfterSelect and AttackType/MasterSwing CompareTo plus synthetic managed callbacks; the native form was not executed. Bridge/Rust table transport and GUI aggregate-table integration remain pending.
+These contracts were checked against decompiled ACT ShowLookup/AfterSelect and AttackType/MasterSwing CompareTo plus synthetic managed callbacks; the native form was not executed. Bridge/Rust table transport and the GUI aggregate table use the same owned revision. The table exposes the registered default-visible readable columns, sortable displayed columns, paging and peer/skill drill-down. Per-lookup custom column selection and ACT native visual layout remain separate differences.

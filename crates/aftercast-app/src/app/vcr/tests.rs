@@ -251,3 +251,93 @@ async fn lookup_ui_contract_uses_category_snapshot_and_session_guard() {
     );
     host.shutdown().await.expect("shutdown");
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn lookup_table_ui_contract_uses_revision_sort_pages_and_session() {
+    use aftercast::{TableScope, TableSort};
+    let (_temp, _root, host, endpoint, lifetime) = fixture().await;
+    let plugin = host.create_plugin(PluginConfig::builder().path(Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll")).type_name("Aftercast.PluginFixture.ColumnsPlugin").build()).await.expect("columns plugin");
+    host.initialize_plugin(plugin)
+        .await
+        .expect("columns initialized");
+    let report = super::super::lookup::load(&endpoint, "Source", "Damage", true)
+        .await
+        .expect("capture")
+        .expect("category");
+    let root = TableScope::Categories {
+        encounter: endpoint.id,
+        combatant: "Source".into(),
+    };
+    let page = super::super::lookup::load_aggregate(
+        &endpoint,
+        report.snapshot,
+        root.clone(),
+        None,
+        None,
+        0,
+        None,
+    )
+    .await
+    .expect("peer rows");
+    assert_eq!(page.total, 1);
+    assert_eq!(
+        page.rows.first().and_then(|row| row.combatant.as_deref()),
+        Some("Target")
+    );
+    let empty = super::super::lookup::load_aggregate(
+        &endpoint,
+        report.snapshot,
+        root.clone(),
+        None,
+        None,
+        16,
+        None,
+    )
+    .await
+    .expect("empty next page");
+    assert!(empty.rows.is_empty());
+    let skills = TableScope::Attacks {
+        encounter: endpoint.id,
+        combatant: "Source".into(),
+        category: "Damage".into(),
+    };
+    let ordered = super::super::lookup::load_aggregate(
+        &endpoint,
+        report.snapshot,
+        skills,
+        Some("Target".into()),
+        None,
+        0,
+        Some(TableSort {
+            primary: "fixture".into(),
+            secondary: None,
+            descending: true,
+        }),
+    )
+    .await
+    .expect("sort");
+    assert_eq!(ordered.total, 2);
+    assert!(ordered.sort_error.is_none());
+    endpoint
+        .handle
+        .capture_category_actions(endpoint.id, "Source", "Damage", true)
+        .await
+        .expect("replace");
+    super::super::lookup::load_aggregate(
+        &endpoint,
+        report.snapshot,
+        root.clone(),
+        None,
+        None,
+        0,
+        None,
+    )
+    .await
+    .expect_err("stale");
+    lifetime.invalidate();
+    super::super::lookup::load_aggregate(&endpoint, report.snapshot, root, None, None, 0, None)
+        .await
+        .expect_err("session");
+    host.shutdown().await.expect("shutdown");
+}

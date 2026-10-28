@@ -3,7 +3,10 @@ use super::{
     log_window::{ContextEndpoint, WindowAppearance, guard},
 };
 use crate::components::{Accordion, Button, ButtonVariant};
-use aftercast::{ActionSnapshot, ClassifiedAction, EncounterId, SourceLogLink};
+use aftercast::{
+    ActionSnapshot, ClassifiedAction, EncounterId, SourceLogLink, TablePage, TableQuery,
+    TableScope, TableSort,
+};
 use dioxus::prelude::*;
 use std::collections::BTreeSet;
 
@@ -250,6 +253,18 @@ pub(super) fn LookupPanel(
                                 .collect();
                             let chosen_attack = selected_attack();
                             rsx! {
+                                AggregateTable {
+                                    key: "aggregate-{report.snapshot:?}-{combatant}-{category}-{selected_peer():?}-{selected_attack():?}",
+                                    endpoint: LookupEndpoint(endpoint.clone()),
+                                    snapshot: report.snapshot,
+                                    combatant: combatant.clone(),
+                                    category: category.clone(),
+                                    peer: selected_peer(),
+                                    attack: selected_attack(),
+                                    selected_peer,
+                                    selected_attack,
+                                    selected_row,
+                                }
                                 p {
                                     "{report.actions.len()} retained category actions; {report.dropped_logs} original logs dropped. Select a combatant, then a skill and action."
                                 }
@@ -356,6 +371,249 @@ pub(super) fn LookupPanel(
                             }
                         }
                     }
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone)]
+struct LookupEndpoint(ContextEndpoint);
+impl PartialEq for LookupEndpoint {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.id == other.0.id
+            && self.0.generation == other.0.generation
+            && std::sync::Arc::ptr_eq(&self.0.lifetime, &other.0.lifetime)
+    }
+}
+
+pub(super) async fn load_aggregate(
+    endpoint: &ContextEndpoint,
+    snapshot: ActionSnapshot,
+    scope: TableScope,
+    peer: Option<String>,
+    skill: Option<String>,
+    offset: u32,
+    sort: Option<TableSort>,
+) -> Result<TablePage, String> {
+    guard(endpoint, async {
+        let catalog = endpoint
+            .handle
+            .table_columns(scope.level())
+            .await
+            .map_err(|error| error.to_string())?;
+        let mut columns: Vec<String> = catalog
+            .columns
+            .iter()
+            .filter(|column| column.default_visible && column.can_read)
+            .take(32)
+            .map(|column| column.key.clone())
+            .collect();
+        if columns.is_empty()
+            && let Some(column) = catalog.columns.iter().find(|column| column.can_read)
+        {
+            columns.push(column.key.clone());
+        }
+        if columns.is_empty() {
+            return Err("No readable plugin columns are registered for this table.".into());
+        }
+        let query = TableQuery {
+            scope,
+            revision: catalog.revision,
+            columns,
+            offset,
+            limit: 16,
+            sort,
+        };
+        endpoint
+            .handle
+            .lookup_table_rows(snapshot, &query, peer.as_deref(), skill.as_deref())
+            .await
+            .map_err(|error| error.to_string())
+    })
+    .await
+}
+
+#[component]
+fn AggregateTable(
+    endpoint: LookupEndpoint,
+    snapshot: ActionSnapshot,
+    combatant: String,
+    category: String,
+    peer: Option<String>,
+    attack: Option<(String, bool)>,
+    mut selected_peer: Signal<Option<String>>,
+    mut selected_attack: Signal<Option<(String, bool)>>,
+    mut selected_row: Signal<Option<usize>>,
+) -> Element {
+    let mut offset = use_signal(|| 0u32);
+    let mut sort = use_signal(|| None::<TableSort>);
+    let peer_value = peer.clone();
+    let skill = attack
+        .as_ref()
+        .map(|(name, all)| if *all { "All".to_owned() } else { name.clone() });
+    let scope = match (&peer, &skill) {
+        (None, _) => TableScope::Categories {
+            encounter: endpoint.0.id,
+            combatant: combatant.clone(),
+        },
+        (Some(_), None) => TableScope::Attacks {
+            encounter: endpoint.0.id,
+            combatant: combatant.clone(),
+            category: category.clone(),
+        },
+        (Some(_), Some(name)) => TableScope::Actions {
+            encounter: endpoint.0.id,
+            combatant: combatant.clone(),
+            category: category.clone(),
+            attack: name.clone(),
+        },
+    };
+    let source = endpoint.0.clone();
+    let request_skill = skill.clone();
+    let mut resource = use_resource(move || {
+        let endpoint = source.clone();
+        let scope = scope.clone();
+        let peer = peer_value.clone();
+        let skill = request_skill.clone();
+        let offset = offset();
+        let sort = sort();
+        async move { load_aggregate(&endpoint, snapshot, scope, peer, skill, offset, sort).await }
+    });
+    let pending = matches!(*resource.state().read(), UseResourceState::Pending);
+    let stopped = matches!(*resource.state().read(), UseResourceState::Stopped);
+    let current = if pending || stopped {
+        None
+    } else {
+        resource.read().clone()
+    };
+    rsx! {
+        div { class: "space-y-2 border border-border rounded-md p-3",
+            p { class: "font-semibold", "ACT aggregate table" }
+            Button {
+                variant: ButtonVariant::Outline,
+                disabled: !pending,
+                onclick: move |_| resource.cancel(),
+                "Cancel table request"
+            }
+            Button {
+                variant: ButtonVariant::Outline,
+                disabled: pending,
+                onclick: move |_| resource.restart(),
+                "Retry table"
+            }
+            if stopped {
+                p { "Table request canceled." }
+            } else if pending {
+                p { "Loading table…" }
+            } else {
+                match current {
+                    Some(Err(error)) => rsx! {
+                        p { role: "alert", "{error}" }
+                    },
+                    None => rsx! {
+                        p { "Table unavailable." }
+                    },
+                    Some(Ok(page)) => rsx! {
+                        if let Some(error) = page.sort_error {
+                            p { role: "alert", "Plugin sort failed: {error:?}" }
+                        }
+                        p { "{page.total} rows; offset {offset}" }
+                        div { class: "flex flex-wrap gap-2",
+                            for column in page.columns.iter().filter(|column| column.can_sort) {
+                                {
+                                    let key = column.key.clone();
+                                    rsx! {
+                                        Button {
+                                            variant: ButtonVariant::Outline,
+                                            onclick: move |_| {
+                                                let descending = sort()
+                                                    .as_ref()
+                                                    .is_none_or(|current| current.primary != key || !current.descending);
+                                                sort.set(
+                                                    Some(TableSort {
+                                                        primary: key.clone(),
+                                                        secondary: None,
+                                                        descending,
+                                                    }),
+                                                );
+                                                offset.set(0);
+                                            },
+                                            "Sort: {column.label}"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        for row in &page.rows {
+                            {
+                                let peer_name = row.combatant.clone();
+                                let attack_name = row.attack.clone();
+                                let values = row
+                                    .cells
+                                    .iter()
+                                    .map(|cell| {
+                                        if cell.error.is_some() {
+                                            "ERROR".to_owned()
+                                        } else {
+                                            cell.text.clone().unwrap_or_default()
+                                        }
+                                    })
+                                    .collect::<Vec<_>>()
+                                    .join(" | ");
+                                let can_open = skill.is_none();
+                                rsx! {
+                                    Button {
+                                        variant: ButtonVariant::Outline,
+                                        disabled: !can_open,
+                                        onclick: move |_| {
+                                            if let Some(name) = peer_name.clone() {
+                                                if let Some(skill) = attack_name.clone() {
+                                                    selected_attack.set(Some((skill, false)));
+                                                } else {
+                                                    selected_peer.set(Some(name));
+                                                    selected_attack.set(None);
+                                                }
+                                                selected_row.set(None);
+                                                offset.set(0);
+                                                sort.set(None);
+                                            }
+                                        },
+                                        "{values}"
+                                    }
+                                }
+                            }
+                        }
+                        div { class: "flex gap-2",
+                            Button {
+                                variant: ButtonVariant::Outline,
+                                disabled: offset() == 0,
+                                onclick: move |_| offset.set(offset().saturating_sub(16)),
+                                "Previous"
+                            }
+                            Button {
+                                variant: ButtonVariant::Outline,
+                                disabled: offset().saturating_add(16) >= page.total,
+                                onclick: move |_| offset.set(offset().saturating_add(16)),
+                                "Next"
+                            }
+                            Button {
+                                variant: ButtonVariant::Outline,
+                                disabled: peer.is_none(),
+                                onclick: move |_| {
+                                    if attack.is_some() {
+                                        selected_attack.set(None);
+                                    } else {
+                                        selected_peer.set(None);
+                                    }
+                                    selected_row.set(None);
+                                    offset.set(0);
+                                    sort.set(None);
+                                },
+                                "Back"
+                            }
+                        }
+                    },
                 }
             }
         }
