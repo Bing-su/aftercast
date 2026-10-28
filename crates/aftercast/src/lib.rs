@@ -11,6 +11,7 @@ mod bridge;
 pub use archives::{ActExportOptions, ActFormat};
 mod combat;
 mod companions;
+mod death;
 pub use companions::{
     CompanionCandidate, CompanionCatalog, CompanionSource, LiveLogOptions, LiveLogSelection,
     LiveLogSnapshot, LiveLogSourceStatus, LiveLogState, SourceImportOptions,
@@ -76,6 +77,7 @@ pub use combat::{
     ActionSnapshot, AttackSummary, ClassifiedAction, EncounterAction, EncounterDetail, EncounterId,
     EncounterLog, EncounterLogs, EncounterPage, EncounterStatus, EncounterSummary, SourceLogLink,
 };
+pub use death::{DeathBucket, DeathReport, death_report, sort_incoming_actions};
 pub use diagnostics::HostDiagnostics;
 pub use host::{Host, HostHandle};
 pub use import::{
