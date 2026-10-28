@@ -1,0 +1,111 @@
+{
+  "reference": "ACT 3.8.5.288; IL-only numeric vectors, not native drawing execution",
+  "line": [
+    {
+      "name": "forward rolling and final sentinel",
+      "duration": 4,
+      "window": 2,
+      "rolling": true,
+      "actions": [
+        [0, 20],
+        [1, 30],
+        [3, 40],
+        [4, 7],
+        [2, -1]
+      ],
+      "raw": [20, 50, 30, 40, 0],
+      "integerRates": [10, 25, 15, 20, 0],
+      "plottedRates": [10, 25, 15, 20]
+    },
+    {
+      "name": "bucket +1 and terminal allocation",
+      "duration": 4,
+      "window": 2,
+      "rolling": false,
+      "actions": [
+        [0, 20],
+        [1, 30],
+        [3, 40],
+        [4, 7],
+        [2, -1]
+      ],
+      "raw": [0, 50, 40, 7],
+      "integerRates": [0, 25, 20, 3],
+      "plottedRates": [0, 25]
+    },
+    {
+      "name": "truncation toward zero",
+      "duration": 4,
+      "window": 2,
+      "rolling": true,
+      "actions": [
+        [-0.5, 8],
+        [-1.1, 9],
+        [0.9, 2]
+      ],
+      "raw": [10, 10, 0, 0, 0],
+      "integerRates": [5, 5, 0, 0, 0],
+      "plottedRates": [5, 5, 0, 0]
+    }
+  ],
+  "distribution": {
+    "allSql": 100,
+    "attackSql": [60, 30, 0, -1],
+    "includedRatios": [0.6, 0.3],
+    "renormalize": false
+  },
+  "resist": {
+    "allLabel": "All",
+    "wardPrefix": "Warded/",
+    "stripUtf16Units": 7,
+    "actions": [
+      ["Fire", 60],
+      ["Warded/Fire", 30],
+      ["Cold", 10],
+      ["Cold", -1]
+    ],
+    "total": 100,
+    "ratios": {
+      "Cold": 0.1,
+      "Fire": 0.9
+    }
+  },
+  "actionBars": {
+    "comparerOrderedAmounts": [-1, 10, 4, 0],
+    "maximumFloor": 1,
+    "maximum": 10,
+    "reverseAfterComparer": false,
+    "axisCeiling": 12,
+    "relativePixelHeights": [-0.08333333333333333, 0.8333333333333334, 0.3333333333333333, 0]
+  },
+  "axisCases": [
+    {
+      "rawMaximum": 0,
+      "ceiling": 2
+    },
+    {
+      "rawMaximum": 1,
+      "ceiling": 2
+    },
+    {
+      "rawMaximum": 3,
+      "ceiling": 4
+    },
+    {
+      "rawMaximum": 4,
+      "ceiling": 5
+    },
+    {
+      "rawMaximum": 9,
+      "ceiling": 10
+    },
+    {
+      "rawMaximum": 10,
+      "ceiling": 12
+    },
+    {
+      "rawMaximum": 100,
+      "ceiling": 125
+    }
+  ]
+}
