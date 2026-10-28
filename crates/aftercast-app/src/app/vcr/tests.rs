@@ -282,6 +282,10 @@ async fn lookup_table_ui_contract_uses_revision_sort_pages_and_session() {
     .expect("peer rows");
     assert_eq!(page.total, 1);
     assert_eq!(
+        super::super::lookup::aggregate_row_label(page.rows.first().expect("peer")),
+        "Target"
+    );
+    assert_eq!(
         page.rows.first().and_then(|row| row.combatant.as_deref()),
         Some("Target")
     );

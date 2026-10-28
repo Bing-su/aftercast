@@ -434,6 +434,14 @@ pub(super) async fn load_aggregate(
     .await
 }
 
+pub(super) fn aggregate_row_label(row: &aftercast::TableRow) -> String {
+    match (&row.combatant, &row.attack) {
+        (Some(peer), Some(attack)) => format!("{peer} / {attack}"),
+        (Some(peer), None) => peer.clone(),
+        _ => "Unknown".into(),
+    }
+}
+
 #[component]
 fn AggregateTable(
     endpoint: LookupEndpoint,
@@ -545,8 +553,14 @@ fn AggregateTable(
                                 }
                             }
                         }
+                        p { class: "text-xs text-muted-foreground",
+                            for column in &page.columns {
+                                span { "{column.label} | " }
+                            }
+                        }
                         for row in &page.rows {
                             {
+                                let identity = aggregate_row_label(row);
                                 let peer_name = row.combatant.clone();
                                 let attack_name = row.attack.clone();
                                 let values = row
@@ -579,7 +593,7 @@ fn AggregateTable(
                                                 sort.set(None);
                                             }
                                         },
-                                        "{values}"
+                                        "{identity}: {values}"
                                     }
                                 }
                             }
