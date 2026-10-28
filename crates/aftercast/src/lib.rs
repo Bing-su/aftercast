@@ -208,3 +208,6 @@ fn io_error(path: impl Into<Utf8PathBuf>, source: std::io::Error) -> Error {
 
 mod specials_report;
 pub use specials_report::{SpecialReport, SpecialRow};
+
+mod timeline;
+pub use timeline::{TimelineLog, TimelineOptions, TimelineReport, TimelineRow, TimelineSeries};

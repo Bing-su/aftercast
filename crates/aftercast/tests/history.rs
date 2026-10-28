@@ -563,3 +563,74 @@ async fn special_report_worker_preserves_groups_and_sources(deployment: Deployme
         .expect_err("stale session");
     fresh.shutdown().await.expect("shutdown");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10; run mise run test:plugins"]
+async fn timeline_worker_keeps_grouped_rates_and_logs_owned(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let plugin = host
+        .create_plugin(
+            PluginConfig::builder()
+                .path(path)
+                .type_name("Aftercast.PluginFixture.AvoidanceImportPlugin")
+                .build(),
+        )
+        .await
+        .expect("plugin");
+    host.initialize_plugin(plugin).await.expect("initialize");
+    let input = deployment.directory().join("timeline.log");
+    std::fs::write(
+        &input,
+        "0|100|Target\n5|-1|Target\n10|200|Target\n15|-1|Target\n20|-1|Target\n",
+    )
+    .expect("synthetic");
+    host.import_log(&input).await.expect("import");
+    let id = host.encounters(0, 16).await.expect("encounters").items[0].id;
+    host.encounter_detail(id)
+        .await
+        .expect("detail")
+        .expect("encounter");
+    let options = aftercast::TimelineOptions::default();
+    let report = host
+        .timeline(id, options)
+        .await
+        .expect("timeline")
+        .expect("encounter");
+    assert_eq!((report.duration, report.points), (20, 20));
+    let source = report
+        .rows
+        .iter()
+        .find(|row| row.name == "Source")
+        .expect("source");
+    let outgoing = source
+        .series
+        .iter()
+        .find(|series| series.metric == 0)
+        .expect("outgoing");
+    assert_eq!((outgoing.rates[0], outgoing.rates[9]), (20, 40));
+    assert_eq!(report.logs[2].text, "10|200|Target");
+    assert_eq!(report.logs[2].seconds, 10.0);
+    let grouped = host
+        .timeline(
+            id,
+            aftercast::TimelineOptions {
+                grouping: 2,
+                ..options
+            },
+        )
+        .await
+        .expect("grouped")
+        .expect("encounter");
+    assert!(grouped.rows.iter().any(|row| row.name == "Us"));
+    assert_eq!(report.logs[2].text, "10|200|Target");
+    host.shutdown().await.expect("shutdown");
+    let fresh = Host::start(deployment.config()).await.expect("restart");
+    fresh
+        .timeline(id, options)
+        .await
+        .expect_err("stale session");
+    fresh.shutdown().await.expect("shutdown");
+}
