@@ -6,6 +6,51 @@ use serde::{Deserialize, Serialize};
 
 pub(crate) use crate::local_runtime::canonicalize;
 
+/// ACT selection policy. Graph/export modes keep all recorded actions.
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+#[repr(u8)]
+pub enum SelectiveMode {
+    #[default]
+    None,
+    GraphsExports,
+    GraphsExportsAndAlliedTotals,
+    Encounters,
+    EncountersStrict,
+}
+
+#[derive(Debug, Default, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(default, deny_unknown_fields)]
+pub struct SelectiveOptions {
+    pub mode: SelectiveMode,
+    pub selected: Vec<String>,
+}
+impl SelectiveOptions {
+    /// Validates bounded input before starting a worker.
+    pub fn validate(&self) -> Result<(), crate::Error> {
+        self.wire().map(|_| ())
+    }
+    pub(crate) fn wire(&self) -> Result<String, crate::Error> {
+        if self.selected.len() > 4096
+            || self
+                .selected
+                .iter()
+                .any(|name| name.trim().is_empty() || name.contains('\0') || name.len() > 1024)
+        {
+            return Err(crate::Error::InvalidPluginRequest(
+                "Invalid selected combatant name or count".into(),
+            ));
+        }
+        let json = serde_json::json!({"mode":self.mode as u8,"selected":self.selected}).to_string();
+        if json.len() > 4096 {
+            return Err(crate::Error::InvalidPluginRequest(
+                "Selective settings exceed 4096 bytes".into(),
+            ));
+        }
+        Ok(json)
+    }
+}
+
 /// Trusted deployment paths and process lifetime limits. No executable is searched on PATH.
 #[derive(Debug, Clone, Builder, Serialize, Deserialize)]
 pub struct HostConfig {
@@ -36,6 +81,10 @@ pub struct HostConfig {
     /// ACT's idle threshold; valid range is 2–600 seconds.
     #[builder(default = 6)]
     pub(crate) idle_end_seconds: u16,
+    /// Applied before plugins are constructed; defaults to recording every action.
+    #[builder(default)]
+    #[serde(default)]
+    pub(crate) selective: SelectiveOptions,
     /// Defaults to the current application executable. Override for an embedding test harness or launcher.
     #[builder(into)]
     pub(crate) application_executable: Option<Utf8PathBuf>,

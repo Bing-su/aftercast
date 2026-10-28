@@ -19,9 +19,12 @@ silently discard saved actions. Older private histories without these attributes
 retain the previous nonselective interpretation. ACT interchange XML does not
 carry the aftercast private attributes.
 
-**Integration in progress:** no application setting, worker command or UI currently
-applies this policy. Managed graph and text-export generation applies the selected list, with allied
+The app persists mode and one selected name per line; the settings take effect
+on the next host session, before plugin constructors run. Selection mutations
+by plugins work in that session but are not written back to the app settings.
+Managed graph and text-export generation applies the selected list, with allied
 totals filtered only in the dedicated mode; admitted reports reject selection
-changes during callbacks. A limited-recording encounter cannot recover actions rejected at capture;
-reparse from retained original logs where available. Original body inspection and
-object probes do not constitute native ACT UI/live timing verification.
+changes during callbacks. A limited-recording encounter cannot recover actions
+rejected at capture; reparse from retained original logs where available.
+Original body inspection and object probes do not constitute native ACT UI or
+live timing verification.

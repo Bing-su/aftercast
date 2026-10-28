@@ -162,7 +162,8 @@ impl ManagedSession {
             return Err(Error::RuntimeMismatch(packet.runtime_major));
         }
         let data_directory = canonicalize(&config.data_directory)?;
-        let mut request = plugin_packet(host.session, data_directory.as_str(), None)?;
+        let selective = config.selective.wire()?;
+        let mut request = plugin_packet(host.session, data_directory.as_str(), Some(&selective))?;
         let recording_flags = host_option_flags(&config);
         request
             .get_mut(32..40)

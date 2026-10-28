@@ -41,6 +41,7 @@ mod plugins;
 mod process;
 mod runtime;
 pub use process::{run_child_if_requested, run_child_if_requested_with_audio};
+pub use runtime::{SelectiveMode, SelectiveOptions};
 mod hierarchy_html;
 pub use hierarchy_html::{
     HierarchyHtmlGraphOptions, HierarchyHtmlLevel, HierarchyHtmlReport, HierarchyHtmlSelection,

@@ -123,6 +123,8 @@ pub struct HostSettings {
     pub record_encounter_logs: bool,
     pub original_logline_view_logs: bool,
     pub main_table_commas: bool,
+    pub selective_mode: aftercast::SelectiveMode,
+    pub selective_names: String,
     pub silence_cut_enabled: bool,
     pub silence_cut_seconds: u8,
     pub idle_end_enabled: bool,
@@ -140,6 +142,8 @@ impl Default for HostSettings {
             record_encounter_logs: true,
             original_logline_view_logs: false,
             main_table_commas: true,
+            selective_mode: aftercast::SelectiveMode::None,
+            selective_names: String::new(),
             silence_cut_enabled: false,
             silence_cut_seconds: 6,
             idle_end_enabled: true,
@@ -150,6 +154,17 @@ impl Default for HostSettings {
 }
 
 impl HostSettings {
+    pub fn selective_options(&self) -> aftercast::SelectiveOptions {
+        aftercast::SelectiveOptions {
+            mode: self.selective_mode,
+            selected: self
+                .selective_names
+                .lines()
+                .filter(|line| !line.is_empty())
+                .map(str::to_owned)
+                .collect(),
+        }
+    }
     pub fn enabled_plugins(&self) -> impl Iterator<Item = &String> {
         self.plugins
             .iter()
@@ -199,6 +214,7 @@ impl Settings {
         if !(2..=600).contains(&self.host.idle_end_seconds) {
             return Err(miette!("Idle end threshold must be 2–600 seconds"));
         }
+        self.host.selective_options().validate().into_diagnostic()?;
         self.graphs.validate()?;
         for (level, preferences) in &self.tables {
             if !crate::table_settings::LEVELS
@@ -267,6 +283,7 @@ impl ConfigFile {
             &mut self.document["host"]["original_logline_view_logs"],
             value(settings.host.original_logline_view_logs),
         );
+        save_selective(&mut self.document, &settings.host);
         set(
             &mut self.document["host"]["main_table_commas"],
             value(settings.host.main_table_commas),
@@ -334,6 +351,27 @@ impl ConfigFile {
             .wrap_err_with(|| format!("Save {path}"))?;
         Ok(self)
     }
+}
+
+#[expect(
+    clippy::indexing_slicing,
+    reason = "TOML mutable indexing creates the host table"
+)]
+fn save_selective(document: &mut DocumentMut, host: &HostSettings) {
+    let mode = match host.selective_mode {
+        aftercast::SelectiveMode::None => "none",
+        aftercast::SelectiveMode::GraphsExports => "graphs_exports",
+        aftercast::SelectiveMode::GraphsExportsAndAlliedTotals => {
+            "graphs_exports_and_allied_totals"
+        }
+        aftercast::SelectiveMode::Encounters => "encounters",
+        aftercast::SelectiveMode::EncountersStrict => "encounters_strict",
+    };
+    set(&mut document["host"]["selective_mode"], value(mode));
+    set(
+        &mut document["host"]["selective_names"],
+        value(&host.selective_names),
+    );
 }
 
 #[expect(clippy::indexing_slicing, reason = "TOML indexing inserts UI fields")]
@@ -662,6 +700,39 @@ mod tests {
                 .ui
                 .main_table_refresh_seconds,
             60
+        );
+    }
+
+    #[test]
+    fn selective_options_default_persist_and_reject_invalid_names() {
+        let temp = tempfile::tempdir().expect("app");
+        let root = Utf8Path::from_path(temp.path()).expect("UTF-8");
+        let mut file = ConfigFile::load(root).expect("defaults");
+        assert_eq!(
+            file.settings.host.selective_mode,
+            aftercast::SelectiveMode::None
+        );
+        file.settings.host.selective_mode = aftercast::SelectiveMode::EncountersStrict;
+        file.settings.host.selective_names = "한글\nSource\n".into();
+        file.save(root).expect("save");
+        let mut file = ConfigFile::load(root).expect("restart");
+        assert_eq!(
+            file.settings.host.selective_mode,
+            aftercast::SelectiveMode::EncountersStrict
+        );
+        assert_eq!(
+            file.settings.host.selective_options().selected,
+            ["한글", "Source"]
+        );
+        file.settings.host.selective_names = "   ".into();
+        assert!(file.save(root).is_err());
+        assert_eq!(
+            ConfigFile::load(root)
+                .expect("previous")
+                .settings
+                .host
+                .selective_names,
+            "한글\nSource\n"
         );
     }
 

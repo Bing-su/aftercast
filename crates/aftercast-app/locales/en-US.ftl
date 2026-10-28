@@ -663,3 +663,12 @@ table-act-default-sort = ACT default
 
 table-load-zones = Refresh zones
 table-select-zone = Select a zone (encounter count)
+
+selective-mode = Combatant selection
+selective-none = Record and show all (ACT default)
+selective-exports = Filter graphs and text exports
+selective-exports-allies = Filter graphs, text exports, and allied totals
+selective-record = Record actions by or against selected combatants
+selective-record-strict = Record actions by selected attackers only
+selective-names = Selected combatants, one name per line
+selective-help = Settings apply to the next host session. Recording limits permanently omit excluded actions; reparse the retained original log to recover them. Graph and text filters preserve recorded data.

@@ -12,6 +12,7 @@ pub struct RunningHost {
 impl RunningHost {
     pub async fn start(root: Utf8PathBuf, settings: Settings) -> Result<Self> {
         let deploy_root = root.clone();
+        let selective = settings.host.selective_options();
         let recording = (
             settings.host.record_encounter_logs,
             settings.host.original_logline_view_logs,
@@ -49,6 +50,7 @@ impl RunningHost {
                 .idle_end_seconds(recording.3)
                 .idle_timer_enabled(recording.4)
                 .main_table_commas(recording.5)
+                .selective(selective)
                 .silence_cut_seconds(recording.6)
                 .build(),
         )

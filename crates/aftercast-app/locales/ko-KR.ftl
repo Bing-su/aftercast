@@ -663,3 +663,12 @@ table-act-default-sort = ACT 기본 정렬
 
 table-load-zones = Zone 목록 새로고침
 table-select-zone = Zone 선택 (전투 수)
+
+selective-mode = 전투원 선택 정책
+selective-none = 모든 행동 기록 및 표시 (ACT 기본값)
+selective-exports = 그래프와 텍스트 내보내기만 필터
+selective-exports-allies = 그래프, 텍스트 및 아군 합계 필터
+selective-record = 선택한 전투원이 주거나 받은 행동만 기록
+selective-record-strict = 선택한 공격자의 행동만 기록
+selective-names = 선택한 전투원 (한 줄에 한 명)
+selective-help = 다음 호스트 세션부터 적용됩니다. 기록 제한으로 제외된 행동은 복구되지 않으며, 원본 로그가 남아 있으면 다시 파싱해야 합니다. 그래프와 텍스트 필터는 기록을 유지합니다.

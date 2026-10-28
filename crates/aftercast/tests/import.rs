@@ -346,3 +346,175 @@ async fn silence_cut_is_session_owned_and_applies_to_imported_rates(deployment: 
         host.shutdown().await.expect("shutdown");
     }
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
+async fn selective_options_reach_worker_before_plugin_and_import(deployment: Deployment) {
+    use aftercast::{HostConfig, SelectiveMode, SelectiveOptions};
+    let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let log = deployment.directory().join("synthetic-selective.log");
+    std::fs::write(&log, "0|Other|Target\n1|Other|Source\n2|Source|Target\n")
+        .expect("synthetic log");
+    let duplicate = HostConfig::builder()
+        .application_executable(common::application())
+        .dotnet_root(std::env::var("DOTNET_ROOT").expect("dotnet"))
+        .bridge_directory(&deployment.bridge)
+        .data_directory(&deployment.state)
+        .selective(SelectiveOptions {
+            mode: SelectiveMode::Encounters,
+            selected: vec!["Source".into(), "source".into()],
+        })
+        .build();
+    if let Ok(host) = Host::start(duplicate).await {
+        host.shutdown().await.expect("stop");
+        panic!("duplicate selection was admitted");
+    }
+    for (mode, status, count) in [
+        (SelectiveMode::Encounters, "SelectiveEncounters", 2),
+        (
+            SelectiveMode::EncountersStrict,
+            "SelectiveEncountersStrict",
+            1,
+        ),
+        (SelectiveMode::None, "None", 3),
+        (SelectiveMode::GraphsExports, "SelectiveGraphsExports", 3),
+        (
+            SelectiveMode::GraphsExportsAndAlliedTotals,
+            "SelectiveGraphsExportsAndAlliedTotals",
+            3,
+        ),
+    ] {
+        let host = Host::start(
+            HostConfig::builder()
+                .application_executable(common::application())
+                .dotnet_root(std::env::var("DOTNET_ROOT").expect("dotnet"))
+                .bridge_directory(&deployment.bridge)
+                .data_directory(&deployment.state)
+                .selective(SelectiveOptions {
+                    mode,
+                    selected: vec!["Source".into()],
+                })
+                .build(),
+        )
+        .await
+        .expect("host");
+        let plugin = host
+            .create_plugin(
+                PluginConfig::builder()
+                    .path(path.clone())
+                    .type_name("Aftercast.PluginFixture.SelectiveFixturePlugin")
+                    .build(),
+            )
+            .await
+            .expect("plugin");
+        assert_eq!(
+            host.initialize_plugin(plugin).await.expect("initialize"),
+            status
+        );
+        host.import_log(&log).await.expect("import");
+        let encounter = host.encounters(0, 16).await.expect("encounters").items[0].id;
+        let actions = host
+            .encounter_actions(encounter, 0, 16)
+            .await
+            .expect("actions")
+            .expect("encounter");
+        assert_eq!(actions.total, count);
+        if matches!(
+            mode,
+            SelectiveMode::GraphsExports | SelectiveMode::GraphsExportsAndAlliedTotals
+        ) {
+            let catalog = host.text_report_catalog().await.expect("catalog");
+            let options = aftercast::TextReportOptions {
+                player_format: "{selective-name}".into(),
+                sorting: "selective-name".into(),
+                ..Default::default()
+            };
+            let report = host
+                .text_report(encounter, catalog.revision, &options)
+                .await
+                .expect("report")
+                .expect("encounter");
+            assert_eq!(report.text, "Source\n");
+        }
+        if mode == SelectiveMode::EncountersStrict {
+            assert_eq!(actions.items[0].attacker, "Source");
+        }
+        host.shutdown().await.expect("shutdown");
+    }
+}
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
+async fn selective_recording_filters_synthetic_live_append(deployment: Deployment) {
+    use aftercast::{HostConfig, LiveLogOptions, SelectiveMode, SelectiveOptions};
+    use std::{
+        io::Write,
+        time::{Duration, Instant},
+    };
+    let host = Host::start(
+        HostConfig::builder()
+            .application_executable(common::application())
+            .dotnet_root(std::env::var("DOTNET_ROOT").expect("dotnet"))
+            .bridge_directory(&deployment.bridge)
+            .data_directory(&deployment.state)
+            .selective(SelectiveOptions {
+                mode: SelectiveMode::EncountersStrict,
+                selected: vec!["Source".into()],
+            })
+            .build(),
+    )
+    .await
+    .expect("host");
+    let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let plugin = host
+        .create_plugin(
+            PluginConfig::builder()
+                .path(path)
+                .type_name("Aftercast.PluginFixture.SelectiveFixturePlugin")
+                .build(),
+        )
+        .await
+        .expect("plugin");
+    host.initialize_plugin(plugin).await.expect("initialize");
+    let log = deployment.directory().join("synthetic-live.log");
+    std::fs::write(&log, "").expect("empty");
+    let live = host
+        .open_live_logs(&log, LiveLogOptions::default())
+        .await
+        .expect("open");
+    let mut file = std::fs::OpenOptions::new()
+        .append(true)
+        .open(&log)
+        .expect("append");
+    file.write_all(b"0|Other|Target\n1|Other|Source\n2|Source|Target\n")
+        .expect("synthetic lines");
+    file.flush().expect("flush");
+    let deadline = Instant::now() + Duration::from_secs(5);
+    loop {
+        let page = host.encounters(0, 16).await.expect("encounters");
+        if let Some(encounter) = page.items.first() {
+            let actions = host
+                .encounter_actions(encounter.id, 0, 16)
+                .await
+                .expect("actions")
+                .expect("encounter");
+            if actions.total > 0 {
+                assert_eq!(actions.total, 1);
+                assert_eq!(actions.items[0].attacker, "Source");
+                break;
+            }
+        }
+        assert!(
+            Instant::now() < deadline,
+            "synthetic live action not delivered"
+        );
+        tokio::time::sleep(Duration::from_millis(20)).await;
+    }
+    host.close_live_logs(live.selection).await.expect("close");
+    host.end_combat().await.expect("finish");
+    host.shutdown().await.expect("shutdown");
+}

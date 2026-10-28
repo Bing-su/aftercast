@@ -1,5 +1,5 @@
 use super::{AppState, Phase, load_settings, save_settings, tr};
-use crate::components::{Button, ButtonVariant, Input, Label, Separator};
+use crate::components::{Button, ButtonVariant, Input, Label, Separator, TextArea};
 use dioxus::core::spawn_forever;
 use dioxus::prelude::*;
 use dioxus_i18n::prelude::*;
@@ -130,6 +130,53 @@ pub(super) fn SettingsPane() -> Element {
                 p { class: "text-xs leading-6 text-muted-foreground",
                     {tr("recording-settings-help")}
                 }
+            }
+            Separator { class: "my-6".to_owned() }
+            div { class: "space-y-3",
+                Label { html_for: "selective-mode", {tr("selective-mode")} }
+                select {
+                    id: "selective-mode",
+                    class: "h-9 max-w-full rounded-md border border-border bg-background px-2",
+                    disabled: disabled || state.read().phase != Phase::Idle,
+                    value: format!("{:?}", state.read().settings.host.selective_mode),
+                    onchange: move |event: FormEvent| {
+                        if state.read().phase != Phase::Idle {
+                            return;
+                        }
+                        let mode = match event.value().as_str() {
+                            "GraphsExports" => aftercast::SelectiveMode::GraphsExports,
+                            "GraphsExportsAndAlliedTotals" => {
+                                aftercast::SelectiveMode::GraphsExportsAndAlliedTotals
+                            }
+                            "Encounters" => aftercast::SelectiveMode::Encounters,
+                            "EncountersStrict" => aftercast::SelectiveMode::EncountersStrict,
+                            _ => aftercast::SelectiveMode::None,
+                        };
+                        state.write().settings.host.selective_mode = mode;
+                    },
+                    for (value, label) in [
+                        ("None", "selective-none"),
+                        ("GraphsExports", "selective-exports"),
+                        ("GraphsExportsAndAlliedTotals", "selective-exports-allies"),
+                        ("Encounters", "selective-record"),
+                        ("EncountersStrict", "selective-record-strict"),
+                    ]
+                    {
+                        option { value, {tr(label)} }
+                    }
+                }
+                Label { html_for: "selective-names", {tr("selective-names")} }
+                TextArea {
+                    id: "selective-names".to_owned(),
+                    value: state.read().settings.host.selective_names.clone(),
+                    disabled: disabled || state.read().phase != Phase::Idle,
+                    oninput: move |event: FormEvent| {
+                        if state.read().phase == Phase::Idle {
+                            state.write().settings.host.selective_names = event.value();
+                        }
+                    },
+                }
+                p { class: "text-xs leading-6 text-muted-foreground", {tr("selective-help")} }
             }
             Separator { class: "my-6".to_owned() }
             div { class: "space-y-3",

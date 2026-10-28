@@ -28,6 +28,8 @@ internal sealed partial class PluginSession
     private bool recordEncounterLogs = true, originalLoglineViewLogs;
     private bool idleEndEnabled = true, idleTimerEnabled = true, mainTableCommas = true;
     private int idleEndSeconds = 6, silenceCutSeconds;
+    private SelectiveParsingModeEnum selectiveMode;
+    private string[] selectedCombatants = [];
     private bool speechEnabled;
     private bool soundEnabled;
     private int soundVolume = 100, ttsVolume = 100;
@@ -185,7 +187,7 @@ internal sealed partial class PluginSession
         var host = new HostEnvironment(directory
             ?? throw new InvalidOperationException("Host data directory has not been configured"),
             context is null ? null : () => context.Pump(),
-            context is null ? null : () => context.IsDispatching);
+            context is null ? null : () => context.IsDispatching, selectiveMode, selectedCombatants);
         host.ConfigureRecording(recordEncounterLogs, originalLoglineViewLogs);
         host.ConfigureIdleEnd(idleEndEnabled, idleEndSeconds, idleTimerEnabled);
         host.ConfigureSilenceCut(silenceCutSeconds);
@@ -228,9 +230,10 @@ internal sealed partial class PluginSession
         try { FinishWriter(plugin); } catch (Exception error) { errors.Add(error); }
         if (errors.Count != 0) throw new AggregateException("Host control disposal failed", errors);
     }
-    internal void Configure(string path, bool recordLogs = true, bool originalLogs = false, bool idleEnabled = true, int idleSeconds = 6, bool timerEnabled = true, int silenceSeconds = 0, bool commas = true)
+    internal void Configure(string path, bool recordLogs = true, bool originalLogs = false, bool idleEnabled = true, int idleSeconds = 6, bool timerEnabled = true, int silenceSeconds = 0, bool commas = true, SelectiveParsingModeEnum selection = SelectiveParsingModeEnum.None, string[]? selected = null)
     {
         RequireReusableWorker();
+        HostEnvironment.ValidateSelectiveParsing(selection, selected ?? []);
         if (silenceSeconds is < 0 or > 60) throw new ArgumentOutOfRangeException(nameof(silenceSeconds));
         if (idleSeconds is < 2 or > 600) throw new ArgumentOutOfRangeException(nameof(idleSeconds));
         if (directory is not null) throw new InvalidOperationException("Host environment is already configured");
@@ -245,6 +248,8 @@ internal sealed partial class PluginSession
         idleTimerEnabled = timerEnabled;
         silenceCutSeconds = silenceSeconds;
         mainTableCommas = commas;
+        selectiveMode = selection;
+        selectedCombatants = (selected ?? []).ToArray();
         idleEndSeconds = idleSeconds;
         // Both platforms dispatch on the caller's thread; Windows also pumps its native messages.
         context = new(error => ActGlobals.oFormActMain?.WriteExceptionLog(error, "Posted owner callback"));

@@ -95,6 +95,7 @@ impl Deref for Host {
 impl Host {
     /// Starts the application's child process; its main thread owns CLR and Windows STA.
     pub async fn start(config: HostConfig) -> Result<Self, Error> {
+        config.selective.wire()?;
         if !(2..=600).contains(&config.idle_end_seconds) {
             return Err(Error::InvalidPluginRequest(
                 "idle end threshold must be 2–600 seconds".into(),
