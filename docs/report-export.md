@@ -31,8 +31,8 @@ app's existing settings file. Each copies the current player and allied template
 sort registration key, and ally flags; it does not retain encounter IDs, plugin
 objects, catalog revisions, or output destinations. An old settings file starts
 with no local profiles. Applying one only changes the editor draft. Saving an
-existing name explicitly replaces it; failed settings writes leave the prior file
-and editor draft intact. These local profiles are separate from ACT/plugin preset
+existing name explicitly replaces it; deletion requires confirmation. Failed
+saves or deletions leave the prior file and editor draft intact. These local profiles are separate from ACT/plugin preset
 registration and are not automatically transmitted or copied to the clipboard.
 
 Generation still uses the current session's catalog and existing managed ACT

@@ -797,3 +797,7 @@ report-profile-name = 프로필 이름
 report-profile-save = 현재 프로필 저장
 report-profile-invalid = 올바른 이름과 길이 제한을 확인하세요 (최대 32개).
 report-sort-missing = 저장된 정렬 키가 현재 등록되어 있지 않습니다. 해당 플러그인을 불러오거나 다른 키를 선택하세요.
+
+report-profile-delete = 프로필 삭제
+report-profile-cancel = 취소
+report-profile-confirm = 저장된 로컬 프로필을 삭제할까요?

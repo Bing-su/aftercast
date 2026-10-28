@@ -797,3 +797,7 @@ report-profile-name = Profile name
 report-profile-save = Save current profile
 report-profile-invalid = Enter a valid profile name and bounded templates (maximum 32 profiles).
 report-sort-missing = The saved sort key is not currently registered. Load its plugin or choose another key.
+
+report-profile-delete = Delete profile
+report-profile-cancel = Cancel
+report-profile-confirm = Delete this saved local profile?

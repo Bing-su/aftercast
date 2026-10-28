@@ -53,6 +53,11 @@ pub(in crate::app) fn Panel() -> Element {
         .cloned()
         .collect::<Vec<_>>();
     let can_save = current.can_save_settings();
+    let delete_profile = current
+        .reports
+        .profile_delete
+        .clone()
+        .filter(|(owner, _)| *owner == token);
     let blocked = pending.is_some() || !matches!(current.phase, Phase::Idle | Phase::Ready);
     drop(current);
     rsx! {
@@ -102,6 +107,7 @@ pub(in crate::app) fn Panel() -> Element {
                         for name in profiles {
                             {
                                 let selected = name.clone();
+                                let to_delete = name.clone();
                                 rsx! {
                                     Button {
                                         variant: ButtonVariant::Outline,
@@ -111,8 +117,54 @@ pub(in crate::app) fn Panel() -> Element {
                                         },
                                         {name}
                                     }
+                                    Button {
+                                        variant: ButtonVariant::Ghost,
+                                        disabled: !ready || !can_save,
+                                        aria_label: format!("{}: {}", tr("report-profile-delete"), to_delete),
+                                        onclick: move |_| {
+                                            state.write().report_profile_review_delete(token, &to_delete);
+                                        },
+                                        {tr("report-profile-delete")}
+                                    }
                                 }
                             }
+                        }
+                    }
+                }
+                if let Some((_, name)) = delete_profile {
+                    div { class: "space-y-2 rounded-md border border-border p-3",
+                        p {
+                            {tr("report-profile-confirm")}
+                            " "
+                            {name}
+                        }
+                        Button {
+                            variant: ButtonVariant::Outline,
+                            disabled: !ready || !can_save,
+                            onclick: move |_| {
+                                let work = state.write().report_profile_begin_delete(token);
+                                if let Some((root, file, name, expected)) = work {
+                                    let message = tr("settings-saved");
+                                    spawn_forever(async move {
+                                        let result = tokio::task::spawn_blocking(move || file.save(&root))
+                                            .await
+                                            .map_err(|error| miette::miette!(error))
+                                            .and_then(|result| result);
+                                        state
+                                            .write()
+                                            .report_profile_finish_delete(&name, &expected, result, message);
+                                    });
+                                }
+                            },
+                            {tr("report-profile-delete")}
+                        }
+                        Button {
+                            variant: ButtonVariant::Ghost,
+                            disabled: !ready,
+                            onclick: move |_| {
+                                state.write().report_profile_cancel_delete(token);
+                            },
+                            {tr("report-profile-cancel")}
                         }
                     }
                 }

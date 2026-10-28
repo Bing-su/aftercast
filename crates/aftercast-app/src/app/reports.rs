@@ -181,6 +181,7 @@ pub(super) struct State {
     preset_page: usize,
     profile_name: String,
     profile_applied: bool,
+    profile_delete: Option<(Token, String)>,
 }
 impl State {
     pub(super) fn leave(&mut self) {
@@ -190,6 +191,7 @@ impl State {
         self.epoch += 1;
         self.preview = None;
         self.confirmation = None;
+        self.profile_delete = None;
     }
     pub(super) fn stop(&mut self) {
         self.leave();
@@ -305,6 +307,78 @@ impl AppState {
             .text_profiles
             .insert(name, self.reports.draft.clone());
         Ok(true)
+    }
+    fn report_profile_review_delete(&mut self, token: Token, name: &str) -> bool {
+        if token != self.report_token()
+            || !self.report_ready()
+            || !self.can_save_settings()
+            || !self
+                .file
+                .as_ref()
+                .is_some_and(|file| file.settings.text_profiles.contains_key(name))
+        {
+            return false;
+        }
+        self.reports.profile_delete = Some((token, name.to_owned()));
+        true
+    }
+    fn report_profile_cancel_delete(&mut self, token: Token) -> bool {
+        if token != self.report_token()
+            || self
+                .reports
+                .profile_delete
+                .as_ref()
+                .is_none_or(|(owner, _)| *owner != token)
+        {
+            return false;
+        }
+        self.reports.profile_delete = None;
+        true
+    }
+    fn report_profile_begin_delete(
+        &mut self,
+        token: Token,
+    ) -> Option<(
+        Utf8PathBuf,
+        crate::config::ConfigFile,
+        String,
+        TextReportOptions,
+    )> {
+        if token != self.report_token() || !self.report_ready() || !self.can_save_settings() {
+            return None;
+        }
+        let (owner, name) = self.reports.profile_delete.clone()?;
+        if owner != token {
+            return None;
+        }
+        let expected = self
+            .file
+            .as_ref()?
+            .settings
+            .text_profiles
+            .get(&name)?
+            .clone();
+        if self.settings.text_profiles.get(&name) != Some(&expected) {
+            return None;
+        }
+        let mut file = self.file.clone()?;
+        file.settings = self.settings.clone();
+        file.settings.text_profiles.remove(&name);
+        self.saving = true;
+        self.reports.profile_delete = None;
+        Some((self.root.clone(), file, name, expected))
+    }
+    fn report_profile_finish_delete(
+        &mut self,
+        name: &str,
+        expected: &TextReportOptions,
+        result: miette::Result<crate::config::ConfigFile>,
+        message: String,
+    ) {
+        if result.is_ok() && self.settings.text_profiles.get(name) == Some(expected) {
+            self.settings.text_profiles.remove(name);
+        }
+        self.receive_settings_save(result, message);
     }
     fn report_preset(&mut self, token: Token, index: Option<usize>) -> bool {
         if token != self.report_token() || !self.report_ready() {

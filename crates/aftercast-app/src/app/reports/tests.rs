@@ -352,3 +352,56 @@ async fn text_profiles_persist_and_reject_stale_or_missing_keys() {
     ));
     f.host.shutdown().await.expect("shutdown");
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn text_profile_deletion_confirms_and_preserves_failed_save() {
+    let mut f = Fixture::new().await;
+    let mut file = crate::config::ConfigFile::load(&f.root).expect("config");
+    file.settings.text_profiles.insert(
+        "synthetic".into(),
+        TextReportOptions {
+            player_format: "{name}".into(),
+            ..Default::default()
+        },
+    );
+    let file = file.save(&f.root).expect("seed");
+    f.ui.settings = file.settings.clone();
+    f.ui.file = Some(file);
+    let token = f.ui.report_token();
+    assert!(f.ui.report_profile_review_delete(token, "synthetic"));
+    assert!(f.ui.report_profile_cancel_delete(token));
+    assert!(f.ui.report_profile_begin_delete(token).is_none());
+    assert!(f.ui.report_profile_review_delete(token, "synthetic"));
+    let (_, _, name, expected) = f.ui.report_profile_begin_delete(token).expect("begin");
+    f.ui.report_profile_finish_delete(
+        &name,
+        &expected,
+        Err(miette::miette!("synthetic disk error")),
+        "saved".into(),
+    );
+    assert!(f.ui.settings.text_profiles.contains_key("synthetic"));
+    assert!(
+        crate::config::ConfigFile::load(&f.root)
+            .expect("old file")
+            .settings
+            .text_profiles
+            .contains_key("synthetic")
+    );
+    assert!(f.ui.report_profile_review_delete(token, "synthetic"));
+    let old = token;
+    f.ui.revision.session += 1;
+    assert!(f.ui.report_profile_begin_delete(old).is_none());
+    f.ui.revision.session -= 1;
+    let (root, file, name, expected) = f.ui.report_profile_begin_delete(token).expect("retry");
+    f.ui.report_profile_finish_delete(&name, &expected, file.save(&root), "saved".into());
+    assert!(!f.ui.settings.text_profiles.contains_key("synthetic"));
+    assert!(
+        !crate::config::ConfigFile::load(&f.root)
+            .expect("reloaded")
+            .settings
+            .text_profiles
+            .contains_key("synthetic")
+    );
+    f.host.shutdown().await.expect("shutdown");
+}
