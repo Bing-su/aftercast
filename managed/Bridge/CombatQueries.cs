@@ -17,11 +17,17 @@ public static partial class EntryPoint
         var offset = Marshal.ReadInt32(buffer, 20);
         var id = unchecked((ulong)Marshal.ReadInt64(buffer, 24));
         var limit = Marshal.ReadInt32(buffer, 32);
-        if (mode is < 1 or > 6 || offset < 0 || limit is < 1 or > 256 ||
-            (mode is 1 or 2 ? id != 0 : id == 0) || (mode is 1 or 3 && offset != 0))
+        if (mode is < 1 or > 8 || offset < 0 || limit is < 1 or > 256 ||
+            (mode is 1 or 2 ? id != 0 : id == 0) || (mode is 1 or 3 or 7 && offset != 0))
             throw new ArgumentException("Invalid combat query mode, ID or page");
         for (var field = 36; field < header; field += 4)
             if (Marshal.ReadInt32(buffer, field) != 0) throw new ArgumentException("Combat query output must initially be zero");
+        // Capture changes the active snapshot; reserve its fixed response before admission.
+        if (mode == 7 && sizeBytes < header + 16)
+        {
+            Marshal.WriteInt32(buffer, 40, header + 16);
+            return 1;
+        }
         var bytes = plugins.Value.QueryCombat(mode, id, offset, limit);
         if (bytes.Count > sizeBytes - header)
         {
@@ -109,6 +115,28 @@ internal static class CombatQueryEncoding
                     writer.Write(action.Critical?1u:0u);
                     OptionalText(action.Special);OptionalText(action.DamageType);OptionalText(action.RawLabel);OptionalText(action.RawSuffix);
                 }
+            }
+        }
+        else if (mode == 7)
+        {
+            var value = host?.CaptureActionSnapshot(id);
+            writer.Write(value is null ? 0u : 1u);
+            if (value is not null) { writer.Write(value.Revision); writer.Write(value.Total); }
+        }
+        else if (mode == 8)
+        {
+            var page = host?.ReadActionSnapshot(id, offset, limit)
+                ?? throw new InvalidOperationException("Action snapshot is unavailable");
+            writer.Write(page.Total); writer.Write(page.Items.Length);
+            foreach (var item in page.Items)
+            {
+                var action = item.Action;
+                Budget(16); Time(action.Time); writer.Write(action.TimeSorter);
+                Text(action.Attacker); Text(action.Victim); Text(action.Attack); Text(action.Damage);
+                Budget(20); writer.Write(action.SourceIndex); writer.Write(action.Amount); writer.Write(action.SwingType);
+                writer.Write(action.Critical ? 1u : 0u);
+                OptionalText(action.Special); OptionalText(action.DamageType); OptionalText(action.RawLabel); OptionalText(action.RawSuffix);
+                Budget(4); writer.Write((item.RegisteredDamage ? 1u : 0u) | (item.RegisteredHealing ? 2u : 0u));
             }
         }
         else if (mode == 6)

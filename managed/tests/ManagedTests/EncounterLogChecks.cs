@@ -90,6 +90,28 @@ internal static class EncounterLogChecks
         var actions = host.ReadEncounterActions(id, 0, 1)!;
         Check(actions.Total == 3 && actions.Items.Length == 1 && actions.Items[0].SourceIndex == 0);
         Check(host.ReadEncounterActions(id, 1, 2)!.Items.Select(action => action.SourceIndex).SequenceEqual(new[] { 1, 2 }));
+        CombatantData.DamageSwingTypes.Add(1);
+        CombatantData.HealingSwingTypes.Add(1);
+        var snapshot = host.CaptureActionSnapshot(id)!;
+        var first = host.ReadActionSnapshot(snapshot.Revision, 0, 1).Items.Single();
+        Check(first.RegisteredDamage && first.RegisteredHealing && first.Action.SourceIndex == 0);
+        CombatantData.DamageSwingTypes.Clear();
+        CombatantData.HealingSwingTypes.Clear();
+        var originalEncounter = ActGlobals.oFormActMain!.ZoneList[0].Items.OrderBy(item => item.StartTime).First();
+        var allActions = originalEncounter.GetCombatant("Source")!.AllOut["All"].Items;
+        var removedAction = allActions[1];
+        allActions.RemoveAt(1);
+        var removedLine = originalEncounter.LogLines[1];
+        originalEncounter.LogLines.RemoveAt(1);
+        var next = host.ReadActionSnapshot(snapshot.Revision, 1, 2);
+        Check(next.Total == 3 && next.Items.All(item => item.RegisteredDamage && item.RegisteredHealing));
+        Check(next.Items[0].Action.SourceIndex == 1 && next.Items[0].Action.Amount == 100);
+        originalEncounter.LogLines.Insert(1, removedLine);
+        allActions.Insert(1, removedAction);
+        var replacement = host.CaptureActionSnapshot(id)!;
+        Check(!host.ReadActionSnapshot(replacement.Revision, 0, 1).Items.Single().RegisteredDamage);
+        try { host.ReadActionSnapshot(snapshot.Revision, 0, 1); throw new Exception("Expected stale snapshot rejection"); }
+        catch (InvalidOperationException) { }
         var logs = host.ReadEncounterLogs(id, 1, 2)!;
         Check(logs.Dropped == 0 && logs.Page.Total == 4 && logs.Page.Items.Select(line => line.Text).SequenceEqual(new[] { "same", "same" }));
         Check(logs.Page.Items[0].TimeSorter != logs.Page.Items[1].TimeSorter);

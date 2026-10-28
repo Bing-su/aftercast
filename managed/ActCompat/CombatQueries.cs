@@ -12,6 +12,8 @@ namespace Aftercast.ActCompat
     public sealed record EncounterActionData(DateTime Time, int TimeSorter, string Attacker, string Victim,
         string Attack, string Damage, int SourceIndex, long Amount, int SwingType, bool Critical,
         string? Special, string? DamageType, string? RawLabel, string? RawSuffix);
+    public sealed record ClassifiedActionData(EncounterActionData Action, bool RegisteredDamage, bool RegisteredHealing);
+    public sealed record ActionSnapshotData(ulong Revision, int Total);
     public sealed record EncounterLogData(DateTime Time, int TimeSorter, int Type, string Text, int SourceIndex);
     public sealed record EncounterLogPageData(long Dropped, CombatPage<EncounterLogData> Page);
     public sealed record CombatPage<T>(int Total, T[] Items);
@@ -31,6 +33,9 @@ namespace Advanced_Combat_Tracker
         // Weak keys keep query IDs stable without retaining graphs removed by plugins, e.g. cleared history.
         private readonly ConditionalWeakTable<EncounterData, EncounterIdentity> encounterIds = new();
         private ulong nextEncounterId;
+        private ulong nextActionSnapshotRevision;
+        private (ulong Revision, ClassifiedActionData[] Items)? actionSnapshot;
+        private const int MaximumSnapshotActions = 16384;
         private EncounterIdentity Identity(EncounterData encounter) => encounterIds.GetValue(encounter,
             _ => new(checked(++nextEncounterId)));
 
@@ -124,14 +129,49 @@ namespace Advanced_Combat_Tracker
             {
                 var encounter = QueryEncounters().Select(item => item.Encounter).FirstOrDefault(item => Identity(item).Id == id);
                 if (encounter is null) return null;
-                // Canonical outgoing All lists avoid multiplying actions across overlapping parser categories.
-                var actions = encounter.Items.Values.SelectMany(actor => actor.AllOut.TryGetValue("All", out var all)
-                    ? (IEnumerable<MasterSwing>)all.Items : []);
+                var actions = EncounterActions(encounter);
                 var sources = SourceIndices(encounter);
-                return new(actions.Count(), actions.Skip(offset).Take(limit).Select(action => new EncounterActionData(
-                    action.Time, action.TimeSorter, action.Attacker, action.Victim, action.AttackType, action.Damage.ToString(),
-                    sources.GetValueOrDefault(action.TimeSorter, -1),action.Damage.Number,action.SwingType,action.Critical,
-                    action.Special,action.DamageType,action.Damage.RawDamageString,action.Damage.DamageString2)).ToArray());
+                return new(actions.Count(), actions.Skip(offset).Take(limit).Select(action => ProjectAction(action, sources)).ToArray());
+            }
+        }
+
+        private static IEnumerable<MasterSwing> EncounterActions(EncounterData encounter) =>
+            encounter.Items.Values.SelectMany(actor => actor.AllOut.TryGetValue("All", out var all)
+                ? (IEnumerable<MasterSwing>)all.Items : []);
+
+        private static EncounterActionData ProjectAction(MasterSwing action, Dictionary<int, int> sources) => new(
+            action.Time, action.TimeSorter, action.Attacker, action.Victim, action.AttackType, action.Damage.ToString(),
+            sources.GetValueOrDefault(action.TimeSorter, -1), action.Damage.Number, action.SwingType, action.Critical,
+            action.Special, action.DamageType, action.Damage.RawDamageString, action.Damage.DamageString2);
+
+        internal ActionSnapshotData? CaptureActionSnapshot(ulong id)
+        {
+            lock (CombatGate)
+            {
+                var encounter = QueryEncounters().Select(item => item.Encounter).FirstOrDefault(item => Identity(item).Id == id);
+                if (encounter is null) return null;
+                var actions = EncounterActions(encounter).Take(MaximumSnapshotActions + 1).ToArray();
+                if (actions.Length > MaximumSnapshotActions)
+                    throw new InvalidDataException("Action snapshot exceeds 16384 rows");
+                var damage = CombatantData.DamageSwingTypes.ToHashSet();
+                var healing = CombatantData.HealingSwingTypes.ToHashSet();
+                var sources = SourceIndices(encounter);
+                var items = actions.Select(action => new ClassifiedActionData(ProjectAction(action, sources),
+                    damage.Contains(action.SwingType), healing.Contains(action.SwingType))).ToArray();
+                var revision = checked(++nextActionSnapshotRevision);
+                actionSnapshot = (revision, items);
+                return new(revision, items.Length);
+            }
+        }
+
+        internal CombatPage<ClassifiedActionData> ReadActionSnapshot(ulong revision, int offset, int limit)
+        {
+            ValidateCombatPage(offset, limit);
+            lock (CombatGate)
+            {
+                if (actionSnapshot is not { } snapshot || snapshot.Revision != revision)
+                    throw new InvalidOperationException("Action snapshot is stale");
+                return new(snapshot.Items.Length, snapshot.Items.Skip(offset).Take(limit).ToArray());
             }
         }
 

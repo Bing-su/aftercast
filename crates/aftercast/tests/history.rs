@@ -165,6 +165,25 @@ async fn history_snapshots_select_exact_archives_and_preserve_log_identity(deplo
     assert_eq!(actions.items[0].swing_type, 1);
     assert!(!actions.items[0].critical);
     assert_eq!(actions.items[0].damage_type.as_deref(), Some("Physical"));
+    let snapshot = host
+        .capture_action_snapshot(id)
+        .await
+        .expect("capture")
+        .expect("encounter");
+    assert_eq!(snapshot.total, 2);
+    let frozen = host
+        .action_snapshot_page(snapshot, 1, 1)
+        .await
+        .expect("snapshot page");
+    assert_eq!(frozen.items[0].action, actions.items[0]);
+    let replacement = host
+        .capture_action_snapshot(id)
+        .await
+        .expect("replacement")
+        .expect("encounter");
+    host.action_snapshot_page(snapshot, 0, 1)
+        .await
+        .expect_err("replaced snapshot rejected");
     let logs = host
         .encounter_logs(id, 1, 1)
         .await
@@ -178,6 +197,10 @@ async fn history_snapshots_select_exact_archives_and_preserve_log_identity(deplo
     let clean = Host::start(deployment.config())
         .await
         .expect("worker lease released after abandoned query");
+    clean
+        .action_snapshot_page(replacement, 0, 1)
+        .await
+        .expect_err("previous session snapshot rejected");
     assert_eq!(
         clean
             .query_history(&HistoryQuery::default())

@@ -101,6 +101,22 @@ pub struct EncounterAction {
     pub raw_suffix: Option<String>,
 }
 
+/// Frozen action rows from one host session. A later capture invalidates this handle.
+#[derive(Debug, Clone, Copy)]
+pub struct ActionSnapshot {
+    session: u64,
+    revision: u64,
+    pub total: u32,
+}
+
+/// Registration membership at capture time; both flags may be true or false.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ClassifiedAction {
+    pub action: EncounterAction,
+    pub registered_damage: bool,
+    pub registered_healing: bool,
+}
+
 /// Retained encounter text, independent of the live subscription buffer.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct EncounterLog {
@@ -198,6 +214,63 @@ impl HostHandle {
         } else {
             None
         };
+        reader.finish()?;
+        Ok(page)
+    }
+
+    /// Captures at most 16384 actions and registration membership under the combat lock.
+    pub async fn capture_action_snapshot(
+        &self,
+        id: EncounterId,
+    ) -> Result<Option<ActionSnapshot>, Error> {
+        let payload = self.query_combat(7, Some(id), 0, 1).await?;
+        let mut reader = Reader(&payload);
+        let snapshot = if reader.present()? {
+            let revision = reader.u64()?;
+            let total = reader.u32()?;
+            if revision == 0 || total > 16384 {
+                return Err(invalid("invalid action snapshot"));
+            }
+            Some(ActionSnapshot {
+                session: self.session,
+                revision,
+                total,
+            })
+        } else {
+            None
+        };
+        reader.finish()?;
+        Ok(snapshot)
+    }
+
+    /// Reads frozen rows; source indices refer to the log list at capture time.
+    pub async fn action_snapshot_page(
+        &self,
+        snapshot: ActionSnapshot,
+        offset: u32,
+        limit: u32,
+    ) -> Result<EncounterPage<ClassifiedAction>, Error> {
+        let id = EncounterId {
+            session: snapshot.session,
+            value: snapshot.revision,
+        };
+        let payload = self.query_combat(8, Some(id), offset, limit).await?;
+        let mut reader = Reader(&payload);
+        let page = reader.page(limit, offset, |reader| {
+            let action = reader.action()?;
+            let flags = reader.u32()?;
+            if flags & !3 != 0 {
+                return Err(invalid("invalid classification flags"));
+            }
+            Ok(ClassifiedAction {
+                action,
+                registered_damage: flags & 1 != 0,
+                registered_healing: flags & 2 != 0,
+            })
+        })?;
+        if page.total != snapshot.total {
+            return Err(invalid("action snapshot total changed"));
+        }
         reader.finish()?;
         Ok(page)
     }
