@@ -4,6 +4,7 @@
     <AssemblyName>Aftercast.ManagedTests</AssemblyName>
   </PropertyGroup>
   <ItemGroup>
+    <EmbeddedResource Include="../fixtures/graphs/contracts.json" LogicalName="GraphContracts.json" />
     <Compile Include="../RecordedActionTranscript.cs" Link="RecordedActionTranscript.cs" />
     <Compile Include="../CombatFixture.cs" Link="CombatFixture.cs" />
     <ProjectReference Include="../../Bridge/Bridge.csproj" />

@@ -39,9 +39,7 @@ route without checking its branches. Solo checks P<2 after choosing rolling/nonr
 
 Options_Graphing.InitializeComponent sets W=10 at IL03d5..03ea, minimum1 and
 maximum120 at IL0370..03a3. Rolling is initially checked at IL06e7..06f9.
-Simple is the initial screen graph mode; suffix and suffix-decimal switches are on. Saved settings override initial control values. Chosen solo category defaults and
-global sort defaults require initialization-path evidence, not guesses from a
-current plugin's registry. HTML graph dimensions default640x256, UI128..1600;
+Simple is the initial screen graph mode; suffix and suffix-decimal switches are on. Saved settings override initial control values. Solo categories default to the registered outgoing and incoming keys, checked when added; saved settings can override them. Global sort defaults require further initialization-path evidence. HTML graph dimensions default640x256, UI128..1600;
 low-level generators return a16x16 bitmap when either dimension is below16.
 
 ## Category distribution
@@ -91,8 +89,7 @@ using the incumbent report machinery. Static SVG must use finite coordinates,
 escaped labels and no scripts/resources; pixel/font/tooltip equivalence remains
 Windows/native QA.
 
-Remaining investigation gates: exact series ordering/default selected categories,
-default Simple/Advanced generator delegate binding, extreme-value axis conversion/overflow, cumulative/stacked painting and
+Remaining investigation gates: exact series ordering, extreme-value axis conversion/overflow, cumulative/stacked painting and
 layout scaling, annotation options, overflow and nonfinite original behavior.
 These gates prevent claiming a complete renderer from the supplied vectors.
 
@@ -101,3 +98,9 @@ samples and rawMax-versus-axis scaling. The supplied Python Resist example uses
 ASCII; future localized fixtures must implement UTF-16 Substring(7), not Python
 code-point slicing. No full check is warranted for reference-only documents and
 fixtures; production implementation/integration has not changed.
+
+### Bounded line arithmetic helper
+
+`GraphNumeric.Line` implements the fixture's arithmetic with explicit caller inputs. Its duration limit of 360,000 seconds and 16,384 action limit are aftercast safeguards, not ACT limits; its 1–120 second window follows the observed UI range. Invalid timestamps and out-of-range buckets fail explicitly. The helper does not select source actions, implement ACT's no-data decisions, render graphs, or connect graphs to reports.
+
+ACT initializes the encounter delegate to `GenEncounterGraph` (Simple); a restored setting can subsequently select Advanced. For solo categories, `ValidateLists` adds missing outgoing and incoming registry keys as checked while preserving existing choices and removing obsolete keys. These are dynamic defaults, not a fixed category list.

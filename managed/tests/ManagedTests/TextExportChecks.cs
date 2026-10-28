@@ -49,5 +49,6 @@ internal static class TextExportChecks
         TableReportChecks.Run();
         HierarchyXmlChecks.Run();
         HierarchyHtmlChecks.Run();
+        GraphNumericChecks.Run();
     }
 }
