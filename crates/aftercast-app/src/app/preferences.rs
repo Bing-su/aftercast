@@ -376,6 +376,8 @@ pub(super) fn SettingsPane() -> Element {
                 p { class: "text-xs leading-6 text-muted-foreground", {tr("silence-cut-help")} }
             }
             Separator { class: "my-6".to_owned() }
+            super::corrections::CorrectionPanel {}
+            Separator { class: "my-6".to_owned() }
             div { class: "flex gap-2",
                 Button {
                     id: "save-settings",

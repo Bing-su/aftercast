@@ -20,4 +20,4 @@ Rules apply to newly submitted actions only; already aggregated encounters and
 private-history restores retain their recorded actions. Reparse an available
 original log to apply changed rules to past data. Do not confuse a fresh reparse
 with restoring the existing checkpoint. Native ACT UI behavior and actual Windows
-plugin interaction remain unverified. The session-owned Bridge and Rust API are connected; GUI integration is in progress.
+plugin interaction remain unverified. The session-owned Bridge and Rust API and Rust/UI editor are connected. The editor loads explicitly in a running session, preserves drafts on failure, confirms discarding edits, and disables editing for unsupported XML. Changes affect future parsed actions; previously captured encounters require reparsing. Native interaction remains unverified.

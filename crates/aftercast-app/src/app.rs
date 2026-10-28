@@ -2,6 +2,7 @@ mod analysis;
 mod avoidance;
 mod clipboard_import;
 mod companions;
+mod corrections;
 mod death;
 mod encounter_context;
 mod history;
@@ -66,6 +67,7 @@ enum Phase {
     MakingReport,
     UpdatingTriggers,
     UpdatingTimers,
+    UpdatingCorrections,
     ShowingNotification,
     UpdatingNotifications,
     ChangingPlugins,
@@ -89,6 +91,7 @@ impl Phase {
             Self::MakingReport => "making-report",
             Self::UpdatingTriggers => "updating-triggers",
             Self::UpdatingTimers => "updating-timers",
+            Self::UpdatingCorrections => "updating-corrections",
             Self::ShowingNotification => "showing-notification",
             Self::UpdatingNotifications => "updating-notifications",
             Self::ChangingPlugins => "changing-plugins",
@@ -124,6 +127,7 @@ struct AppState {
     plugins: Vec<LoadedPlugin>,
     triggers: triggers::EditorState,
     timers: timers::EditorState,
+    corrections: corrections::EditorState,
     history: history::BrowserState,
     history_sources: history_sources::State,
     plugin_tables: plugin_tables::BrowserState,
@@ -203,6 +207,7 @@ impl AppState {
             plugins: Vec::new(),
             triggers: Default::default(),
             timers: Default::default(),
+            corrections: Default::default(),
             history: Default::default(),
             history_sources: Default::default(),
             plugin_tables: Default::default(),
@@ -561,6 +566,7 @@ fn stop(mut state: Signal<AppState>) {
         state.plugins.clear();
         state.triggers = Default::default();
         state.timers = Default::default();
+        state.corrections = Default::default();
         state.history_sources.stop();
         state.history = Default::default();
         state.plugin_tables.reset_session();
