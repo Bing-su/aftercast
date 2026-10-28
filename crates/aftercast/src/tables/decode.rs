@@ -59,7 +59,11 @@ impl Reader<'_> {
             _ => Err(invalid("invalid table level")),
         }
     }
-    fn revision(&mut self, session: u64, expected: TableLevel) -> Result<TableRevision, Error> {
+    pub(crate) fn revision(
+        &mut self,
+        session: u64,
+        expected: TableLevel,
+    ) -> Result<TableRevision, Error> {
         let level = self.level()?;
         let value = self.u64()?;
         if level != expected || value == 0 {
@@ -102,7 +106,7 @@ impl Reader<'_> {
         }
         Ok(result)
     }
-    fn cell(&mut self) -> Result<TableCell, Error> {
+    pub(crate) fn cell(&mut self) -> Result<TableCell, Error> {
         let text = self.optional_text(4096)?;
         let foreground_argb = self.optional_int()?;
         let background_argb = self.optional_int()?;
@@ -288,4 +292,191 @@ fn row(
         time_sorter,
         cells,
     })
+}
+
+pub(super) fn lookup_page(
+    bytes: &[u8],
+    session: u64,
+    query: &TableQuery,
+    peer: Option<&str>,
+    skill: Option<&str>,
+) -> Result<TablePage, Error> {
+    let mut reader = Reader(bytes);
+    if !reader.boolean()? {
+        return Err(invalid("missing lookup page"));
+    }
+    let revision = reader.revision(session, query.scope.level())?;
+    if revision != query.revision {
+        return Err(invalid("lookup column revision mismatch"));
+    }
+    let total = reader.u32()?;
+    let columns = reader.columns(32)?;
+    if total > 32768
+        || !columns
+            .iter()
+            .map(|column| &column.key)
+            .eq(query.columns.iter())
+    {
+        return Err(invalid("invalid lookup columns or count"));
+    }
+    let sort_error = match reader.optional_text(64)?.as_deref() {
+        None => None,
+        Some("sort-callback-error") => Some(TableSortError::Callback),
+        Some("inconsistent-comparison") => Some(TableSortError::InconsistentComparison),
+        Some("comparison-budget") => Some(TableSortError::ComparisonBudget),
+        _ => return Err(invalid("invalid lookup sort error")),
+    };
+    let count = reader.u32()?;
+    if count != total.saturating_sub(query.offset).min(query.limit) {
+        return Err(invalid("invalid lookup page count"));
+    }
+    let encounter = query
+        .scope
+        .parts()
+        .0
+        .ok_or_else(|| invalid("missing encounter"))?;
+    let mut rows = Vec::with_capacity(count as usize);
+    let mut seen = HashSet::new();
+    let mut text_bytes = 0usize;
+    for _ in 0..count {
+        let index = reader.u32()?;
+        let id = reader.u64()?;
+        let combatant = reader.optional_text(1024)?;
+        let category = reader.optional_text(1024)?;
+        let attack = reader.optional_text(1024)?;
+        let time_sorter = reader.optional_int()?;
+        if index >= total
+            || !seen.insert(index)
+            || id != encounter.value
+            || combatant.is_none()
+            || peer.is_some_and(|name| combatant.as_deref() != Some(name))
+            || category.is_some()
+            || (peer.is_none() && attack.is_some())
+            || (peer.is_some() && attack.is_none())
+            || skill.is_some_and(|name| attack.as_deref() != Some(name))
+            || time_sorter.is_some() != skill.is_some()
+            || reader.u32()? as usize != columns.len()
+        {
+            return Err(invalid("invalid lookup row identity"));
+        }
+        let cells = (0..columns.len())
+            .map(|_| reader.cell())
+            .collect::<Result<Vec<_>, _>>()?;
+        text_bytes += cells
+            .iter()
+            .filter_map(|cell| cell.text.as_ref())
+            .map(String::len)
+            .sum::<usize>();
+        if text_bytes > 8 * 1024 * 1024 {
+            return Err(invalid("lookup text exceeds budget"));
+        }
+        rows.push(TableRow {
+            index,
+            encounter: EncounterId { session, value: id },
+            combatant,
+            category,
+            attack,
+            time_sorter,
+            cells,
+        });
+    }
+    reader.finish()?;
+    Ok(TablePage {
+        revision,
+        total,
+        columns,
+        rows,
+        sort_error,
+    })
+}
+
+#[cfg(test)]
+mod lookup_tests {
+    use super::*;
+    use bytes::BufMut;
+    fn query() -> TableQuery {
+        TableQuery {
+            scope: TableScope::Categories {
+                encounter: EncounterId {
+                    session: 7,
+                    value: 42,
+                },
+                combatant: "Source".into(),
+            },
+            revision: TableRevision {
+                session: 7,
+                level: TableLevel::Category,
+                value: 3,
+            },
+            columns: vec!["damage".into()],
+            offset: 32768,
+            limit: 1,
+            sort: None,
+        }
+    }
+    fn text(buffer: &mut Vec<u8>, value: &str) {
+        buffer.put_u32_le(value.len() as u32);
+        buffer.extend_from_slice(value.as_bytes());
+    }
+    fn empty_page(total: u32) -> Vec<u8> {
+        let mut out = Vec::new();
+        out.put_u32_le(1);
+        out.put_u32_le(2);
+        out.put_u64_le(3);
+        out.put_u32_le(total);
+        out.put_u32_le(1);
+        text(&mut out, "damage");
+        text(&mut out, "Damage");
+        text(&mut out, "TEXT");
+        text(&mut out, "damage");
+        out.put_u32_le(3);
+        out.put_u32_le(u32::MAX);
+        out.put_u32_le(0);
+        out
+    }
+    #[test]
+    fn lookup_limits_and_wire_validation_are_separate_from_regular_tables() {
+        let q = query();
+        assert_eq!(
+            lookup_page(&empty_page(32768), 7, &q, None, None)
+                .expect("bounded page")
+                .total,
+            32768
+        );
+        lookup_page(&empty_page(32769), 7, &q, None, None).expect_err("oversized lookup");
+        let mut extra = empty_page(32768);
+        extra.push(0);
+        lookup_page(&extra, 7, &q, None, None).expect_err("trailing data");
+        let mut truncated = empty_page(32768);
+        truncated.pop();
+        lookup_page(&truncated, 7, &q, None, None).expect_err("truncated page");
+        let mut stale = query();
+        stale.revision.value = 4;
+        lookup_page(&empty_page(32768), 7, &stale, None, None).expect_err("stale columns");
+        q.request(8).expect_err("foreign session");
+        let mut row = empty_page(1);
+        row.truncate(row.len() - 4);
+        row.put_u32_le(1);
+        row.put_u32_le(0);
+        row.put_u64_le(42);
+        text(&mut row, "Target");
+        row.put_u32_le(u32::MAX);
+        row.put_u32_le(u32::MAX);
+        row.put_u32_le(0);
+        row.put_u32_le(1);
+        text(&mut row, "600");
+        row.put_u32_le(0);
+        row.put_u32_le(0);
+        row.put_u32_le(u32::MAX);
+        let mut first = query();
+        first.offset = 0;
+        assert_eq!(
+            lookup_page(&row, 7, &first, None, None)
+                .expect("valid row")
+                .rows
+                .len(),
+            1
+        );
+        lookup_page(&row, 7, &first, Some("wrong peer"), None).expect_err("wrong row identity");
+    }
 }

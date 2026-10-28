@@ -52,6 +52,54 @@ async fn plugin_cells_sorting_and_revisions_stay_owned_by_the_worker(deployment:
         .first()
         .expect("encounter")
         .id;
+    let snapshot = host
+        .capture_category_actions(encounter, "Source", "Damage", true)
+        .await
+        .expect("capture")
+        .expect("category");
+    let root_query = query(
+        &host,
+        TableScope::Categories {
+            encounter,
+            combatant: "Source".into(),
+        },
+        &["fixture"],
+    )
+    .await;
+    let root_page = host
+        .lookup_table_rows(snapshot, &root_query, None, None)
+        .await
+        .expect("lookup peer table");
+    assert_eq!(root_page.total, 1);
+    assert_eq!(
+        root_page
+            .rows
+            .first()
+            .and_then(|row| row.cells.first())
+            .and_then(|cell| cell.text.as_deref()),
+        Some("600")
+    );
+    let attack_query = query(
+        &host,
+        TableScope::Attacks {
+            encounter,
+            combatant: "Source".into(),
+            category: "Damage".into(),
+        },
+        &["fixture"],
+    )
+    .await;
+    let attacks = host
+        .lookup_table_rows(snapshot, &attack_query, Some("Target"), None)
+        .await
+        .expect("lookup skills");
+    assert_eq!(attacks.total, 2);
+    host.capture_category_actions(encounter, "Source", "Damage", true)
+        .await
+        .expect("replacement");
+    host.lookup_table_rows(snapshot, &root_query, None, None)
+        .await
+        .expect_err("stale lookup");
     let scopes = [
         TableScope::Encounters,
         TableScope::Combatants(encounter),

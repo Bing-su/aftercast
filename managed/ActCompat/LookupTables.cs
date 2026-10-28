@@ -89,7 +89,7 @@ public partial class FormActMain
                     var cells = columns.Select(column => ReadTableCell(level, columnsSnapshot, column, rows[index], diagnosed)).ToArray();
                     bytes += cells.Sum(cell => cell.Text is null ? 0L : ColumnUtf8.GetByteCount(cell.Text));
                     if (bytes > MaximumTableTextBytes) throw new InvalidDataException("Lookup text exceeds 8 MiB");
-                    output.Add(new(index, graph.Encounter, peer, null, skill, rows[index] is MasterSwing action ? action.TimeSorter : null, cells));
+                    output.Add(new(index, graph.Encounter, peer ?? (rows[index] as DamageTypeData)?.Type, null, skill ?? (rows[index] as AttackType)?.Type, rows[index] is MasterSwing action ? action.TimeSorter : null, cells));
                 }
                 RequireTableRevision(level, query.Revision);
                 if (!ReferenceEquals(lookupGraph, graph) || actionSnapshot?.Revision != revision) throw new TableQueryInvalidatedException("Lookup changed during callbacks");

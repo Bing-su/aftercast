@@ -104,8 +104,8 @@ pub struct EncounterAction {
 /// Frozen action rows from one host session. A later capture invalidates this handle.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ActionSnapshot {
-    session: u64,
-    revision: u64,
+    pub(crate) session: u64,
+    pub(crate) revision: u64,
     pub total: u32,
 }
 

@@ -12,7 +12,7 @@ public static partial class EntryPoint
         const int header = 32;
         if (buffer == 0 || sizeBytes < header) throw new ArgumentException("Invalid table capacity");
         var command = Marshal.ReadInt32(buffer, 16);
-        var capacity = command switch { 1 => 4 * 1024 * 1024, 2 => 16 * 1024 * 1024, _ => throw new ArgumentException("Invalid table command") };
+        var capacity = command switch { 1 => 4 * 1024 * 1024, 2 or 3 => 16 * 1024 * 1024, _ => throw new ArgumentException("Invalid table command") };
         // Reserve the entire reply before callbacks: no capacity-probing retry may execute plugin code twice.
         if (sizeBytes != header + capacity) throw new ArgumentException("Invalid table capacity");
         ValidateHeader(buffer, sizeBytes, "Table ABI size/version mismatch");
@@ -25,6 +25,8 @@ public static partial class EntryPoint
             ?? throw new ArgumentException("Missing table request");
         if (command == 1 ? request.Level is null || request.Query is not null : request.Query is null || request.Level is not null)
             throw new ArgumentException("Table request does not match command");
+        if (command == 3 ? request.LookupRevision is null or 0 : request.LookupRevision is not null || request.Peer is not null || request.Skill is not null)
+            throw new ArgumentException("Invalid lookup table request");
         var output = plugins.Value.TableOperation(request, capacity);
         if (output.Length > capacity) throw new InvalidDataException("Table output exceeds fixed capacity");
         Marshal.Copy(output, 0, buffer + header, output.Length);
@@ -32,14 +34,14 @@ public static partial class EntryPoint
         return 0;
     });
 }
-internal sealed record TableRequest(TableLevel? Level = null, TableQuery? Query = null);
+internal sealed record TableRequest(TableLevel? Level = null, TableQuery? Query = null, ulong? LookupRevision = null, string? Peer = null, string? Skill = null);
 internal static class TableEncoding
 {
     internal static byte[] Encode(HostEnvironment host, TableRequest request, int capacity)
     {
         // Query exactly once, then encode owned data. Encoding never invokes plugin callbacks.
         var catalog = request.Level is { } level ? host.ReadTableColumns(level) : null;
-        var page = request.Query is { } query ? host.ReadTable(query) : null;
+        var page = request.Query is { } query ? request.LookupRevision is { } revision ? host.ReadLookupTable(revision, query, request.Peer, request.Skill) : host.ReadTable(query) : null;
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, new UTF8Encoding(false, true), true);
         void Budget(long count)

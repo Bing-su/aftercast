@@ -232,6 +232,43 @@ impl HostHandle {
         let output = self.table_call(2, &request).await?;
         decode::page(&output, self.session, query)
     }
+    /// Read an ACT lookup graph owned by the captured action snapshot.
+    pub async fn lookup_table_rows(
+        &self,
+        snapshot: crate::ActionSnapshot,
+        query: &TableQuery,
+        peer: Option<&str>,
+        skill: Option<&str>,
+    ) -> Result<TablePage, Error> {
+        if snapshot.session != self.session
+            || peer.is_none() && skill.is_some()
+            || peer
+                .into_iter()
+                .chain(skill)
+                .any(|text| !valid_text(text, 1024, false))
+        {
+            return Err(invalid("invalid lookup ownership or selection"));
+        }
+        let level = if peer.is_none() {
+            TableLevel::Category
+        } else if skill.is_none() {
+            TableLevel::Attack
+        } else {
+            TableLevel::Action
+        };
+        if query.scope.level() != level {
+            return Err(invalid("lookup scope level mismatch"));
+        }
+        let mut request = query.request(self.session)?;
+        let fields = request
+            .as_object_mut()
+            .ok_or_else(|| invalid("invalid lookup request"))?;
+        fields.insert("lookupRevision".into(), snapshot.revision.into());
+        fields.insert("peer".into(), serde_json::json!(peer));
+        fields.insert("skill".into(), serde_json::json!(skill));
+        let output = self.table_call(3, &request).await?;
+        decode::lookup_page(&output, self.session, query, peer, skill)
+    }
     async fn table_call(
         &self,
         command: u32,
