@@ -79,3 +79,9 @@ reference does not provide.
 | `FormTimeLine`                     | `ShowTimeline`, `DrawTimeline`, plot click, visibility/recalculation controls                                |
 | `FormSpellRecastCalc`              | `ShowMedian`, `RecalculateDelays`, `btnSendToTimers_Click`                                                   |
 | `FormEncounterVcr`, `VcrCombatant` | `ShowVcr`, generated layout, transport tick, category totals, target/activity/health calculations            |
+
+### Action projection foundation
+
+The bounded encounter action query now returns the original signed `Dnum.Number`, swing type, critical flag, nullable special/damage-type strings and nullable raw Dnum label/suffix, alongside the existing display text and source-log link. Raw negative values are preserved, including ACT outcome sentinels; callers must not infer damage, healing or miss classifications from localized display text. Swing-type registration and category membership determine those meanings and remain separate work requiring an owner/revision-bound contract. The same swing type may be registered for multiple categories.
+
+New private history payloads preserve these raw fields and distinguish null from an empty label/suffix; legacy or ordinary ACT interchange records without private number attributes can use display-text fallback, so historical raw fidelity is not guaranteed there. The page is a live bounded query, not a frozen multi-page snapshot. TimeSorter links source logs only when unique and is not a durable action ID; duplicate sorter values retain ambiguous source links.

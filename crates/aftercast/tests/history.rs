@@ -160,6 +160,10 @@ async fn history_snapshots_select_exact_archives_and_preserve_log_identity(deplo
         .expect("actions")
         .expect("encounter");
     assert_eq!(actions.items[0].source, SourceLogLink::Retained(1));
+    assert_eq!(actions.items[0].amount, 300);
+    assert_eq!(actions.items[0].swing_type, 1);
+    assert!(!actions.items[0].critical);
+    assert_eq!(actions.items[0].damage_type.as_deref(), Some("Physical"));
     let logs = host
         .encounter_logs(id, 1, 1)
         .await

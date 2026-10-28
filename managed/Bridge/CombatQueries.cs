@@ -56,6 +56,7 @@ internal static class CombatQueryEncoding
             // The char-span overload writes UTF-8 without another length prefix or a per-string byte array.
             writer.Write(text.AsSpan());
         }
+        void OptionalText(string? value) { if(value is null){Budget(4);writer.Write(-1);}else Text(value); }
         void Time(DateTime time) { writer.Write(time.Ticks); writer.Write((uint)time.Kind); }
         void Summary(EncounterSummaryData value)
         {
@@ -104,7 +105,9 @@ internal static class CombatQueryEncoding
                 {
                     Budget(16); Time(action.Time); writer.Write(action.TimeSorter);
                     Text(action.Attacker); Text(action.Victim); Text(action.Attack); Text(action.Damage);
-                    Budget(4); writer.Write(action.SourceIndex);
+                    Budget(20); writer.Write(action.SourceIndex);writer.Write(action.Amount);writer.Write(action.SwingType);
+                    writer.Write(action.Critical?1u:0u);
+                    OptionalText(action.Special);OptionalText(action.DamageType);OptionalText(action.RawLabel);OptionalText(action.RawSuffix);
                 }
             }
         }

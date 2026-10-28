@@ -10,7 +10,8 @@ namespace Aftercast.ActCompat
     public sealed record AttackSummaryData(string Combatant, string Category, string Attack, bool Outgoing,
         long Damage, long DurationTicks, double DPS, double EncDPS, int Swings, int Hits, int CritHits, int Misses, int Blocked);
     public sealed record EncounterActionData(DateTime Time, int TimeSorter, string Attacker, string Victim,
-        string Attack, string Damage, int SourceIndex);
+        string Attack, string Damage, int SourceIndex, long Amount, int SwingType, bool Critical,
+        string? Special, string? DamageType, string? RawLabel, string? RawSuffix);
     public sealed record EncounterLogData(DateTime Time, int TimeSorter, int Type, string Text, int SourceIndex);
     public sealed record EncounterLogPageData(long Dropped, CombatPage<EncounterLogData> Page);
     public sealed record CombatPage<T>(int Total, T[] Items);
@@ -129,7 +130,8 @@ namespace Advanced_Combat_Tracker
                 var sources = SourceIndices(encounter);
                 return new(actions.Count(), actions.Skip(offset).Take(limit).Select(action => new EncounterActionData(
                     action.Time, action.TimeSorter, action.Attacker, action.Victim, action.AttackType, action.Damage.ToString(),
-                    sources.GetValueOrDefault(action.TimeSorter, -1))).ToArray());
+                    sources.GetValueOrDefault(action.TimeSorter, -1),action.Damage.Number,action.SwingType,action.Critical,
+                    action.Special,action.DamageType,action.Damage.RawDamageString,action.Damage.DamageString2)).ToArray());
             }
         }
 

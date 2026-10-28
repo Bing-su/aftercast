@@ -41,13 +41,15 @@ internal static class EncounterArchiveChecks
                 Check(root.EncDatabase.Count == 1 && root.ZoneDatabase.Count == 1);
                 root.EncDatabase.Clear(); root.ZoneDatabase.Clear();
                 root.ChangeZone("Fixture Zone"); root.SetEncounter(epoch, "Source", "Target");
-                var action = new MasterSwing(1, true, "Special", new Dnum(1234, "label"), epoch.AddSeconds(2), 42, "Strike", "Source", "Physical", "Target");
+                var action = new MasterSwing(1, true, "Special", new Dnum(1234, "label") { DamageString2 = "" }, epoch.AddSeconds(2), 42, "Strike", "Source", "Physical", "Target");
                 action.Tags["unicode"] = "한글 & <test>";
                 root.AddCombatAction(action); host.EndCombat();
                 var encounter = root.ActiveZone.ActiveEncounter!;
                 encounter.LogLines.Add(new(epoch.AddSeconds(2), "other log", 12, 17));
                 encounter.LogLines.Add(new(epoch.AddSeconds(2), "raw log", 12, 42));
                 var id = host.ListEncounters(0, 16).Items.Single().Id;
+                var projection=host.ReadEncounterActions(id,0,16)!.Items.Single();
+                Check(projection.Amount==1234 && projection.SwingType==1 && projection.Critical && projection.Special=="Special" && projection.DamageType=="Physical" && projection.RawLabel=="label" && projection.RawSuffix=="" && projection.SourceIndex==1);
                 Check(host.ArchiveOperation(2, output, id, true) == 1);
                 var exported = File.ReadAllBytes(output);
                 var xmlOutput = Path.Combine(directory.FullName, "export.xml");
@@ -112,6 +114,9 @@ internal static class EncounterArchiveChecks
                 var encounter = root.ZoneList[0].Items.Single();
                 var action = encounter.GetCombatant("Source")!.AllOut["All"].Items.Single();
                 Check(action.Damage.Number == 1234 && action.Damage.ToString() == "label" && action.Time == epoch.AddSeconds(2));
+                var restoredId=restarted.ListEncounters(0,16).Items.Single().Id;
+                var projected=restarted.ReadEncounterActions(restoredId,0,16)!.Items.Single();
+                Check(projected.Amount==1234 && projected.SwingType==1 && projected.Critical && projected.Special=="Special" && projected.DamageType=="Physical" && projected.RawLabel=="label" && projected.RawSuffix=="" && projected.SourceIndex==1);
                 Check(encounter.StartTimes.Single() == epoch.AddSeconds(2) && encounter.ZoneName == "Fixture Zone");
                 Check((string)action.Tags["unicode"] == "한글 & <test>" && encounter.LogLines.Count == 2);
                 Check(encounter.LogLines.Select(line => line.GlobalTimeSorter).SequenceEqual(new[] { 17, 42 }));
@@ -154,7 +159,38 @@ internal static class EncounterArchiveChecks
                 Check(partial.ArchiveOperation(4, "", 0, false) == 1);
                 Check(partial.ListEncounters(0, 16).Items.Single().Status == EncounterStatus.PartialImport);
             }
+            ProjectionSpecialCases();
             Console.WriteLine("ACT XML/gzip imports, atomic history checkpoints, filtered restart restoration and corruption boundaries passed.");
+        }
+        finally { directory.Delete(true); }
+    }
+
+    private static void ProjectionSpecialCases()
+    {
+        var directory=Directory.CreateTempSubdirectory("aftercast-projection-");
+        try
+        {
+            var time=DateTime.UnixEpoch;
+            using(var host=new HostEnvironment(directory.FullName))
+            {
+                CombatFixture.ConfigureCategories();var root=ActGlobals.oFormActMain!;
+                var zone=root.ZoneList[0];var encounter=new EncounterData("Source","Synthetic",zone);zone.Items.Add(encounter);
+                var actor=new CombatantData("Source",encounter);encounter.Items.Add("SOURCE",actor);
+                actor.AddCombatAction(new MasterSwing(1,false,"None",new Dnum(-1,null),time,41,"Miss","Source","Physical","Target"));
+                actor.AddCombatAction(new MasterSwing(1,true,"Critical",new Dnum(-9,""){DamageString2=""},time,42,"Unknown","Source","Physical","Target"));
+                encounter.LogLines.Add(new(time,"one",0,41));encounter.LogLines.Add(new(time,"two",0,42));
+                var id=host.ListEncounters(0,16).Items.Single().Id;var rows=host.ReadEncounterActions(id,0,16)!.Items;
+                Check(rows.Length==2 && rows[0].Amount==-1 && rows[0].RawLabel is null && rows[0].RawSuffix is null && !rows[0].Critical && rows[0].SourceIndex==0);
+                Check(rows[1].Amount==-9 && rows[1].RawLabel=="" && rows[1].RawSuffix=="" && rows[1].Critical && rows[1].SourceIndex==1 && rows[0].Time==rows[1].Time);
+                Check(host.ArchiveOperation(3,"",0,false)==1);
+            }
+            using(var host=new HostEnvironment(directory.FullName))
+            {
+                CombatFixture.ConfigureCategories();Check(host.ArchiveOperation(4,"",0,false)==1);
+                var id=host.ListEncounters(0,16).Items.Single().Id;var rows=host.ReadEncounterActions(id,0,16)!.Items;
+                Check(rows.Length==2 && rows[0].Amount==-1 && rows[0].RawLabel is null && rows[0].RawSuffix is null && !rows[0].Critical && rows[0].SourceIndex==0);
+                Check(rows[1].Amount==-9 && rows[1].RawLabel=="" && rows[1].RawSuffix=="" && rows[1].Critical && rows[1].SourceIndex==1 && rows[0].Time==rows[1].Time);
+            }
         }
         finally { directory.Delete(true); }
     }

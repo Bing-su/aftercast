@@ -91,6 +91,14 @@ pub struct EncounterAction {
     pub attack: String,
     pub damage: String,
     pub source: SourceLogLink,
+    /// Original Dnum integer, including ACT negative outcome sentinels.
+    pub amount: i64,
+    pub swing_type: i32,
+    pub critical: bool,
+    pub special: Option<String>,
+    pub damage_type: Option<String>,
+    pub raw_label: Option<String>,
+    pub raw_suffix: Option<String>,
 }
 
 /// Retained encounter text, independent of the live subscription buffer.
@@ -296,6 +304,15 @@ impl<'a> Reader<'a> {
             .map(str::to_owned)
             .map_err(|_encoding| invalid("invalid combat UTF-8"))
     }
+    fn optional_text(&mut self) -> Result<Option<String>, Error> {
+        let length = self.u32()?;
+        if length == u32::MAX {
+            return Ok(None);
+        }
+        std::str::from_utf8(self.take(length as usize)?)
+            .map(|value| Some(value.to_owned()))
+            .map_err(|_encoding| invalid("invalid combat UTF-8"))
+    }
     fn time(&mut self) -> Result<LogTimestamp, Error> {
         graph_time(self.i64()?, self.u32()?).map_err(|_time| invalid("invalid combat timestamp"))
     }
@@ -376,6 +393,16 @@ impl<'a> Reader<'a> {
         let attack = self.text()?;
         let damage = self.text()?;
         let source = self.source()?;
+        let amount = self.i64()?;
+        let swing_type = self.i32()?;
+        let flags = self.u32()?;
+        if flags & !1 != 0 {
+            return Err(invalid("invalid action flags"));
+        }
+        let special = self.optional_text()?;
+        let damage_type = self.optional_text()?;
+        let raw_label = self.optional_text()?;
+        let raw_suffix = self.optional_text()?;
         Ok(EncounterAction {
             time,
             time_sorter,
@@ -384,6 +411,13 @@ impl<'a> Reader<'a> {
             attack,
             damage,
             source,
+            amount,
+            swing_type,
+            critical: flags & 1 != 0,
+            special,
+            damage_type,
+            raw_label,
+            raw_suffix,
         })
     }
     fn source(&mut self) -> Result<SourceLogLink, Error> {
@@ -537,6 +571,44 @@ mod tests {
             text(&mut action, value);
         }
         action.put_i32_le(7);
+        let source_end = action.len();
+        action.put_i64_le(-9);
+        action.put_i32_le(3);
+        action.put_u32_le(1);
+        text(&mut action, "special");
+        text(&mut action, "element");
+        action.put_i32_le(-1);
+        text(&mut action, "suffix");
+        let decoded = Reader(&action).action().expect("action projection");
+        assert_eq!(
+            (decoded.amount, decoded.swing_type, decoded.critical),
+            (-9, 3, true)
+        );
+        assert_eq!(
+            (decoded.raw_label, decoded.raw_suffix),
+            (None, Some("suffix".into()))
+        );
+        for amount in [i64::MIN, i64::MAX, -1, -2, -3, -4, -5, -9, -10, 0] {
+            let mut candidate = action.clone();
+            candidate[source_end..source_end + 8].copy_from_slice(&amount.to_le_bytes());
+            assert_eq!(
+                Reader(&candidate).action().expect("raw amount").amount,
+                amount
+            );
+        }
+        let mut invalid_flags = action.clone();
+        invalid_flags[source_end + 12..source_end + 16].copy_from_slice(&2u32.to_le_bytes());
+        Reader(&invalid_flags).action().expect_err("reserved flags");
+        let mut invalid_utf8 = action.clone();
+        invalid_utf8[source_end + 20] = 0xff;
+        Reader(&invalid_utf8)
+            .action()
+            .expect_err("invalid optional UTF-8");
+        let mut oversized = action.clone();
+        oversized[source_end + 16..source_end + 20].copy_from_slice(&(u32::MAX - 1).to_le_bytes());
+        Reader(&oversized)
+            .action()
+            .expect_err("overstated optional length");
         assert_eq!(
             Reader(&action).action().expect("action").source,
             SourceLogLink::Retained(7)
@@ -546,8 +618,7 @@ mod tests {
                 .action()
                 .expect_err("truncated action");
         }
-        let end = action.len();
-        action[end - 4..].copy_from_slice(&(-3_i32).to_le_bytes());
+        action[source_end - 4..source_end].copy_from_slice(&(-3_i32).to_le_bytes());
         Reader(&action).action().expect_err("invalid source link");
         let mut logs = BytesMut::new();
         logs.put_u32_le(1);
