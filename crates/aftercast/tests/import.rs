@@ -439,6 +439,23 @@ async fn selective_options_reach_worker_before_plugin_and_import(deployment: Dep
             assert_eq!(report.text, "Source\n");
         }
         if mode == SelectiveMode::EncountersStrict {
+            assert_eq!(
+                host.save_history().await.expect("save selective history"),
+                1
+            );
+            let history = host
+                .query_history(&aftercast::HistoryQuery::default())
+                .await
+                .expect("history");
+            assert_eq!(
+                history
+                    .items
+                    .iter()
+                    .find(|entry| entry.already_restored)
+                    .expect("saved current")
+                    .selective_recording,
+                Some(true)
+            );
             assert_eq!(actions.items[0].attacker, "Source");
         }
         host.shutdown().await.expect("shutdown");

@@ -672,3 +672,8 @@ selective-record = 선택한 전투원이 주거나 받은 행동만 기록
 selective-record-strict = 선택한 공격자의 행동만 기록
 selective-names = 선택한 전투원 (한 줄에 한 명)
 selective-help = 다음 호스트 세션부터 적용됩니다. 기록 제한으로 제외된 행동은 복구되지 않으며, 원본 로그가 남아 있으면 다시 파싱해야 합니다. 그래프와 텍스트 필터는 기록을 유지합니다.
+
+history-selective-recording = 선택 기록 사용됨 · 행동이 제외됐을 수 있음
+history-nonselective-recording = 선택 기록 꺼짐
+history-recording-unknown = 기록 정책 알 수 없음
+history-policy-hint = 기록 정책은 목록의 참고 정보이며 복원할 때 확인됩니다. 로그 보존 및 가져오기 완료 상태와는 별개입니다.

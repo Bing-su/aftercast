@@ -11,12 +11,15 @@ public class EncounterData
     // The selective overload applies ACT's attacker/victim list policy, e.g. selected attacker actions retain both sides.
     internal bool SelectiveParsing { get; private set; }
     internal bool IgnoreEnemies { get; private set; }
+    // Null means the source did not preserve this policy; it is not evidence of full recording.
+    internal bool? SelectiveRecordingEvidence { get; private set; } = false;
 
     // Private history replay rebuilds already accepted actions before restoring this policy.
-    internal void RestoreSelectionPolicy(bool selective, bool ignoreEnemies)
+    internal void RestoreSelectionPolicy(bool? selective, bool ignoreEnemies)
     {
-        if (!selective && ignoreEnemies) throw new System.Xml.XmlException("IgnoreEnemies requires selective parsing");
-        SelectiveParsing = selective;
+        if (selective != true && ignoreEnemies) throw new System.Xml.XmlException("IgnoreEnemies requires selective parsing");
+        SelectiveRecordingEvidence = selective;
+        SelectiveParsing = selective == true;
         IgnoreEnemies = ignoreEnemies;
     }
 
@@ -24,6 +27,7 @@ public class EncounterData
         : this(charName, zoneName, parent)
     {
         SelectiveParsing = true;
+        SelectiveRecordingEvidence = true;
         IgnoreEnemies = ignoreEnemies;
     }
 

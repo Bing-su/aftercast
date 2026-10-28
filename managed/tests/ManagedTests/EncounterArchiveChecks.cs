@@ -191,11 +191,13 @@ internal static class EncounterArchiveChecks
                 encounter.LogLines.Add(new(DateTime.UnixEpoch, "source line", 0, 42));
                 Check(encounter.Items.Count == 2);
                 Check(host.ArchiveOperation(3, "", 0, false) == 1);
+                Check(host.ReadHistory(new()).Items.Single().SelectiveRecording == true);
             }
             using (var host = new HostEnvironment(directory.FullName))
             {
                 CombatFixture.ConfigureCategories();
                 var root = ActGlobals.oFormActMain!;
+                Check(host.ReadHistory(new()).Items.Single().SelectiveRecording == true);
                 Check(!root.SelectiveListGetSelected("Source"));
                 Check(host.ArchiveOperation(4, "", 0, false) == 1);
                 var encounter = root.ZoneList[0].Items.Single();
@@ -203,9 +205,37 @@ internal static class EncounterArchiveChecks
                 var id = host.ListEncounters(0, 16).Items.Single().Id;
                 var row = host.ReadEncounterActions(id, 0, 16)!.Items.Single();
                 Check(row.Amount == 100 && row.SourceIndex == 0 && encounter.LogLines.Single().LogLine == "source line");
+                Check(host.ArchiveOperation(3, "", 0, false) == 1);
+                Check(host.ReadHistory(new()).Items.Single().SelectiveRecording == true);
             }
+            LegacySelectionEvidence(directory);
         }
         finally { directory.Delete(true); }
+    }
+
+    private static void LegacySelectionEvidence(DirectoryInfo source)
+    {
+        var directory = Directory.CreateDirectory(Path.Combine(source.FullName, "legacy"));
+        var history = Directory.CreateDirectory(Path.Combine(directory.FullName, "history"));
+        var index = new XmlDocument(); index.Load(Path.Combine(source.FullName, "history", "index.xml"));
+        var record = (XmlElement)index.SelectSingleNode("/Records/Record")!;
+        using var host = new HostEnvironment(directory.FullName);
+        CombatFixture.ConfigureCategories();
+        var root = ActGlobals.oFormActMain!;
+        var bytes = root.MemDecompressGzip(File.ReadAllBytes(Path.Combine(source.FullName, "history", record.GetAttribute("Archive"))));
+        var payload = new XmlDocument(); payload.LoadXml(Encoding.UTF8.GetString(bytes));
+        var encounter = (XmlElement)payload.SelectSingleNode("/Encounters/Encounter")!;
+        encounter.RemoveAttribute("AftercastSelectiveParsing"); encounter.RemoveAttribute("AftercastIgnoreEnemies");
+        var compressed = root.MemCompressGZip(Encoding.UTF8.GetBytes(payload.OuterXml));
+        var filename = Convert.ToHexStringLower(SHA256.HashData(compressed)) + ".act";
+        File.WriteAllBytes(Path.Combine(history.FullName, filename), compressed);
+        record.SetAttribute("Archive", filename); record.RemoveAttribute("SelectiveRecording");
+        index.Save(Path.Combine(history.FullName, "index.xml"));
+        Check(host.ReadHistory(new()).Items.Single().SelectiveRecording is null);
+        Check(host.ArchiveOperation(4, "", 0, false) == 1);
+        Check(host.ReadEncounterActions(host.ListEncounters(0, 16).Items.Single().Id, 0, 16)!.Items.Single().Amount == 100);
+        Check(host.ArchiveOperation(3, "", 0, false) == 1);
+        Check(host.ReadHistory(new()).Items.Single().SelectiveRecording is null);
     }
 
     private static void ProjectionSpecialCases()

@@ -7,6 +7,14 @@ use aftercast::{
 use dioxus::{core::spawn_forever, prelude::*};
 const PAGE: u32 = 16;
 const MAX_TICKS: u64 = 3_155_378_975_999_999_999;
+fn recording_policy_label(value: Option<bool>) -> &'static str {
+    match value {
+        Some(true) => "history-selective-recording",
+        Some(false) => "history-nonselective-recording",
+        None => "history-recording-unknown",
+    }
+}
+
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 struct SearchDraft {
     text: String,
@@ -728,8 +736,10 @@ fn HistoryResults() -> Element {
                                             {tr("history-folder-hint")}
                                             " {entry.folder_hint}"
                                         }
+                                        p { class: "text-xs text-muted-foreground", {tr("history-policy-hint")} }
                                         div { class: "flex flex-wrap gap-2",
                                             Badge { {tr(if entry.partial { "history-partial" } else { "history-complete" })} }
+                                            Badge { {tr(recording_policy_label(entry.selective_recording))} }
                                             Badge {
                                                 {
                                                     tr(

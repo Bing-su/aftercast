@@ -30,8 +30,11 @@ public partial class FormActMain
                 Attribute("AftercastDroppedLogLines", encounter.DroppedLogLines);
                 Attribute("AftercastLogIdentityKnown", encounter.LogSourceIdentityKnown);
                 Attribute("AftercastClipboardImport", encounter.ClipboardImport);
-                Attribute("AftercastSelectiveParsing", encounter.GetIsSelective());
-                Attribute("AftercastIgnoreEnemies", encounter.GetIgnoreEnemies());
+                if (encounter.SelectiveRecordingEvidence is { } selective)
+                {
+                    Attribute("AftercastSelectiveParsing", selective);
+                    Attribute("AftercastIgnoreEnemies", encounter.GetIgnoreEnemies());
+                }
             }
             if (encounter.ZoneName != "Import" && encounter.Parent is { } zone)
             {
@@ -146,13 +149,14 @@ public partial class FormActMain
                     default: throw new XmlException("Unexpected encounter child: " + item.Name);
                 }
             }
+            if (!history) encounter.RestoreSelectionPolicy(null, false);
             if (history)
             {
                 // Reconstruct the recorded graph before restoring its policy: today's list may differ
                 // from the selection which admitted these actions and must not silently filter history.
                 if (element.HasAttribute("AftercastSelectiveParsing") != element.HasAttribute("AftercastIgnoreEnemies"))
                     throw new XmlException("Incomplete selective parsing metadata");
-                var selective = element.HasAttribute("AftercastSelectiveParsing") && bool.Parse(element.GetAttribute("AftercastSelectiveParsing"));
+                bool? selective = element.HasAttribute("AftercastSelectiveParsing") ? bool.Parse(element.GetAttribute("AftercastSelectiveParsing")) : null;
                 var ignoreEnemies = element.HasAttribute("AftercastIgnoreEnemies") && bool.Parse(element.GetAttribute("AftercastIgnoreEnemies"));
                 encounter.RestoreSelectionPolicy(selective, ignoreEnemies);
             }

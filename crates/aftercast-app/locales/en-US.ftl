@@ -672,3 +672,8 @@ selective-record = Record actions by or against selected combatants
 selective-record-strict = Record actions by selected attackers only
 selective-names = Selected combatants, one name per line
 selective-help = Settings apply to the next host session. Recording limits permanently omit excluded actions; reparse the retained original log to recover them. Graph and text filters preserve recorded data.
+
+history-selective-recording = Selective recording was enabled; actions may be excluded
+history-nonselective-recording = Selective recording was off
+history-recording-unknown = Recording policy unknown
+history-policy-hint = Recording policy is an index hint; the archive is checked when restored. It is separate from log retention and import completion.

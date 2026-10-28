@@ -7,7 +7,7 @@ namespace Advanced_Combat_Tracker;
 
 public partial class FormActMain
 {
-    private sealed record StoredEncounter(string File, string Zone, DateTime ZoneStart, HistoryRecord Record, bool Partial);
+    private sealed record StoredEncounter(string File, string Zone, DateTime ZoneStart, HistoryRecord Record, bool Partial, bool? Selective);
     private sealed record ArchiveIdentity(string File, DateTime ZoneStart);
     private List<StoredEncounter> storedEncounters = new();
     private readonly ConditionalWeakTable<EncounterData, ArchiveIdentity> archivedEncounters = new();
@@ -124,6 +124,8 @@ public partial class FormActMain
                 List<EncounterData> items;
                 lock (CombatGate) items = DecodeEncounterXml(bytes, history: true);
                 if (items.Count != 1) throw new InvalidDataException("Expected one encounter per history archive");
+                if (entry.Selective is { } expected && items[0].SelectiveRecordingEvidence != expected)
+                    throw new XmlException("History selection metadata does not match its payload");
                 restored.Add((items[0], entry));
             }
             if (indexRevision is not null && (await ArchiveIo(asynchronous,ReadHistoryCatalog)).Revision != indexRevision)
@@ -213,7 +215,7 @@ public partial class FormActMain
                 encounter.HistoryRecord?.FolderHint ?? Path.GetDirectoryName(logFilePath) ?? "");
             next.RemoveAll(item => item.File == file);
             var zoneStart = archivedEncounters.TryGetValue(encounter, out var identity) ? identity.ZoneStart : encounter.Parent.StartTime;
-            next.Add(new(file, encounter.ZoneName, zoneStart, record, Identity(encounter).Status == Aftercast.ActCompat.CombatSnapshotStatus.PartialImport));
+            next.Add(new(file, encounter.ZoneName, zoneStart, record, Identity(encounter).Status == Aftercast.ActCompat.CombatSnapshotStatus.PartialImport, encounter.SelectiveRecordingEvidence));
             identities.Add((encounter, file, zoneStart));
         }
         // Immutable payloads are written first; a failed checkpoint leaves the previous complete index readable.
@@ -226,7 +228,9 @@ public partial class FormActMain
                 writer.WriteStartElement("Record"); WriteHistoryAttributes(writer, entry.Record);
                 writer.WriteAttributeString("Archive", entry.File); writer.WriteAttributeString("ZoneName", entry.Zone);
                 writer.WriteAttributeString("ZoneStart", entry.ZoneStart.ToBinary().ToString(CultureInfo.InvariantCulture));
-                writer.WriteAttributeString("Partial", entry.Partial.ToString()); writer.WriteEndElement();
+                writer.WriteAttributeString("Partial", entry.Partial.ToString());
+                if (entry.Selective is { } selective) writer.WriteAttributeString("SelectiveRecording", selective.ToString());
+                writer.WriteEndElement();
             }
             writer.WriteEndElement();
         }, overwrite: true); return 0; });

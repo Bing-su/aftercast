@@ -71,6 +71,8 @@ pub struct HistoryEntry {
     pub start: LogTimestamp,
     pub end: LogTimestamp,
     pub partial: bool,
+    /// None means the historical recording policy was not recorded, not that recording was complete.
+    pub selective_recording: Option<bool>,
     /// Existence hint only; integrity/readability and raw source logs are not verified by discovery.
     pub payload_present: bool,
     pub already_restored: bool,
@@ -96,6 +98,7 @@ struct RawEntry {
     end_ticks: u64,
     end_kind: u32,
     partial: bool,
+    selective_recording: Option<bool>,
     payload_present: bool,
     already_restored: bool,
 }
@@ -158,6 +161,7 @@ impl HostHandle {
                 start: timestamp(item.start_ticks, item.start_kind)?,
                 end: timestamp(item.end_ticks, item.end_kind)?,
                 partial: item.partial,
+                selective_recording: item.selective_recording,
                 payload_present: item.payload_present,
                 already_restored: item.already_restored,
             });

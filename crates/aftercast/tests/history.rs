@@ -42,6 +42,12 @@ async fn history_snapshots_select_exact_archives_and_preserve_log_identity(deplo
         .expect("saved metadata");
     assert_eq!(saved.total, 2);
     assert!(saved.items.iter().all(|item| item.already_restored));
+    assert!(
+        saved
+            .items
+            .iter()
+            .all(|item| item.selective_recording == Some(false))
+    );
     host.shutdown().await.expect("stop");
     let host = Host::start(deployment.config()).await.expect("restart");
     let page = host

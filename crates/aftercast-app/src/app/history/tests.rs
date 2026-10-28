@@ -405,3 +405,16 @@ async fn corrupt_payloads(
         std::fs::write(path, bytes).expect("restore own payload");
     }
 }
+
+#[test]
+fn recording_policy_labels_do_not_infer_old_history() {
+    assert_eq!(
+        recording_policy_label(Some(true)),
+        "history-selective-recording"
+    );
+    assert_eq!(
+        recording_policy_label(Some(false)),
+        "history-nonselective-recording"
+    );
+    assert_eq!(recording_policy_label(None), "history-recording-unknown");
+}

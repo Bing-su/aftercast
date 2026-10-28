@@ -8,7 +8,7 @@ namespace Aftercast.ActCompat
     public sealed record HistoryQuery(string Text = "", HistorySearchScope Scope = HistorySearchScope.Any,
         long? StartTicks = null, long? EndTicks = null, int Offset = 0, int Limit = 16);
     public sealed record HistoryEntry(string Id, string Title, string Zone, string Character, string FolderHint,
-        long StartTicks, int StartKind, long EndTicks, int EndKind, bool Partial, bool PayloadPresent, bool AlreadyRestored);
+        long StartTicks, int StartKind, long EndTicks, int EndKind, bool Partial, bool PayloadPresent, bool AlreadyRestored, bool? SelectiveRecording);
     public sealed record HistoryPage(string IndexRevision, bool IndexPresent, int IndexedCount, int Total, HistoryEntry[] Items);
     public sealed record HistorySelection(string IndexRevision, string[] Ids);
 }
@@ -20,9 +20,9 @@ namespace Advanced_Combat_Tracker
     public partial class FormActMain
     {
         private sealed record CatalogEntry(string File, string Zone, DateTime ZoneStart, DateTime Start, DateTime End,
-            string Title, string Character, string FolderHint, bool Partial)
+            string Title, string Character, string FolderHint, bool Partial, bool? Selective)
         {
-            internal StoredEncounter Stored() => new(File,Zone,ZoneStart,new HistoryRecord(1,Start,End,Title,Character,FolderHint),Partial);
+            internal StoredEncounter Stored() => new(File,Zone,ZoneStart,new HistoryRecord(1,Start,End,Title,Character,FolderHint),Partial,Selective);
         }
         private sealed record HistoryCatalog(string Revision, bool Present, List<CatalogEntry> Entries);
         private const int HistorySelectionLimit = 64;
@@ -49,7 +49,8 @@ namespace Advanced_Combat_Tracker
                 // Browse metadata without HistoryRecord's string interning or public database mutation.
                 entries.Add(new(file,RequiredAttribute(element,"ZoneName"),Time("ZoneStart"),start,end,
                     RequiredAttribute(element,"Label"),element.GetAttribute("CharName"),element.GetAttribute("FolderHint"),
-                    bool.Parse(RequiredAttribute(element,"Partial"))));
+                    bool.Parse(RequiredAttribute(element,"Partial")),
+                    element.HasAttribute("SelectiveRecording") ? bool.Parse(element.GetAttribute("SelectiveRecording")) : null));
             }
             return entries;
         }
@@ -101,7 +102,7 @@ namespace Advanced_Combat_Tracker
                 var matches = catalog.Entries.Where(Match).OrderByDescending(entry => entry.Start.Ticks).ThenBy(entry => entry.File,StringComparer.Ordinal).ToArray();
                 var items = matches.Skip(query.Offset).Take(query.Limit).Select(entry => new HistoryEntry(entry.File,entry.Title,entry.Zone,
                     entry.Character,entry.FolderHint,entry.Start.Ticks,(int)entry.Start.Kind,entry.End.Ticks,(int)entry.End.Kind,
-                    entry.Partial,File.Exists(Path.Combine(HistoryDirectory,entry.File)),restored.Contains(entry.File))).ToArray();
+                    entry.Partial,File.Exists(Path.Combine(HistoryDirectory,entry.File)),restored.Contains(entry.File),entry.Selective)).ToArray();
                 return new HistoryPage(catalog.Revision,catalog.Present,catalog.Entries.Count,matches.Length,items);
             });
         }

@@ -28,3 +28,11 @@ changes during callbacks. A limited-recording encounter cannot recover actions
 rejected at capture; reparse from retained original logs where available.
 Original body inspection and object probes do not constitute native ACT UI or
 live timing verification.
+
+History discovery shows the indexed selective-recording policy separately from
+import completion and raw-log retention. The index is an unverified hint until
+restore checks it against the archive. Older indexes and archive payloads lacking
+the policy remain unknown, including after restoration and re-checkpointing; an
+ACT interchange XML import likewise has unknown recording provenance. A known
+selective policy means actions may have been excluded, not that exclusion was
+observed or that every original source was retained.
