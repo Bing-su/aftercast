@@ -20,4 +20,8 @@ existing key or invokes sound, speech or timer execution. Cross-file all-or-none
 publication is not provided; mixed Trigger/Spell Config is rejected, not split.
 No network, clipboard or subscriptions are used. Synthetic managed and isolated
 worker tests cover both types, malformed/mixed input, conflicts, stale revisions,
-write failure, effect isolation and restart. UI integration is not yet complete.
+write failure, effect isolation and restart. The existing Trigger and Timer panes
+accept text, preview all entries and mark conflicts; explicit import adds the whole
+batch. Controller tests cover cancellation, navigation and stale/session responses.
+The pinned original `ConfigBatchProbe` executes its serializers to check attribute
+names and values; native ACT UI and actual native desktop clicks are unverified.

@@ -25,8 +25,8 @@ The Rust/UI panel accepts typed text only; no clipboard or subscription is read.
 The preview displays the settings and refuses a conflicting item. Cancel clears
 only the preview, while the text draft stays in the app session. A failure keeps
 the preview; stop invalidates the session and a save acknowledged before navigation
-remains committed. Multi-item XML and Config snippets are not implemented in this bounded path. Native
-GUI clicks and Windows remain unverified.
+remains committed. Homogeneous Config batches are supported separately; see [Config batches](config-batch.md).
+Native GUI clicks and Windows remain unverified.
 
 ## Local Spell snippets
 
@@ -46,4 +46,4 @@ removal −600–0; a snippet outside those ranges is rejected rather than silen
 clamped, a deliberate difference from ACT's raw snippet handler. Saving uses the
 existing atomic definition file and never starts or resets a countdown or plays
 a sound. Sound data in an imported definition can be used by a later timer event.
-Config and batch XML remain unsupported.
+Homogeneous Config batches are supported separately; mixed or unrelated Config is rejected.

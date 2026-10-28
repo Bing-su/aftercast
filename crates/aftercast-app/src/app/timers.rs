@@ -1,4 +1,5 @@
 use super::{AppState, Phase, tr};
+pub(super) mod config_batch;
 mod snippet;
 use crate::components::{Accordion, Button, ButtonVariant, Input, Label};
 use aftercast::{HostHandle, SavedTimer, TimerDefinition, TimerItem, TimerPage, TimerRevision};
@@ -52,6 +53,7 @@ impl Draft {
 #[derive(Default)]
 pub(super) struct EditorState {
     snippet: snippet::State,
+    config_batch: config_batch::State,
     loaded: bool,
     busy: bool,
     page: Option<TimerPage>,
@@ -440,6 +442,7 @@ pub(super) fn TimersPane() -> Element {
             }
             TimerList {}
             snippet::Panel {}
+            config_batch::Panel {}
             TimerForm {}
         }
     }

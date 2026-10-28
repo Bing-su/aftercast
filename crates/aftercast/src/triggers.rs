@@ -228,10 +228,11 @@ impl HostHandle {
             || raw.items.is_empty()
             || raw.items.len() > 32
             || keys.len() != raw.items.len()
-            || raw
-                .items
-                .iter()
-                .any(|item| item.key.is_empty() || item.key.len() > 8192)
+            || raw.items.iter().any(|item| {
+                item.key.is_empty()
+                    || item.key.len() > 8192
+                    || item.key != format!("{}|{}", item.definition.category, item.definition.regex)
+            })
             || conflicts.len() != raw.conflicts.len()
             || raw.conflicts.iter().any(|key| !keys.contains(key))
         {

@@ -210,6 +210,11 @@ run = [
   '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} custom-trigger-models {{vars.reference_probe}}',
 ]
 
+[tasks."test:config-batch"]
+description = "Compare Config batch attributes with genuine ACT"
+depends = ["managed:references"]
+run = '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} config-batch {{vars.reference_probe}}'
+
 [tasks."test:spell-snippets"]
 description = "Compare Spell snippet attributes and defaults with genuine ACT"
 depends = ["managed:references"]

@@ -71,7 +71,8 @@ pub use tables::{
 mod triggers;
 pub use speech::AudioSettings;
 pub use timers::{
-    SavedTimer, TimerDefinition, TimerItem, TimerPage, TimerRevision, TimerSnippetPreview,
+    SavedTimer, TimerBatchPreview, TimerDefinition, TimerItem, TimerPage, TimerRevision,
+    TimerSnippetPreview,
 };
 pub use triggers::TriggerResultCursor;
 pub use triggers::{

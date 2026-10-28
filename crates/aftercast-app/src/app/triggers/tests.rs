@@ -259,5 +259,7 @@ async fn trigger_ui_contract_preserves_drafts_and_session_bound_work() {
     deletion_and_pages(&host, &mut ui, root).await;
     super::super::notifications::test_contract(&host, &mut ui).await;
     super::super::timers::test_contract(&host, &mut ui, root).await;
+    super::config_batch::test_contract(&host, &mut ui).await;
+    super::super::timers::config_batch::test_contract(&host, &mut ui).await;
     host.shutdown().await.expect("owned worker cleanup");
 }

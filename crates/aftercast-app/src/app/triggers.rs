@@ -1,4 +1,5 @@
 use super::{AppState, Phase, tr};
+mod config_batch;
 mod snippet;
 use crate::components::{Accordion, Button, ButtonVariant, Input, Label};
 use aftercast::{
@@ -11,6 +12,7 @@ const PAGE: u32 = 16;
 #[derive(Default)]
 pub(super) struct EditorState {
     snippet: snippet::State,
+    config_batch: config_batch::State,
     loaded: bool,
     results_loaded: bool,
     busy: bool,
@@ -148,6 +150,7 @@ pub(super) fn TriggersPane() -> Element {
                 p { "Select an encounter in Analysis to benchmark its retained logs." }
             }
             snippet::Panel {}
+            config_batch::Panel {}
             TriggerForm {}
             TriggerResults {}
         }
