@@ -384,3 +384,45 @@ async fn blocked_managed_formatter_is_retired_by_existing_shutdown_boundary(
         .expect("worker reaped/state lease released");
     next.shutdown().await.expect("fresh worker shutdown");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and fixture; run mise run test:plugins"]
+async fn comma_option_reaches_plugin_formatting_without_rewriting_literal_cells(
+    deployment: Deployment,
+) {
+    let input = deployment.directory().join("commas.log");
+    std::fs::write(&input, "0|1234\n").expect("synthetic");
+    for (commas, expected) in [(true, "1,234"), (false, "1234")] {
+        let config = aftercast::HostConfig::builder()
+            .application_executable(common::application())
+            .dotnet_root(std::env::var("DOTNET_ROOT").expect("dotnet"))
+            .bridge_directory(&deployment.bridge)
+            .data_directory(&deployment.state)
+            .main_table_commas(commas)
+            .build();
+        let host = Host::start(config).await.expect("start");
+        let id = host
+            .create_plugin(plugin("CommasPlugin"))
+            .await
+            .expect("plugin");
+        host.initialize_plugin(id).await.expect("initialize");
+        host.import_log(&input).await.expect("import");
+        let encounter = host.encounters(0, 16).await.expect("encounters").items[0].id;
+        let scope = TableScope::Actions {
+            encounter,
+            combatant: "Source".into(),
+            category: "Damage".into(),
+            attack: "Strike".into(),
+        };
+        let request = query(&host, scope, &["format", "literal"]).await;
+        let page = host
+            .table_rows(&request)
+            .await
+            .expect("rows")
+            .expect("scope");
+        assert_eq!(page.rows[0].cells[0].text.as_deref(), Some(expected));
+        assert_eq!(page.rows[0].cells[1].text.as_deref(), Some("custom:1,234"));
+        host.shutdown().await.expect("stop");
+    }
+}

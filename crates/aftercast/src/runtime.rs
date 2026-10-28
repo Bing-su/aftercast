@@ -27,6 +27,9 @@ pub struct HostConfig {
     /// Enable ACT-style wall-clock idle ticks when idle ending is enabled.
     #[builder(default = true)]
     pub(crate) idle_timer_enabled: bool,
+    /// Use grouping separators in ACT-provided display formatting.
+    #[builder(default = true)]
+    pub(crate) main_table_commas: bool,
     /// Silence gap in seconds; zero disables segment cutting, otherwise 1–60.
     #[builder(default)]
     pub(crate) silence_cut_seconds: u8,

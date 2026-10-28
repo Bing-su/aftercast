@@ -14,6 +14,13 @@ internal static class HitRateColumnChecks
         {
             // Exercise the public host boundary: each acquired host installs its own base-column registrations.
             using var host = new HostEnvironment(directory.FullName);
+            CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+            host.ConfigureMainTableCommas(true);
+            Check(new Dnum(1234).ToString() == "1,234");
+            host.ConfigureMainTableCommas(false);
+            Check(new Dnum(1234).ToString() == "1234");
+            var custom = new DamageTypeData.ColumnDef("Custom", true, "TEXT", "Custom", _ => "1,234", _ => "1234");
+            Check(custom.GetCellData(new DamageTypeData(true, "Fixture", null!)) == "1,234");
             var column = DamageTypeData.ColumnDefs["ToHit"];
             Check(DamageTypeData.ColumnDefs.Count == 1 && column.Label == "ToHit" && !column.DefaultVisible);
             Check(column.SqlDataType == "FLOAT" && column.SqlDataName == "ToHit");

@@ -26,7 +26,7 @@ internal sealed partial class PluginSession
     private HostEnvironment? environment;
     private OwnerContext? context;
     private bool recordEncounterLogs = true, originalLoglineViewLogs;
-    private bool idleEndEnabled = true, idleTimerEnabled = true;
+    private bool idleEndEnabled = true, idleTimerEnabled = true, mainTableCommas = true;
     private int idleEndSeconds = 6, silenceCutSeconds;
     private bool speechEnabled;
     private bool soundEnabled;
@@ -189,6 +189,7 @@ internal sealed partial class PluginSession
         host.ConfigureRecording(recordEncounterLogs, originalLoglineViewLogs);
         host.ConfigureIdleEnd(idleEndEnabled, idleEndSeconds, idleTimerEnabled);
         host.ConfigureSilenceCut(silenceCutSeconds);
+        host.ConfigureMainTableCommas(mainTableCommas);
         host.OriginalLogRecordRead += logs.Capture;
         host.ConfigureSpeech(speechEnabled);
         host.ConfigureSound(soundEnabled);
@@ -227,7 +228,7 @@ internal sealed partial class PluginSession
         try { FinishWriter(plugin); } catch (Exception error) { errors.Add(error); }
         if (errors.Count != 0) throw new AggregateException("Host control disposal failed", errors);
     }
-    internal void Configure(string path, bool recordLogs = true, bool originalLogs = false, bool idleEnabled = true, int idleSeconds = 6, bool timerEnabled = true, int silenceSeconds = 0)
+    internal void Configure(string path, bool recordLogs = true, bool originalLogs = false, bool idleEnabled = true, int idleSeconds = 6, bool timerEnabled = true, int silenceSeconds = 0, bool commas = true)
     {
         RequireReusableWorker();
         if (silenceSeconds is < 0 or > 60) throw new ArgumentOutOfRangeException(nameof(silenceSeconds));
@@ -243,6 +244,7 @@ internal sealed partial class PluginSession
         idleEndEnabled = idleEnabled;
         idleTimerEnabled = timerEnabled;
         silenceCutSeconds = silenceSeconds;
+        mainTableCommas = commas;
         idleEndSeconds = idleSeconds;
         // Both platforms dispatch on the caller's thread; Windows also pumps its native messages.
         context = new(error => ActGlobals.oFormActMain?.WriteExceptionLog(error, "Posted owner callback"));
