@@ -13,12 +13,12 @@ public sealed class ZoneFixturePlugin : IActPluginV1
     {
         inner.InitPlugin(page, status);
         root = ActGlobals.oFormActMain!;
-        for (var group = 0; group < 2; group++)
+        for (var group = 0; group < 3; group++)
         {
             var zone = new ZoneData(DateTime.UnixEpoch.AddHours(group), "Same Zone", false, false, false);
             zones.Add(zone);
             root.ZoneList.Add(zone);
-            for (var index = 0; index < 2; index++)
+            for (var index = 0; index < (group == 2 ? 0 : 2); index++)
             {
                 var encounter = new EncounterData("Source", "Same Zone", zone) { Title = $"{group}-{index}" };
                 zone.Items.Add(encounter);

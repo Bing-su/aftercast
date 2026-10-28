@@ -3,10 +3,10 @@ using System.Drawing;
 namespace Aftercast.ActCompat
 {
     public sealed record TableScope(TableLevel Level, ulong EncounterId = 0,
-        string? Combatant = null, string? Category = null, string? Attack = null, bool ZoneAnchor = false);
+        string? Combatant = null, string? Category = null, string? Attack = null, bool ZoneAnchor = false, ulong ZoneId = 0);
     public sealed record TableSort(string Primary, string? Secondary = null, bool Descending = false);
     public sealed record TableQuery(TableScope Scope, ulong Revision, string[] Columns,
-        int Offset = 0, int Limit = 16, TableSort? Sort = null, bool? MainDescending = null);
+        int Offset = 0, int Limit = 16, TableSort? Sort = null, bool? MainDescending = null, bool PublishMainSort = false);
     public sealed record TableCellData(string? Text, int? ForegroundArgb, int? BackgroundArgb, string? Error);
     // Index belongs to this scope snapshot only; it is not a persistent action identity or a source-log link.
     public sealed record TableRowData(int Index, ulong EncounterId, string? Combatant, string? Category,
@@ -33,7 +33,7 @@ namespace Advanced_Combat_Tracker
             ArgumentNullException.ThrowIfNull(scope);
             if (!Enum.IsDefined(scope.Level)) throw new ArgumentOutOfRangeException(nameof(scope));
             var depth = (int)scope.Level;
-            if ((depth == 0 ? scope.ZoneAnchor != (scope.EncounterId != 0) : scope.EncounterId == 0 || scope.ZoneAnchor) ||
+            if ((depth == 0 ? scope.ZoneAnchor != (scope.EncounterId != 0) || scope.ZoneAnchor && scope.ZoneId != 0 : scope.EncounterId == 0 || scope.ZoneAnchor || scope.ZoneId != 0) ||
                 (depth >= 2 ? scope.Combatant is null : scope.Combatant is not null) ||
                 (depth >= 3 ? scope.Category is null : scope.Category is not null) ||
                 (depth >= 4 ? scope.Attack is null : scope.Attack is not null))
@@ -55,6 +55,7 @@ namespace Advanced_Combat_Tracker
         {
             if (scope.Level == TableLevel.Encounter)
             {
+                if (scope.ZoneId != 0) return QueryZoneId(scope.ZoneId)?.Select(item => new TableSource(item.Encounter, Identity(item.Encounter).Id));
                 if (!scope.ZoneAnchor) return QueryEncounters().Select(item => new TableSource(item.Encounter, Identity(item.Encounter).Id));
                 return QueryZone(scope.EncounterId)?.Select(item => new TableSource(item.Encounter, Identity(item.Encounter).Id));
             }
@@ -196,6 +197,8 @@ namespace Advanced_Combat_Tracker
                 if (catalog.Revision != query.Revision) throw new TableQueryInvalidatedException("Column catalog revision mismatch");
                 var snapshot = columnSnapshots[query.Scope.Level].Snapshot;
                 var columns = keys.Select(key => SelectTableColumn(snapshot, key)).ToArray();
+                if (query.PublishMainSort && (query.MainDescending is null || query.Sort is null))
+                    throw new ArgumentException("Publishing requires an explicit main sort");
                 if (query.MainDescending is not null && query.Scope.Level is not (TableLevel.Combatant or TableLevel.Attack or TableLevel.Action))
                     throw new ArgumentException("Main sorting is unavailable at this table level");
                 string? defaultPrimary = query.MainDescending is null ? null : query.Scope.Level switch {
@@ -212,9 +215,26 @@ namespace Advanced_Combat_Tracker
                 var rows = source.Take(MaximumTableRows + 1).ToArray();
                 if (rows.Any(row => row.Value is null)) throw new InvalidDataException("Table graph contains a null row");
                 if (rows.Length > MaximumTableRows) throw new InvalidDataException("Table scope exceeds 16384 rows; select a narrower scope");
+                if (query.PublishMainSort) PublishMainSort(query.Scope.Level, query.Sort!);
                 activeTableQuery = true;
                 try { return BuildTable(query, snapshot, columns, primary, secondary, rows); }
                 finally { activeTableQuery = false; }
+            }
+        }
+        private static void PublishMainSort(TableLevel level, TableSort sort)
+        {
+            static void Update(ref string primary, ref string secondary, TableSort requested)
+            {
+                if (requested.Secondary is not null) secondary = requested.Secondary;
+                else if (primary != requested.Primary) secondary = primary;
+                primary = requested.Primary;
+            }
+            switch (level)
+            {
+                case TableLevel.Combatant: Update(ref ActGlobals.eDSort, ref ActGlobals.eDSort2, sort); break;
+                case TableLevel.Attack: Update(ref ActGlobals.mDSort, ref ActGlobals.mDSort2, sort); break;
+                case TableLevel.Action: Update(ref ActGlobals.aTSort, ref ActGlobals.aTSort2, sort); break;
+                default: throw new ArgumentException("Main sort level is invalid");
             }
         }
         private TablePageData BuildTable(TableQuery query, ColumnSnapshot snapshot, ColumnBinding[] columns,

@@ -48,7 +48,7 @@ public partial class FormActMain
             if (graph is null || graph.Revision != revision || actionSnapshot?.Revision != revision)
                 throw new TableQueryInvalidatedException("Lookup snapshot is stale");
             var level = peer is null ? TableLevel.Category : skill is null ? TableLevel.Attack : TableLevel.Action;
-            if (query.MainDescending is not null || query.Scope.Level != level || query.Scope.EncounterId != graph.Encounter || query.Offset < 0 || query.Limit is < 1 or > 256 ||
+            if (query.MainDescending is not null || query.PublishMainSort || query.Scope.Level != level || query.Scope.EncounterId != graph.Encounter || query.Offset < 0 || query.Limit is < 1 or > 256 ||
                 query.Columns is null || query.Columns.Length is < 1 or > 32 || query.Columns.Distinct(StringComparer.Ordinal).Count() != query.Columns.Length)
                 throw new ArgumentException("Invalid lookup table request");
             var catalog = ReadTableColumns(level);

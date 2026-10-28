@@ -212,6 +212,8 @@ namespace Aftercast.ActCompat
         public int ArchiveOperation(int command, string text, ulong id, bool compressed, bool includeLogs = true) => main.ArchiveOperation(command, text, id, compressed, includeLogs);
         public Task<int> ArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool includeLogs = true) => main.ArchiveOperationAsync(command, text, id, compressed, includeLogs: includeLogs);
         public CombatSnapshotData? ReadCombatSnapshot(ulong afterRevision) => main.ReadCombatSnapshot(afterRevision);
+        public CombatPage<ZoneSummaryData> ListZones(int offset, int limit) => main.ListZones(offset, limit);
+        public CombatPage<EncounterSummaryData>? ListZoneById(ulong id, int offset, int limit) => main.ListZoneById(id, offset, limit);
         public CombatPage<EncounterSummaryData>? ListZoneEncounters(ulong anchorId, int offset, int limit) => main.ListZoneEncounters(anchorId, offset, limit);
         public CombatPage<EncounterSummaryData> ListEncounters(int offset, int limit) => main.ListEncounters(offset, limit);
         public EncounterDetailData? ReadEncounter(ulong id, bool live) => main.ReadEncounter(id, live);

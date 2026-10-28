@@ -14,6 +14,21 @@ pub struct EncounterId {
     pub(crate) value: u64,
 }
 
+/// Session-owned identity of an ACT ZoneList object, including empty zones.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ZoneId {
+    pub(crate) session: u64,
+    pub(crate) value: u64,
+}
+/// Zone metadata is a current, bounded graph read and is not a persistent identity.
+#[derive(Debug, Clone)]
+pub struct ZoneSummary {
+    pub id: ZoneId,
+    pub name: String,
+    pub start_time: LogTimestamp,
+    pub encounters: u32,
+}
+
 /// Current encounter lifecycle; imports remain Importing until their whole operation completes.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum EncounterStatus {
@@ -161,6 +176,68 @@ impl HostHandle {
         let payload = self.query_combat(2, None, offset, limit).await?;
         let mut reader = Reader(&payload);
         let page = reader.page(limit, offset, |reader| reader.summary(self.session))?;
+        reader.finish()?;
+        Ok(page)
+    }
+
+    /// Lists session-owned ZoneList objects, including empty and equally named zones.
+    pub async fn zones(
+        &self,
+        offset: u32,
+        limit: u32,
+    ) -> Result<EncounterPage<ZoneSummary>, Error> {
+        let payload = self.query_combat(26, None, offset, limit).await?;
+        let mut reader = Reader(&payload);
+        let page = reader.page(limit, offset, |reader| {
+            let value = reader.u64()?;
+            let name = reader.text()?;
+            let start_time = reader.time()?;
+            let encounters = reader.u32()?;
+            if value == 0 || name.len() > 1024 || name.contains('\0') {
+                return Err(invalid("invalid zone metadata"));
+            }
+            Ok(ZoneSummary {
+                id: ZoneId {
+                    session: self.session,
+                    value,
+                },
+                name,
+                start_time,
+                encounters,
+            })
+        })?;
+        if page.total > 4096
+            || page
+                .items
+                .iter()
+                .map(|zone| zone.id)
+                .collect::<std::collections::HashSet<_>>()
+                .len()
+                != page.items.len()
+        {
+            return Err(invalid("invalid zone page"));
+        }
+        reader.finish()?;
+        Ok(page)
+    }
+    /// Reads current encounters in a session-owned zone; None means it was removed.
+    pub async fn encounters_in_zone(
+        &self,
+        zone: ZoneId,
+        offset: u32,
+        limit: u32,
+    ) -> Result<Option<EncounterPage<EncounterSummary>>, Error> {
+        let id = EncounterId {
+            session: zone.session,
+            value: zone.value,
+        };
+        let payload = self.query_combat(27, Some(id), offset, limit).await?;
+        let mut reader = Reader(&payload);
+        let page = if reader.present()? {
+            Some(reader.page(limit, offset, |reader| reader.summary(self.session))?)
+        } else {
+            None
+        };
         reader.finish()?;
         Ok(page)
     }

@@ -81,6 +81,7 @@ use camino::Utf8PathBuf;
 pub use combat::{
     ActionSnapshot, AttackSummary, ClassifiedAction, EncounterAction, EncounterDetail, EncounterId,
     EncounterLog, EncounterLogs, EncounterPage, EncounterStatus, EncounterSummary, SourceLogLink,
+    ZoneId, ZoneSummary,
 };
 pub use death::{DeathAnalysis, DeathBucket, DeathReport, death_report, sort_incoming_actions};
 pub use diagnostics::HostDiagnostics;

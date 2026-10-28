@@ -25,7 +25,7 @@ pub(super) fn move_key(preferences: &mut Preferences, key: &str, up: bool) {
 fn context(scope: &TableScope) -> String {
     match scope {
         TableScope::Encounters => tr("table-all-encounters"),
-        TableScope::Zone(_) => tr("table-selected-zone"),
+        TableScope::Zone(_) | TableScope::ZoneId(_) => tr("table-selected-zone"),
         TableScope::Combatants(_) => tr("table-retained-encounter"),
         TableScope::Categories { combatant, .. } => combatant.clone(),
         TableScope::Attacks {
@@ -126,7 +126,17 @@ fn SortControls(view: View, catalog: TableCatalog, draft: Preferences, disabled:
                                     },
                                 );
                         },
-                        option { value: "", {tr("unsorted")} }
+                        option { value: "",
+                            {
+                                tr(
+                                    if uses_global_reverse(catalog.level) {
+                                        "table-act-default-sort"
+                                    } else {
+                                        "unsorted"
+                                    },
+                                )
+                            }
+                        }
                         for column in catalog.columns.iter().filter(|column| column.can_sort) {
                             option { value: column.key.clone(), "{column.label} [{column.key}]" }
                         }
@@ -188,7 +198,12 @@ pub(super) fn Panel() -> Element {
     let file_available = current.file.is_some();
     let history = !current.plugin_tables.history.is_empty();
     let selected = current.selected;
-    let zone_selected = current.plugin_tables.zone_anchor.is_some();
+    let zone_selected =
+        current.plugin_tables.zone_anchor.is_some() || current.plugin_tables.zone_id.is_some();
+    let zones = current.plugin_tables.zones.clone();
+    let zones_generation = current.plugin_tables.zones_generation;
+    let zones_pending = current.plugin_tables.zones_pending;
+    let zones_error = current.plugin_tables.zones_error.clone();
     drop(current);
     rsx! {
         section { class: "my-5 space-y-4", "aria-label": tr("table-plugin-title"),
@@ -207,6 +222,29 @@ pub(super) fn Panel() -> Element {
                         }
                     },
                     {tr("table-refresh")}
+                }
+                Button {
+                    variant: ButtonVariant::Outline,
+                    disabled: !idle || zones_pending,
+                    onclick: move |_| load_zones(state),
+                    {tr("table-load-zones")}
+                }
+                if !zones.is_empty() {
+                    select {
+                        class: "h-9 max-w-full rounded-md border border-border bg-background px-2 text-sm",
+                        disabled: !idle || zones_pending,
+                        value: "",
+                        aria_label: tr("table-select-zone"),
+                        onchange: move |event: FormEvent| {
+                            if let Ok(index) = event.value().parse::<usize>() {
+                                state.write().select_listed_zone(zones_generation, index);
+                            }
+                        },
+                        option { value: "", {tr("table-select-zone")} }
+                        for (index, zone) in zones.iter().enumerate() {
+                            option { value: "{index}", "{zone.name} · #{index} · {zone.encounters}" }
+                        }
+                    }
                 }
                 if let Some(anchor) = selected {
                     Button {
@@ -238,6 +276,9 @@ pub(super) fn Panel() -> Element {
                 }
             }
             p { class: "break-words text-xs text-muted-foreground", {context(&active_scope)} }
+            if let Some(error) = zones_error {
+                p { role: "alert", class: "text-sm text-destructive", "{error}" }
+            }
             if busy {
                 p { role: "status", {tr("reading-tables")} }
             }

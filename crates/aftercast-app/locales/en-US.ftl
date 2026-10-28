@@ -658,3 +658,8 @@ main-table-reverse-help = Applies to selected combatant, attack, and action sort
 table-selected-zone = Encounters in the selected encounter’s zone
 table-show-selected-zone = Show this encounter’s zone
 table-show-all-zones = Show all zones
+
+table-act-default-sort = ACT default
+
+table-load-zones = Refresh zones
+table-select-zone = Select a zone (encounter count)

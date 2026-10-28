@@ -6,6 +6,7 @@ namespace Aftercast.ActCompat
     public sealed record EncounterSummaryData(ulong Id, bool IsImport, EncounterStatus Status,
         string Zone, string Title, string Character, DateTime Start, DateTime End,
         long DurationTicks, long Damage, long Healed, int Combatants);
+    public sealed record ZoneSummaryData(ulong Id, string Name, DateTime Start, int Encounters);
     public sealed record EncounterDetailData(EncounterSummaryData Summary, CombatantSnapshotData[] Combatants);
     public sealed record AttackSummaryData(string Combatant, string Category, string Attack, bool Outgoing,
         long Damage, long DurationTicks, double DPS, double EncDPS, int Swings, int Hits, int CritHits, int Misses, int Blocked);
@@ -32,6 +33,9 @@ namespace Advanced_Combat_Tracker
         }
         // Weak keys keep query IDs stable without retaining graphs removed by plugins, e.g. cleared history.
         private readonly ConditionalWeakTable<EncounterData, EncounterIdentity> encounterIds = new();
+        private readonly ConditionalWeakTable<ZoneData, EncounterIdentity> zoneIds = new();
+        private ulong nextZoneId;
+        private EncounterIdentity ZoneIdentity(ZoneData zone) => zoneIds.GetValue(zone, _ => new(checked(++nextZoneId)));
         private ulong nextEncounterId;
         private ulong nextActionSnapshotRevision;
         private (ulong Revision, ClassifiedActionData[] Items, EncounterLogPageData Logs)? actionSnapshot;
@@ -47,6 +51,46 @@ namespace Advanced_Combat_Tracker
                     if (seen.Add(zone.Items[index])) yield return (zone.Items[index], ReferenceEquals(zone, combatZones[0]));
         }
 
+        private ZoneData? FindZone(ulong id) => combatZones.Take(4097).FirstOrDefault(zone => ZoneIdentity(zone).Id == id);
+        private IEnumerable<(EncounterData Encounter, bool Import)> ZoneContents(ZoneData zone)
+        {
+            var imported = ReferenceEquals(zone, combatZones[0]);
+            return zone.Items.Skip(zone.PopulateAll ? 1 : 0).Distinct<EncounterData>(ReferenceEqualityComparer.Instance).Select(item => (item, imported));
+        }
+        internal CombatPage<ZoneSummaryData> ListZones(int offset, int limit)
+        {
+            ValidateCombatPage(offset, limit);
+            lock (CombatGate)
+            {
+                if (combatZones.Count > 4096) throw new InvalidDataException("Zone list exceeds 4096 entries");
+                var items = combatZones.Skip(offset).Take(limit).Select(zone => new ZoneSummaryData(ZoneIdentity(zone).Id,
+                    ColumnText(zone.ZoneName), zone.StartTime, ZoneContents(zone).Count())).ToArray();
+                return new(combatZones.Count, items);
+            }
+        }
+        private IEnumerable<(EncounterData Encounter, bool Import)>? QueryZoneId(ulong id)
+        {
+            if (combatZones.Count > 4096) throw new InvalidDataException("Zone list exceeds 4096 entries");
+            var zone = FindZone(id);
+            return zone is null ? null : ZoneContents(zone);
+        }
+        internal CombatPage<EncounterSummaryData>? ListZoneById(ulong zoneId, int offset, int limit)
+        {
+            ValidateCombatPage(offset, limit);
+            lock (CombatGate)
+            {
+                var source = QueryZoneId(zoneId);
+                if (source is null) return null;
+                var total = 0; var items = new List<EncounterSummaryData>();
+                foreach (var (encounter, import) in source)
+                {
+                    if (total >= offset && items.Count < limit) items.Add(Summarize(encounter, import));
+                    total = checked(total + 1);
+                }
+                return new(total, items.ToArray());
+            }
+        }
+
         // An encounter ID anchors an actual ZoneList object, never a guessed name or timestamp.
         private IEnumerable<(EncounterData Encounter, bool Import)>? QueryZone(ulong anchorId)
         {
@@ -54,8 +98,7 @@ namespace Advanced_Combat_Tracker
             if (anchor is null) return null;
             var zone = combatZones.FirstOrDefault(item => item.Items.Skip(item.PopulateAll ? 1 : 0).Any(entry => ReferenceEquals(entry, anchor)));
             if (zone is null) return null;
-            var imported = ReferenceEquals(zone, combatZones[0]);
-            return zone.Items.Skip(zone.PopulateAll ? 1 : 0).Distinct<EncounterData>(ReferenceEqualityComparer.Instance).Select(item => (item, imported));
+            return ZoneContents(zone);
         }
 
         private EncounterSummaryData Summarize(EncounterData encounter, bool import)

@@ -444,6 +444,34 @@ async fn zone_scope_uses_owned_identity_even_for_equal_zone_names(deployment: De
             .iter()
             .all(|encounter| encounter.zone == "Same Zone")
     );
+    let zones = host.zones(0, 16).await.expect("zone list");
+    let matching: Vec<_> = zones
+        .items
+        .iter()
+        .filter(|zone| zone.name == "Same Zone")
+        .collect();
+    assert_eq!(matching.len(), 3);
+    assert_ne!(matching[0].id, matching[1].id);
+    assert_ne!(matching[1].id, matching[2].id);
+    let empty = matching[2].id;
+    assert_eq!(matching[2].encounters, 0);
+    assert_eq!(
+        host.encounters_in_zone(empty, 0, 1)
+            .await
+            .expect("empty zone")
+            .expect("exists")
+            .total,
+        0
+    );
+    let empty_query = query(&host, TableScope::ZoneId(empty), &["fixture"]).await;
+    assert_eq!(
+        host.table_rows(&empty_query)
+            .await
+            .expect("table")
+            .expect("exists")
+            .total,
+        0
+    );
     let first = page.items[0].id;
     let second = page.items[2].id;
     let a = host
@@ -489,6 +517,12 @@ async fn zone_scope_uses_owned_identity_even_for_equal_zone_names(deployment: De
     );
     host.deinitialize_plugin(id).await.expect("remove zones");
     assert!(
+        host.encounters_in_zone(empty, 0, 1)
+            .await
+            .expect("removed empty zone")
+            .is_none()
+    );
+    assert!(
         host.zone_encounters(first, 0, 1)
             .await
             .expect("removed")
@@ -500,9 +534,59 @@ async fn zone_scope_uses_owned_identity_even_for_equal_zone_names(deployment: De
     host.shutdown().await.expect("stop");
     let fresh = Host::start(deployment.config()).await.expect("restart");
     fresh
+        .encounters_in_zone(empty, 0, 1)
+        .await
+        .expect_err("old zone session");
+    fresh
         .zone_encounters(first, 0, 1)
         .await
         .expect_err("old session");
     fresh.table_rows(&qa).await.expect_err("old table session");
     fresh.shutdown().await.expect("shutdown");
+}
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and fixture; run mise run test:plugins"]
+async fn published_main_sort_is_observed_by_plugin_and_auto_reads_do_not_change_it(
+    deployment: Deployment,
+) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let plugin_id = host
+        .create_plugin(plugin("SortKeysPlugin"))
+        .await
+        .expect("plugin");
+    host.initialize_plugin(plugin_id).await.expect("initialize");
+    let input = deployment.directory().join("sort-key-source.log");
+    std::fs::write(&input, "0|100\n1|200\n").expect("synthetic source");
+    host.import_log(&input).await.expect("import");
+    let encounter = host.encounters(0, 1).await.expect("encounters").items[0].id;
+    let mut request = query(&host, TableScope::Combatants(encounter), &["sort-keys"]).await;
+    request.sort = Some(TableSort {
+        primary: "fixture".into(),
+        secondary: Some("probe".into()),
+        descending: false,
+    });
+    let page = host
+        .main_table_rows(&request, false, true)
+        .await
+        .expect("publish")
+        .expect("scope");
+    assert_eq!(page.rows[0].cells[0].text.as_deref(), Some("fixture|probe"));
+    request.sort = Some(TableSort {
+        primary: "probe".into(),
+        secondary: None,
+        descending: false,
+    });
+    let page = host
+        .main_table_rows(&request, false, false)
+        .await
+        .expect("automatic read")
+        .expect("scope");
+    assert_eq!(page.rows[0].cells[0].text.as_deref(), Some("fixture|probe"));
+    host.deinitialize_plugin(plugin_id).await.expect("remove");
+    host.main_table_rows(&request, false, true)
+        .await
+        .expect_err("stale catalog");
+    host.shutdown().await.expect("stop");
 }

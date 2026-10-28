@@ -118,6 +118,7 @@ internal static class TableValueChecks
         using var fixture = new Fixture();
         LevelsAndOrdering(fixture);
         MainDefaultOrdering(fixture);
+        PublishedMainSort(fixture);
         ZoneScope(fixture);
         CellFailures(fixture);
         ReentryAndMutation(fixture);
@@ -137,6 +138,28 @@ internal static class TableValueChecks
         Check(zone.Items.Remove(fixture.Encounter));
         try { Check(fixture.Host.ReadTable(query) is null && fixture.Host.ListZoneEncounters(fixture.Id, 0, 1) is null); }
         finally { zone.Items.Add(fixture.Encounter); }
+    }
+
+    private static void PublishedMainSort(Fixture fixture)
+    {
+        var originalPrimary = ActGlobals.eDSort;
+        var originalSecondary = ActGlobals.eDSort2;
+        try
+        {
+            var observed = false;
+            fixture.Plugin.OnCell = () => { Check(ActGlobals.eDSort == "damage" && ActGlobals.eDSort2 == "name"); observed = true; };
+            var query = fixture.Query(sort: new TableSort("damage", "name")) with { MainDescending = true, PublishMainSort = true };
+            fixture.Read(query);
+            Check(observed && ActGlobals.eDSort == "damage" && ActGlobals.eDSort2 == "name");
+            fixture.Plugin.OnCell = null;
+            fixture.Read(fixture.Query(sort: new TableSort("name")) with { MainDescending = false });
+            Check(ActGlobals.eDSort == "damage" && ActGlobals.eDSort2 == "name");
+            fixture.Read(fixture.Query(sort: new TableSort("name")) with { MainDescending = false, PublishMainSort = true });
+            Check(ActGlobals.eDSort == "name" && ActGlobals.eDSort2 == "damage");
+            Throws<ArgumentException>(() => fixture.Host.ReadTable(fixture.Query(sort: new TableSort("missing")) with { MainDescending = true, PublishMainSort = true }));
+            Check(ActGlobals.eDSort == "name" && ActGlobals.eDSort2 == "damage");
+        }
+        finally { fixture.Plugin.OnCell = null; ActGlobals.eDSort = originalPrimary; ActGlobals.eDSort2 = originalSecondary; }
     }
 
     private static void MainDefaultOrdering(Fixture fixture)

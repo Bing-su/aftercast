@@ -587,14 +587,23 @@ fn stop(mut state: Signal<AppState>) {
 
 async fn list_encounters(
     handle: &HostHandle,
-    anchor: Option<EncounterId>,
+    scope: aftercast::TableScope,
     offset: u32,
 ) -> Result<aftercast::EncounterPage<EncounterSummary>, aftercast::Error> {
-    match anchor {
-        Some(anchor) => handle.zone_encounters(anchor, offset, 128).await?.ok_or(
-            aftercast::Error::InvalidCombatRequest("Selected zone is no longer available".into()),
-        ),
-        None => handle.encounters(offset, 128).await,
+    match scope {
+        aftercast::TableScope::Zone(anchor) => handle
+            .zone_encounters(anchor, offset, 128)
+            .await?
+            .ok_or(aftercast::Error::InvalidCombatRequest(
+                "Selected zone is no longer available".into(),
+            )),
+        aftercast::TableScope::ZoneId(id) => handle
+            .encounters_in_zone(id, offset, 128)
+            .await?
+            .ok_or(aftercast::Error::InvalidCombatRequest(
+                "Selected zone is no longer available".into(),
+            )),
+        _ => handle.encounters(offset, 128).await,
     }
 }
 
@@ -606,15 +615,15 @@ fn refresh(mut state: Signal<AppState>, offset: u32) {
         return;
     };
     let session = state.read().revision.session;
-    let zone_anchor = state.read().plugin_tables.zone_anchor();
+    let zone_scope = state.read().plugin_tables.zone_scope();
     state.write().loading = true;
     spawn(async move {
-        let result = list_encounters(&handle, zone_anchor, offset).await;
+        let result = list_encounters(&handle, zone_scope.clone(), offset).await;
         if state.read().revision.session != session {
             return;
         }
         state.write().loading = false;
-        if state.read().plugin_tables.zone_anchor() != zone_anchor {
+        if state.read().plugin_tables.zone_scope() != zone_scope {
             return;
         }
         match result {

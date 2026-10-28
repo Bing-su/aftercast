@@ -658,3 +658,8 @@ main-table-reverse-help = 전투원·기술·액션 표에서 선택한 정렬 �
 table-selected-zone = 선택한 전투가 속한 Zone의 전투
 table-show-selected-zone = 이 전투의 Zone 보기
 table-show-all-zones = 모든 Zone 보기
+
+table-act-default-sort = ACT 기본 정렬
+
+table-load-zones = Zone 목록 새로고침
+table-select-zone = Zone 선택 (전투 수)

@@ -60,7 +60,7 @@ impl Draft {
 pub(super) fn context(scope: &TableScope) -> String {
     match scope {
         TableScope::Encounters => "Encounters".into(),
-        TableScope::Zone(_) => "Zone encounters".into(),
+        TableScope::Zone(_) | TableScope::ZoneId(_) => "Zone encounters".into(),
         TableScope::Combatants(_) => "Combatants".into(),
         TableScope::Categories { combatant, .. } => combatant.clone(),
         TableScope::Attacks {
@@ -217,7 +217,7 @@ impl AppState {
         let draft = &mut self.reports.table;
         draft.level = scope.level();
         match scope {
-            TableScope::Encounters | TableScope::Zone(_) => {
+            TableScope::Encounters | TableScope::Zone(_) | TableScope::ZoneId(_) => {
                 draft.level = TableLevel::Combatant;
                 return false;
             }

@@ -73,6 +73,11 @@ pub(super) struct BrowserState {
     scope: Option<TableScope>,
     history: Vec<TableScope>,
     zone_anchor: Option<aftercast::EncounterId>,
+    zone_id: Option<aftercast::ZoneId>,
+    zones: Vec<aftercast::ZoneSummary>,
+    zones_generation: u64,
+    zones_pending: bool,
+    zones_error: Option<String>,
     editors: BTreeMap<String, Editor>,
     pending: Option<Token>,
     auto_fallback: Option<View>,
@@ -92,13 +97,21 @@ impl BrowserState {
         self.frame = None;
         self.error = None;
     }
-    pub(super) fn zone_anchor(&self) -> Option<aftercast::EncounterId> {
-        self.zone_anchor
+    pub(super) fn zone_scope(&self) -> TableScope {
+        self.zone_id
+            .map(TableScope::ZoneId)
+            .or_else(|| self.zone_anchor.map(TableScope::Zone))
+            .unwrap_or(TableScope::Encounters)
     }
     pub(super) fn reset_session(&mut self) {
         self.invalidate();
         self.auto_fallback = None;
         self.zone_anchor = None;
+        self.zone_id = None;
+        self.zones.clear();
+        self.zones_generation += 1;
+        self.zones_pending = false;
+        self.zones_error = None;
         self.base = None;
         self.scope = None;
         self.history.clear();
@@ -124,10 +137,7 @@ fn base_scope(state: &AppState) -> TableScope {
             combatant: actor.clone(),
         },
         (Some(encounter), None, _) => TableScope::Combatants(encounter),
-        _ => state
-            .plugin_tables
-            .zone_anchor
-            .map_or(TableScope::Encounters, TableScope::Zone),
+        _ => state.plugin_tables.zone_scope(),
     }
 }
 pub(super) fn scope(state: &AppState) -> TableScope {
@@ -177,6 +187,10 @@ pub(super) fn dynamic(state: &AppState) -> bool {
 }
 impl AppState {
     fn retire_table_view(&mut self) {
+        if self.plugin_tables.zones_pending {
+            self.plugin_tables.zones_generation += 1;
+            self.plugin_tables.zones_pending = false;
+        }
         let fallback = self.plugin_tables.auto_fallback.take().is_some();
         if fallback {
             self.loading = false;
@@ -200,7 +214,27 @@ impl AppState {
         if anchor.is_some() && self.selected != anchor {
             return false;
         }
+        self.apply_zone(anchor, None);
+        true
+    }
+    fn select_listed_zone(&mut self, generation: u64, index: usize) -> bool {
+        if !idle(self) || self.plugin_tables.zones_generation != generation {
+            return false;
+        }
+        let Some(zone) = self.plugin_tables.zones.get(index) else {
+            return false;
+        };
+        let id = zone.id;
+        self.apply_zone(None, Some(id));
+        true
+    }
+    fn apply_zone(
+        &mut self,
+        anchor: Option<aftercast::EncounterId>,
+        id: Option<aftercast::ZoneId>,
+    ) {
         self.plugin_tables.zone_anchor = anchor;
+        self.plugin_tables.zone_id = id;
         self.plugin_tables.history.clear();
         self.plugin_tables.invalidate();
         self.selected = None;
@@ -212,7 +246,6 @@ impl AppState {
         self.total = 0;
         self.offset = 0;
         self.revision.selection += 1;
-        true
     }
     fn begin_table(&mut self, mode: Mode) -> Option<(Token, Preferences)> {
         if !idle(self) {
@@ -493,7 +526,13 @@ async fn read(
     let (mut page, mut missing) = (None, false);
     if let Some(query) = query {
         page = if let Some(reverse) = token.reverse {
-            handle.main_table_rows(&query, reverse).await
+            handle
+                .main_table_rows(
+                    &query,
+                    reverse,
+                    token.mode != Mode::Auto && query.sort.is_some(),
+                )
+                .await
         } else {
             handle.table_rows(&query).await
         }
@@ -525,7 +564,8 @@ fn load(mut state: Signal<AppState>, mode: Mode, offset: u32) {
             && current.screen == "analysis"
             && !current.exit_requested
             && scope(&current).level() == aftercast::TableLevel::Encounter
-            && (current.plugin_tables.zone_anchor.is_some() || current.encounters.is_empty());
+            && (current.plugin_tables.zone_scope() != TableScope::Encounters
+                || current.encounters.is_empty());
         let sidebar_offset = current.offset;
         drop(current);
         if refresh_sidebar {
@@ -573,16 +613,73 @@ impl AppState {
         true
     }
 }
+async fn read_zones(handle: &HostHandle) -> Result<Vec<aftercast::ZoneSummary>, String> {
+    let mut zones = Vec::new();
+    let mut ids = std::collections::HashSet::new();
+    let mut total = None;
+    loop {
+        let page = handle
+            .zones(zones.len() as u32, 128)
+            .await
+            .map_err(|error| error.to_string())?;
+        if total.is_some_and(|value| value != page.total)
+            || page.items.iter().any(|zone| !ids.insert(zone.id))
+            || (page.items.is_empty() && zones.len() < page.total as usize)
+        {
+            return Err("Zone list changed while reading; refresh it.".to_owned());
+        }
+        total = Some(page.total);
+        zones.extend(page.items);
+        if zones.len() == page.total as usize {
+            return Ok(zones);
+        }
+        if zones.len() > page.total as usize {
+            return Err("Invalid Zone list.".to_owned());
+        }
+    }
+}
+fn load_zones(mut state: Signal<AppState>) {
+    let Some(handle) = state.read().handle() else {
+        return;
+    };
+    let (expected, generation) = {
+        let mut current = state.write();
+        if !idle(&current) || current.plugin_tables.zones_pending {
+            return;
+        }
+        let expected = view(&current);
+        current.plugin_tables.zones_generation += 1;
+        current.plugin_tables.zones_pending = true;
+        current.plugin_tables.zones.clear();
+        current.plugin_tables.zones_error = None;
+        (expected, current.plugin_tables.zones_generation)
+    };
+    spawn_forever(async move {
+        let result = read_zones(&handle).await;
+        let mut current = state.write();
+        if current.plugin_tables.zones_generation != generation {
+            return;
+        }
+        current.plugin_tables.zones_pending = false;
+        if view(&current) != expected || current.screen != "analysis" || current.exit_requested {
+            return;
+        }
+        match result {
+            Ok(zones) => current.plugin_tables.zones = zones,
+            Err(error) => current.plugin_tables.zones_error = Some(error),
+        }
+    });
+}
 fn refresh_fallback(mut state: Signal<AppState>, offset: u32) {
     let Some(handle) = state.read().handle() else {
         return;
     };
-    let anchor = state.read().plugin_tables.zone_anchor;
+    let zone_scope = state.read().plugin_tables.zone_scope();
     let Some((expected, revision)) = state.write().begin_auto_fallback() else {
         return;
     };
     spawn_forever(async move {
-        let result = super::list_encounters(&handle, anchor, offset).await;
+        let result = super::list_encounters(&handle, zone_scope, offset).await;
         state
             .write()
             .receive_auto_fallback(expected, revision, offset, result);

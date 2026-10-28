@@ -1,5 +1,5 @@
 //! Plugin-defined tables. Formatting/comparison delegates stay inside their original worker.
-use crate::{EncounterId, Error, HostHandle, runtime::Request};
+use crate::{EncounterId, Error, HostHandle, ZoneId, runtime::Request};
 use bytes::{BufMut, BytesMut};
 use serde::Serialize;
 pub(crate) mod decode;
@@ -58,6 +58,8 @@ pub enum TableScope {
     Encounters,
     /// Zone identified by a retained encounter in the current session.
     Zone(EncounterId),
+    /// ZoneList object, including an empty zone, owned by this session.
+    ZoneId(ZoneId),
     Combatants(EncounterId),
     Categories {
         encounter: EncounterId,
@@ -78,7 +80,7 @@ pub enum TableScope {
 impl TableScope {
     pub fn level(&self) -> TableLevel {
         match self {
-            Self::Encounters | Self::Zone(_) => TableLevel::Encounter,
+            Self::Encounters | Self::Zone(_) | Self::ZoneId(_) => TableLevel::Encounter,
             Self::Combatants(_) => TableLevel::Combatant,
             Self::Categories { .. } => TableLevel::Category,
             Self::Attacks { .. } => TableLevel::Attack,
@@ -94,7 +96,7 @@ impl TableScope {
         Option<&str>,
     ) {
         match self {
-            Self::Encounters | Self::Zone(_) => (None, None, None, None),
+            Self::Encounters | Self::Zone(_) | Self::ZoneId(_) => (None, None, None, None),
             Self::Combatants(id) => (Some(*id), None, None, None),
             Self::Categories {
                 encounter,
@@ -183,11 +185,17 @@ impl TableQuery {
         } else {
             None
         };
+        let zone_id = if let TableScope::ZoneId(zone) = self.scope {
+            Some(zone)
+        } else {
+            None
+        };
         if self.revision.session != session
             || self.revision.level != level
             || self.revision.value == 0
             || id.is_some_and(|id| id.session != session)
             || zone_anchor.is_some_and(|id| id.session != session)
+            || zone_id.is_some_and(|id| id.session != session)
         {
             return Err(invalid(
                 "scope/revision belongs to another host session or table level",
@@ -220,7 +228,7 @@ impl TableQuery {
             return Err(invalid("invalid table sort key"));
         }
         Ok(serde_json::json!({"query":{
-            "scope":{"level":level,"encounterId":id.or(zone_anchor).map_or(0, |id| id.value), "zoneAnchor":zone_anchor.is_some(), "combatant":actor,"category":category,"attack":attack},
+            "scope":{"level":level,"encounterId":id.or(zone_anchor).map_or(0, |id| id.value), "zoneAnchor":zone_anchor.is_some(), "zoneId":zone_id.map_or(0, |id| id.value), "combatant":actor,"category":category,"attack":attack},
             "revision":self.revision.value,"columns":self.columns,"offset":self.offset,"limit":self.limit,"sort":self.sort
         }}))
     }
@@ -245,6 +253,7 @@ impl HostHandle {
         &self,
         query: &TableQuery,
         descending: bool,
+        publish_sort: bool,
     ) -> Result<Option<TablePage>, Error> {
         if !matches!(
             query.scope.level(),
@@ -254,12 +263,22 @@ impl HostHandle {
                 "main sorting requires combatant, attack or action scope",
             ));
         }
+        if publish_sort && query.sort.is_none() {
+            return Err(invalid("publishing requires an explicit sort"));
+        }
         let mut request = query.request(self.session)?;
         request
             .get_mut("query")
             .and_then(serde_json::Value::as_object_mut)
             .ok_or_else(|| invalid("missing table query"))?
             .insert("mainDescending".into(), descending.into());
+        if publish_sort {
+            request
+                .get_mut("query")
+                .and_then(serde_json::Value::as_object_mut)
+                .ok_or_else(|| invalid("missing table query"))?
+                .insert("publishMainSort".into(), true.into());
+        }
         let output = self.table_call(2, &request).await?;
         decode::main_page(&output, self.session, query)
     }

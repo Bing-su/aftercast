@@ -541,6 +541,26 @@ async fn zone_ui_contract_preserves_identity_paging_and_rejects_late_results() {
     let mut ui = AppState::new(root.to_owned());
     ui.phase = Phase::Ready;
     ui.revision.session = 1;
+    let zones = host.zones(0, 128).await.expect("zones").items;
+    let empty_index = zones
+        .iter()
+        .position(|zone| zone.name == "Same Zone" && zone.encounters == 0)
+        .expect("empty zone");
+    let empty = zones[empty_index].id;
+    ui.plugin_tables.zones = zones;
+    ui.plugin_tables.zones_generation = 7;
+    assert!(!ui.select_listed_zone(6, empty_index));
+    ui.selected = Some(first);
+    ui.offset = 128;
+    assert!(ui.select_listed_zone(7, empty_index));
+    assert!(ui.selected.is_none() && ui.offset == 0);
+    assert!(matches!(scope(&ui), TableScope::ZoneId(id) if id == empty));
+    let (empty_token, prefs) = ui.begin_table(Mode::Refresh).expect("empty zone");
+    let empty_frame = read(&host, &empty_token, prefs, 0)
+        .await
+        .expect("empty table");
+    assert_eq!(empty_frame.page.as_ref().expect("page").total, 0);
+    assert!(ui.receive_table(empty_token, Ok(empty_frame)));
     ui.selected = Some(first);
     ui.offset = 128;
     assert!(ui.select_zone(Some(first)));
@@ -575,6 +595,7 @@ async fn zone_ui_contract_preserves_identity_paging_and_rejects_late_results() {
     assert!(ui.select_zone(Some(first)));
     ui.revision.session += 1;
     ui.plugin_tables.reset_session();
+    assert!(!ui.select_listed_zone(7, empty_index));
     assert!(matches!(scope(&ui), TableScope::Encounters));
     host.shutdown().await.expect("stop");
     let fresh = Host::start(config).await.expect("restart");

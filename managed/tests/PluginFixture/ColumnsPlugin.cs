@@ -55,3 +55,16 @@ public sealed class StuckColumnsPlugin : ColumnsPlugin
         return "unreachable";
     }
 }
+
+// Synthetic callback observes ACT globals from the isolated worker.
+public sealed class SortKeysPlugin : IActPluginV1
+{
+    private readonly ColumnsPlugin inner = new();
+    public void InitPlugin(TabPage page, Label status)
+    {
+        inner.InitPlugin(page, status);
+        CombatantData.ColumnDefs["sort-keys"] = new("Sort keys", false, "TEXT", "keys",
+            _ => ActGlobals.eDSort + "|" + ActGlobals.eDSort2, _ => "sql", (_, _) => 0);
+    }
+    public void DeInitPlugin() { CombatantData.ColumnDefs.Remove("sort-keys"); inner.DeInitPlugin(); }
+}
