@@ -622,6 +622,33 @@ async fn hierarchy_html_ui_contract_all_mode_retires_graph_choice_capture() {
     assert!(f.ui.reports.html.graph_candidates.is_none());
     let result = perform(&f.host.handle(), &request).await;
     assert!(f.ui.report_receive(token, result, ""));
-    assert!(f.ui.report_preview().is_some());
+    let preview = f.ui.report_preview().unwrap().report.clone();
+    let Content::Html(report, _, _, graph) = preview.as_ref() else {
+        panic!("HTML")
+    };
+    assert!(graph.as_ref().unwrap().selected_combatants.is_none());
+    assert!(
+        report.content.contains("<polyline"),
+        "all actors generate series"
+    );
+    let (token, request) =
+        f.ui.report_html_graph_candidates_begin(f.ui.report_token())
+            .unwrap()
+            .unwrap();
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(f.ui.report_receive(token, result, ""));
+    assert!(f.ui.report_html_graph_scope(f.ui.report_token(), "actors_mode", "custom"));
+    let (token, request) = begin(&mut f);
+    let result = perform(&f.host.handle(), &request).await;
+    assert!(f.ui.report_receive(token, result, ""));
+    let preview = f.ui.report_preview().unwrap().report.clone();
+    let Content::Html(report, _, _, graph) = preview.as_ref() else {
+        panic!("HTML")
+    };
+    assert_eq!(graph.as_ref().unwrap().selected_combatants, Some(vec![]));
+    assert!(
+        !report.content.contains("<polyline"),
+        "explicit empty choice renders no actor series"
+    );
     f.host.shutdown().await.unwrap();
 }

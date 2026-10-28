@@ -672,69 +672,7 @@ pub(super) fn snapshot(
                 }
             }
             if let Some(graph) = graphs {
-                if graph.levels.contains(&TableLevel::Combatant) {
-                    p {
-                        {tr("html-graph-actors")}
-                        ": "
-                        {
-                            graph
-                                .selected_combatants
-                                .as_ref()
-                                .map_or_else(
-                                    || tr("html-graph-all-items"),
-                                    |values| {
-                                        if values.is_empty() {
-                                            tr("html-graph-no-items")
-                                        } else {
-                                            values.join(", ")
-                                        }
-                                    },
-                                )
-                        }
-                    }
-                }
-                if graph.levels.contains(&TableLevel::Category) {
-                    p {
-                        {tr("html-graph-categories")}
-                        ": "
-                        {
-                            graph
-                                .solo_categories
-                                .as_ref()
-                                .map_or_else(
-                                    || tr("html-graph-all-items"),
-                                    |values| {
-                                        if values.is_empty() {
-                                            tr("html-graph-no-items")
-                                        } else {
-                                            values.join(", ")
-                                        }
-                                    },
-                                )
-                        }
-                    }
-                }
-                p {
-                    {tr("html-graph-title")}
-                    ": "
-                    {
-                        graph
-                            .levels
-                            .iter()
-                            .map(|level| tr(html::label(*level)))
-                            .collect::<Vec<_>>()
-                            .join(", ")
-                    }
-                    " · {graph.window}s · "
-                    {if graph.rolling { tr("html-graph-rolling") } else { tr("html-graph-bucket") }}
-                    " · {graph.all_label}"
-                    if graph.levels.contains(&TableLevel::Attack) {
-                        " · {graph.distribution_column} · {graph.ward_prefix}"
-                    }
-                    if graph.levels.contains(&TableLevel::Action) {
-                        " · {graph.action_sort_column}"
-                    }
-                }
+                {graph_snapshot(graph)}
             }
             if graphs.is_none() {
                 p {
@@ -743,6 +681,74 @@ pub(super) fn snapshot(
                     " · {report.selection.row_count()} "
                     {tr("table-report-rows")}
                 }
+            }
+        }
+    }
+}
+
+fn graph_snapshot(graph: &HierarchyHtmlGraphOptions) -> Element {
+    rsx! {
+        if graph.levels.contains(&TableLevel::Combatant) {
+            p {
+                {tr("html-graph-actors")}
+                ": "
+                {
+                    graph
+                        .selected_combatants
+                        .as_ref()
+                        .map_or_else(
+                            || tr("html-graph-all-items"),
+                            |values| {
+                                if values.is_empty() {
+                                    tr("html-graph-no-items")
+                                } else {
+                                    values.join(", ")
+                                }
+                            },
+                        )
+                }
+            }
+        }
+        if graph.levels.contains(&TableLevel::Category) {
+            p {
+                {tr("html-graph-categories")}
+                ": "
+                {
+                    graph
+                        .solo_categories
+                        .as_ref()
+                        .map_or_else(
+                            || tr("html-graph-all-items"),
+                            |values| {
+                                if values.is_empty() {
+                                    tr("html-graph-no-items")
+                                } else {
+                                    values.join(", ")
+                                }
+                            },
+                        )
+                }
+            }
+        }
+        p {
+            {tr("html-graph-title")}
+            ": "
+            {
+                graph
+                    .levels
+                    .iter()
+                    .map(|level| tr(html::label(*level)))
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            }
+            " · {graph.window}s · "
+            {if graph.rolling { tr("html-graph-rolling") } else { tr("html-graph-bucket") }}
+            " · {graph.all_label}"
+            if graph.levels.contains(&TableLevel::Attack) {
+                " · {graph.distribution_column} · {graph.ward_prefix}"
+            }
+            if graph.levels.contains(&TableLevel::Action) {
+                " · {graph.action_sort_column}"
             }
         }
     }
