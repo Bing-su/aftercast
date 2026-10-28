@@ -43,8 +43,8 @@ internal sealed partial class PluginSession
     internal byte[] HierarchyXmlOperation(int command, TableReportRequest request) => OnOwner(() => HierarchyXmlEncoding.Encode(Host(),command,request));
     internal byte[] TableReportOperation(TableReportRequest request, int capacity) => OnOwner(() => TableReportEncoding.Encode(Host(), request, capacity));
     internal byte[] TableOperation(TableRequest request, int capacity) => OnOwner(() => TableEncoding.Encode(Host(), request, capacity));
-    internal ArraySegment<byte> QueryCombat(int mode, ulong id, int offset, int limit) =>
-        OnOwner(() => CombatQueryEncoding.Encode(environment, mode, id, offset, limit));
+    internal ArraySegment<byte> QueryCombat(int mode, ulong id, int offset, int limit, string? incomingCombatant) =>
+        OnOwner(() => CombatQueryEncoding.Encode(environment, mode, id, offset, limit, incomingCombatant));
     internal int Pump()
     {
         // Pump is the caller's startup boundary; pending plugin instances keep deferred integrations paused.

@@ -176,6 +176,7 @@ async fn history_snapshots_select_exact_archives_and_preserve_log_identity(deplo
         .await
         .expect("snapshot page");
     assert_eq!(frozen.items[0].action, actions.items[0]);
+    assert!(!frozen.items[0].is_death);
     let frozen_logs = host
         .action_snapshot_logs(snapshot, 1, 1)
         .await
@@ -199,6 +200,36 @@ async fn history_snapshots_select_exact_archives_and_preserve_log_identity(deplo
     host.action_snapshot_logs(snapshot, 0, 1)
         .await
         .expect_err("replaced log snapshot rejected");
+    let incoming = host
+        .capture_incoming_action_snapshot(id, &actions.items[0].victim)
+        .await
+        .expect("incoming capture")
+        .expect("combatant");
+    let incoming_rows = host
+        .action_snapshot_page(incoming, 0, 16)
+        .await
+        .expect("incoming rows");
+    assert!(
+        incoming_rows
+            .items
+            .iter()
+            .any(|row| row.action.time_sorter == actions.items[0].time_sorter)
+    );
+    assert_eq!(
+        host.action_snapshot_logs(incoming, 1, 1)
+            .await
+            .expect("incoming snapshot logs")
+            .page
+            .items[0]
+            .time_sorter,
+        actions.items[0].time_sorter
+    );
+    assert!(
+        host.capture_incoming_action_snapshot(id, "missing combatant")
+            .await
+            .expect("missing query")
+            .is_none()
+    );
     let logs = host
         .encounter_logs(id, 1, 1)
         .await

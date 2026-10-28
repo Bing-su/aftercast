@@ -12,6 +12,7 @@ internal static class EncounterLogChecks
     internal static void Run()
     {
         HostLifetimeChecks.RunBounded(ImportAndRestart);
+        HostLifetimeChecks.RunBounded(IncomingOnlySnapshot);
         HostLifetimeChecks.RunBounded(SwitchesAndFailure);
         HostLifetimeChecks.RunBounded(Live);
         HostLifetimeChecks.RunBounded(Retention);
@@ -24,6 +25,45 @@ internal static class EncounterLogChecks
         root.SetEncounter(info.detectedTime, "Source", "Target");
         root.AddCombatAction(new(1, false, "None", new Dnum(100), info.detectedTime,
             root.GlobalTimeSorter, "Strike", "Source", "Physical", "Target"));
+    }
+
+    private static void IncomingOnlySnapshot()
+    {
+        var directory = Directory.CreateTempSubdirectory("aftercast-incoming-snapshot-");
+        try
+        {
+            using var host = new HostEnvironment(directory.FullName);
+            CombatFixture.ConfigureCategories();
+            CombatantData.SwingTypeToDamageTypeDataLinksOutgoing.Clear();
+            var root = ActGlobals.oFormActMain!;
+            root.OriginalLoglineViewLogs = true;
+            root.GetDateTimeFromLog = _ => Epoch;
+            root.BeforeLogLineRead += (_, info) =>
+            {
+                root.SetEncounter(info.detectedTime, "Source", "Target");
+                root.AddCombatAction(new(1, false, "", Dnum.Death, info.detectedTime,
+                    root.GlobalTimeSorter, "Strike", "Source", "Physical", "Target"));
+                root.AddCombatAction(new(1, false, "", new Dnum(-10, "custom"), info.detectedTime,
+                    root.GlobalTimeSorter, "Strike", "Source", "Physical", "Target"));
+                root.AddCombatAction(new(1, false, "", new Dnum(-10, "Death"), info.detectedTime,
+                    root.GlobalTimeSorter, "Strike", "Source", "Physical", "Target"));
+            };
+            var path = Path.Combine(directory.FullName, "incoming.log");
+            File.WriteAllText(path, "death\n");
+            host.ImportLog(path);
+            var id = host.ListEncounters(0, 1).Items.Single().Id;
+            Check(host.CaptureActionSnapshot(id)!.Total == 0);
+            var incoming = host.CaptureIncomingActionSnapshot(id, "target")!;
+            Check(incoming.Total == 3);
+            var rows = host.ReadActionSnapshot(incoming.Revision, 0, 3).Items;
+            Check(rows.Select(row => row.IsDeath).SequenceEqual(new[] { true, false, true }));
+            var action = rows[0].Action;
+            Check(action.Amount == -10 && action.SourceIndex == 0);
+            Check(host.ReadActionSnapshotLogs(incoming.Revision, 0, 1).Page.Items.Single().Text == "death");
+            Check(host.CaptureIncomingActionSnapshot(id, "missing") is null);
+            Check(host.ReadActionSnapshot(incoming.Revision, 0, 1).Items.Length == 1);
+        }
+        finally { directory.Delete(true); }
     }
 
     private static void ImportAndRestart()

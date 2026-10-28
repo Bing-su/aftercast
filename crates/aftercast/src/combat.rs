@@ -115,6 +115,8 @@ pub struct ClassifiedAction {
     pub action: EncounterAction,
     pub registered_damage: bool,
     pub registered_healing: bool,
+    /// ACT Dnum equality against the death marker, including its display label.
+    pub is_death: bool,
 }
 
 /// Retained encounter text, independent of the live subscription buffer.
@@ -224,7 +226,28 @@ impl HostHandle {
         id: EncounterId,
     ) -> Result<Option<ActionSnapshot>, Error> {
         let payload = self.query_combat(7, Some(id), 0, 1).await?;
-        let mut reader = Reader(&payload);
+        self.decode_action_snapshot(&payload)
+    }
+
+    /// Captures the selected combatant's incoming actions, including incoming-only types.
+    pub async fn capture_incoming_action_snapshot(
+        &self,
+        id: EncounterId,
+        combatant: &str,
+    ) -> Result<Option<ActionSnapshot>, Error> {
+        if combatant.len() > 4096 {
+            return Err(Error::InvalidCombatRequest(
+                "combatant name exceeds 4096 bytes".into(),
+            ));
+        }
+        let payload = self
+            .query_combat_input(10, Some(id), 0, 1, Some(combatant))
+            .await?;
+        self.decode_action_snapshot(&payload)
+    }
+
+    fn decode_action_snapshot(&self, payload: &[u8]) -> Result<Option<ActionSnapshot>, Error> {
+        let mut reader = Reader(payload);
         let snapshot = if reader.present()? {
             let revision = reader.u64()?;
             let total = reader.u32()?;
@@ -259,13 +282,14 @@ impl HostHandle {
         let page = reader.page(limit, offset, |reader| {
             let action = reader.action()?;
             let flags = reader.u32()?;
-            if flags & !3 != 0 {
+            if flags & !7 != 0 {
                 return Err(invalid("invalid classification flags"));
             }
             Ok(ClassifiedAction {
                 action,
                 registered_damage: flags & 1 != 0,
                 registered_healing: flags & 2 != 0,
+                is_death: flags & 4 != 0,
             })
         })?;
         if page.total != snapshot.total {
@@ -309,6 +333,17 @@ impl HostHandle {
         offset: u32,
         limit: u32,
     ) -> Result<BytesMut, Error> {
+        self.query_combat_input(mode, id, offset, limit, None).await
+    }
+
+    async fn query_combat_input(
+        &self,
+        mode: u32,
+        id: Option<EncounterId>,
+        offset: u32,
+        limit: u32,
+        input: Option<&str>,
+    ) -> Result<BytesMut, Error> {
         if !(1..=256).contains(&limit)
             || offset > i32::MAX as u32
             || id.is_some_and(|id| id.session != self.session)
@@ -327,6 +362,11 @@ impl HostHandle {
             packet.put_u32_le(offset);
             packet.put_u64_le(id.map_or(0, |id| id.value));
             packet.put_u32_le(limit);
+            packet.resize(HEADER, 0);
+            if let Some(input) = input {
+                packet.put_u32_le(input.len() as u32);
+                packet.extend_from_slice(input.as_bytes());
+            }
             packet.resize(capacity, 0);
             let status = self.request(Request::Combat, &mut packet).await?;
             let mut fields = Reader(

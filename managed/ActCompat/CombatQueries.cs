@@ -12,7 +12,7 @@ namespace Aftercast.ActCompat
     public sealed record EncounterActionData(DateTime Time, int TimeSorter, string Attacker, string Victim,
         string Attack, string Damage, int SourceIndex, long Amount, int SwingType, bool Critical,
         string? Special, string? DamageType, string? RawLabel, string? RawSuffix);
-    public sealed record ClassifiedActionData(EncounterActionData Action, bool RegisteredDamage, bool RegisteredHealing);
+    public sealed record ClassifiedActionData(EncounterActionData Action, bool RegisteredDamage, bool RegisteredHealing, bool IsDeath);
     public sealed record ActionSnapshotData(ulong Revision, int Total);
     public sealed record EncounterLogData(DateTime Time, int TimeSorter, int Type, string Text, int SourceIndex);
     public sealed record EncounterLogPageData(long Dropped, CombatPage<EncounterLogData> Page);
@@ -144,13 +144,28 @@ namespace Advanced_Combat_Tracker
             sources.GetValueOrDefault(action.TimeSorter, -1), action.Damage.Number, action.SwingType, action.Critical,
             action.Special, action.DamageType, action.Damage.RawDamageString, action.Damage.DamageString2);
 
-        internal ActionSnapshotData? CaptureActionSnapshot(ulong id)
+        internal ActionSnapshotData? CaptureActionSnapshot(ulong id) => CaptureActions(id, null);
+
+        // ACT's death report uses the selected combatant's incoming All list, which can
+        // exist even if the plugin did not register an outgoing mapping for that swing.
+        internal ActionSnapshotData? CaptureIncomingActionSnapshot(ulong id, string combatant) =>
+            CaptureActions(id, combatant ?? throw new ArgumentNullException(nameof(combatant)));
+
+        private ActionSnapshotData? CaptureActions(ulong id, string? incomingCombatant)
         {
             lock (CombatGate)
             {
                 var encounter = QueryEncounters().Select(item => item.Encounter).FirstOrDefault(item => Identity(item).Id == id);
                 if (encounter is null) return null;
-                var actions = EncounterActions(encounter).Take(MaximumSnapshotActions + 1).ToArray();
+                IEnumerable<MasterSwing> source;
+                if (incomingCombatant is null) source = EncounterActions(encounter);
+                else
+                {
+                    var combatant = encounter.GetCombatant(incomingCombatant);
+                    if (combatant is null) return null;
+                    source = combatant.AllInc.TryGetValue("All", out var all) ? all.Items : [];
+                }
+                var actions = source.Take(MaximumSnapshotActions + 1).ToArray();
                 if (actions.Length > MaximumSnapshotActions)
                     throw new InvalidDataException("Action snapshot exceeds 16384 rows");
                 var damage = CombatantData.DamageSwingTypes.ToHashSet();
@@ -162,7 +177,7 @@ namespace Advanced_Combat_Tracker
                     encounter.LogLines.Select(line => new EncounterLogData(line.Time, line.GlobalTimeSorter, line.Type,
                         line.LogLine, sources.GetValueOrDefault(line.GlobalTimeSorter, -1))).ToArray()));
                 var items = actions.Select(action => new ClassifiedActionData(ProjectAction(action, sources),
-                    damage.Contains(action.SwingType), healing.Contains(action.SwingType))).ToArray();
+                    damage.Contains(action.SwingType), healing.Contains(action.SwingType), action.Damage == Dnum.Death)).ToArray();
                 var revision = checked(++nextActionSnapshotRevision);
                 actionSnapshot = (revision, items, logs);
                 return new(revision, items.Length);

@@ -17,18 +17,29 @@ public static partial class EntryPoint
         var offset = Marshal.ReadInt32(buffer, 20);
         var id = unchecked((ulong)Marshal.ReadInt64(buffer, 24));
         var limit = Marshal.ReadInt32(buffer, 32);
-        if (mode is < 1 or > 9 || offset < 0 || limit is < 1 or > 256 ||
-            (mode is 1 or 2 ? id != 0 : id == 0) || (mode is 1 or 3 or 7 && offset != 0))
+        if (mode is < 1 or > 10 || offset < 0 || limit is < 1 or > 256 ||
+            (mode is 1 or 2 ? id != 0 : id == 0) || (mode is 1 or 3 or 7 or 10 && offset != 0))
             throw new ArgumentException("Invalid combat query mode, ID or page");
         for (var field = 36; field < header; field += 4)
             if (Marshal.ReadInt32(buffer, field) != 0) throw new ArgumentException("Combat query output must initially be zero");
+        string? incomingCombatant = null;
+        if (mode == 10)
+        {
+            if (sizeBytes < header + 4) throw new ArgumentException("Missing incoming combatant");
+            var length = Marshal.ReadInt32(buffer, header);
+            if (length is < 0 or > 4096 || length > sizeBytes - header - 4)
+                throw new ArgumentException("Invalid incoming combatant length");
+            var text = new byte[length];
+            Marshal.Copy(buffer + header + 4, text, 0, length);
+            incomingCombatant = new UTF8Encoding(false, true).GetString(text);
+        }
         // Capture changes the active snapshot; reserve its fixed response before admission.
-        if (mode == 7 && sizeBytes < header + 16)
+        if (mode is 7 or 10 && sizeBytes < header + 16)
         {
             Marshal.WriteInt32(buffer, 40, header + 16);
             return 1;
         }
-        var bytes = plugins.Value.QueryCombat(mode, id, offset, limit);
+        var bytes = plugins.Value.QueryCombat(mode, id, offset, limit, incomingCombatant);
         if (bytes.Count > sizeBytes - header)
         {
             Marshal.WriteInt32(buffer, 40, checked(header + bytes.Count));
@@ -45,7 +56,7 @@ internal static class CombatQueryEncoding
     internal const int MaximumBytes = 64 * 1024 * 1024;
     private static readonly UTF8Encoding Utf8 = new(false, true);
 
-    internal static ArraySegment<byte> Encode(HostEnvironment? host, int mode, ulong id, int offset, int limit)
+    internal static ArraySegment<byte> Encode(HostEnvironment? host, int mode, ulong id, int offset, int limit, string? incomingCombatant = null)
     {
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, Utf8, true);
@@ -117,9 +128,9 @@ internal static class CombatQueryEncoding
                 }
             }
         }
-        else if (mode == 7)
+        else if (mode is 7 or 10)
         {
-            var value = host?.CaptureActionSnapshot(id);
+            var value = mode == 10 ? host?.CaptureIncomingActionSnapshot(id, incomingCombatant!) : host?.CaptureActionSnapshot(id);
             writer.Write(value is null ? 0u : 1u);
             if (value is not null) { writer.Write(value.Revision); writer.Write(value.Total); }
         }
@@ -136,7 +147,7 @@ internal static class CombatQueryEncoding
                 Budget(20); writer.Write(action.SourceIndex); writer.Write(action.Amount); writer.Write(action.SwingType);
                 writer.Write(action.Critical ? 1u : 0u);
                 OptionalText(action.Special); OptionalText(action.DamageType); OptionalText(action.RawLabel); OptionalText(action.RawSuffix);
-                Budget(4); writer.Write((item.RegisteredDamage ? 1u : 0u) | (item.RegisteredHealing ? 2u : 0u));
+                Budget(4); writer.Write((item.RegisteredDamage ? 1u : 0u) | (item.RegisteredHealing ? 2u : 0u) | (item.IsDeath ? 4u : 0u));
             }
         }
         else if (mode is 6 or 9)
