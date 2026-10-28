@@ -119,6 +119,7 @@ pub struct HostSettings {
     pub record_encounter_logs: bool,
     pub original_logline_view_logs: bool,
     pub idle_end_enabled: bool,
+    pub idle_timer_enabled: bool,
     pub idle_end_seconds: u16,
 }
 
@@ -132,6 +133,7 @@ impl Default for HostSettings {
             record_encounter_logs: true,
             original_logline_view_logs: false,
             idle_end_enabled: true,
+            idle_timer_enabled: true,
             idle_end_seconds: 6,
         }
     }
@@ -260,6 +262,10 @@ impl ConfigFile {
         set(
             &mut self.document["host"]["idle_end_enabled"],
             value(settings.host.idle_end_enabled),
+        );
+        set(
+            &mut self.document["host"]["idle_timer_enabled"],
+            value(settings.host.idle_timer_enabled),
         );
         set(
             &mut self.document["host"]["idle_end_seconds"],
@@ -588,10 +594,13 @@ mod tests {
         let mut file = ConfigFile::load(root).expect("defaults");
         assert!(file.settings.host.idle_end_enabled);
         assert_eq!(file.settings.host.idle_end_seconds, 6);
+        assert!(file.settings.host.idle_timer_enabled);
+        file.settings.host.idle_timer_enabled = false;
         file.settings.host.idle_end_enabled = false;
         file.settings.host.idle_end_seconds = 30;
         file.save(root).expect("save");
         let mut reloaded = ConfigFile::load(root).expect("restart");
+        assert!(!reloaded.settings.host.idle_timer_enabled);
         assert!(!reloaded.settings.host.idle_end_enabled);
         assert_eq!(reloaded.settings.host.idle_end_seconds, 30);
         for invalid in [0, 1, 601] {

@@ -152,6 +152,29 @@ pub(super) fn SettingsPane() -> Element {
                         )
                     }
                 }
+                div { class: "flex items-center gap-2",
+                    Label { html_for: "idle-timer-toggle", {tr("idle-timer-heading")} }
+                    Button {
+                        id: "idle-timer-toggle",
+                        variant: ButtonVariant::Outline,
+                        disabled: disabled || state.read().phase != Phase::Idle
+                            || !state.read().settings.host.idle_end_enabled,
+                        aria_pressed: state.read().settings.host.idle_timer_enabled,
+                        onclick: move |_| {
+                            let current = state.peek().settings.host.idle_timer_enabled;
+                            state.write().settings.host.idle_timer_enabled = !current;
+                        },
+                        {
+                            tr(
+                                if state.read().settings.host.idle_timer_enabled {
+                                    "enabled"
+                                } else {
+                                    "disabled"
+                                },
+                            )
+                        }
+                    }
+                }
                 Label { html_for: "idle-end-seconds", {tr("idle-end-seconds")} }
                 select {
                     id: "idle-end-seconds",

@@ -58,7 +58,7 @@ internal static class CombatQueryAbiChecks
             Reset(configureSize);
             Marshal.WriteInt32(memory, 16, 40); Marshal.WriteInt32(memory, 20, directoryBytes.Length);
             Marshal.WriteInt32(memory, 24, configureSize); Marshal.WriteInt32(memory, 28, 0);
-            Marshal.WriteInt64(memory, 32, 8192);
+            Marshal.WriteInt64(memory, 32, 16384);
             Marshal.Copy(directoryBytes, 0, memory + 40, directoryBytes.Length);
             Check(EntryPoint.ConfigureHost(memory, configureSize) == -1);
             shared.Configure(directory.FullName);

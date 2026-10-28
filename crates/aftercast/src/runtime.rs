@@ -24,6 +24,9 @@ pub struct HostConfig {
     /// End encounters after the configured interval measured in parsed log time.
     #[builder(default = true)]
     pub(crate) idle_end_enabled: bool,
+    /// Enable ACT-style wall-clock idle ticks when idle ending is enabled.
+    #[builder(default = true)]
+    pub(crate) idle_timer_enabled: bool,
     /// ACT's idle threshold; valid range is 2–600 seconds.
     #[builder(default = 6)]
     pub(crate) idle_end_seconds: u16,

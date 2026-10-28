@@ -36,6 +36,8 @@ public partial class FormActMain
         {
             EnsureCombatOpen();
             EnsureCombatTransitionIdle();
+            idleTimerTicks = 0;
+            idleGeneration++;
             info = BeginEncounterState(time, CurrentZone);
             if (info is null) return true;
             startingCombat = true;
@@ -184,12 +186,17 @@ public partial class FormActMain
             catch (Exception error) { RecordImportFailure(error); WriteExceptionLog(error, "Combat transition subscriber"); }
     }
 
-    public void EndCombat(bool force)
+    public void EndCombat(bool force) => EndCombatCore(force, null);
+
+    private void EndCombatCore(bool force, long? idleExpectedGeneration)
     {
         EnsureCanWaitForCombatActions();
         bool import;
         lock (CombatGate)
         {
+            if (idleExpectedGeneration is long generation &&
+                (idleGeneration != generation || !idleEndEnabled || !idleTimerEnabled || ReadThreadLock ||
+                 activeImport is not null || actionsClosed || actionsStopped || actionAdmissionPaused || startingCombat || endingCombat)) return;
             EnsureImportAdmission();
             if (!InCombat) return;
             ObjectDisposedException.ThrowIf(actionsStopped, this);
@@ -226,10 +233,32 @@ public partial class FormActMain
 
     private bool idleEndEnabled = true;
     private int idleEndSeconds = 6;
-    internal void ConfigureIdleEnd(bool enabled, int seconds)
+    private bool idleTimerEnabled = true;
+    private int idleTimerTicks;
+    private long idleGeneration;
+    private long? lastIdleTick;
+    internal void ConfigureIdleEnd(bool enabled, int seconds, bool timerEnabled = true)
     {
         if (seconds is < 2 or > 600) throw new ArgumentOutOfRangeException(nameof(seconds));
-        lock (CombatGate) { idleEndEnabled = enabled; idleEndSeconds = seconds; }
+        lock (CombatGate) { idleEndEnabled = enabled; idleEndSeconds = seconds; idleTimerEnabled = timerEnabled; idleTimerTicks = 0; idleGeneration++; }
+    }
+
+    // ACT counts one tick per UI timer invocation, not elapsed catch-up ticks. The owner pump
+    // supplies a monotonic clock; delayed pumps intentionally coalesce rather than replay ticks.
+    internal void AdvanceIdleTimer(long timestamp)
+    {
+        long? generation = null;
+        lock (CombatGate)
+        {
+            if (lastIdleTick is null) { lastIdleTick = timestamp; return; }
+            if (System.Diagnostics.Stopwatch.GetElapsedTime(lastIdleTick.Value, timestamp) < TimeSpan.FromSeconds(1)) return;
+            lastIdleTick = timestamp;
+            if (idleEndEnabled && idleTimerEnabled && InCombat && !ReadThreadLock && activeImport is null && !actionsClosed && !actionAdmissionPaused)
+            {
+                if (++idleTimerTicks > idleEndSeconds + 2) generation = idleGeneration;
+            }
+        }
+        if (generation is long expected) EndCombatCore(true, expected);
     }
 
     internal void CheckIdleEndCombat()

@@ -52,6 +52,8 @@ internal static class RootActionChecks
         HostLifetimeChecks.RunBounded(Pipeline);
         HostLifetimeChecks.RunBounded(IdleBoundary);
         HostLifetimeChecks.RunBounded(IdleOptions);
+        HostLifetimeChecks.RunBounded(IdleTimer);
+        HostLifetimeChecks.RunBounded(IdleTimerDuringImport);
         HostLifetimeChecks.RunBounded(EndCommand);
         HostLifetimeChecks.RunBounded(AdmittedProducerDuringEnd);
         HostLifetimeChecks.RunBounded(PumpedShutdown);
@@ -190,6 +192,66 @@ internal static class RootActionChecks
         Throws<ArgumentOutOfRangeException>(() => fixture.Environment.ConfigureIdleEnd(true, 601));
         root.LastKnownTime = Epoch.AddSeconds(30); check.Invoke(root, null); Check(root.InCombat);
         root.LastKnownTime = Epoch.AddSeconds(30).AddTicks(1); check.Invoke(root, null); Check(!root.InCombat);
+    }
+
+    private static void IdleTimer()
+    {
+        using var fixture = new Fixture();
+        var root = fixture.Root;
+        var tick = typeof(FormActMain).GetMethod("AdvanceIdleTimer", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        long time = 0, second = System.Diagnostics.Stopwatch.Frequency;
+        void Advance(long seconds = 1) { time += second * seconds; tick.Invoke(root, [time]); }
+        tick.Invoke(root, [time]);
+        fixture.Environment.ConfigureIdleEnd(true, 2);
+        root.SetEncounter(Epoch, "Source", "Target"); root.AddCombatAction(Swing(100, 0, 1));
+        Advance(20); Check(root.InCombat); // delayed callbacks coalesce
+        for (int i = 0; i < 3; i++) Advance();
+        Check(root.InCombat); // four ticks, threshold is strictly greater than 2 + 2
+        root.SetEncounter(Epoch.AddSeconds(1), "Source", "Target"); // resets elapsed counter
+        Advance(); Check(root.InCombat);
+        root.ReadThreadLock = true;
+        for (int i = 0; i < 8; i++) Advance();
+        Check(root.InCombat);
+        root.ReadThreadLock = false;
+        fixture.Environment.ConfigureIdleEnd(true, 2, false);
+        for (int i = 0; i < 8; i++) Advance();
+        Check(root.InCombat);
+        fixture.Environment.ConfigureIdleEnd(false, 2, true);
+        for (int i = 0; i < 8; i++) Advance();
+        Check(root.InCombat);
+        fixture.Environment.ConfigureIdleEnd(true, 2, true);
+        for (int i = 0; i < 4; i++) Advance();
+        Check(root.InCombat);
+        var oldGeneration = (long)typeof(FormActMain).GetField("idleGeneration", BindingFlags.Instance | BindingFlags.NonPublic)!.GetValue(root)!;
+        Advance(); Check(!root.InCombat);
+        root.SetEncounter(Epoch.AddSeconds(2), "Source", "Target");
+        var end = typeof(FormActMain).GetMethod("EndCombatCore", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        end.Invoke(root, [true, oldGeneration]);
+        Check(root.InCombat); // a late decision from the previous encounter is stale
+        Advance(); Check(root.InCombat);
+    }
+
+    private static void IdleTimerDuringImport()
+    {
+        using var fixture = new Fixture();
+        var root = fixture.Root;
+        var tick = typeof(FormActMain).GetMethod("AdvanceIdleTimer", BindingFlags.Instance | BindingFlags.NonPublic)!;
+        var second = System.Diagnostics.Stopwatch.Frequency;
+        bool observed = false;
+        root.TimeStampLen = 0;
+        fixture.Environment.ConfigureIdleEnd(true, 2);
+        root.OnLogLineRead += (import, _) =>
+        {
+            if (!import) return;
+            root.SetEncounter(Epoch, "Source", "Target");
+            root.AddCombatAction(Swing(1, 0, 1));
+            for (long n = 0; n < 12; n++) tick.Invoke(root, [n * second]);
+            Check(root.InCombat);
+            observed = true;
+        };
+        File.WriteAllText(fixture.LogPath, "synthetic\n");
+        fixture.Environment.ImportLog(fixture.LogPath);
+        Check(observed);
     }
 
     private static void AdmittedProducerDuringEnd()
