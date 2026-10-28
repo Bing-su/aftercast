@@ -195,3 +195,27 @@ report, worker session-bound Bridge/Rust API and GUI/controller are not connecte
 The JSON document uses CLR named string literals for nonfinite values and must be
 validated when the typed API is implemented. Category ordering follows the
 original DamageTypeData.CompareTo (ascending Damage); exact ties are not stable.
+
+### Session-owned report and UI
+
+The combatant snapshot now also supports the encounter alias report. Both scopes
+capture categories, estimates, sample actions and retained source logs together
+under the same owner and revision. The encounter scope uses the original cached
+`GetAllies(true)` names and `YOU`, with ordinal case-sensitive substring matches;
+overlapping aliases may include an outcome more than once. A missing ally cache
+is an explicit error, so callers can load encounter details and retry. It is not
+an inferred ally list. `blockIsHit` is restored on all paths and existing Hits
+caches remain in use. Successful capture replaces the previous worker snapshot;
+the Rust API copies bounded pages into a validated, session-owned immutable report.
+Malformed UTF-16, missing mappings, stale revisions and bounds failures are
+reported rather than silently changed. The work limits above and the 64 MiB
+snapshot cap are aftercast safeguards, not ACT defaults.
+
+The existing Rust UI exposes combatant and encounter reports, their occurrence
+and estimate values, sample rows and source logs from that same immutable report.
+Refresh, local cancellation, session invalidation and incomplete imports are
+shown explicitly. Cancel stops waiting for a result; an already admitted worker
+request may still finish. Numeric display uses a simplified fixed decimal format;
+ACT's native appearance and localization are not claimed. Native mouse/keyboard
+and Windows execution have not been verified. Independent review remains blocked
+by the previously reported review quota; the changes have only self-review.

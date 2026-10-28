@@ -75,6 +75,13 @@ pub(super) fn AnalysisPane() -> Element {
                         }
                     }
                 }
+                for avoidance_combatant in [state.read().combatant.clone()] {
+                    super::avoidance::AvoidancePanel {
+                        key: "avoidance-{state.read().revision.session}-{state.read().revision.selection}-{avoidance_combatant:?}",
+                        id: detail.summary.id,
+                        combatant: avoidance_combatant,
+                    }
+                }
                 if let Some(combatant) = state.read().combatant.clone() {
                     super::death::DeathPanel {
                         key: "{state.read().revision.session}-{state.read().revision.selection}-{combatant}",
