@@ -283,7 +283,8 @@ internal static class HierarchyHtmlChecks
         foreach(var actor in f.Encounter.Items.Values)
         {
             var attack=actor.Items["Category"].Items["Attack"];attack.Items.Clear();
-            for(var index=0;index<24;index++){var row=new MasterSwing(1,false,"None",new Dnum(10),DateTime.UnixEpoch,index,"Attack",actor.Name,"Physical","Target");attack.Items.Add(row);f.Known.Add(row);}
+            // 66 rows still cross both 16 MiB escaped and 8 MiB raw limits with the chosen columns.
+            for(var index=0;index<22;index++){var row=new MasterSwing(1,false,"None",new Dnum(10),DateTime.UnixEpoch,index,"Attack",actor.Name,"Physical","Target");attack.Items.Add(row);f.Known.Add(row);}
         }
         var keys=Enumerable.Range(0,32).Select(index=>"column-"+index).ToArray();
         MasterSwing.ColumnDefs.Clear();

@@ -55,3 +55,9 @@ opens the corresponding frozen half-open time range, retaining source order and
 showing the omitted-log count. A cancellation stops waiting for a response but
 an admitted worker request may still finish. Windows native execution, physical
 GUI interactions and independent review remain unverified.
+
+The unrelated hierarchy XML boundary-test correction keeps the production
+cooperative capture deadline at two seconds and render deadline at four seconds.
+It rejects a hierarchy earlier only when its immediate child tables already
+necessarily exceed the existing 1,024-table limit. A slow-category capture
+regression exercises the unchanged capture deadline; no timeout was relaxed.

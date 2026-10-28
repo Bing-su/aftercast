@@ -110,6 +110,11 @@ internal static class HierarchyXmlChecks
         CombatantData.ColumnDefs["display-key"].GetSqlData=_=>"bad\u0001";capture=Capture(f);Throws<XmlException>(()=>f.Host.ReadHierarchyXml(capture.Revision));
         CombatantData.ColumnDefs["display-key"].GetSqlData=actor=>"sql-"+actor.Name;
         var actor=f.Encounter.Items["A"];var saved=actor.Items;actor.Items=new(saved);capture=Capture(f,HierarchyXmlDepth.DamageTypeTables);actor.Items=new(saved);Throws<InvalidOperationException>(()=>f.Host.ReadHierarchyXml(capture.Revision));actor.Items=saved;
+        var oldCategory=actor.Items["Category"];var slow=new SlowCategory(actor);actor.Items["Category"]=slow;
+        try{Capture(f,HierarchyXmlDepth.DamageTypeTables);throw new Exception("Expected two-second capture timeout");}
+        catch(Exception error)when(HasTimeout(error)){ }
+        actor.Items["Category"]=oldCategory;capture=Capture(f,HierarchyXmlDepth.DamageTypeTables);
+        Check(f.Host.ReadHierarchyXml(capture.Revision).Rows>0,"capture recovers after timeout");
         f.Encounter.Items.Clear();capture=Capture(f);var empty=XDocument.Parse(f.Host.ReadHierarchyXml(capture.Revision).Content);Check(capture.Tables==1&&capture.Rows==0&&!empty.Descendants("Row").Any(),"actual empty hierarchy");
         var source=new CombatantData("bad\u0001",f.Encounter);f.Encounter.Items.Add("key",source);Throws<XmlException>(()=>Capture(f,HierarchyXmlDepth.DamageTypeTables));f.Encounter.Items.Clear();
         for(var index=0;index<1024;index++)f.Encounter.Items.Add(index.ToString(CultureInfo.InvariantCulture),new CombatantData(index.ToString(CultureInfo.InvariantCulture),f.Encounter));
@@ -146,6 +151,12 @@ internal static class HierarchyXmlChecks
         var once=true;f.Callback=()=>{if(once){once=false;Thread.Sleep(2100);}};capture=Capture(f,HierarchyXmlDepth.MainTable);
         Throws<TimeoutException>(()=>f.Host.ReadHierarchyXml(capture.Revision));f.Callback=null;
         Check(f.Host.ReadHierarchyXml(capture.Revision).Rows==3,"cooperative timeout releases admission");
+    }
+    private static bool HasTimeout(Exception error)=>error is TimeoutException||error is AggregateException aggregate&&aggregate.InnerExceptions.Any(HasTimeout);
+    private sealed class SlowCategory(CombatantData parent):DamageTypeData(true,"Category",parent)
+    {
+        private bool first=true;
+        public override string? ToString(){if(first){first=false;Thread.Sleep(2100);}return base.ToString();}
     }
     private sealed class FixedHashEncounter(string character,string zone,ZoneData parent):EncounterData(character,zone,parent)
     {internal int Hash=0x1234;public override int GetHashCode()=>Hash;}
