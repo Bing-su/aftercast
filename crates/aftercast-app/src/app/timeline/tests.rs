@@ -141,6 +141,21 @@ async fn timeline_ui_contract_actual_host_snapshot_range_and_lifecycle() {
             .expect("after cancel")
             .is_some()
     );
+    check_partial(&root, &host, fresh.clone(), options).await;
+    lifetime.close();
+    assert_eq!(
+        load(fresh, options).await.expect_err("closed"),
+        "Session ended"
+    );
+    host.shutdown().await.expect("shutdown");
+}
+
+async fn check_partial(
+    root: &Utf8Path,
+    host: &Host,
+    fresh: ContextEndpoint,
+    options: TimelineOptions,
+) {
     let partial = root.join("partial.log");
     std::fs::write(&partial, "0|100|Target\n5|100|Target\n10|invalid|Target\n").expect("partial");
     host.import_log(&partial).await.expect_err("invalid input");
@@ -164,10 +179,13 @@ async fn timeline_ui_contract_actual_host_snapshot_range_and_lifecycle() {
         .expect("partial load")
         .expect("encounter");
     assert_eq!(partial_report.summary.status, 3);
-    lifetime.close();
+}
+
+#[test]
+fn graph_coordinates_and_scale_are_deterministic() {
+    assert_eq!(graph_axis([100].into_iter()), 125.0);
     assert_eq!(
-        load(fresh, options).await.expect_err("closed"),
-        "Session ended"
+        graph_points(&[0, 10, 20], 0, 3, 20.0),
+        "0.00,50.00 300.00,27.50 600.00,5.00"
     );
-    host.shutdown().await.expect("shutdown");
 }
