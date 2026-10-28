@@ -61,6 +61,24 @@ pub(super) struct EditorState {
     deleting: Option<(String, TimerRevision)>,
 }
 impl EditorState {
+    pub(super) fn receive_recast_draft(
+        &mut self,
+        name: &str,
+        attacker: &str,
+        duration: i32,
+        modable: bool,
+    ) -> Result<(), &'static str> {
+        if self.dirty || self.busy {
+            return Err("Save or discard the current timer draft first.");
+        }
+        self.new_draft();
+        self.draft.definition.name = name.to_owned();
+        self.draft.definition.category = attacker.to_owned();
+        self.draft.definition.modable = modable;
+        self.draft.duration = duration.to_string();
+        self.dirty = true;
+        Ok(())
+    }
     fn new_draft(&mut self) {
         self.key = None;
         self.draft = Draft::default();

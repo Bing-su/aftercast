@@ -264,3 +264,28 @@ async fn pages(host: &Host, ui: &mut AppState) {
     ui.timers.page(offset, page);
     ui.timers.new_draft();
 }
+
+#[test]
+fn recast_timer_draft_preserves_unsaved_edits() {
+    let mut editor = EditorState::default();
+    editor
+        .receive_recast_draft("Strike", "Source", 3, true)
+        .expect("new draft");
+    assert_eq!(editor.draft.definition.name, "Strike");
+    assert_eq!(editor.draft.definition.category, "Source");
+    assert!(editor.draft.definition.modable);
+    assert_eq!(editor.draft.duration, "3");
+    assert!(editor.dirty);
+    editor
+        .receive_recast_draft("Other", "Other", 0, false)
+        .expect_err("dirty draft");
+    assert_eq!(editor.draft.definition.name, "Strike");
+    assert_eq!(editor.draft.duration, "3");
+    let mut busy = EditorState {
+        busy: true,
+        ..EditorState::default()
+    };
+    busy.receive_recast_draft("Strike", "Source", 0, false)
+        .expect_err("busy editor");
+    assert!(busy.draft.definition.name.is_empty());
+}

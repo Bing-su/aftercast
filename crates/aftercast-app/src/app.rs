@@ -14,6 +14,7 @@ mod notifications;
 mod plugin_tables;
 mod plugins;
 mod preferences;
+mod recast;
 mod reparse;
 mod reports;
 mod shell;

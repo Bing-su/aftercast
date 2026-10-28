@@ -89,6 +89,13 @@ pub(super) fn AnalysisPane() -> Element {
                     }
                 }
                 if let Some(combatant) = state.read().combatant.clone() {
+                    super::recast::RecastPanel {
+                        key: "recast-{state.read().revision.session}-{state.read().revision.selection}-{combatant}",
+                        id: detail.summary.id,
+                        combatant,
+                    }
+                }
+                if let Some(combatant) = state.read().combatant.clone() {
                     super::specials::SpecialsPanel {
                         key: "specials-{state.read().revision.session}-{state.read().revision.selection}-{combatant}",
                         id: detail.summary.id,
