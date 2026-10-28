@@ -43,6 +43,25 @@ impl State {
         self.error = None;
         self.version
     }
+    fn reset_view(&mut self) {
+        self.frozen = None;
+        self.matches.clear();
+        self.selected.clear();
+        self.cursor = None;
+        self.copy = None;
+        self.filter = None;
+        self.only = false;
+        self.page = 0;
+    }
+    fn begin_capture(&mut self) -> u64 {
+        self.reset_view();
+        self.start()
+    }
+    fn invalidate(&mut self) {
+        self.cancel();
+        self.reset_view();
+        self.error = Some("Session ended.".into());
+    }
     pub(super) fn cancel(&mut self) {
         self.version = self.version.wrapping_add(1);
         self.busy = false;
@@ -109,12 +128,7 @@ pub(super) async fn capture(endpoint: &ContextEndpoint) -> Result<Option<Frozen>
 fn start_capture(mut state: Signal<State>, endpoint: ContextEndpoint) {
     let version = {
         let mut value = state.write();
-        value.frozen = None;
-        value.matches.clear();
-        value.selected.clear();
-        value.cursor = None;
-        value.copy = None;
-        value.start()
+        value.begin_capture()
     };
     spawn(async move {
         let result = capture(&endpoint).await;
@@ -180,6 +194,16 @@ fn start_search(
 #[component]
 pub(super) fn SearchPanel(endpoint: Endpoint) -> Element {
     let mut state = use_signal(State::default);
+    let lifecycle = endpoint.0.clone();
+    use_future(move || {
+        let endpoint = lifecycle.clone();
+        async move {
+            while endpoint.valid() {
+                dioxus_sdk::time::sleep(std::time::Duration::from_millis(100)).await;
+            }
+            state.write().invalidate();
+        }
+    });
     let mut pattern = use_signal(String::new);
     let mut type_text = use_signal(String::new);
     let current = state.read();
@@ -421,5 +445,36 @@ pub(super) fn SearchPanel(endpoint: Endpoint) -> Element {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::State;
+    #[test]
+    fn new_capture_and_session_invalidation_clear_view_and_reject_pending_results() {
+        let mut state = State {
+            only: true,
+            filter: Some(42),
+            page: 3,
+            matches: vec![7],
+            selected: vec![7],
+            cursor: Some(7),
+            copy: Some("old".into()),
+            ..State::default()
+        };
+        let first = state.begin_capture();
+        assert!(
+            !state.only
+                && state.filter.is_none()
+                && state.page == 0
+                && state.matches.is_empty()
+                && state.selected.is_empty()
+                && state.cursor.is_none()
+                && state.copy.is_none()
+        );
+        assert!(state.current(first));
+        state.invalidate();
+        assert!(!state.current(first) && state.error.as_deref() == Some("Session ended."));
     }
 }
