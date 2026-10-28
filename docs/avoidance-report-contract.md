@@ -159,3 +159,19 @@ CombatGate and copy them before publishing. It is not a report snapshot, Bridge
 API or GUI yet. Synthetic managed tests cover duplicate routing, missing mappings,
 All-key mutation, ordinal Unicode keys and category count bounds. Native report
 execution and independent review remain pending.
+
+### Managed estimate calculation status
+
+`AvoidanceEstimates.Calculate` selects the original attacker's live AttackType
+pool, builds the victim-filtered temporary pool, reads its Average and falls back
+to the original pool's Average only on NaN. It returns bounded pool-relative
+sample positions and the fallback/availability status. `AttackType.Average`
+uses the existing Damage/Hits caches, preserving the ACT cache behavior above.
+The helper temporarily sets blockIsHit=false and restores it in finally, including
+missing-pool and other failures. It must be called under CombatGate on the owner
+thread and is not an immutable report or a session-owned API. Its 16,384 sample
+limit is an explicit aftercast safeguard. Synthetic tests cover ordinary and
+non-skill pool selection, another swing in the same pool, failed-action sample
+inclusion, NaN fallback, absent averages, stale hit cache and setting restoration.
+The report still must capture its projected categories, estimates and logs
+atomically before Bridge/Rust/GUI integration.

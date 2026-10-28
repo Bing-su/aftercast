@@ -56,6 +56,9 @@ public class AttackType
     public long Damage => ReadCache(ref damage, static (value, action, _) => action.Damage.Number > 0
         // Preserve Dnum's implicit clamp after a previous sum overflowed below -10.
         ? (long)((Dnum)value + action.Damage) : value);
+    // ACT returns NaN when there are no hits and otherwise uses the existing
+    // damage and hits caches (including prior blockIsHit reads).
+    public double Average => Hits > 0 ? (double)Damage / Hits : double.NaN;
     public int Hits => ReadCache(ref hits, static (value, action, _) =>
         (ActGlobals.blockIsHit ? action.Damage.Number >= 0 : action.Damage.Number > 0) ? unchecked(value + 1) : value);
     public int CritHits => ReadCache(ref critHits, static (value, action, _) => action.Critical &&

@@ -60,6 +60,52 @@ internal static class AvoidanceOutcomeChecks
             if (categories.Count != 1 || categories["Damage"].Count != 4) throw new Exception("Duplicate category routing");
             var outcome = AvoidanceOutcomes.GroupCategory(categories["Damage"], CombatantData.DamageSwingTypes).Single();
             if (!outcome.Evidence.SequenceEqual(new[] { 2, 3 })) throw new Exception("Duplicate category evidence");
+            var encounter = root.ZoneList[0].Items.Single();
+            var pool = encounter.GetCombatant("Source")!.AllOut["Strike"];
+            var failed = actor.AllInc["Strike"].Items.Single(action => action.Damage.Number == -1);
+            pool.AddCombatAction(new MasterSwing(2, false, "", new Dnum(900), DateTime.UnixEpoch,
+                999, "Strike", "Source", "Physical", "Target"));
+            var priorBlock = ActGlobals.blockIsHit;
+            ActGlobals.blockIsHit = true;
+            try
+            {
+                var estimate = AvoidanceEstimates.Calculate(encounter, failed, "All");
+                if (Math.Abs(estimate.Estimate - 500.0) > 1e-9 || estimate.UsedFallback || !estimate.HasSampleAverage)
+                    throw new Exception("Victim sample includes non-damage swing");
+                if (!ActGlobals.blockIsHit) throw new Exception("Block setting not restored");
+                var originalNonSkill = CombatantData.DamageTypeDataNonSkillDamage;
+                CombatantData.DamageTypeDataNonSkillDamage = "Damage";
+                var melee = AvoidanceEstimates.Calculate(encounter, failed, "All");
+                if (melee.Estimate != 100 || melee.SamplePool != "Damage") throw new Exception("Non-skill All sample pool");
+                CombatantData.DamageTypeDataNonSkillDamage = originalNonSkill;
+                var victim = typeof(MasterSwing).GetProperty("Victim")!;
+                victim.SetValue(failed, "Other");
+                var fallback = AvoidanceEstimates.Calculate(encounter, failed, "All");
+                if (Math.Abs(fallback.Estimate - 500.0) > 1e-9 || !fallback.UsedFallback || fallback.MatchingSamples.Length != 1)
+                    throw new Exception("All-victim fallback");
+                victim.SetValue(failed, "Target");
+                var missing = typeof(MasterSwing).GetProperty("AttackType")!;
+                missing.SetValue(failed, "Unknown");
+                try { AvoidanceEstimates.Calculate(encounter, failed, "All"); throw new Exception("Expected missing sample pool"); }
+                catch (InvalidDataException) { }
+                if (!ActGlobals.blockIsHit) throw new Exception("Block setting not restored after failure");
+                missing.SetValue(failed, "NoSample");
+                var emptyPool = new AttackType("NoSample", pool.Parent);
+                emptyPool.AddCombatAction(failed);
+                encounter.GetCombatant("Source")!.AllOut.Add("NoSample", emptyPool);
+                var noSample = AvoidanceEstimates.Calculate(encounter, failed, "All");
+                if (noSample.Estimate != 0 || !noSample.UsedFallback || noSample.HasSampleAverage)
+                    throw new Exception("Missing averages produce zero");
+                encounter.GetCombatant("Source")!.AllOut.Remove("NoSample");
+                missing.SetValue(failed, "Strike");
+                var cached = new AttackType("Strike", null);
+                cached.AddCombatAction(new MasterSwing(1, false, "", new Dnum(100), DateTime.UnixEpoch, 1, "Strike", "Source", "Physical", "Target"));
+                cached.AddCombatAction(new MasterSwing(1, false, "", new Dnum(0), DateTime.UnixEpoch, 2, "Strike", "Source", "Physical", "Target"));
+                if (cached.Hits != 2) throw new Exception("True-mode hits");
+                ActGlobals.blockIsHit = false;
+                if (cached.Average != 50) throw new Exception("Cached average preserved");
+            }
+            finally { ActGlobals.blockIsHit = priorBlock; }
             var changed = actor.AllInc["Strike"].Items[0];
             var attackType = typeof(MasterSwing).GetProperty("AttackType")!;
             attackType.SetValue(changed, "All");
