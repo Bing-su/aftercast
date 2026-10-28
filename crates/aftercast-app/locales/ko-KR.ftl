@@ -762,3 +762,24 @@ timer-config-import = 타이머 전체 가져오기
 timer-config-imported = 타이머 일괄 가져오기 완료
 trigger-config-item-conflict = 기존 트리거
 timer-config-item-conflict = 기존 타이머
+
+audio-settings = 소리와 음성
+audio-provider-unavailable = 이 앱에는 기본 오디오 또는 음성 provider가 연결되어 있지 않습니다. 플러그인이 대체 delegate로 출력을 처리할 수 있습니다. 볼륨은 호스트 재시작 후 적용되며 설정 변경 시 재생하지 않습니다.
+audio-sound-volume = 소리 볼륨
+audio-tts-volume = 음성 볼륨
+
+speech-rules-title = 음성 발음 규칙
+speech-rules-help = 활성 규칙은 플러그인 TTS delegate 전에 위에서 아래로 대소문자를 구분하지 않는 .NET 정규식으로 적용됩니다. 명시적으로 저장하며 각 정규식은 100ms로 제한됩니다.
+speech-rules-load = 규칙 불러오기
+speech-rules-save = 규칙 저장
+speech-rules-saved = 음성 규칙 저장 완료
+speech-rules-discard = 초안 버리기
+speech-rules-discard-confirm = 저장하지 않은 규칙 변경을 버릴까요?
+speech-rules-cancel = 취소
+speech-rules-pattern = 정규식
+speech-rules-replacement = 대체 문자열
+speech-rules-active = 활성
+speech-rules-up = 위로
+speech-rules-down = 아래로
+speech-rules-remove = 삭제
+speech-rules-add = 규칙 추가

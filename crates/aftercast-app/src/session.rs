@@ -11,6 +11,7 @@ pub struct RunningHost {
 
 impl RunningHost {
     pub async fn start(root: Utf8PathBuf, settings: Settings) -> Result<Self> {
+        let audio = settings.audio.settings();
         let deploy_root = root.clone();
         let selective = settings.host.selective_options();
         let recording = (
@@ -58,6 +59,12 @@ impl RunningHost {
         )
         .await
         .into_diagnostic()?;
+        if let Err(error) = host.set_audio_settings(&audio).await {
+            if let Err(shutdown_error) = host.shutdown().await {
+                tracing::warn!(error = %shutdown_error, "Failed to stop host after audio setup error");
+            }
+            return Err(error).into_diagnostic();
+        }
         Ok(Self { host, deployment })
     }
 

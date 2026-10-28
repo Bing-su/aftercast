@@ -79,6 +79,43 @@ pub(super) fn SettingsPane() -> Element {
                 p { class: "mt-2 text-xs text-muted-foreground", {tr("runtime-description")} }
             }
             Separator { class: "my-6".to_owned() }
+            div { class: "space-y-3",
+                h2 { class: "text-sm font-semibold", {tr("audio-settings")} }
+                p { class: "text-xs text-muted-foreground", {tr("audio-provider-unavailable")} }
+                for (id, label, volume) in [
+                    ("sound-volume", "audio-sound-volume", state.read().settings.audio.sound_volume),
+                    ("tts-volume", "audio-tts-volume", state.read().settings.audio.tts_volume),
+                ]
+                {
+                    div { class: "flex flex-wrap items-center justify-between gap-3",
+                        Label { html_for: id, {tr(label)} }
+                        select {
+                            id,
+                            value: volume.to_string(),
+                            disabled: disabled || state.read().phase != Phase::Idle,
+                            class: "h-9 rounded-md border border-border bg-background px-2",
+                            onchange: move |event| {
+                                if state.peek().phase != Phase::Idle || state.peek().saving
+                                    || state.peek().file.is_none()
+                                {
+                                    return;
+                                }
+                                if let Ok(value) = event.value().parse::<u8>() && value <= 100 {
+                                    if id == "sound-volume" {
+                                        state.write().settings.audio.sound_volume = value;
+                                    } else {
+                                        state.write().settings.audio.tts_volume = value;
+                                    }
+                                }
+                            },
+                            for value in 0..=100_u8 {
+                                option { value: value.to_string(), "{value}%" }
+                            }
+                        }
+                    }
+                }
+            }
+            Separator { class: "my-6".to_owned() }
             div { class: "space-y-4",
                 h2 { class: "text-sm font-semibold", {tr("import-defaults")} }
                 div { class: "flex flex-wrap items-center justify-between gap-3",
@@ -454,6 +491,7 @@ pub(super) fn SettingsPane() -> Element {
                 p { class: "text-xs leading-6 text-muted-foreground", {tr("silence-cut-help")} }
             }
             Separator { class: "my-6".to_owned() }
+            super::speech_rules::Panel {}
             super::corrections::CorrectionPanel {}
             Separator { class: "my-6".to_owned() }
             div { class: "flex gap-2",

@@ -52,10 +52,12 @@ The dated device results below predate the async host refactor. Current Linux
 fixtures cover async construction/completion/disposal and ACT playback error
 delivery; Windows runtime/device checks must be repeated for the new model.
 
-The host adapter currently uses the backend's default voice, normal rate and
-full volume. Standalone requests can override voice/rate/volume. ACT's global
-speech settings UI, regex speech corrections, duplicate suppression, concurrent
-SAPI modes and WAV intermediary/cache workflows are not replicated. Original
+The host adapter uses the backend's default voice and normal rate, with the
+configured ACT speech volume. Standalone requests can override voice/rate/volume.
+The desktop now exposes saved sound/speech volumes and bounded ordered regex
+speech corrections; see [speech preferences](speech-preferences.md). Duplicate
+suppression, concurrent SAPI modes and WAV intermediary/cache workflows are not
+replicated. Original
 ACT's decompiled TTS calls a replaceable playback delegate, applies configured
 corrections and catches/logs failures. This implementation preserves the member
 binding and diagnostic failure boundary while deliberately using bounded FIFO

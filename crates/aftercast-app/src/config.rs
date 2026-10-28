@@ -15,6 +15,7 @@ pub struct Settings {
     pub host: HostSettings,
     pub tables: BTreeMap<String, crate::table_settings::Preferences>,
     pub graphs: GraphSettings,
+    pub audio: AudioPreferences,
 }
 
 impl Default for Settings {
@@ -25,6 +26,31 @@ impl Default for Settings {
             host: HostSettings::default(),
             tables: BTreeMap::new(),
             graphs: GraphSettings::default(),
+            audio: AudioPreferences::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct AudioPreferences {
+    pub sound_volume: u8,
+    pub tts_volume: u8,
+}
+impl Default for AudioPreferences {
+    fn default() -> Self {
+        Self {
+            sound_volume: 100,
+            tts_volume: 100,
+        }
+    }
+}
+impl AudioPreferences {
+    pub fn settings(&self) -> aftercast::AudioSettings {
+        aftercast::AudioSettings {
+            sound_volume: self.sound_volume,
+            tts_volume: self.tts_volume,
+            ..Default::default()
         }
     }
 }
@@ -182,6 +208,9 @@ impl HostSettings {
 
 impl Settings {
     pub fn validate(&self) -> Result<()> {
+        if self.audio.sound_volume > 100 || self.audio.tts_volume > 100 {
+            return Err(miette!("Audio volume must be 0..100"));
+        }
         if self.schema_version != 1 {
             return Err(miette!(
                 "Unsupported config schema_version: {}",
@@ -279,6 +308,14 @@ impl ConfigFile {
             value(i64::from(settings.schema_version)),
         );
         save_ui(&mut self.document, &settings.ui);
+        set(
+            &mut self.document["audio"]["sound_volume"],
+            value(i64::from(settings.audio.sound_volume)),
+        );
+        set(
+            &mut self.document["audio"]["tts_volume"],
+            value(i64::from(settings.audio.tts_volume)),
+        );
         set(
             &mut self.document["host"]["dotnet_root"],
             value(&settings.host.dotnet_root),
@@ -690,6 +727,37 @@ mod tests {
                 .collect::<Vec<_>>(),
             ["first", "middle", "last"]
         );
+    }
+
+    #[test]
+    fn audio_volumes_migrate_validate_and_survive_restart() {
+        let temp = tempfile::tempdir().expect("app");
+        let root = Utf8Path::from_path(temp.path()).expect("UTF8");
+        let mut file = ConfigFile::parse("[ui]\ntheme = 'mocha'\n").expect("old config");
+        assert_eq!(
+            (
+                file.settings.audio.sound_volume,
+                file.settings.audio.tts_volume
+            ),
+            (100, 100)
+        );
+        file.settings.audio.sound_volume = 61;
+        file.settings.audio.tts_volume = 37;
+        file.save(root).expect("save");
+        let mut saved = ConfigFile::load(root).expect("restart");
+        let settings = saved.settings.audio.settings();
+        assert_eq!((settings.sound_volume, settings.tts_volume), (61, 37));
+        saved.settings.audio.sound_volume = 101;
+        saved.save(root).err().expect("range");
+        assert_eq!(
+            ConfigFile::load(root)
+                .expect("preserved")
+                .settings
+                .audio
+                .sound_volume,
+            61
+        );
+        assert!(ConfigFile::parse("[audio]\ntts_volume = 'bad'\n").is_err());
     }
 
     #[test]

@@ -762,3 +762,24 @@ timer-config-import = Import all timers
 timer-config-imported = Timer batch imported
 trigger-config-item-conflict = Existing trigger
 timer-config-item-conflict = Existing timer
+
+audio-settings = Sound and speech
+audio-provider-unavailable = This app has no built-in audio or voice provider configured. Plugin replacement delegates may handle output. Volumes apply after restarting the host; changing settings does not play sound.
+audio-sound-volume = Sound volume
+audio-tts-volume = Speech volume
+
+speech-rules-title = Speech pronunciation rules
+speech-rules-help = Enabled rules run top to bottom as case-insensitive .NET regular expressions before the plugin TTS delegate. Save explicitly; each expression has a 100 ms limit.
+speech-rules-load = Load rules
+speech-rules-save = Save rules
+speech-rules-saved = Speech rules saved
+speech-rules-discard = Discard draft
+speech-rules-discard-confirm = Discard unsaved rule changes?
+speech-rules-cancel = Cancel
+speech-rules-pattern = Regular expression
+speech-rules-replacement = Replacement
+speech-rules-active = Enabled
+speech-rules-up = Move up
+speech-rules-down = Move down
+speech-rules-remove = Remove
+speech-rules-add = Add rule

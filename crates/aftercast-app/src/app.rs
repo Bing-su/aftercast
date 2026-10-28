@@ -22,6 +22,7 @@ mod reparse;
 mod reports;
 mod shell;
 mod specials;
+mod speech_rules;
 mod timeline;
 mod timers;
 mod trigger_benchmark;
@@ -128,6 +129,7 @@ struct AppState {
     triggers: triggers::EditorState,
     timers: timers::EditorState,
     corrections: corrections::EditorState,
+    speech_rules: speech_rules::EditorState,
     history: history::BrowserState,
     history_sources: history_sources::State,
     plugin_tables: plugin_tables::BrowserState,
@@ -208,6 +210,7 @@ impl AppState {
             triggers: Default::default(),
             timers: Default::default(),
             corrections: Default::default(),
+            speech_rules: Default::default(),
             history: Default::default(),
             history_sources: Default::default(),
             plugin_tables: Default::default(),
@@ -574,6 +577,7 @@ fn stop(mut state: Signal<AppState>) {
         state.triggers = Default::default();
         state.timers = Default::default();
         state.corrections = Default::default();
+        state.speech_rules = Default::default();
         state.history_sources.stop();
         state.history = Default::default();
         state.plugin_tables.reset_session();
