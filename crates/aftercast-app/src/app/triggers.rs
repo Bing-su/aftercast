@@ -12,7 +12,7 @@ pub(super) struct EditorState {
     loaded: bool,
     results_loaded: bool,
     busy: bool,
-    page: Option<TriggerPage>,
+    pub(super) page: Option<TriggerPage>,
     offset: u32,
     draft: TriggerDefinition,
     key: Option<String>,
@@ -135,6 +135,16 @@ pub(super) fn TriggersPane() -> Element {
                 p { role: "status", {tr("trigger-working")} }
             }
             TriggerList {}
+            if let Some(detail) = state.read().detail.clone() {
+                if let Some(page) = state.read().triggers.page.clone() {
+                    super::trigger_benchmark::BenchmarkPanel {
+                        key: "benchmark-{detail.summary.id:?}-{page.revision:?}",
+                        id: detail.summary.id,
+                    }
+                }
+            } else {
+                p { "Select an encounter in Analysis to benchmark its retained logs." }
+            }
             TriggerForm {}
             TriggerResults {}
         }

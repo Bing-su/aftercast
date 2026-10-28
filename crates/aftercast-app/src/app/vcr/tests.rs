@@ -484,3 +484,79 @@ async fn log_search_ui_contract_owns_snapshot_and_rejects_stale() {
     capture(&endpoint).await.err().expect("closed session");
     host.shutdown().await.expect("shutdown");
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn trigger_benchmark_ui_contract_uses_owned_logs_without_effects() {
+    use super::super::trigger_benchmark::{State, run};
+    use aftercast::TriggerDefinition;
+    let (_temp, root, host, mut endpoint, lifetime) = fixture().await;
+    let first = host.triggers(0, 16).await.expect("trigger catalog");
+    let definition = TriggerDefinition {
+        category: "Synthetic".into(),
+        regex: "Strike".into(),
+        tabbed: true,
+        timer: true,
+        timer_name: "Synthetic".into(),
+        ..TriggerDefinition::default()
+    };
+    let revision = host
+        .save_trigger(first.revision, None, &definition)
+        .await
+        .expect("synthetic trigger");
+    let key = host
+        .triggers(0, 16)
+        .await
+        .expect("catalog")
+        .items
+        .first()
+        .expect("trigger")
+        .key
+        .clone();
+    run(&endpoint, revision, std::slice::from_ref(&key))
+        .await
+        .expect_err("short encounter");
+    let path = root.join("benchmark.log");
+    std::fs::write(&path, "0|100|Strike|Source|Target\n".repeat(1001)).expect("synthetic logs");
+    host.import_log(&path).await.expect("import synthetic logs");
+    for encounter in host.encounters(0, 16).await.expect("encounters").items {
+        if host
+            .encounter_logs(encounter.id, 0, 1)
+            .await
+            .expect("logs")
+            .is_some_and(|logs| logs.page.total == 1001)
+        {
+            endpoint.id = encounter.id;
+            break;
+        }
+    }
+    let before = host
+        .trigger_results(None, 1)
+        .await
+        .expect("results")
+        .latest_sequence;
+    let result = run(&endpoint, revision, std::slice::from_ref(&key))
+        .await
+        .expect("benchmark");
+    assert_eq!(result.lines, 1001);
+    assert_eq!(result.rows.first().expect("row").matches, 1001);
+    assert_eq!(
+        host.trigger_results(None, 1)
+            .await
+            .expect("results")
+            .latest_sequence,
+        before
+    );
+    let mut controller = State::default();
+    let first = controller.begin();
+    controller.cancel();
+    assert!(!controller.current(first));
+    let older = controller.begin();
+    let newer = controller.begin();
+    assert!(!controller.current(older) && controller.current(newer));
+    lifetime.invalidate();
+    run(&endpoint, revision, &[key])
+        .await
+        .expect_err("session ended");
+    host.shutdown().await.expect("shutdown");
+}

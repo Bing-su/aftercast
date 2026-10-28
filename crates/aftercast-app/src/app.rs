@@ -23,6 +23,7 @@ mod shell;
 mod specials;
 mod timeline;
 mod timers;
+mod trigger_benchmark;
 mod triggers;
 mod vcr;
 
