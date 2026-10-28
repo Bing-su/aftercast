@@ -68,8 +68,8 @@ pub use speech::AudioSettings;
 pub use timers::{SavedTimer, TimerDefinition, TimerItem, TimerPage, TimerRevision};
 pub use triggers::TriggerResultCursor;
 pub use triggers::{
-    TriggerCapture, TriggerDefinition, TriggerItem, TriggerPage, TriggerResult, TriggerResultPage,
-    TriggerRevision,
+    TriggerBenchmarkResult, TriggerBenchmarkRow, TriggerCapture, TriggerDefinition, TriggerItem,
+    TriggerPage, TriggerResult, TriggerResultPage, TriggerRevision,
 };
 
 pub use avoidance_report::{

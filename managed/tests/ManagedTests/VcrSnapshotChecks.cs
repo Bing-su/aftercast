@@ -103,6 +103,37 @@ internal static class VcrSnapshotChecks
             var typeSearch = System.Text.Json.JsonSerializer.Serialize(new { Pattern = "", Regex = false, Type = (int?)42 });
             if (!host.SearchSnapshotLogs(logOnly.Revision, typeSearch).SequenceEqual(new[] { 4 })) throw new Exception("Snapshot type filter");
             try { host.SearchSnapshotLogs(logOnly.Revision, System.Text.Json.JsonSerializer.Serialize(new { Pattern = "^(a+)+$", Regex = true, Type = (int?)42 })); throw new Exception("Regex timeout not enforced"); } catch (System.Text.RegularExpressions.RegexMatchTimeoutException) { }
+            var triggerDefinition = new TriggerDefinition("Synthetic", "Strike", 0, "", true, false, false, "", true);
+            var triggerRevision = root.ReadTriggers(0, 16).Revision;
+            triggerRevision = root.SaveTrigger(triggerRevision, null, triggerDefinition);
+            var triggerKey = root.ReadTriggers(0, 16).Items.Single().Key;
+            try { host.BenchmarkTriggers(triggerRevision, logOnly.Revision, [triggerKey]); throw new Exception("Small benchmark accepted"); } catch (ArgumentException) { }
+            for (var index = 0; index < 997; index++) encounter.LogLines.Add(new LogLineEntry(DateTime.UnixEpoch, "synthetic Strike", 1, 1000000 + index));
+            root.TimeStampLen = 0; // Synthetic lines contain no timestamp prefix.
+            var benchmarkLogs = host.CaptureLogSnapshot(id)!;
+            var beforeResults = root.ReadTriggerResults(0, 1).LatestSequence;
+            var benchmark = host.BenchmarkTriggers(triggerRevision, benchmarkLogs.Revision, [triggerKey]);
+            if (benchmark.Lines != 1002 || benchmark.Rows.Single().Matches != 997 || root.ReadTriggerResults(0, 1).LatestSequence != beforeResults) throw new Exception("Benchmark scope/effects");
+            var triggerObject = root.CustomTriggers[triggerKey];
+            triggerObject.ShortRegexString = "different-visible-text";
+            var editedRevision = root.ReadTriggers(0, 16).Revision;
+            if (host.BenchmarkTriggers(editedRevision, benchmarkLogs.Revision, [triggerKey]).Rows.Single().Matches != 997) throw new Exception("Compiled expression changed with visible text");
+            triggerObject.ShortRegexString = "Strike";
+            triggerRevision = root.ReadTriggers(0, 16).Revision;
+            try { host.BenchmarkTriggers(triggerRevision, logOnly.Revision, [triggerKey]); throw new Exception("Stale benchmark accepted"); } catch (InvalidOperationException) { }
+            try { host.BenchmarkTriggers(triggerRevision, benchmarkLogs.Revision, [triggerKey, triggerKey]); throw new Exception("Duplicate trigger accepted"); } catch (ArgumentException) { }
+            root.TimeStampLen = 20;
+            try { host.BenchmarkTriggers(triggerRevision, benchmarkLogs.Revision, [triggerKey]); throw new Exception("Short timestamp accepted"); } catch (InvalidDataException) { }
+            finally { root.TimeStampLen = 0; }
+            try { host.BenchmarkTriggers(triggerRevision, benchmarkLogs.Revision, []); throw new Exception("Empty selection accepted"); } catch (ArgumentException) { }
+
+            try { host.BenchmarkTriggers(triggerRevision - 1, benchmarkLogs.Revision, [triggerKey]); throw new Exception("Stale trigger revision accepted"); } catch (InvalidOperationException) { }
+            try { root.SaveTrigger(triggerRevision, null, triggerDefinition with { Regex = "[" }); throw new Exception("Invalid benchmark regex accepted"); } catch (ArgumentException) { }
+            var pathological = triggerDefinition with { Category = "Timeout", Regex = "^(a+)+$" };
+            triggerRevision = root.SaveTrigger(triggerRevision, null, pathological);
+            var timeoutKey = root.ReadTriggers(0, 16).Items.Single(item => item.Definition.Category == "Timeout").Key;
+            try { host.BenchmarkTriggers(triggerRevision, benchmarkLogs.Revision, [timeoutKey]); throw new Exception("Benchmark regex timeout not enforced"); } catch (System.Text.RegularExpressions.RegexMatchTimeoutException) { }
+
             root.ZoneList[0].Items.Single().GetCombatant("Target")!.AllInc["All"].Items.Clear();
             if (!bytes.SequenceEqual(host.ReadVcr(snapshot.Revision, 0, 65536).Bytes)) throw new Exception("VCR snapshot mutated");
             var replacement = host.CaptureVcr(id)!;

@@ -270,6 +270,7 @@ namespace Aftercast.ActCompat
             var key = definition.ToData().Key;
             return new(next,new TimerItem(key,TimerDefinition.FromData(timers.TimerDefs[key])));
         }
+        public TriggerBenchmarkResult BenchmarkTriggers(ulong revision, ulong snapshot, string[] keys) => main.BenchmarkTriggers(revision, snapshot, keys);
         public object TriggerOperation(int command, ulong revision, string? previousKey, TriggerDefinition? definition,
             string? key, int offset, int limit, bool originalLines, bool processImports, ulong after) => command switch
         {

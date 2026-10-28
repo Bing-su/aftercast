@@ -102,7 +102,57 @@ struct RawPage {
     items: Vec<TriggerItem>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TriggerBenchmarkRow {
+    pub key: String,
+    pub category: String,
+    pub restricted: bool,
+    pub milliseconds: u64,
+    pub matches: u32,
+}
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TriggerBenchmarkResult {
+    pub lines: u32,
+    pub dropped: u64,
+    pub timestamp_length: u32,
+    pub baseline_milliseconds: u64,
+    pub rows: Vec<TriggerBenchmarkRow>,
+}
+
 impl HostHandle {
+    /// Benchmark selected compiled expressions against an owned log snapshot; never runs trigger effects.
+    pub async fn benchmark_triggers(
+        &self,
+        revision: TriggerRevision,
+        snapshot: crate::ActionSnapshot,
+        keys: &[String],
+    ) -> Result<TriggerBenchmarkResult, Error> {
+        self.check_trigger_revision(revision)?;
+        if snapshot.session != self.session
+            || keys.is_empty()
+            || keys.len() > 32
+            || keys.iter().any(|key| key.is_empty() || key.len() > 8192)
+            || keys.iter().collect::<std::collections::HashSet<_>>().len() != keys.len()
+        {
+            return Err(trigger_error("invalid benchmark selection or snapshot"));
+        }
+        let result: TriggerBenchmarkResult = self.trigger_call(8, &serde_json::json!({"revision": revision.value, "snapshot": snapshot.revision, "keys": keys})).await?;
+        if result.lines <= 1000
+            || result.lines > 65536
+            || result.rows.len() != keys.len()
+            || result
+                .rows
+                .iter()
+                .zip(keys)
+                .any(|(row, key)| row.key != *key || row.matches > result.lines)
+        {
+            return Err(trigger_error("invalid benchmark response"));
+        }
+        Ok(result)
+    }
+
     pub async fn triggers(&self, offset: u32, limit: u32) -> Result<TriggerPage, Error> {
         let page: RawPage = self
             .trigger_call(1, &serde_json::json!({"offset": offset, "limit": limit}))
