@@ -253,7 +253,7 @@ namespace Advanced_Combat_Tracker
                     bytes += System.Text.Encoding.UTF8.GetByteCount(line.Text);
                     if (bytes > 16 * 1024 * 1024) throw new InvalidDataException("Log search exceeds 16 MiB");
                     if (request.Type is not null && line.Type != request.Type) continue;
-                    if (regex is null ? line.Text.ToUpper().Contains(needle) : regex.IsMatch(line.Text)) found.Add(index);
+                    if (regex is null ? line.Text.ToUpper().IndexOf(needle, StringComparison.CurrentCulture) >= 0 : regex.IsMatch(line.Text)) found.Add(index);
                 }
                 return found.ToArray();
             }

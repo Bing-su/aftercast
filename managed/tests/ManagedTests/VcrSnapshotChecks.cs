@@ -80,6 +80,9 @@ internal static class VcrSnapshotChecks
             if (failedSort.SortError is null) throw new Exception("Lookup comparator exception hidden");
             var literalSearch = System.Text.Json.JsonSerializer.Serialize(new { Pattern = "|1|", Regex = false, Type = (int?)null });
             if (!host.SearchSnapshotLogs(outgoing.Revision, literalSearch).SequenceEqual(new[] { 0, 1, 3 })) throw new Exception("Snapshot literal search");
+            var softHyphen = "\u00ad";
+            var expectedCulture = host.ReadActionSnapshotLogs(outgoing.Revision, 0, 256).Page.Items.Select((row, index) => (row, index)).Where(item => item.row.Text.ToUpper().IndexOf(softHyphen.ToUpper()) >= 0).Select(item => item.index).ToArray();
+            if (!host.SearchSnapshotLogs(outgoing.Revision, System.Text.Json.JsonSerializer.Serialize(new { Pattern = softHyphen, Regex = false, Type = (int?)null })).SequenceEqual(expectedCulture)) throw new Exception("ACT current-culture IndexOf mismatch");
             var regexSearch = System.Text.Json.JsonSerializer.Serialize(new { Pattern = @"^[02]\|", Regex = true, Type = (int?)null });
             if (!host.SearchSnapshotLogs(outgoing.Revision, regexSearch).SequenceEqual(new[] { 0, 1 })) throw new Exception("Snapshot regex search");
             try { host.SearchSnapshotLogs(outgoing.Revision, System.Text.Json.JsonSerializer.Serialize(new { Pattern = "(", Regex = true, Type = (int?)null })); throw new Exception("Invalid regex accepted"); } catch (ArgumentException) { }
