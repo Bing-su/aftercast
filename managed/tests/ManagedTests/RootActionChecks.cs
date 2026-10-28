@@ -229,6 +229,8 @@ internal static class RootActionChecks
         end.Invoke(root, [true, oldGeneration]);
         Check(root.InCombat); // a late decision from the previous encounter is stale
         Advance(); Check(root.InCombat);
+        fixture.Environment.Dispose();
+        for (int i = 0; i < 8; i++) Advance(); // retired host cannot schedule another transition
     }
 
     private static void IdleTimerDuringImport()
