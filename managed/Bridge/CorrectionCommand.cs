@@ -15,7 +15,7 @@ public static partial class EntryPoint
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
         var command = Marshal.ReadInt32(buffer, 16);
         var length = Marshal.ReadInt32(buffer, 20);
-        if (command is < 1 or > 2 || length is < 2 or > 128 * 1024 || Marshal.ReadInt64(buffer, 24) != 0)
+        if (command is < 1 or > 4 || length is < 2 or > 128 * 1024 || Marshal.ReadInt64(buffer, 24) != 0)
             throw new ArgumentException("Invalid correction command fields");
         var bytes = new byte[length]; Marshal.Copy(buffer + header, bytes, 0, length);
         var request = JsonSerializer.Deserialize<CorrectionRequest>(new UTF8Encoding(false, true).GetString(bytes), HostJson.Options)
@@ -27,4 +27,4 @@ public static partial class EntryPoint
         return 0;
     });
 }
-internal sealed record CorrectionRequest(ulong Revision = 0, RenameDefinition[]? Renames = null, RedirectDefinition[]? Redirects = null);
+internal sealed record CorrectionRequest(ulong Revision = 0, RenameDefinition[]? Renames = null, RedirectDefinition[]? Redirects = null, SpeechRule[]? SpeechRules = null);

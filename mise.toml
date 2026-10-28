@@ -210,6 +210,11 @@ run = [
   '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} custom-trigger-models {{vars.reference_probe}}',
 ]
 
+[tasks."test:speech-policy"]
+description = "Inspect genuine ACT speech correction and volume policy without playback"
+depends = ["managed:references"]
+run = '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} speech-policy'
+
 [tasks."test:config-batch"]
 description = "Compare Config batch attributes with genuine ACT"
 depends = ["managed:references"]

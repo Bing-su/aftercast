@@ -80,9 +80,13 @@ internal sealed partial class PluginSession
     internal byte[] CorrectionOperation(int command, CorrectionRequest request) => OnOwner(() =>
     {
         var host = Host();
-        return HostJson.Encode(command == 1 ? host.ReadCorrections() : host.SaveCorrections(request.Revision,
-            request.Renames ?? throw new ArgumentException("Missing rename rules"),
-            request.Redirects ?? throw new ArgumentException("Missing redirect rules")));
+        return HostJson.Encode(command switch {
+            1 => (object)host.ReadCorrections(),
+            2 => host.SaveCorrections(request.Revision, request.Renames ?? throw new ArgumentException("Missing rename rules"), request.Redirects ?? throw new ArgumentException("Missing redirect rules")),
+            3 => host.ReadSpeechRules(),
+            4 => host.SaveSpeechRules(request.Revision, request.SpeechRules ?? throw new ArgumentException("Missing speech rules")),
+            _ => throw new ArgumentException("Unknown correction operation"),
+        });
     });
     internal byte[] TimerOperation(int command, TimerRequest request) => OnOwner(() =>
     {

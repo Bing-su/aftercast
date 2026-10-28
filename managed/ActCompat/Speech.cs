@@ -19,7 +19,7 @@ public partial class FormActMain
         try
         {
             if (Interlocked.Increment(ref speechDepth) > 100) throw new InvalidOperationException("Too many recursive TTS calls");
-            PlayTtsMethod(SpeechText);
+            PlayTtsMethod(CorrectSpeech(SpeechText));
         }
         // Original ACT reports TTS failures through its diagnostic log rather than propagating them to the plugin.
         catch (Exception error) { WriteExceptionLog(error, "TTS"); }

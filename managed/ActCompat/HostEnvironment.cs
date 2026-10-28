@@ -122,6 +122,7 @@ namespace Aftercast.ActCompat
             {
                 main.LoadCustomTriggers(Path.Combine(directory, "CustomTriggers.xml"));
                 main.LoadDataCorrections(Path.Combine(directory, "DataCorrections.xml"));
+                main.LoadSpeechRules();
                 main.LoadHistoryIndex();
                 main.Controls.Add(main.OptionsTreeView);
                 main.OptionsTreeView.Nodes.Add("Data Correction");
@@ -246,6 +247,8 @@ namespace Aftercast.ActCompat
         public CombatPage<ClassifiedActionData> ReadActionSnapshot(ulong revision, int offset, int limit) => main.ReadActionSnapshot(revision, offset, limit);
         public EncounterLogPageData ReadActionSnapshotLogs(ulong revision, int offset, int limit) => main.ReadActionSnapshotLogs(revision, offset, limit);
         public EncounterLogPageData? ReadEncounterLogs(ulong id, int offset, int limit) => main.ReadEncounterLogs(id, offset, limit);
+        public SpeechRuleSnapshot ReadSpeechRules() => main.ReadSpeechRules();
+        public SpeechRuleSnapshot SaveSpeechRules(ulong revision, SpeechRule[] rules) => main.SaveSpeechRules(revision, rules);
         public Aftercast.ActCompat.CorrectionSnapshot ReadCorrections() => main.ReadCorrections();
         public Aftercast.ActCompat.CorrectionSnapshot SaveCorrections(ulong revision, Aftercast.ActCompat.RenameDefinition[] renames, Aftercast.ActCompat.RedirectDefinition[] redirects)
         {

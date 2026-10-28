@@ -55,6 +55,7 @@ mod reports;
 pub use hierarchy_xml::{HierarchyXmlDepth, HierarchyXmlReport, HierarchyXmlSelection};
 mod snapshots;
 mod speech;
+mod speech_rules;
 mod table_reports;
 mod tables;
 pub use reports::{
@@ -70,6 +71,7 @@ pub use tables::{
 };
 mod triggers;
 pub use speech::AudioSettings;
+pub use speech_rules::{SpeechRule, SpeechRuleRevision, SpeechRuleSnapshot};
 pub use timers::{
     SavedTimer, TimerBatchPreview, TimerDefinition, TimerItem, TimerPage, TimerRevision,
     TimerSnippetPreview,

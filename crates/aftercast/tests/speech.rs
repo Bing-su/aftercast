@@ -112,3 +112,73 @@ async fn shutdown_retires_audio_before_disposing_its_owner_context(deployment: D
         "cleanup required an owner callback"
     );
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and fixture; run mise run test:plugins"]
+async fn speech_rules_are_session_owned_and_persist_without_playback(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let initial = host.speech_rules().await.expect("initial rules");
+    assert!(initial.rules.is_empty());
+    let rules = vec![aftercast::SpeechRule {
+        pattern: "(cat)".into(),
+        replacement: "$1dog".into(),
+        active: true,
+    }];
+    let saved = host
+        .save_speech_rules(initial.revision, &rules)
+        .await
+        .expect("save");
+    assert_eq!(saved.rules, rules);
+    host.set_audio_settings(&AudioSettings {
+        sound_volume: 61,
+        tts_volume: 37,
+        ..AudioSettings::default()
+    })
+    .await
+    .expect("audio settings");
+    let assembly = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let id = host
+        .create_plugin(
+            PluginConfig::builder()
+                .path(assembly)
+                .type_name("Aftercast.PluginFixture.SpeechRulesProbePlugin")
+                .build(),
+        )
+        .await
+        .expect("fake delegate plugin");
+    assert_eq!(
+        host.initialize_plugin(id)
+            .await
+            .expect("in-memory delegate"),
+        "CATdog|61|37"
+    );
+    host.save_speech_rules(initial.revision, &rules)
+        .await
+        .expect_err("stale");
+    let invalid = vec![aftercast::SpeechRule {
+        pattern: "[".into(),
+        replacement: "x".into(),
+        active: true,
+    }];
+    host.save_speech_rules(saved.revision, &invalid)
+        .await
+        .expect_err("invalid regex");
+    assert_eq!(host.speech_rules().await.expect("unchanged").rules, rules);
+    assert!(
+        !deployment.state.join("tts.txt").exists(),
+        "editing must not start playback"
+    );
+    host.shutdown().await.expect("shutdown");
+    let restarted = Host::start(deployment.config()).await.expect("restart");
+    assert_eq!(
+        restarted.speech_rules().await.expect("restored").rules,
+        rules
+    );
+    restarted
+        .save_speech_rules(saved.revision, &rules)
+        .await
+        .expect_err("old session");
+    restarted.shutdown().await.expect("shutdown");
+}

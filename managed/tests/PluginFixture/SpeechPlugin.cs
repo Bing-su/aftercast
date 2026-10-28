@@ -44,3 +44,27 @@ public sealed class SoundPlugin : IActPluginV1
     }
     public void DeInitPlugin() { }
 }
+
+// No audio provider: observe the real TTS entry point through a temporary in-memory plugin delegate.
+public sealed class SpeechRulesProbePlugin : IActPluginV1
+{
+    public void InitPlugin(TabPage tab, Label label)
+    {
+        var root = ActGlobals.oFormActMain!;
+        var original = root.PlayTtsMethod;
+        var originalSound = root.PlaySoundMethod;
+        var speech = ""; var volumes = new List<int>();
+        try
+        {
+            root.PlayTtsMethod = text => speech = text;
+            root.PlaySoundMethod = (_, volume) => volumes.Add(volume);
+            var wave = Path.Combine(root.AppDataFolder.FullName, "fake.wav");
+            var sapi = Path.Combine(root.AppDataFolder.FullName, "sapi.wav");
+            File.WriteAllText(wave, "synthetic"); File.WriteAllText(sapi, "synthetic");
+            root.TTS("CAT"); root.PlaySound(wave); root.PlaySound(sapi);
+            label.Text = speech + "|" + string.Join("|", volumes);
+        }
+        finally { root.PlayTtsMethod = original; root.PlaySoundMethod = originalSound; }
+    }
+    public void DeInitPlugin() { }
+}

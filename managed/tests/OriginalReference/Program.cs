@@ -49,6 +49,7 @@ internal static class Program
         {
             var unexpectedFailures = args[2] switch
             {
+                "speech-policy" when args.Length == 3 => SpeechPolicyMode(actPath),
                 "import-policy" when args.Length == 3 => ImportPolicyMode(actPath),
                 "report-export-policy" when args.Length == 3 => ReportExportPolicyMode(actPath),
                 "values" when args.Length == 3 => DnumValues.Run(act),
@@ -111,6 +112,11 @@ internal static class Program
             new { zone = Read(encounter, "ZoneName"), title = Read(encounter, "Title") });
         Console.WriteLine(JsonSerializer.Serialize(new { failures }));
         return failures == 0 ? 0 : 1;
+    }
+
+    private static int SpeechPolicyMode(string path)
+    {
+        Probe("Original speech policy", () => SpeechPolicy.Run(path)); return 0;
     }
 
     private static int ReportExportPolicyMode(string path)
