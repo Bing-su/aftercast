@@ -24,15 +24,18 @@ impl DeathReport {
     pub fn cumulative_damage(&self) -> [i64; 10] {
         let mut value = 0_i64;
         std::array::from_fn(|i| {
-            value = value.wrapping_add(self.buckets[i].damage);
+            value = value.wrapping_add(self.buckets.get(i).map_or(0, |b| b.damage));
             value
         })
     }
     pub fn chronological_net(&self) -> [i64; 10] {
         let mut value = 0_i64;
         std::array::from_fn(|i| {
-            let bucket = &self.buckets[9 - i];
-            value = value.wrapping_add(bucket.damage.wrapping_sub(bucket.healing));
+            let net = self
+                .buckets
+                .get(9 - i)
+                .map_or(0, |b| b.damage.wrapping_sub(b.healing));
+            value = value.wrapping_add(net);
             value
         })
     }
@@ -71,7 +74,7 @@ pub fn death_report(actions: &[ClassifiedAction], death_action: usize) -> Option
         if t < anchor - 9 * SECOND || t >= anchor + SECOND {
             continue;
         }
-        let bucket = &mut buckets[((anchor + SECOND - 1 - t) / SECOND) as usize];
+        let bucket = buckets.get_mut(((anchor + SECOND - 1 - t) / SECOND) as usize)?;
         if row.registered_damage {
             bucket.damage = add_dnum(bucket.damage, row.action.amount);
             bucket.evidence.push(index);
@@ -144,7 +147,7 @@ mod tests {
                 .map(|v| {
                     let kind = v["swingType"].as_i64().unwrap();
                     make(
-                        (base as i64 + v["offsetTicks"].as_i64().unwrap()) as u64,
+                        u64::try_from(base as i64 + v["offsetTicks"].as_i64().unwrap()).unwrap(),
                         v["sorter"].as_i64().unwrap() as i32,
                         v["amount"].as_str().unwrap().parse().unwrap(),
                         kind == 1 || kind == 3,

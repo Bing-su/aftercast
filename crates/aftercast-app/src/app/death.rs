@@ -107,7 +107,12 @@ fn DeathResults(
         for (i, action_index) in analysis.deaths.iter().enumerate() {
             {
                 let time = super::encounter_context::format_time(
-                    analysis.actions[*action_index].action.time,
+                    analysis
+                        .actions
+                        .get(*action_index)
+                        .expect("death index generated from actions")
+                        .action
+                        .time,
                 );
                 rsx! {
                     Button {
@@ -139,12 +144,12 @@ fn DeathResults(
                         aria_label: "Chronological damage and healing magnitudes",
                         for i in (0..10).rev() {
                             {
-                                let bucket = &report.buckets[i];
+                                let bucket = report.buckets.get(i).expect("bucket index 0..10");
                                 let damage_width = (bucket.damage.unsigned_abs() as f64 / magnitude * 100.0)
                                     .round();
                                 let healing_width = (bucket.healing.unsigned_abs() as f64 / magnitude * 100.0)
                                     .round();
-                                let net = net_totals[9 - i];
+                                let net = *net_totals.get(9 - i).expect("bucket index 0..10");
                                 rsx! {
                                     div { class: "text-xs",
                                         "T-{i}: cumulative net {net}"
@@ -157,10 +162,10 @@ fn DeathResults(
                     }
                     for i in 0..10 {
                         {
-                            let bucket = &report.buckets[i];
+                            let bucket = report.buckets.get(i).expect("bucket index 0..10");
                             let d = bucket.damage;
                             let net = d.wrapping_sub(bucket.healing);
-                            let total = damage_totals[i];
+                            let total = *damage_totals.get(i).expect("bucket index 0..10");
                             rsx! {
                                 p { "T-{i}: damage {d}, net {net}, cumulative damage {total}" }
                             }
@@ -170,7 +175,7 @@ fn DeathResults(
             }
             for i in (0..10).rev() {
                 {
-                    let bucket = &report.buckets[i];
+                    let bucket = report.buckets.get(i).expect("bucket index 0..10");
                     let damage = bucket.damage;
                     let healing = bucket.healing;
                     let net = damage.wrapping_sub(healing);
@@ -179,7 +184,11 @@ fn DeathResults(
                             p { "T-{i}: damage {damage}, healing {healing}, net {net}" }
                             for action_index in bucket.evidence.iter().copied() {
                                 {
-                                    let row = &analysis.actions[action_index].action;
+                                    let row = &analysis
+                                        .actions
+                                        .get(action_index)
+                                        .expect("evidence index generated from actions")
+                                        .action;
                                     let label = format!(
                                         "{} — {} — {}{}",
                                         row.attacker,

@@ -348,10 +348,8 @@ async fn death_analysis_keeps_frozen_action_log_identity(deployment: Deployment)
         .await
         .unwrap()
         .unwrap();
-    assert!(
-        host.action_snapshot_logs(analysis.snapshot, offset, 1)
-            .await
-            .is_err()
-    );
+    host.action_snapshot_logs(analysis.snapshot, offset, 1)
+        .await
+        .expect_err("replaced death snapshot rejected");
     host.shutdown().await.unwrap();
 }
