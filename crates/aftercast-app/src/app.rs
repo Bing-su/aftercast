@@ -449,7 +449,10 @@ async fn load_settings(mut state: Signal<AppState>, mut language: I18n) {
                     let extend = state.settings.ui.import_extend_default;
                     state.reparse.apply_defaults_once(extend);
                     let include_logs = state.settings.ui.export_include_logs_default;
-                    state.interchange.apply_defaults_once(include_logs);
+                    let process_triggers = state.settings.ui.archive_trigger_results_default;
+                    state
+                        .interchange
+                        .apply_defaults_once(include_logs, process_triggers);
                     let graphs = state.settings.graphs.clone();
                     state.restore_report_graphs(&graphs);
                     state.file = Some(file);

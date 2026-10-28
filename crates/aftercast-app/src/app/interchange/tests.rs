@@ -357,19 +357,63 @@ fn interchange_render_and_picker_reservations_are_invalidated_before_native_open
 #[test]
 fn archive_log_default_is_separate_from_request_draft() {
     let mut ui = AppState::new("/isolated".into());
-    ui.interchange.apply_defaults_once(true);
+    ui.interchange.apply_defaults_once(true, false);
     assert!(ui.interchange.draft.options.include_logs);
     let view = ui.interchange_view();
     assert!(ui.interchange_edit(view, "logs", "false".into()));
-    ui.interchange.apply_defaults_once(true);
+    ui.interchange.apply_defaults_once(true, false);
     assert!(!ui.interchange.draft.options.include_logs);
     ui.interchange.stop();
-    ui.interchange.apply_defaults_once(true);
+    ui.interchange.apply_defaults_once(true, false);
     assert!(!ui.interchange.draft.options.include_logs);
 
     let mut early = AppState::new("/isolated".into());
     let view = early.interchange_view();
     assert!(early.interchange_edit(view, "output", "draft.xml".into()));
-    early.interchange.apply_defaults_once(false);
+    early.interchange.apply_defaults_once(false, false);
     assert!(early.interchange.draft.options.include_logs);
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10; run mise run test:gui-state"]
+async fn archive_trigger_ui_contract_snapshots_choice_and_rejects_late_results() {
+    let mut f = Fixture::new().await;
+    let page = f.host.triggers(0, 16).await.expect("triggers");
+    let definition = aftercast::TriggerDefinition {
+        regex: r"^0\|123$".into(),
+        timer: true,
+        sound_type: 3,
+        sound_data: "no audio".into(),
+        ..aftercast::TriggerDefinition::default()
+    };
+    f.host
+        .save_trigger(page.revision, None, &definition)
+        .await
+        .expect("trigger");
+    let archive = f.root.join("fixture.xml");
+    std::fs::write(&archive, "<Encounters><Encounter Name=\"fixture\"><LogLine Type=\"1\" Time=\"2020-01-01T00:00:00\" Line=\"0|123\" /></Encounter></Encounters>").expect("fixture");
+    let view = f.ui.interchange_view();
+    assert!(f.ui.interchange_edit(view, "input", archive.to_string()));
+    assert!(f.ui.interchange_edit(view, "process-triggers", "true".into()));
+    let work = f.ui.begin_act_import(view).expect("valid").expect("begin");
+    assert!(matches!(&work.1, Request::Import(_, true)));
+    assert!(
+        !f.ui
+            .interchange_edit(view, "process-triggers", "false".into())
+    );
+    assert!(f.ui.begin_act_import(view).expect("duplicate").is_none());
+    let result = perform(&f.host.handle(), &work.1).await;
+    f.ui.revision.session += 1;
+    f.ui.interchange.stop();
+    assert!(!f.ui.receive_interchange(work.0, result, "late"));
+    assert_eq!(
+        f.host
+            .trigger_results(None, 16)
+            .await
+            .expect("results")
+            .items
+            .len(),
+        1
+    );
+    f.host.shutdown().await.expect("shutdown");
 }

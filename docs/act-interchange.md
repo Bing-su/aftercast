@@ -4,18 +4,17 @@ Public ACT interchange is separate from raw-log parsing and the precise private
 history database. Existing readers and writers remain the implementation; no new
 XML dialect or report exporter is introduced.
 
-| Contract        | Behavior                                                                                                                                                                                                                                                        |
-| --------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Import          | Auto-detect XML versus gzip bytes, initialize parser categories first, end live combat; decode completely before attaching encounters. Malformed input adds no encounters. File and expanded XML remain bounded to 64 MiB. Parser hooks/audio are not replayed. |
-| Export          | One session-owned retained encounter, explicit XML or gzip format, a new destination only. Atomic publication refuses an existing file, including a destination created during the write.                                                                       |
-| Log policy      | `ActExportOptions.include_logs` controls retained LogLine output; legacy `export_act` and default options include logs. Omitting logs does not strip actions or mutate the original encounter.                                                                  |
-| Private history | Always includes its precise log/identity metadata. Public export options do not alter checkpoint behavior.                                                                                                                                                      |
-| Accepted work   | Existing Archive Begin/Advance and Host shutdown drain apply. Dropping a response future or changing screen does not undo an accepted import/export. File selection/confirmation may be canceled before admission.                                              |
-| Errors          | Missing parent, invalid XML/gzip, unsupported input and destination conflicts are visible errors. Existing destinations remain unchanged; no replace/overwrite permission is inferred.                                                                          |
+| Contract        | Behavior                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Import          | Auto-detect XML versus gzip bytes, initialize parser categories first, end live combat; decode completely before attaching encounters. Malformed input adds no encounters. File and expanded XML remain bounded to 64 MiB. Parser hooks/audio are not replayed. An independent, default-off option matches included log lines for tabbed custom-trigger results after full decoding; it does not run audio, TTS or live timers. |
+| Export          | One session-owned retained encounter, explicit XML or gzip format, a new destination only. Atomic publication refuses an existing file, including a destination created during the write.                                                                                                                                                                                                                                       |
+| Log policy      | `ActExportOptions.include_logs` controls retained LogLine output; legacy `export_act` and default options include logs. Omitting logs does not strip actions or mutate the original encounter.                                                                                                                                                                                                                                  |
+| Private history | Always includes its precise log/identity metadata. Public export options do not alter checkpoint behavior.                                                                                                                                                                                                                                                                                                                      |
+| Accepted work   | Existing Archive Begin/Advance and Host shutdown drain apply. Dropping a response future or changing screen does not undo an accepted import/export. File selection/confirmation may be canceled before admission.                                                                                                                                                                                                              |
+| Errors          | Missing parent, invalid XML/gzip, unsupported input and destination conflicts are visible errors. Existing destinations remain unchanged; no replace/overwrite permission is inferred.                                                                                                                                                                                                                                          |
 
 Bridge export flags use bit 0 for gzip and bit 1 for **omit** logs. Zero/one retain
-the prior include-logs behavior. All flags must be zero for non-export commands;
-unknown bits are rejected before admission.
+the prior include-logs behavior. Import bit 0 requests trigger results; other import flags and all flags on history commands are rejected before admission.
 
 Synthetic isolated-worker regressions exercise XML/gzip × included/omitted logs,
 source graph preservation, refusal to overwrite and exact destination bytes,
@@ -52,3 +51,18 @@ and Windows execution remain unverified; Linux app startup is not click QA.
 
 This closes the Linux implementation of **L7a** only. Raw-log options L6a–d,
 text/HTML/table-XML reports L7b and real/synthetic ODBC work L7c remain separate.
+
+## Archive trigger matching
+
+ACT `XmlToEncounters` checks `cbParseCt` on each archive LogLine independently
+of raw-log `cbImportCustomTriggers`. Aftercast decodes the whole archive before
+matching, preserving malformed-input atomicity. It applies the existing original
+text option, category filter and .NET regex engine to retained archive logs and
+records tabbed import results without audio, speech, timers or parser hooks.
+The settings default is saved separately and takes effect on the next application
+launch; the per-request choice is snapshotted at admission. Older settings and the
+legacy API default to off. The original native UI/thread was not run. Regexes have
+a 100 ms per-match timeout and input is capped at 64 MiB, but there is currently
+no aggregate matching deadline; a very large archive or many slow expressions can
+hold the owner thread for a long time. Accepted archive work is drained on stop
+and cannot be canceled after admission.

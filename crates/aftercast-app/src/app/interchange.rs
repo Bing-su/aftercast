@@ -9,6 +9,7 @@ pub(super) use view::Panel;
 #[derive(Clone, Debug, Default)]
 struct Draft {
     input: String,
+    process_triggers: bool,
     output: String,
     options: ActExportOptions,
 }
@@ -36,7 +37,7 @@ struct Export {
 }
 #[derive(Clone, Debug)]
 enum Request {
-    Import(Utf8PathBuf),
+    Import(Utf8PathBuf, bool),
     Export(Export),
 }
 #[derive(Clone, Debug)]
@@ -57,9 +58,10 @@ pub(super) struct State {
     error: Option<String>,
 }
 impl State {
-    pub(super) fn apply_defaults_once(&mut self, include_logs: bool) {
+    pub(super) fn apply_defaults_once(&mut self, include_logs: bool, process_triggers: bool) {
         if !self.defaults_applied {
             self.draft.options.include_logs = include_logs;
+            self.draft.process_triggers = process_triggers;
             self.defaults_applied = true;
         }
     }
@@ -108,6 +110,11 @@ impl AppState {
         let draft = &mut self.interchange.draft;
         match field {
             "input" => draft.input = value,
+            "process-triggers" => match value.as_str() {
+                "true" => draft.process_triggers = true,
+                "false" => draft.process_triggers = false,
+                _ => return false,
+            },
             "output" => draft.output = value,
             "format" => match value.as_str() {
                 "xml" => draft.options.format = ActFormat::Xml,
@@ -226,7 +233,10 @@ impl AppState {
         {
             return Err("history-parser-required");
         }
-        let request = Request::Import(path(&self.root, &self.interchange.draft.input)?);
+        let request = Request::Import(
+            path(&self.root, &self.interchange.draft.input)?,
+            self.interchange.draft.process_triggers,
+        );
         Ok(Some(self.admit_interchange(request)))
     }
     fn confirm_act_export(&mut self, view: Token) -> Option<(Token, Request)> {
@@ -251,7 +261,7 @@ impl AppState {
         self.interchange.error = None;
         self.phase = Phase::Archiving;
         self.message.clear();
-        if matches!(request, Request::Import(_)) {
+        if matches!(request, Request::Import(..)) {
             self.invalidate_restored_context();
         }
         (token, request)
@@ -277,7 +287,7 @@ impl AppState {
             .take()
             .expect("checked pending interchange");
         self.phase = Phase::Ready;
-        if matches!(request, Request::Import(_)) {
+        if matches!(request, Request::Import(..)) {
             self.invalidate_restored_context();
         }
         match result {
@@ -289,7 +299,11 @@ impl AppState {
 }
 async fn perform(handle: &HostHandle, request: &Request) -> Result<u32, aftercast::Error> {
     match request {
-        Request::Import(path) => handle.import_act(path).await,
+        Request::Import(path, process_triggers) => {
+            handle
+                .import_act_with_trigger_results(path, *process_triggers)
+                .await
+        }
         Request::Export(export) => {
             handle
                 .export_act_with_options(export.target.id, &export.path, export.options)

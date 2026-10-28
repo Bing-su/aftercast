@@ -7,7 +7,7 @@ fn execute(mut state: Signal<AppState>, work: Option<(Token, Request)>) {
     let Some(handle) = state.read().handle() else {
         return;
     };
-    let complete = tr(if matches!(request, Request::Import(_)) {
+    let complete = tr(if matches!(request, Request::Import(..)) {
         "act-import-complete"
     } else {
         "act-export-complete"
@@ -16,7 +16,7 @@ fn execute(mut state: Signal<AppState>, work: Option<(Token, Request)>) {
     spawn_forever(async move {
         let result = perform(&handle, &request).await;
         if state.write().receive_interchange(token, result, &complete)
-            && matches!(request, Request::Import(_))
+            && matches!(request, Request::Import(..))
         {
             super::super::refresh(state, 0);
         }
@@ -110,6 +110,25 @@ pub(in crate::app) fn Panel() -> Element {
                     {tr("act-interchange-help")}
                 }
                 div { class: "space-y-2",
+                    Button {
+                        variant: ButtonVariant::Outline,
+                        aria_label: tr("act-import-trigger-results"),
+                        aria_pressed: draft.process_triggers,
+                        disabled: blocked,
+                        onclick: move |_| {
+                            state
+                                .write()
+                                .interchange_edit(
+                                    view,
+                                    "process-triggers",
+                                    (!draft.process_triggers).to_string(),
+                                );
+                        },
+                        {tr("act-import-trigger-results")}
+                    }
+                    p { class: "text-xs text-muted-foreground",
+                        {tr("act-import-trigger-results-help")}
+                    }
                     Label { html_for: "act-input", {tr("act-input")} }
                     Input {
                         id: "act-input".to_owned(),
@@ -235,7 +254,7 @@ pub(in crate::app) fn Panel() -> Element {
                         " "
                         {
                             match request {
-                                Request::Import(path) => path.to_string(),
+                                Request::Import(path, _) => path.to_string(),
                                 Request::Export(export) => export.path.to_string(),
                             }
                         }

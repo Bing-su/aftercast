@@ -29,7 +29,7 @@ public static partial class EntryPoint
         var flags = Marshal.ReadInt32(buffer, 20);
         var id = unchecked((ulong)Marshal.ReadInt64(buffer, 24));
         var length = Marshal.ReadInt32(buffer, 32);
-        if (command is < 1 or > 4 || flags is < 0 or > 3 || command != 2 && flags != 0 ||
+        if (command is < 1 or > 4 || flags is < 0 or > 3 || command == 1 && flags > 1 || command is 3 or 4 && flags != 0 ||
             (command == 2 ? id == 0 : id != 0) || length != sizeBytes - 64 ||
             Marshal.ReadInt32(buffer, 36) != 0 || Marshal.ReadInt64(buffer, 40) != 0 || Marshal.ReadInt64(buffer, 48) != 0 || Marshal.ReadInt64(buffer, 56) != 0)
             throw new ArgumentException("Invalid archive command fields");
@@ -41,10 +41,10 @@ public static partial class EntryPoint
         Marshal.WriteInt64(buffer, 48, 0);
         if (asynchronous)
         {
-            plugins.Value.BeginArchive(command, text, id, (flags & 1) != 0, (flags & 2) == 0);
+            plugins.Value.BeginArchive(command, text, id, command == 2 && (flags & 1) != 0, (flags & 2) == 0, command == 1 && (flags & 1) != 0);
             return 1;
         }
-        var count = plugins.Value.ArchiveOperation(command, text, id, (flags & 1) != 0, (flags & 2) == 0);
+        var count = plugins.Value.ArchiveOperation(command, text, id, command == 2 && (flags & 1) != 0, (flags & 2) == 0, command == 1 && (flags & 1) != 0);
         Marshal.WriteInt64(buffer, 48, count);
         return 0;
     }

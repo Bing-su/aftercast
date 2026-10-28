@@ -710,3 +710,6 @@ import-defaults = Import and export defaults
 import-extend-default = Continue to the end of combat
 import-defaults-help = Save this default for the next application launch. Each operation can override its default; active requests and history replay are unaffected.
 export-include-logs-default = Include logs in ACT archive exports
+
+act-import-trigger-results = Match archive logs against custom triggers
+act-import-trigger-results-help = Record tabbed results only. Parser hooks, audio and timers are not run. This is independent of raw-log import matching.

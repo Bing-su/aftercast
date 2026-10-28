@@ -101,11 +101,11 @@ internal sealed partial class PluginSession
             _ => throw new ArgumentOutOfRangeException(nameof(command)),
         }));
     internal void EndCombat() => OnOwner(() => { environment?.EndCombat(); return 0; });
-    internal int ArchiveOperation(int command, string text, ulong id, bool compressed, bool includeLogs = true) => OnOwner(() =>
+    internal int ArchiveOperation(int command, string text, ulong id, bool compressed, bool includeLogs = true, bool processTriggers = false) => OnOwner(() =>
     {
         if (command is 1 or 4 && !plugins.Values.Any(plugin => plugin.State == PluginState.Initialized))
             throw new InvalidOperationException("Archive reconstruction requires initialized parser categories");
-        return Host().ArchiveOperation(command, text, id, compressed, includeLogs);
+        return Host().ArchiveOperation(command, text, id, compressed, includeLogs, processTriggers);
     });
     internal void EnsureCanStop()
     {
@@ -148,14 +148,14 @@ internal sealed partial class PluginSession
     });
     internal ImportProgress ImportProgress => OnOwner(() => Host().ImportProgress);
     private Task<int>? archive;
-    internal void BeginArchive(int command, string text, ulong id, bool compressed, bool includeLogs = true) => OnOwner(() =>
+    internal void BeginArchive(int command, string text, ulong id, bool compressed, bool includeLogs = true, bool processTriggers = false) => OnOwner(() =>
     {
         if (archive is not null || history is not null) throw new InvalidOperationException("Archive/history operation is already active");
         if (command is 1 or 4 && !plugins.Values.Any(plugin => plugin.State == PluginState.Initialized))
             throw new InvalidOperationException("Archive reconstruction requires an initialized plugin");
         // Construct controls under the normal plugin context, never the private continuation context.
         var host = Host();
-        archive = context!.RunOperation(() => host.ArchiveOperationAsync(command, text, id, compressed, includeLogs));
+        archive = context!.RunOperation(() => host.ArchiveOperationAsync(command, text, id, compressed, includeLogs, processTriggers));
         return 0;
     });
     internal int? AdvanceArchive()

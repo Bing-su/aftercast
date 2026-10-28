@@ -710,3 +710,6 @@ import-defaults = 가져오기·내보내기 기본값
 import-extend-default = 전투 종료까지 계속
 import-defaults-help = 저장한 기본값은 다음 앱 실행부터 적용됩니다. 각 작업 화면에서 요청별로 변경할 수 있으며 진행 중인 작업과 기록 재파싱에는 영향을 주지 않습니다.
 export-include-logs-default = ACT 기록 내보내기에 로그 포함
+
+act-import-trigger-results = 기록 로그를 사용자 트리거와 비교
+act-import-trigger-results-help = 결과 탭만 기록합니다. 파서 훅, 소리와 타이머는 실행하지 않습니다. 원시 로그 가져오기 설정과 별개입니다.

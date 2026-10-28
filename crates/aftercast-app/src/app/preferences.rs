@@ -129,6 +129,31 @@ pub(super) fn SettingsPane() -> Element {
                         }
                     }
                 }
+                div { class: "flex flex-wrap items-center justify-between gap-3",
+                    Label { html_for: "archive-trigger-results-default",
+                        {tr("act-import-trigger-results")}
+                    }
+                    Button {
+                        id: "archive-trigger-results-default".to_owned(),
+                        variant: ButtonVariant::Outline,
+                        aria_label: tr("act-import-trigger-results"),
+                        aria_pressed: state.read().settings.ui.archive_trigger_results_default,
+                        disabled,
+                        onclick: move |_| {
+                            let current = state.peek().settings.ui.archive_trigger_results_default;
+                            state.write().settings.ui.archive_trigger_results_default = !current;
+                        },
+                        {
+                            tr(
+                                if state.read().settings.ui.archive_trigger_results_default {
+                                    "enabled"
+                                } else {
+                                    "disabled"
+                                },
+                            )
+                        }
+                    }
+                }
                 p { class: "text-xs leading-6 text-muted-foreground", {tr("import-defaults-help")} }
             }
             Separator { class: "my-6".to_owned() }

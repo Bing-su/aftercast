@@ -151,3 +151,62 @@ async fn trigger_edits_results_and_options_survive_the_correct_boundaries(deploy
     );
     restarted.shutdown().await.expect("stop restart");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
+async fn archive_trigger_results_are_explicit_and_independent_of_raw_import(
+    deployment: Deployment,
+) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    parser(&host).await;
+    let page = host.triggers(0, 16).await.expect("triggers");
+    let definition = TriggerDefinition {
+        category: "fixture".into(),
+        regex: r"^0\|(?<amount>\d+)$".into(),
+        sound_type: 3,
+        sound_data: "${amount}".into(),
+        timer: true,
+        timer_name: "fixture".into(),
+        ..TriggerDefinition::default()
+    };
+    host.save_trigger(page.revision, None, &definition)
+        .await
+        .expect("register trigger");
+    let file = deployment.directory().join("archive.xml");
+    std::fs::write(&file, "<Encounters><Encounter Name=\"Synthetic\"><LogLine Type=\"1\" Time=\"2020-01-01T00:00:00\" Line=\"0|123\" /></Encounter></Encounters>").expect("fixture");
+    host.import_act(&file).await.expect("default import");
+    assert!(
+        host.trigger_results(None, 16)
+            .await
+            .expect("results")
+            .items
+            .is_empty()
+    );
+    host.import_act_with_trigger_results(&file, true)
+        .await
+        .expect("explicit trigger matching");
+    let results = host.trigger_results(None, 16).await.expect("results");
+    assert_eq!(results.items.len(), 1);
+    assert_eq!(results.items[0].line, "0|123");
+    assert!(results.items[0].is_import);
+    assert!(
+        results.items[0]
+            .captures
+            .iter()
+            .any(|capture| capture.name == "amount" && capture.value == "123")
+    );
+    host.clear_trigger_results().await.expect("clear");
+    std::fs::write(&file, "<Encounters><Encounter Name=\"Invalid\"><LogLine Type=\"1\" Time=\"2020-01-01T00:00:00\" Line=\"0|123\" /><Invalid /></Encounter></Encounters>").expect("bad fixture");
+    host.import_act_with_trigger_results(&file, true)
+        .await
+        .expect_err("invalid archive");
+    assert!(
+        host.trigger_results(None, 16)
+            .await
+            .expect("no partial result")
+            .items
+            .is_empty()
+    );
+    host.shutdown().await.expect("shutdown");
+}

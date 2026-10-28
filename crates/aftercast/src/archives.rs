@@ -29,7 +29,8 @@ impl Default for ActExportOptions {
 
 fn packet(session: u64, command: u32, text: &str, id: u64, flags: u32) -> Result<BytesMut, Error> {
     if flags > 3
-        || command != 2 && flags != 0
+        || command == 1 && flags > 1
+        || matches!(command, 3 | 4) && flags != 0
         || text.contains('\0')
         || text.len() > 65536 - 64
         || command == 4 && text.len() > 4096
@@ -74,8 +75,19 @@ impl HostHandle {
     /// saved swings directly; raw parser hooks, correction rules and live audio are not replayed.
     /// A malformed file adds no encounters. Each file and its expanded XML are limited to 64 MiB.
     pub async fn import_act(&self, path: impl AsRef<Utf8Path>) -> Result<u32, Error> {
+        self.import_act_with_trigger_results(path, false).await
+    }
+
+    /// Import ACT XML/gzip, optionally matching retained log lines for tabbed trigger results.
+    /// This never runs parser hooks, audio, TTS, or live timers.
+    pub async fn import_act_with_trigger_results(
+        &self,
+        path: impl AsRef<Utf8Path>,
+        process_triggers: bool,
+    ) -> Result<u32, Error> {
         let path = self.canonicalize(path.as_ref()).await?;
-        self.archive_command(1, path.as_str(), 0, 0).await
+        self.archive_command(1, path.as_str(), 0, u32::from(process_triggers))
+            .await
     }
 
     /// Exports one retained encounter to a new file; refuses to overwrite an existing destination.
@@ -165,6 +177,8 @@ mod tests {
             assert_eq!(packet.get(20..24), Some(flags.to_le_bytes().as_slice()));
         }
         packet(3, 2, "/tmp/export.xml", 7, 4).expect_err("unknown export flag");
+        packet(3, 1, "/tmp/source.xml", 0, 1).expect("archive trigger option");
+        packet(3, 1, "/tmp/source.xml", 0, 2).expect_err("unknown import flag");
         packet(3, 3, "", 0, 2).expect_err("log option is export-only");
         for (command, text) in [
             (1, "x\0y".to_owned()),

@@ -99,6 +99,7 @@ pub struct UiSettings {
     pub notification_blink: bool,
     pub import_extend_default: bool,
     pub export_include_logs_default: bool,
+    pub archive_trigger_results_default: bool,
     pub main_table_refresh_seconds: u8,
     pub main_table_reverse: bool,
 }
@@ -111,6 +112,7 @@ impl Default for UiSettings {
             notification_blink: true,
             import_extend_default: false,
             export_include_logs_default: true,
+            archive_trigger_results_default: false,
             main_table_refresh_seconds: 5,
             main_table_reverse: true,
         }
@@ -393,6 +395,10 @@ fn save_selective(document: &mut DocumentMut, host: &HostSettings) {
 fn save_ui(document: &mut DocumentMut, ui: &UiSettings) {
     set(&mut document["ui"]["language"], value(&ui.language));
     set(&mut document["ui"]["theme"], value(&ui.theme));
+    set(
+        &mut document["ui"]["archive_trigger_results_default"],
+        value(ui.archive_trigger_results_default),
+    );
     set(
         &mut document["ui"]["export_include_logs_default"],
         value(ui.export_include_logs_default),
@@ -693,8 +699,10 @@ mod tests {
         let mut file = ConfigFile::parse("[ui]\ntheme = 'mocha'\n").expect("old config");
         assert!(!file.settings.ui.import_extend_default);
         assert!(file.settings.ui.export_include_logs_default);
+        assert!(!file.settings.ui.archive_trigger_results_default);
         file.settings.ui.import_extend_default = true;
         file.settings.ui.export_include_logs_default = false;
+        file.settings.ui.archive_trigger_results_default = true;
         file.save(root).expect("save");
         assert!(
             ConfigFile::load(root)
@@ -710,6 +718,14 @@ mod tests {
                 .ui
                 .export_include_logs_default
         );
+        assert!(
+            ConfigFile::load(root)
+                .expect("restart")
+                .settings
+                .ui
+                .archive_trigger_results_default
+        );
+        assert!(ConfigFile::parse("[ui]\narchive_trigger_results_default = 'yes'\n").is_err());
         let invalid_root = root.join("not-a-directory");
         std::fs::write(&invalid_root, "synthetic").expect("file instead of directory");
         let mut unsaved = ConfigFile::load(root).expect("saved defaults");

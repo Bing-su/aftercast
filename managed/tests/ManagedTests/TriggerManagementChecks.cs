@@ -37,6 +37,20 @@ internal static class TriggerManagementChecks
                 Reject(() => root.SaveTrigger(revision, originalKey, definition with { Regex = "[" }));
                 Reject(() => root.SaveTrigger(revision - 1, originalKey, definition));
                 Check(File.ReadAllBytes(path).SequenceEqual(bytes), "Rejected edits changed persisted definitions");
+                // Archive matching is independently enabled and runs only after a complete decode.
+                var archive = Path.Combine(directory.FullName, "synthetic.xml");
+                File.WriteAllText(archive, "<Encounters><Encounter Name=\"fixture\"><LogLine Type=\"1\" Time=\"2020-01-01T00:00:00\" Line=\"00Source 41\" /></Encounter></Encounters>");
+                host.ArchiveOperation(1, archive, 0, false);
+                Check(root.ReadTriggerResults(0,16).Items.Length == 0, "Default archive import ran triggers");
+                File.WriteAllText(archive, "<Encounters><Encounter Name=\"broken\"><LogLine Type=\"1\" Time=\"2020-01-01T00:00:00\" Line=\"00Source 41\" /><Unexpected /></Encounter></Encounters>");
+                Reject(() => host.ArchiveOperation(1, archive, 0, false, processTriggers: true));
+                Check(root.ReadTriggerResults(0,16).Items.Length == 0, "Malformed archive emitted a partial result");
+                File.WriteAllText(archive, "<Encounters><Encounter Name=\"fixture\"><LogLine Type=\"1\" Time=\"2020-01-01T00:00:00\" Line=\"00Source 41\" /></Encounter></Encounters>");
+                host.ArchiveOperation(1, archive, 0, false, processTriggers: true);
+                var archived = root.ReadTriggerResults(0,16).Items.Single();
+                Check(archived.IsImport && archived.Line == "Source 41" && host.DrainSpeech().Length == 0 &&
+                    ActGlobals.oFormSpellTimers.GetTimerFrames().Count == 0, "Archive matching lost result or ran import effects");
+                root.ClearTriggerResults();
                 revision = root.SaveTriggerOptions(revision, false, true);
                 Process(root, "original", "00Source 42", true);
                 var result = root.ReadTriggerResults(0,16).Items.Single();

@@ -32,10 +32,10 @@ public partial class FormActMain
     internal void ProcessCustomTriggers(string original, LogLineEventArgs info, bool isImport) =>
         ProcessCustomTriggerRecord(original, info, isImport, GlobalTimeSorter, info.logLine);
 
-    private void ProcessCustomTriggerRecord(string original, LogLineEventArgs info, bool isImport, int sorter, string triggerText)
+    private void ProcessCustomTriggerRecord(string original, LogLineEventArgs info, bool isImport, int sorter, string triggerText, bool archiveImport = false)
     {
         // ACT records tabbed results before suppressing import audio and live timer effects.
-        if (IsActClosing || isImport && !ProcessImportCustomTriggers || triggerText.Length <= TimeStampLen + 1) return;
+        if (IsActClosing || isImport && !archiveImport && !ProcessImportCustomTriggers || triggerText.Length <= TimeStampLen + 1) return;
         RebuildActiveCustomTriggers();
         CustomTrigger[] triggers;
         lock (triggerGate) triggers = ActiveCustomTriggers.Values.ToArray();
@@ -65,6 +65,17 @@ public partial class FormActMain
                 trigger.LastAudioAlert = DateTime.Now;
             }
             catch (Exception error) { WriteExceptionLog(error, "Custom trigger: " + trigger.Key); }
+    }
+
+    // Archive-import matching is a separate ACT option from raw-log import matching.
+    private void ProcessArchiveTriggers(IEnumerable<EncounterData> encounters)
+    {
+        foreach (var encounter in encounters)
+            foreach (var line in encounter.LogLines)
+            {
+                var info = new LogLineEventArgs(line.LogLine, line.Type, line.Time, CurrentZone, false);
+                ProcessCustomTriggerRecord(line.LogLine, info, true, line.GlobalTimeSorter, line.LogLine, archiveImport: true);
+            }
     }
 
     internal string ShareCustomTriggerToXml(CustomTrigger trigger)

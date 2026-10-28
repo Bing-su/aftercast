@@ -27,8 +27,8 @@ public partial class FormActMain
         foreach (var entry in loaded) EncDatabaseAdd(entry.Record);
     }
 
-    internal int ArchiveOperation(int command, string text, ulong id, bool compressed, bool includeLogs = true) =>
-        ArchiveOperationAsync(command, text, id, compressed, false, includeLogs: includeLogs).GetAwaiter().GetResult();
+    internal int ArchiveOperation(int command, string text, ulong id, bool compressed, bool includeLogs = true, bool processTriggers = false) =>
+        ArchiveOperationAsync(command, text, id, compressed, false, includeLogs: includeLogs, processTriggers: processTriggers).GetAwaiter().GetResult();
 
     // The synchronous compatibility path uses already-completed tasks; the bridge path yields for disk I/O.
     private static Task<T> ArchiveIo<T>(bool asynchronous, Func<T> operation) =>
@@ -44,16 +44,16 @@ public partial class FormActMain
         }
     }
 
-    internal async Task<int> ArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool asynchronous = true, Aftercast.ActCompat.HistorySelection? selection = null, bool includeLogs = true)
+    internal async Task<int> ArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool asynchronous = true, Aftercast.ActCompat.HistorySelection? selection = null, bool includeLogs = true, bool processTriggers = false)
     {
         if (Environment.CurrentManagedThreadId != ownerThread || IsDispatchingCallback?.Invoke() == true)
             throw new InvalidOperationException("Archive operations require the owner thread outside dispatched callbacks");
         EnsureSourceCaptureIdle();
         if (Interlocked.CompareExchange(ref sourceArchiveBusy, 1, 0) != 0) throw new InvalidOperationException("Archive operation is already active");
-        try { return await RunArchiveOperationAsync(command, text, id, compressed, asynchronous, selection, includeLogs); }
+        try { return await RunArchiveOperationAsync(command, text, id, compressed, asynchronous, selection, includeLogs, processTriggers); }
         finally { Volatile.Write(ref sourceArchiveBusy, 0); }
     }
-    private async Task<int> RunArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool asynchronous, Aftercast.ActCompat.HistorySelection? selection, bool includeLogs)
+    private async Task<int> RunArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool asynchronous, Aftercast.ActCompat.HistorySelection? selection, bool includeLogs, bool processTriggers)
     {
         EnsureCanWaitForLogReader();
         using var logs = SuspendLogReading(false, wait: !asynchronous);
@@ -70,7 +70,15 @@ public partial class FormActMain
         {
             case 1:
                 var bytes = await ArchiveIo(asynchronous, () => ExpandEncounterFile(ReadBoundedFile(text)));
-                lock (CombatGate) return AttachArchives(DecodeEncounterXml(bytes).Select(encounter => (encounter, (StoredEncounter?)null)));
+                List<EncounterData> encounters;
+                int count;
+                lock (CombatGate)
+                {
+                    encounters = DecodeEncounterXml(bytes);
+                    count = AttachArchives(encounters.Select(encounter => (encounter, (StoredEncounter?)null)));
+                }
+                if (processTriggers) ProcessArchiveTriggers(encounters);
+                return count;
             case 2: return await ExportEncounterAsync(text, id, compressed, asynchronous, includeLogs);
             case 3: return await SaveEncounterHistoryAsync(asynchronous);
             case 4: return await RestoreEncounterHistoryAsync(text, asynchronous);
