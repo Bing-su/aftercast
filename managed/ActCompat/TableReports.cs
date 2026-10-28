@@ -95,17 +95,19 @@ namespace Advanced_Combat_Tracker
             }
         }
         private static ColumnBinding[] ReportColumns(ReportCapture capture,TableReportFormat format,string[]? keys)
+            =>ReportColumns(capture.Columns,format,keys);
+        private static ColumnBinding[] ReportColumns(ColumnSnapshot snapshot,TableReportFormat format,string[]? keys)
         {
             if(format==TableReportFormat.TableXml)
             {
                 if(keys is not null)throw new ArgumentException("ACT table XML uses all SQL columns in registry order");
-                foreach(var column in capture.Columns.Bindings)
+                foreach(var column in snapshot.Bindings)
                 {XmlConvert.VerifyNCName(column.Metadata.SqlDataName);if(column.Sql is null)throw new InvalidDataException("Missing SQL report callback");}
-                return capture.Columns.Bindings;
+                return snapshot.Bindings;
             }
             if(keys is null||keys.Length is <1 or >MaximumSelectedColumns||keys.Distinct(StringComparer.Ordinal).Count()!=keys.Length)
                 throw new ArgumentException("HTML report requires explicit selected column keys");
-            var selected=keys.Select(key=>SelectTableColumn(capture.Columns,key)).ToArray();
+            var selected=keys.Select(key=>SelectTableColumn(snapshot,key)).ToArray();
             if(selected.Any(column=>column.Cell is null))throw new InvalidDataException("Missing HTML cell callback");return selected;
         }
         private static string SqlReportCell(ColumnBinding column,object row)=>column.Sql switch

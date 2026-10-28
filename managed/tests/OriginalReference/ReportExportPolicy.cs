@@ -61,6 +61,18 @@ internal static class ReportExportPolicy
         Check(Literal(html,0x00ab)=="<th>{0}</th>"&&Literal(html,0x0132)=="<td>{0}</td>","HTML table structure");
         Call(html,0x0155,"GetColumnByName");Call(html,0x015a,"AppendFormat");
         var full=Body("ThreadExportHTML");Check(Literal(full,0x10b2).Contains("actHtml.js",StringComparison.Ordinal),"native report JavaScript resource");
+        // Native full HTML walks selected encounter tree order and calls all four table exporters.
+        Call(full,0x00ba,"get_Items");Call(full,0x00c1,"get_Item");
+        foreach(var offset in new[]{0x0632,0x0832,0x0a66,0x0ce2})Call(full,offset,"ExportTBodyHTML");
+        Check(Literal(full,0x0551)=="ed{0:000}"&&Literal(full,0x078f)=="ed{0:000}cd{1:000}"&&Literal(full,0x09b5)=="ed{0:000}cd{1:000}dt{2:000}"&&Literal(full,0x0c04)=="ed{0:000}cd{1:000}dt{2:000}at{3:000}","four nested HTML table identifiers");
+        foreach(var parameter in new[]{"atItems","dtItems","edItems"})
+        {
+            var body=Body("ExportTBodyHTML",parameter,"BrowseNavCustomSort","BrowseNavJsArgs");
+            Call(body,0x000a,".ctor");Call(body,0x000f,"Sort");Call(body,0x0027,"Reverse");
+        }
+        var categoryHtml=Body("ExportTBodyHTML","cdItems","BrowseNavJsArgs");
+        Call(categoryHtml,0x0007,".ctor");Call(categoryHtml,0x0029,"GetItemChecked");Call(categoryHtml,0x00f4,"GetColumnByName");
+        var actorHtml=Body("ExportTBodyHTML","edItems","BrowseNavCustomSort","BrowseNavJsArgs");Call(actorHtml,0x015a,"GetColumnByName");
         foreach(var (method,opcode) in new[]{("ExportXml1",OpCodes.Ldc_I4_1),("ExportXml2",OpCodes.Ldc_I4_2),("ExportXml3",OpCodes.Ldc_I4_3)})
         {var route=NamedBody("IO_XmlFile",method);Check(route[1]==opcode.Value,"three task XML depths");Call(route,2,"ExportXml");}
         var nested=NamedBody("IO_XmlFile","ExportXml","Depth");

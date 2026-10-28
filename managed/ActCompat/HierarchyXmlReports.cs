@@ -17,22 +17,77 @@ namespace Advanced_Combat_Tracker
         private sealed record HierarchyCapture(HierarchyXmlCatalog Catalog,HierarchyNode Root,string Caption,string EncId);
         private HierarchyCapture? hierarchyXml;
         private ulong hierarchySequence;
-        private static string[] HierarchyNames(ReportCapture capture)
+        private static string[] HierarchyNames(ReportCapture capture,Action check)
         {
-            var names=new List<string>();var parents=capture.Parents;
-            if(parents.Length>=4)names.Add(ColumnText(((CombatantData)parents[2]).Name));
-            if(parents.Length>=6)names.Add(ColumnText(((DamageTypeData)parents[4]).Type));
-            if(parents.Length>=8)names.Add(ColumnText(((AttackType)parents[6]).Type));
-            foreach(var name in names)XmlConvert.VerifyXmlChars(name);return names.ToArray();
+            check();Exception? failure=null;
+            try
+            {
+                var names=new List<string>();var parents=capture.Parents;
+                if(parents.Length>=4)names.Add(ColumnText(((CombatantData)parents[2]).Name));
+                if(parents.Length>=6)names.Add(ColumnText(((DamageTypeData)parents[4]).Type));
+                if(parents.Length>=8)names.Add(ColumnText(((AttackType)parents[6]).Type));
+                foreach(var name in names)XmlConvert.VerifyXmlChars(name);return names.ToArray();
+            }
+            catch(Exception error){failure=error;throw;}
+            finally
+            {
+                try{check();}
+                catch(Exception after)when(failure is not null){throw new AggregateException("Hierarchy name callback and validation failed",failure,after);}
+            }
         }
         private static IEnumerable<HierarchyNode> HierarchyNodes(HierarchyNode node)
         {yield return node;foreach(var child in node.Children.SelectMany(children=>children))foreach(var nested in HierarchyNodes(child))yield return nested;}
-        private void CheckHierarchy(HierarchyNode root)
+        private void CheckHierarchy(HierarchyNode root,Action guard)=>CheckHierarchies([root],guard);
+        private void CheckHierarchies(IEnumerable<HierarchyNode> roots,Action guard)
         {
-            foreach(var node in HierarchyNodes(root))
+            var nodes=roots.SelectMany(root=>HierarchyNodes(root)).ToArray();
+            // Check the whole structure around name callbacks, not recursively around each getter.
+            void Check(){guard();foreach(var node in nodes)CheckTableReport(node.Capture);}
+            Check();Exception? failure=null;
+            try
             {
-                CheckTableReport(node.Capture);
-                if(!node.Names.SequenceEqual(HierarchyNames(node.Capture),StringComparer.Ordinal))throw new InvalidOperationException("Hierarchy report names changed");
+                foreach(var node in nodes)
+                {
+                    // An earlier name callback may remove this later scope; do not invoke its stale getter.
+                    void CheckName(){guard();CheckTableReport(node.Capture);}
+                    if(!node.Names.SequenceEqual(HierarchyNames(node.Capture,CheckName),StringComparer.Ordinal))throw new InvalidOperationException("Hierarchy report names changed");
+                }
+            }
+            catch(Exception error){failure=error;throw;}
+            finally
+            {
+                try{Check();}
+                catch(Exception after)when(failure is not null){throw new AggregateException("Hierarchy names and structure validation failed",failure,after);}
+            }
+        }
+        // Share topology capture only; XML's three depth choices differ from HTML's four table levels.
+        private HierarchyNode BuildHierarchy(TableScope scope,TableLevel last,ref int tables,ref int rows,List<ReportCapture> captures,Action guard)
+        {
+            guard();
+            if(++tables>1024)throw new InvalidDataException("Hierarchy exceeds 1024 tables");
+            var capture=CaptureReportTable(scope)??throw new InvalidOperationException("Hierarchy scope disappeared");
+            captures.Add(capture);
+            rows=checked(rows+capture.Rows.Length);if(rows>16384)throw new InvalidDataException("Hierarchy exceeds 16384 aggregate rows");
+            var children=new HierarchyNode[capture.Rows.Length][];
+            for(var index=0;index<children.Length;index++)
+            {
+                var row=capture.Rows[index];
+                children[index]=scope.Level<last?[BuildHierarchy(scope.Level switch
+                {
+                    TableLevel.Combatant=>new(TableLevel.Category,scope.EncounterId,row.Combatant),
+                    TableLevel.Category=>new(TableLevel.Attack,scope.EncounterId,row.Combatant,row.Category),
+                    TableLevel.Attack=>new(TableLevel.Action,scope.EncounterId,row.Combatant,row.Category,row.Attack),
+                    _=>throw new InvalidOperationException("Invalid hierarchy transition")
+                },last,ref tables,ref rows,captures,guard)]:[];
+            }
+            void Check(){guard();CheckTableReport(capture);}
+            try{return new(capture,HierarchyNames(capture,Check),children);}
+            catch(Exception error)
+            {
+                // A failing getter may mutate another already captured branch; retain both causes.
+                try{guard();foreach(var item in captures)CheckTableReport(item);}
+                catch(Exception after){throw new AggregateException("Hierarchy capture name and structure failed",error,after);}
+                throw;
             }
         }
         internal HierarchyXmlCatalog? CaptureHierarchyXml(ulong encounterId,HierarchyXmlDepth depth)
@@ -40,36 +95,15 @@ namespace Advanced_Combat_Tracker
             EnsureTextReportOwner();if(!Enum.IsDefined(depth))throw new ArgumentException("Invalid task XML depth");
             lock(CombatGate)
             {
-                hierarchyXml=null;var tables=0;var rows=0;var clock=Stopwatch.StartNew();
-                HierarchyNode Build(TableScope scope)
-                {
-                    if(clock.Elapsed>TimeSpan.FromSeconds(2))throw new TimeoutException("Hierarchy capture exceeded two seconds");
-                    if(++tables>1024)throw new InvalidDataException("Hierarchy exceeds 1024 tables");
-                    var capture=CaptureReportTable(scope)??throw new InvalidOperationException("Hierarchy scope disappeared");
-                    rows=checked(rows+capture.Rows.Length);if(rows>16384)throw new InvalidDataException("Hierarchy exceeds 16384 aggregate rows");
-                    var children=new HierarchyNode[capture.Rows.Length][];
-                    var descend=depth!=HierarchyXmlDepth.MainTable&&scope.Level!=TableLevel.Action&&
-                        (scope.Level!=TableLevel.Attack||depth==HierarchyXmlDepth.AllTables);
-                    for(var index=0;index<children.Length;index++)
-                    {
-                        var row=capture.Rows[index];
-                        children[index]=descend?[Build(scope.Level switch
-                        {
-                            TableLevel.Combatant=>new(TableLevel.Category,encounterId,row.Combatant),
-                            TableLevel.Category=>new(TableLevel.Attack,encounterId,row.Combatant,row.Category),
-                            TableLevel.Attack=>new(TableLevel.Action,encounterId,row.Combatant,row.Category,row.Attack),
-                            _=>throw new InvalidOperationException("Invalid hierarchy transition")
-                        })]:[];
-                    }
-                    return new(capture,HierarchyNames(capture),children);
-                }
-                if(TableEncounter(encounterId) is null)return null;
-                var root=Build(new(TableLevel.Combatant,encounterId));CheckHierarchy(root);
-                var errors=OwnerErrors.Item1;
-                void Check(){if(clock.Elapsed>TimeSpan.FromSeconds(2))throw new TimeoutException("Hierarchy capture exceeded two seconds");CheckHierarchy(root);if(OwnerErrors.Item1!=errors)throw new InvalidOperationException("Hierarchy caption callback reported an error");}
                 activeTableQuery=true;
                 try
                 {
+                    hierarchyXml=null;var tables=0;var rows=0;var clock=Stopwatch.StartNew();var errors=OwnerErrors.Item1;
+                    void Guard(){if(clock.Elapsed>TimeSpan.FromSeconds(2))throw new TimeoutException("Hierarchy capture exceeded two seconds");if(OwnerErrors.Item1!=errors)throw new InvalidOperationException("Hierarchy caption callback reported an owner-thread error");}
+                    if(TableEncounter(encounterId) is null)return null;
+                    var last=depth==HierarchyXmlDepth.MainTable?TableLevel.Combatant:depth==HierarchyXmlDepth.DamageTypeTables?TableLevel.Attack:TableLevel.Action;
+                    var root=BuildHierarchy(new(TableLevel.Combatant,encounterId),last,ref tables,ref rows,[],Guard);
+                    void Check()=>CheckHierarchy(root,Guard);
                     Check();var encounter=root.Capture.Guard.Encounter;string caption,id;
                     try{caption=ColumnText(encounter.ToString());id=ColumnText(encounter.EncId);}
                     catch(Exception error){try{Check();}catch(Exception after){throw new AggregateException(error,after);}throw;}
@@ -87,15 +121,16 @@ namespace Advanced_Combat_Tracker
                 var capture=hierarchyXml;
                 if(capture is null||revision==0||capture.Catalog.Revision!=revision)throw new InvalidOperationException("Hierarchy revision mismatch");
                 var clock=Stopwatch.StartNew();var errors=OwnerErrors.Item1;var bytes=0;
-                void Check()
+                void Guard()
                 {
                     if(clock.Elapsed>TimeSpan.FromSeconds(4))throw new TimeoutException("Hierarchy render exceeded four seconds");
-                    CheckHierarchy(capture.Root);
                     if(OwnerErrors.Item1!=errors)throw new InvalidOperationException("Hierarchy callback reported an owner-thread error");
                 }
-                Check();activeTableQuery=true;
+                void Check()=>CheckHierarchy(capture.Root,Guard);
+                activeTableQuery=true;
                 try
                 {
+                    Check();
                     var values=new Dictionary<HierarchyNode,ReportValues>(ReferenceEqualityComparer.Instance);
                     foreach(var node in HierarchyNodes(capture.Root))
                     {

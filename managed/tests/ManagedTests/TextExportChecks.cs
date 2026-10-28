@@ -48,5 +48,6 @@ internal static class TextExportChecks
         TextReportChecks.Run();
         TableReportChecks.Run();
         HierarchyXmlChecks.Run();
+        HierarchyHtmlChecks.Run();
     }
 }

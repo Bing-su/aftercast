@@ -13,7 +13,7 @@ file writers or network/database services.
 | `IO_XmlFile.ExportXml1` → depth 1 | One selected encounter; `EncounterTable/Row` contains all combatant SQL columns                                                                                                                      | Managed hierarchy XML main table                                                                            |
 | `ExportXml2` → depth 2            | Each actor Row additionally contains `CombatantTable`; each category Row contains `DamageTypeTable` with attack-summary Rows                                                                         | Managed hierarchy XML middle depth; it adds two row levels, not just one                                    |
 | `ExportXml3` → depth 3            | Each attack Row additionally contains `AttackTypeTable` with action Rows                                                                                                                             | Managed hierarchy XML full depth                                                                            |
-| `ThreadExportHTML`                | Checked encounter nodes in tree order, or the single selected encounter; four nested table levels, and four corresponding graph choices                                                              | Current-table static HTML is connected; the multi-encounter hierarchical HTML path remains to implement     |
+| `ThreadExportHTML`                | Checked encounter nodes in tree order, or the single selected encounter; four nested table levels, and four corresponding graph choices                                                              | Managed static multi-encounter HTML is implemented below; Bridge/Rust/GUI remain                            |
 | `IO_ExportHtml` depth tree        | Tables and graphs each have Encounter → Combatant → DamageType → AttackType nodes, initially checked. Parent/child checks enforce dependencies; the encounter-table root is required by the exporter | Future explicit table/graph depths must preserve dependencies; no ignored depth/graph option is exposed now |
 | HTML graph sizes                  | UI increments 8, range 128..1600 in both axes; defaults X=640, Y=256                                                                                                                                 | Future static renderer must honor exact requested dimensions; no placeholder graph is produced              |
 
@@ -89,11 +89,11 @@ connected below. GUI depth selection and new-file save are connected as describe
 
 ## Remaining existing HTML/graph work, in order
 
-1. Multi-encounter HTML table hierarchy: explicit selected set in captured tree
-   order, four table levels, per-level registered display keys and explicit sort.
-   Reuse the guarded SQL/display row core and owned topology. Emit escaped static
-   tables/anchors; do not copy ACT JavaScript navigation/resources or execute
-   report content. Add synthetic multi-encounter/depth/order/stale/error vectors.
+1. Connect the managed multi-encounter static HTML core below through Bridge/Rust
+   and actual isolated-worker tests, then explicit selection/level/key/sort GUI
+   and safe source/no-overwrite save. The managed core reuses guarded display
+   values and owned topology; API and GUI completion must not be inferred from
+   its in-process synthetic tests.
 2. Graph calculation contracts: `GenEncounterGraphAdv`, `GenCombatantGraph`,
    `GenDamageTypeGraph` and `GenAttackTypeGraph` use time-series actions, graph
    averaging/rolling options, selected graph categories/actors and registered
@@ -206,3 +206,79 @@ source-preview truncation and file-write/flush/publication regressions remain in
 force. Synthetic temporary logs/files only; native clicks, Windows UI and native
 ACT exporter execution are not established by these checks. Hierarchical HTML
 and graph work remains separate and unfinished.
+
+## Managed static HTML table hierarchy
+
+`CaptureHierarchyHtml(encounterIds, lastLevel)` accepts 1..64 distinct explicit
+encounter IDs and one of four table row levels: Combatant, Category, Attack or
+Action. The mandatory root displays combatants for each selected encounter;
+deeper choices include every preceding level. Selected encounters are captured
+in existing zone/encounter tree order, ignoring request/click order, and missing
+IDs return null while retiring the previous HTML selection. HTML, hierarchy XML
+and current-table revisions are independent. No unbounded search is added.
+
+`ReadHierarchyHtml(revision, levels)` requires exactly one explicit setting for
+each included level, with 1..32 distinct registered display keys per level. Key
+strings are headings, distinct from labels and SQL names. Original display
+callbacks run once per used field on the original owner thread/objects; SQL,
+color, graph and EncId-override callbacks do not run. Combatant, attack-summary
+and action tables accept explicit registered sort keys/direction using the
+existing guarded comparer. ACT's category exporter copies its source collection
+without sorting, so a category sort is rejected. Child sections retain source
+order independently of each table's row sort. Unknown keys/sorters and invalid
+level sets fail before display callbacks, including levels where no child table
+exists. Their registry revisions remain validated until completion.
+
+Original IL evidence is pinned in `OriginalReference report-export-policy`:
+`ThreadExportHTML` scans checked zone/encounter nodes, generates four identifiers
+(ed/cd/dt/at) and calls the four `ExportTBodyHTML` overloads. The actor, attack and
+action overloads sort/reverse; the category overload does not. Checked column
+keys feed `GetColumnByName`, not SQL formatters. This is code/contract evidence,
+not native Windows exporter execution or byte-identical native HTML.
+
+The owned output is one UTF-8 static document with nested sections, plain tables,
+escaped headings/keys/values and CSP denying resources, forms and base URLs.
+It has no scripts, stylesheets, images, external URLs or executable data. Unlike
+native hidden divs, JavaScript navigation/client sorting, PNG graphs and resource
+files, every included table is visible. Captions use captured encounter
+`ToString()` plus the actor/category/attack path, rather than copying native
+heading markup/date layout. Explicit per-level settings replace native global
+WinForms checked lists and sort controls; there is no silently inherited setting
+or ignored graph option. Native appearance and plugin callback side-effect
+multiplicity are not claimed compatible.
+
+Bounds are shared across the selected set: 1024 tables, 16384 aggregate rows,
+4096 UTF-8 bytes per field, 8 MiB raw display values and 16 MiB serialized source.
+Capture has a two-second cooperative budget; render retains two seconds per
+node and four seconds overall. These are explicit rejection/error budgets,
+not promised large-workload capacity or preemption of a nonreturning callback.
+A caller must explicitly request a smaller depth or retry after a returning
+failure; no fallback, partial-success source or automatic callback retry occurs.
+
+During review, virtual `DamageTypeData.Type`/`ToString()` exposed a shared XML
+name-validation gap. Both HTML and XML now activate read-only guarding and
+owner-error baselines before initial topology/name capture and before render's
+first validation. Name callbacks receive budget/error checks and structural
+post-validation without recursively invoking more name callbacks. A throwing
+name callback plus structural mutation retains both causes. Public model fields
+are still not an immutable freeze or rollback boundary. Repeated full-topology
+checks remain a cost; duplicate per-name whole scans were removed without
+extending time limits.
+
+Synthetic managed regressions cover all four depths, tree-order multi-selection,
+explicit hidden/key order versus labels/SQL, sorted rows versus child order,
+caller-array mutation, stale/missing/replaced selections, independent XML/current
+reports, empty parents, empty-level registry changes, owner/reentry/Dispose,
+virtual names in capture and initial render (including reported errors and body
+plus structural errors), callback/sort failures, escaping, cell/raw/output limits,
+returning timeout and explicit recovery. No files, clipboard or resources are
+exported by these methods/tests. Bridge/Rust, actual isolated-worker HTML tests
+and GUI/save are subsequent slices. Graph numeric models, SVG/other static
+rendering, native custom bitmap delegates and Windows visual parity remain
+unimplemented; do not infer their completion from table output.
+
+After the name-guard changes, the dedicated existing XML suite passed; its
+2000-action/three-column representative returned the explicit per-node timeout
+in about 2.024 seconds, then shallow recovery passed. A pre-final-edit whole
+check also passed in 65.50 seconds. These observations do not establish normal
+large-report support; final hook-after checks are recorded in the task checkpoint.
