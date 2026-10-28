@@ -35,7 +35,10 @@ internal static class SimpleGraphContractChecks
                 if(message!=test.GetProperty("noData").GetString())throw new Exception("Simple no-data branch");
                 continue;
             }
+            var production=Aftercast.ActCompat.GraphNumeric.Simple(names.Zip(values,(name,value)=>new Aftercast.ActCompat.GraphNumeric.SimpleValue(name,value))) ?? throw new Exception("Missing production Simple result");
+            if(!production.Values.Select(value=>value.Name).SequenceEqual(names))throw new Exception("Production Simple ordering");
             double maximum=1;foreach(var value in values)if(value>maximum)maximum=Math.Ceiling(value);
+            if(production.Axis!=maximum*1.1||production.Total!=total||production.Average!=total/values.Count)throw new Exception("Production Simple numeric mismatch");
             static bool Equal(double a,double b)=>Math.Abs(a-b)<=1e-10*Math.Max(1,Math.Abs(b));
             if(!Equal(maximum*1.1,test.GetProperty("axis").GetDouble())||!Equal(total,test.GetProperty("total").GetDouble())||!Equal(total/values.Count,test.GetProperty("average").GetDouble()))throw new Exception("Simple numeric fixture: "+test.GetProperty("name"));
         }
@@ -44,6 +47,13 @@ internal static class SimpleGraphContractChecks
             var actual=string.Format(CultureInfo.GetCultureInfo(test.GetProperty("culture").GetString()!),"Total: {0:0,0}\nAVG: {1:0,0.00}",test.GetProperty("sum").GetDouble(),test.GetProperty("sum").GetDouble()/test.GetProperty("count").GetInt32());
             if(actual!=test.GetProperty("text").GetString())throw new Exception("Simple totals formatting: "+actual);
         }
+        if(Aftercast.ActCompat.GraphNumeric.Simple([new("zero",0),new("negative",-1)]) is not null)throw new Exception("Simple no-data");
+        try { Aftercast.ActCompat.GraphNumeric.Simple([new("bad",double.NaN)]);throw new Exception("Expected nonfinite rejection"); } catch(InvalidDataException) { }
+        try { Aftercast.ActCompat.GraphNumeric.Simple([new("bad",double.PositiveInfinity)]);throw new Exception("Expected infinity rejection"); } catch(InvalidDataException) { }
+        try { Aftercast.ActCompat.GraphNumeric.Simple([new("a",double.MaxValue)]);throw new Exception("Expected axis overflow rejection"); } catch(InvalidDataException) { }
+        try { Aftercast.ActCompat.GraphNumeric.Simple([new("a",double.MaxValue),new("b",double.MaxValue)]);throw new Exception("Expected overflow rejection"); } catch(InvalidDataException) { }
+        _=Aftercast.ActCompat.GraphNumeric.Simple(Enumerable.Repeat(new Aftercast.ActCompat.GraphNumeric.SimpleValue("a",1),16384));
+        try { Aftercast.ActCompat.GraphNumeric.Simple(Enumerable.Repeat(new Aftercast.ActCompat.GraphNumeric.SimpleValue("a",1),16385));throw new Exception("Expected row limit"); } catch(InvalidDataException) { }
         var infinity=double.Parse(CultureInfo.GetCultureInfo("en-US").NumberFormat.PositiveInfinitySymbol,CultureInfo.GetCultureInfo("en-US"));
         if(!(infinity>0)||!double.IsPositiveInfinity(Math.Ceiling(infinity)*1.1)||double.Parse("NaN",CultureInfo.GetCultureInfo("en-US"))>0)throw new Exception("Simple unordered/Infinity semantics");
         if(!double.IsPositiveInfinity(double.MaxValue+double.MaxValue))throw new Exception("Simple sum overflow semantics");

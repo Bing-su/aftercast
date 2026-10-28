@@ -137,4 +137,24 @@ public static class GraphNumeric
         if (ceiling / 1.25 > maximum) ceiling = Convert.ToInt64(ceiling / 1.25);
         return ceiling;
     }
+    public sealed record SimpleValue(string Name, double Value);
+    public sealed record SimpleResult(SimpleValue[] Values, double Axis, double Total, double Average);
+    /// <summary>Calculates finite Simple graph values after ACT ordering and selection.</summary>
+    public static SimpleResult? Simple(IEnumerable<SimpleValue> values)
+    {
+        ArgumentNullException.ThrowIfNull(values);
+        var accepted = new List<SimpleValue>(); double maximum = 1, total = 0; var count = 0;
+        foreach (var value in values)
+        {
+            if (++count > 16384) throw new InvalidDataException("Graph exceeds 16384 rows");
+            if (value is null || value.Name is null || !double.IsFinite(value.Value)) throw new InvalidDataException("Nonfinite Simple graph value");
+            if (value.Value <= 0) continue;
+            accepted.Add(value); total += value.Value;
+            if (value.Value > maximum) maximum = Math.Ceiling(value.Value);
+        }
+        if (accepted.Count == 0) return null;
+        var axis = maximum * 1.1;
+        if (!double.IsFinite(total) || !double.IsFinite(axis)) throw new InvalidDataException("Simple graph arithmetic overflow");
+        return new(accepted.ToArray(), axis, total, accepted.Count == 0 ? 0 : total / accepted.Count);
+    }
 }
