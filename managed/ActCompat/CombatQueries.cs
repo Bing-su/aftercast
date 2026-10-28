@@ -12,7 +12,7 @@ namespace Aftercast.ActCompat
     public sealed record EncounterActionData(DateTime Time, int TimeSorter, string Attacker, string Victim,
         string Attack, string Damage, int SourceIndex, long Amount, int SwingType, bool Critical,
         string? Special, string? DamageType, string? RawLabel, string? RawSuffix);
-    public sealed record ClassifiedActionData(EncounterActionData Action, bool RegisteredDamage, bool RegisteredHealing, bool IsDeath);
+    public sealed record ClassifiedActionData(EncounterActionData Action, bool RegisteredDamage, bool RegisteredHealing, bool IsDeath, string NumericTooltip);
     public sealed record ActionSnapshotData(ulong Revision, int Total);
     public sealed record EncounterLogData(DateTime Time, int TimeSorter, int Type, string Text, int SourceIndex);
     public sealed record EncounterLogPageData(long Dropped, CombatPage<EncounterLogData> Page);
@@ -144,6 +144,21 @@ namespace Advanced_Combat_Tracker
             sources.GetValueOrDefault(action.TimeSorter, -1), action.Damage.Number, action.SwingType, action.Critical,
             action.Special, action.DamageType, action.Damage.RawDamageString, action.Damage.DamageString2);
 
+        private static readonly (long Threshold, string Suffix)[] DeathTooltipSuffixes = {
+            (1_000_000_000_000_000, "Q"), (1_000_000_000_000, "T"),
+            (1_000_000_000, "B"), (1_000_000, "M"), (1_000, "K") };
+
+        // ACT CreateDamageString(value, true, true), used by DeathSecond tooltips.
+        internal static string DeathNumericTooltip(long value)
+        {
+            if (value == long.MinValue) return float.NaN.ToString();
+            if (value == long.MaxValue) return float.PositiveInfinity.ToString();
+            if (value is < 0 and > -100) return new Dnum(value).ToString();
+            foreach (var (threshold, suffix) in DeathTooltipSuffixes)
+                if (value >= threshold) return ((double)value / threshold).ToString("0.00") + suffix;
+            return value.ToString();
+        }
+
         internal ActionSnapshotData? CaptureActionSnapshot(ulong id) => CaptureActions(id, null);
 
         // ACT's death report uses the selected combatant's incoming All list, which can
@@ -177,7 +192,7 @@ namespace Advanced_Combat_Tracker
                     encounter.LogLines.Select(line => new EncounterLogData(line.Time, line.GlobalTimeSorter, line.Type,
                         line.LogLine, sources.GetValueOrDefault(line.GlobalTimeSorter, -1))).ToArray()));
                 var items = actions.Select(action => new ClassifiedActionData(ProjectAction(action, sources),
-                    damage.Contains(action.SwingType), healing.Contains(action.SwingType), action.Damage == Dnum.Death)).ToArray();
+                    damage.Contains(action.SwingType), healing.Contains(action.SwingType), action.Damage == Dnum.Death, DeathNumericTooltip(action.Damage.Number))).ToArray();
                 var revision = checked(++nextActionSnapshotRevision);
                 actionSnapshot = (revision, items, logs);
                 return new(revision, items.Length);

@@ -117,6 +117,8 @@ pub struct ClassifiedAction {
     pub registered_healing: bool,
     /// ACT Dnum equality against the death marker, including its display label.
     pub is_death: bool,
+    /// ACT numeric tooltip formatting captured with the action.
+    pub numeric_tooltip: String,
 }
 
 /// Retained encounter text, independent of the live subscription buffer.
@@ -290,6 +292,7 @@ impl HostHandle {
                 registered_damage: flags & 1 != 0,
                 registered_healing: flags & 2 != 0,
                 is_death: flags & 4 != 0,
+                numeric_tooltip: reader.text()?,
             })
         })?;
         if page.total != snapshot.total {

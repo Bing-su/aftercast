@@ -30,6 +30,23 @@ internal static class DeathBuckets
             Check(Activator.CreateInstance(dnum, new object?[] { -10L, null })!.Equals(marker), "null death label");
             Check(Activator.CreateInstance(dnum, new object[] { -10L, "Death" })!.Equals(marker), "explicit death label");
             Check(!Activator.CreateInstance(dnum, new object[] { -10L, "custom" })!.Equals(marker), "numeric sentinel alone is not death");
+            var previousCulture = System.Globalization.CultureInfo.CurrentCulture;
+            try
+            {
+                using var formats = JsonDocument.Parse(File.ReadAllText(Path.Combine(Path.GetDirectoryName(fixture)!, "formats.json")));
+                var formatter = root.GetMethod("CreateDamageString", new[] { typeof(long), typeof(bool), typeof(bool) })!;
+                foreach (var culture in new[] { "en-US", "fr-FR" })
+                {
+                    System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo(culture);
+                    foreach (var row in formats.RootElement.EnumerateArray())
+                    {
+                        var number = long.Parse(row.GetProperty("value").GetString()!, System.Globalization.CultureInfo.InvariantCulture);
+                        var text = (string)formatter.Invoke(main.GetValue(null), new object[] { number, true, true })!;
+                        Check(text == row.GetProperty(culture).GetString(), "numeric formatting " + culture + ": " + number);
+                    }
+                }
+            }
+            finally { System.Globalization.CultureInfo.CurrentCulture = previousCulture; }
             var start = new DateTime(2026, 1, 1);
             foreach (var scenario in data.GetProperty("scenarios").EnumerateArray())
             {

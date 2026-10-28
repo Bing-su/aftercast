@@ -11,6 +11,7 @@ internal static class EncounterLogChecks
 
     internal static void Run()
     {
+        NumericTooltipFormats();
         HostLifetimeChecks.RunBounded(ImportAndRestart);
         HostLifetimeChecks.RunBounded(IncomingOnlySnapshot);
         HostLifetimeChecks.RunBounded(SwitchesAndFailure);
@@ -18,6 +19,23 @@ internal static class EncounterLogChecks
         HostLifetimeChecks.RunBounded(Retention);
         HostLifetimeChecks.RunBounded(UnknownSourcesSurviveRestart);
         Console.WriteLine("Automatic encounter logs, ACT hook order, boundaries, bounded omissions and restart identity passed.");
+    }
+
+    private static void NumericTooltipFormats()
+    {
+        var old = System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            using var fixture = System.Text.Json.JsonDocument.Parse(File.ReadAllText("managed/tests/fixtures/deaths/formats.json"));
+            foreach (var culture in new[] { "en-US", "fr-FR" })
+            {
+                System.Globalization.CultureInfo.CurrentCulture = System.Globalization.CultureInfo.GetCultureInfo(culture);
+                var method = typeof(FormActMain).GetMethod("DeathNumericTooltip", System.Reflection.BindingFlags.Static | System.Reflection.BindingFlags.NonPublic)!;
+                foreach (var row in fixture.RootElement.EnumerateArray())
+                    Check((string)method.Invoke(null, new object[] { long.Parse(row.GetProperty("value").GetString()!, System.Globalization.CultureInfo.InvariantCulture) })! == row.GetProperty(culture).GetString());
+            }
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture = old; }
     }
 
     private static void Add(FormActMain root, LogLineEventArgs info)
@@ -47,6 +65,8 @@ internal static class EncounterLogChecks
                     root.GlobalTimeSorter, "Strike", "Source", "Physical", "Target"));
                 root.AddCombatAction(new(1, false, "", new Dnum(-10, "Death"), info.detectedTime,
                     root.GlobalTimeSorter, "Strike", "Source", "Physical", "Target"));
+                root.AddCombatAction(new(1, false, "", new Dnum(-9, "display-only"), info.detectedTime,
+                    root.GlobalTimeSorter, "Strike", "Source", "Physical", "Target"));
             };
             var path = Path.Combine(directory.FullName, "incoming.log");
             File.WriteAllText(path, "death\n");
@@ -54,9 +74,11 @@ internal static class EncounterLogChecks
             var id = host.ListEncounters(0, 1).Items.Single().Id;
             Check(host.CaptureActionSnapshot(id)!.Total == 0);
             var incoming = host.CaptureIncomingActionSnapshot(id, "target")!;
-            Check(incoming.Total == 3);
-            var rows = host.ReadActionSnapshot(incoming.Revision, 0, 3).Items;
-            Check(rows.Select(row => row.IsDeath).SequenceEqual(new[] { true, false, true }));
+            Check(incoming.Total == 4);
+            var rows = host.ReadActionSnapshot(incoming.Revision, 0, 4).Items;
+            Check(rows.Select(row => row.IsDeath).SequenceEqual(new[] { true, false, true, false }));
+            Check(rows[1].Action.RawLabel == "custom" && rows[1].NumericTooltip == "Death");
+            Check(rows[3].Action.Damage == "display-only" && rows[3].NumericTooltip == "");
             var action = rows[0].Action;
             Check(action.Amount == -10 && action.SourceIndex == 0);
             Check(host.ReadActionSnapshotLogs(incoming.Revision, 0, 1).Page.Items.Single().Text == "death");

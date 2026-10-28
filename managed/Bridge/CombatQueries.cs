@@ -148,6 +148,7 @@ internal static class CombatQueryEncoding
                 writer.Write(action.Critical ? 1u : 0u);
                 OptionalText(action.Special); OptionalText(action.DamageType); OptionalText(action.RawLabel); OptionalText(action.RawSuffix);
                 Budget(4); writer.Write((item.RegisteredDamage ? 1u : 0u) | (item.RegisteredHealing ? 2u : 0u) | (item.IsDeath ? 4u : 0u));
+                Text(item.NumericTooltip);
             }
         }
         else if (mode is 6 or 9)

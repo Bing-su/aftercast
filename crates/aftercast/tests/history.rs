@@ -334,6 +334,10 @@ async fn death_analysis_keeps_frozen_action_log_identity(deployment: Deployment)
     assert_eq!(analysis.deaths.len(), 1);
     let death = &analysis.actions[analysis.deaths[0]].action;
     assert_eq!(death.amount, -10);
+    assert_eq!(
+        analysis.actions[analysis.deaths[0]].numeric_tooltip,
+        "Death"
+    );
     let SourceLogLink::Retained(offset) = death.source else {
         panic!("death log missing")
     };

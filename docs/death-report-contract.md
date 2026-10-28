@@ -61,3 +61,20 @@ DateTime values too near MinValue/MaxValue can throw during AddSeconds in the
 original; define explicit report errors rather than clamping buckets. Exact
 comparator ties, original numeric formatting under additional localization,
 and native chart rendering remain outside these fixtures.
+
+## Aftercast implementation and verification
+
+The incoming snapshot carries a separately formatted numeric tooltip alongside
+the raw Dnum label and rendered action damage. This prevents a custom -9 label
+from being mistaken for ACT's numeric tooltip. The snapshot freezes formatting
+under the owner thread's current culture. [Numeric formatting fixtures](../managed/tests/fixtures/deaths/formats.json)
+are checked by both original ACT and managed tests in en-US and fr-FR, including
+NaN/infinity sentinels, negative outcomes, suffix thresholds and rounding. Other
+localization overrides are not covered.
+
+The Rust/UI screen presents a static magnitude bar for damage/healing and a
+chronological cumulative-net value; it is not the native ACT line graph.
+The Host controller regression exercises selection, source cancellation, stale
+identity and session changes with synthetic logs. Native window focus, input,
+and pixel rendering remain unverified. Independent review is pending because
+the reviewer reached its usage limit.
