@@ -155,12 +155,13 @@ namespace Aftercast.ActCompat
         public void ConfigureSound(bool enabled) => main.ConfigureSound(enabled);
         public (byte[] Bytes, int Volume) DrainSound() => main.DrainSound();
         public int TtsVolume => main.TtsVolume;
-        public void ConfigureAudio(int soundVolume, int ttsVolume, string[] timerSounds)
+        public void ConfigureAudio(int soundVolume, int ttsVolume, string[] timerSounds, string miscMode = "none", string miscText = "")
         {
-            if (soundVolume is < 0 or > 100 || ttsVolume is < 0 or > 100 || timerSounds.Length != 3)
+            if (soundVolume is < 0 or > 100 || ttsVolume is < 0 or > 100 || timerSounds.Length != 3 || miscMode is not ("none" or "beep" or "wav" or "tts") || miscText.Any(char.IsControl) || System.Text.Encoding.UTF8.GetByteCount(miscText) > 4096)
                 throw new ArgumentException("Invalid audio settings");
             main.SoundVolume = soundVolume; main.TtsVolume = ttsVolume;
             (main.TimerStartSound, main.TimerWarningSound, main.TimerExpireSound) = (timerSounds[0], timerSounds[1], timerSounds[2]);
+            main.ConfigureMiscCue(miscMode, miscText);
         }
         public void SetInitializationComplete(bool complete) => main.SetInitializationComplete(complete);
         public void ReportLogWriterWarning(string message) => main.WriteHostWarning(message, "Vendor disk writer");

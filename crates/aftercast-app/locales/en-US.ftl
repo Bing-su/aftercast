@@ -783,3 +783,10 @@ speech-rules-up = Move up
 speech-rules-down = Move down
 speech-rules-remove = Remove
 speech-rules-add = Add rule
+
+audio-misc-mode = Miscellaneous sound
+audio-misc-none = Disabled
+audio-misc-beep = Beep
+audio-misc-wav = WAV
+audio-misc-tts = Speech
+audio-misc-text = WAV path or spoken text

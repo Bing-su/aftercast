@@ -68,3 +68,22 @@ public sealed class SpeechRulesProbePlugin : IActPluginV1
     }
     public void DeInitPlugin() { }
 }
+
+public sealed class MiscSoundProbePlugin : IActPluginV1
+{
+    public void InitPlugin(TabPage tab, Label label)
+    {
+        var root = ActGlobals.oFormActMain!;
+        var previousSound = root.PlaySoundMethod; var previousTts = root.PlayTtsMethod;
+        var result = "none";
+        try
+        {
+            root.PlaySoundMethod = (source, volume) => result = $"sound:{source}:{volume}";
+            root.PlayTtsMethod = text => result = "tts:" + text;
+            root.PlayMiscSound();
+            label.Text = result;
+        }
+        finally { root.PlaySoundMethod = previousSound; root.PlayTtsMethod = previousTts; }
+    }
+    public void DeInitPlugin() { }
+}

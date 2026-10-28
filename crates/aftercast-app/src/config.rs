@@ -36,12 +36,16 @@ impl Default for Settings {
 pub struct AudioPreferences {
     pub sound_volume: u8,
     pub tts_volume: u8,
+    pub misc_mode: String,
+    pub misc_text: String,
 }
 impl Default for AudioPreferences {
     fn default() -> Self {
         Self {
             sound_volume: 100,
             tts_volume: 100,
+            misc_mode: "none".into(),
+            misc_text: String::new(),
         }
     }
 }
@@ -50,6 +54,8 @@ impl AudioPreferences {
         aftercast::AudioSettings {
             sound_volume: self.sound_volume,
             tts_volume: self.tts_volume,
+            misc_mode: self.misc_mode.clone(),
+            misc_text: self.misc_text.clone(),
             ..Default::default()
         }
     }
@@ -208,7 +214,15 @@ impl HostSettings {
 
 impl Settings {
     pub fn validate(&self) -> Result<()> {
-        if self.audio.sound_volume > 100 || self.audio.tts_volume > 100 {
+        if self.audio.sound_volume > 100
+            || self.audio.tts_volume > 100
+            || !matches!(
+                self.audio.misc_mode.as_str(),
+                "none" | "beep" | "wav" | "tts"
+            )
+            || self.audio.misc_text.len() > 4000
+            || self.audio.misc_text.chars().any(char::is_control)
+        {
             return Err(miette!("Audio volume must be 0..100"));
         }
         if self.schema_version != 1 {
@@ -308,14 +322,7 @@ impl ConfigFile {
             value(i64::from(settings.schema_version)),
         );
         save_ui(&mut self.document, &settings.ui);
-        set(
-            &mut self.document["audio"]["sound_volume"],
-            value(i64::from(settings.audio.sound_volume)),
-        );
-        set(
-            &mut self.document["audio"]["tts_volume"],
-            value(i64::from(settings.audio.tts_volume)),
-        );
+        save_audio(&mut self.document, &settings.audio);
         set(
             &mut self.document["host"]["dotnet_root"],
             value(&settings.host.dotnet_root),
@@ -426,6 +433,23 @@ fn save_selective(document: &mut DocumentMut, host: &HostSettings) {
         &mut document["host"]["selective_names"],
         value(&host.selective_names),
     );
+}
+
+#[expect(
+    clippy::indexing_slicing,
+    reason = "TOML indexing inserts audio fields"
+)]
+fn save_audio(document: &mut DocumentMut, audio: &AudioPreferences) {
+    set(
+        &mut document["audio"]["sound_volume"],
+        value(i64::from(audio.sound_volume)),
+    );
+    set(
+        &mut document["audio"]["tts_volume"],
+        value(i64::from(audio.tts_volume)),
+    );
+    set(&mut document["audio"]["misc_mode"], value(&audio.misc_mode));
+    set(&mut document["audio"]["misc_text"], value(&audio.misc_text));
 }
 
 #[expect(clippy::indexing_slicing, reason = "TOML indexing inserts UI fields")]
@@ -743,10 +767,16 @@ mod tests {
         );
         file.settings.audio.sound_volume = 61;
         file.settings.audio.tts_volume = 37;
+        file.settings.audio.misc_mode = "tts".into();
+        file.settings.audio.misc_text = "fixture".into();
         file.save(root).expect("save");
         let mut saved = ConfigFile::load(root).expect("restart");
         let settings = saved.settings.audio.settings();
         assert_eq!((settings.sound_volume, settings.tts_volume), (61, 37));
+        assert_eq!(
+            (&*settings.misc_mode, &*settings.misc_text),
+            ("tts", "fixture")
+        );
         saved.settings.audio.sound_volume = 101;
         saved.save(root).err().expect("range");
         assert_eq!(

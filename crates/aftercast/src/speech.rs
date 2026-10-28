@@ -72,6 +72,8 @@ pub struct AudioSettings {
     pub timer_start: String,
     pub timer_warning: String,
     pub timer_expire: String,
+    pub misc_mode: String,
+    pub misc_text: String,
 }
 impl Default for AudioSettings {
     fn default() -> Self {
@@ -81,6 +83,8 @@ impl Default for AudioSettings {
             timer_start: "none".into(),
             timer_warning: "none".into(),
             timer_expire: "none".into(),
+            misc_mode: "none".into(),
+            misc_text: String::new(),
         }
     }
 }
@@ -194,9 +198,12 @@ impl HostHandle {
             &settings.timer_start,
             &settings.timer_warning,
             &settings.timer_expire,
+            &settings.misc_mode,
+            &settings.misc_text,
         ];
         if settings.sound_volume > 100
             || settings.tts_volume > 100
+            || !matches!(settings.misc_mode.as_str(), "none" | "beep" | "wav" | "tts")
             || cues.iter().any(|cue| cue.chars().any(char::is_control))
         {
             return Err(aftercast_tts::Error::InvalidRequest("invalid audio settings").into());

@@ -287,8 +287,8 @@ public static partial class EntryPoint
             var bytes = new byte[argument];
             Marshal.Copy(buffer + headerSize, bytes, 0, argument);
             var timers = new System.Text.UTF8Encoding(false, true).GetString(bytes).Split('\0');
-            if (timers.Length != 3 || timers.Any(text => text.Any(char.IsControl))) throw new ArgumentException("Invalid timer sound settings");
-            plugins.Value.ConfigureAudio(Marshal.ReadInt32(buffer, 24), Marshal.ReadInt32(buffer, 28), timers);
+            if (timers.Length != 5 || timers.Any(text => text.Any(char.IsControl))) throw new ArgumentException("Invalid audio settings");
+            plugins.Value.ConfigureAudio(Marshal.ReadInt32(buffer, 24), Marshal.ReadInt32(buffer, 28), timers[..3], timers[3], timers[4]);
         }
         else throw new ArgumentException("Invalid speech command or capacity", nameof(buffer));
         return 0;

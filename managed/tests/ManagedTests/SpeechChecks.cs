@@ -70,7 +70,9 @@ internal static class SpeechChecks
             Reset(4128, 5, 2); Marshal.WriteByte(memory, 32, 0xff); Check(EntryPoint.SpeechCommand(memory, 4128) == -1);
             Reset(4128, 5, 1); Check(EntryPoint.SpeechCommand(memory, 4128) == -1);
             Reset(4128, 5, 2); Marshal.WriteInt32(memory, 24, 101); Check(EntryPoint.SpeechCommand(memory, 4128) == -1);
-            Reset(4128, 5, 2); Marshal.WriteInt32(memory, 24, 61); Marshal.WriteInt32(memory, 28, 37);
+            var settings = Encoding.UTF8.GetBytes("\0\0\0none\0");
+            Reset(4128, 5, settings.Length); Marshal.WriteInt32(memory, 24, 61); Marshal.WriteInt32(memory, 28, 37);
+            Marshal.Copy(settings, 0, memory + 32, settings.Length);
             Check(EntryPoint.SpeechCommand(memory, 4128) == 0);
             Reset(32, 3); Check(EntryPoint.SpeechCommand(memory, 32) == 0);
         }

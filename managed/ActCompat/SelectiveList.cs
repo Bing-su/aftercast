@@ -55,7 +55,6 @@ public partial class FormActMain
     {
         lock (ActGlobals.actionDataLock) return ActGlobals.selectiveList.TryGetValue(player.ToUpper(), out var selected) && selected;
     }
-    public void PlayMiscSound() => throw new NotSupportedException("ACT sound configuration/playback is not implemented");
 }
 
 public static partial class ActGlobals

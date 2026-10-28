@@ -182,3 +182,40 @@ async fn speech_rules_are_session_owned_and_persist_without_playback(deployment:
         .expect_err("old session");
     restarted.shutdown().await.expect("shutdown");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and fixture; run mise run test:plugins"]
+async fn misc_sound_settings_reach_plugin_delegate(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let assembly = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    for (mode, text, expected) in [
+        ("none", "", "none"),
+        ("beep", "", "sound:beep:61"),
+        ("tts", "fixture", "tts:fixture"),
+    ] {
+        host.set_audio_settings(&AudioSettings {
+            sound_volume: 61,
+            misc_mode: mode.into(),
+            misc_text: text.into(),
+            ..AudioSettings::default()
+        })
+        .await
+        .expect("settings");
+        let id = host
+            .create_plugin(
+                PluginConfig::builder()
+                    .path(assembly.clone())
+                    .type_name("Aftercast.PluginFixture.MiscSoundProbePlugin")
+                    .build(),
+            )
+            .await
+            .expect("plugin");
+        assert_eq!(
+            host.initialize_plugin(id).await.expect("fake delegate"),
+            expected
+        );
+    }
+    host.shutdown().await.expect("shutdown");
+}

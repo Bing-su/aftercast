@@ -15,6 +15,24 @@ public partial class FormActMain
     private int soundDepth;
     internal int SoundVolume = 100, TtsVolume = 100;
     internal string TimerStartSound = "none", TimerWarningSound = "none", TimerExpireSound = "none";
+    internal sealed record MiscCue(string Mode, string Text);
+    private MiscCue miscCue = new("none", "");
+    internal void ConfigureMiscCue(string mode, string text) => Volatile.Write(ref miscCue, new MiscCue(mode, text));
+    public void PlayMiscSound()
+    {
+        if (IsActClosing) return;
+        try
+        {
+            var cue = Volatile.Read(ref miscCue);
+            switch (cue.Mode)
+            {
+                case "beep": Beep(); break;
+                case "wav": PlaySound(cue.Text); break;
+                case "tts": TTS(cue.Text); break;
+            }
+        }
+        catch (Exception error) { WriteExceptionLog(error, "PlayMiscSound"); }
+    }
     internal void InitializeAudio() { PlaySoundMethod = QueueSound; PlayTtsMethod = QueueSpeech; }
     internal void ConfigureSound(bool enabled) { lock (soundGate) { soundEnabled = enabled; sounds.Clear(); } }
     internal (byte[] Bytes, int Volume) DrainSound()

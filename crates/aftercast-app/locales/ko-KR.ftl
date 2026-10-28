@@ -783,3 +783,10 @@ speech-rules-up = 위로
 speech-rules-down = 아래로
 speech-rules-remove = 삭제
 speech-rules-add = 규칙 추가
+
+audio-misc-mode = 기타 소리
+audio-misc-none = 사용 안 함
+audio-misc-beep = 비프음
+audio-misc-wav = WAV
+audio-misc-tts = 음성
+audio-misc-text = WAV 경로 또는 음성 문구

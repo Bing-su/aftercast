@@ -32,7 +32,6 @@ play audio. The desktop child currently installs no built-in audio backend, so
 sound, speech and voice selection are unavailable there unless a plugin replaces
 the corresponding ACT delegate. Other Rust applications may inject a provider;
 voice/rate selection is supported by standalone `aftercast-tts` requests but is
-not a desktop setting. Timer cue defaults, a test-play button, ACT's
-`PlayMiscSound`, duplicate suppression and native voice/device handling remain
+not a desktop setting. `PlayMiscSound` supports disabled, beep, WAV and TTS settings, persisted by the app and applied on host restart. Settings changes do not play sounds. Beep is routed through the replaceable sound delegate rather than ACT's native system sound; the app ships no built-in provider. Errors are logged and suppressed. ACT uses native system beep and does not expose this disabled choice; disabled is the safe default for existing aftercast configurations. Timer cue defaults, a test-play button, duplicate suppression and native voice/device handling remain
 outside this implementation. No live audio or external service was used for these
 tests. Native GTK/Windows input, playback and voice behavior remain unverified.

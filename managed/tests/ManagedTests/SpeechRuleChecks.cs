@@ -29,6 +29,23 @@ internal static class SpeechRuleChecks
                 File.WriteAllText(wave, "synthetic"); File.WriteAllText(sapi, "synthetic");
                 root.PlaySound(wave); root.PlaySound(sapi);
                 Check(effects.SequenceEqual([(wave, 61), (sapi, 37)]), "Plugin sound delegate did not receive the correct configured volumes");
+                root.PlayMiscSound();
+                Check(effects.Count == 2 && heard.Count == 0, "Disabled misc cue played");
+                host.ConfigureAudio(61, 37, ["none", "none", "none"], "beep", "");
+                root.PlayMiscSound();
+                Check(effects.Last() == ("beep", 61), "Misc beep did not reach plugin delegate");
+                host.ConfigureAudio(61, 37, ["none", "none", "none"], "wav", wave);
+                root.PlayMiscSound();
+                Check(effects.Last() == (wave, 61), "Misc WAV did not reach plugin delegate");
+                host.ConfigureAudio(61, 37, ["none", "none", "none"], "tts", "hello");
+                root.PlayMiscSound();
+                Check(heard.SequenceEqual(["hello"]), "Misc TTS did not reach plugin delegate");
+                heard.Clear();
+                root.PlaySoundMethod = (_, _) => throw new InvalidOperationException("fake sink failure");
+                host.ConfigureAudio(61, 37, ["none", "none", "none"], "beep", "");
+                root.PlayMiscSound();
+                Check(host.DiagnosticsSnapshot.Item2.Any(x => x.Contains("PlayMiscSound")), "Misc error was not logged");
+                root.PlaySoundMethod = (source, volume) => effects.Add((source, volume));
                 var rules = new[] { new SpeechRule("(cat)", "$1dog", true), new SpeechRule("DOG", "hound", true), new SpeechRule("hound", "bad", false) };
                 var original = root.ReadSpeechRules();
                 Check(original.Rules.Length == 0, "Unexpected default rules");
@@ -65,6 +82,10 @@ internal static class SpeechRuleChecks
                 Check(heard.Count == 1, "Timed-out correction reached plugin delegate");
                 root.SaveSpeechRules(slow.Revision, rules);
                 Check(host.DrainSpeech().Length == 0, "Fake delegate unexpectedly enqueued audio");
+                host.ConfigureAudio(61, 37, ["none", "none", "none"], "beep", "");
+                var count = effects.Count;
+                host.BeginClosing(); root.PlayMiscSound();
+                Check(effects.Count == count, "Closing session played a misc cue");
             }
             using (var restarted = new HostEnvironment(directory.FullName))
             {

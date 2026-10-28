@@ -35,6 +35,9 @@ internal static class SpeechPolicy
         Call(tts, 0x0148, "Replace");
         Check(tts[0x0168] == OpCodes.Blt_S.Value && tts[0x016b] == OpCodes.Ldfld.Value && Name(tts,0x016b) == "PlayTtsMethod", "ordered loop and delegate");
         Call(tts, 0x0171, "Invoke");
+        var misc = Body("FormActMain", "PlayMiscSound");
+        Check(Name(misc, 0x0006) == "rbSndMiscBeep" && Name(misc, 0x0022) == "rbSndMiscWAV" && Name(misc, 0x004a) == "rbSndMiscTTS", "misc modes");
+        Call(misc, 0x0012, "get_Beep"); Call(misc, 0x003f, "PlaySound"); Call(misc, 0x0067, "TTS"); Call(misc, 0x0076, "WriteExceptionLog");
         var sound = Body("Options_Sound", "InitializeComponent");
         Check(sound[0x239c] == OpCodes.Ldc_I4_S.Value && sound[0x239d] == 100 && sound[0x24cd] == OpCodes.Ldc_I4_S.Value && sound[0x24ce] == 100, "default volumes");
         return new { ordered = true, enabledOnly = true, delimiter = "▶", ignoreCase = true, soundVolume = 100, ttsVolume = 100 };

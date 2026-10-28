@@ -34,6 +34,7 @@ internal sealed partial class PluginSession
     private bool soundEnabled;
     private int soundVolume = 100, ttsVolume = 100;
     private string[] timerSounds = ["none", "none", "none"];
+    private string miscMode = "none", miscText = "";
     private readonly LogBuffer logs = new();
     internal Tuple<long, string[]> DiagnosticsSnapshot => environment?.DiagnosticsSnapshot ?? Tuple.Create(0L, Array.Empty<string>());
     internal T OnOwner<T>(Func<T> action) => context is null ? action() : context.Run(action);
@@ -214,7 +215,7 @@ internal sealed partial class PluginSession
         host.OriginalLogRecordRead += logs.Capture;
         host.ConfigureSpeech(speechEnabled);
         host.ConfigureSound(soundEnabled);
-        host.ConfigureAudio(soundVolume, ttsVolume, timerSounds);
+        host.ConfigureAudio(soundVolume, ttsVolume, timerSounds, miscMode, miscText);
         return environment = host;
     }
     private void RequireReusableWorker() => workerReuse.RequireReusable();
@@ -298,11 +299,11 @@ internal sealed partial class PluginSession
     internal int TtsVolume => ttsVolume;
     internal void ConfigureSound(bool enabled) => OnOwner(() => { soundEnabled = enabled; environment?.ConfigureSound(enabled); return 0; });
     internal (byte[] Bytes, int Volume) DrainSound() => OnOwner(() => environment?.DrainSound() ?? (Array.Empty<byte>(), 0));
-    internal void ConfigureAudio(int sound, int tts, string[] timers) => OnOwner(() =>
+    internal void ConfigureAudio(int sound, int tts, string[] timers, string mode, string text) => OnOwner(() =>
     {
-        if (sound is < 0 or > 100 || tts is < 0 or > 100 || timers.Length != 3) throw new ArgumentException("Invalid audio settings");
-        soundVolume = sound; ttsVolume = tts; timerSounds = timers;
-        environment?.ConfigureAudio(sound, tts, timers);
+        if (sound is < 0 or > 100 || tts is < 0 or > 100 || timers.Length != 3 || mode is not ("none" or "beep" or "wav" or "tts") || text.Any(char.IsControl)) throw new ArgumentException("Invalid audio settings");
+        soundVolume = sound; ttsVolume = tts; timerSounds = timers; miscMode = mode; miscText = text;
+        environment?.ConfigureAudio(sound, tts, timers, mode, text);
         return 0;
     });
     internal string Initialize(long id) => OnOwner(() => InitializeCore(id));
@@ -407,7 +408,7 @@ internal sealed partial class PluginSession
         speechEnabled = false;
         soundEnabled = false;
         soundVolume = ttsVolume = 100;
-        timerSounds = ["none", "none", "none"];
+        timerSounds = ["none", "none", "none"]; miscMode = "none"; miscText = "";
         var previous = environment;
         environment = null;
         try { previous?.Dispose(); } catch (Exception error) { errors.Add(error); }

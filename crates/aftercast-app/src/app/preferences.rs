@@ -82,6 +82,7 @@ pub(super) fn SettingsPane() -> Element {
             div { class: "space-y-3",
                 h2 { class: "text-sm font-semibold", {tr("audio-settings")} }
                 p { class: "text-xs text-muted-foreground", {tr("audio-provider-unavailable")} }
+                MiscSoundPreferences {}
                 for (id, label, volume) in [
                     ("sound-volume", "audio-sound-volume", state.read().settings.audio.sound_volume),
                     ("tts-volume", "audio-tts-volume", state.read().settings.audio.tts_volume),
@@ -515,6 +516,48 @@ pub(super) fn SettingsPane() -> Element {
             p { class: "mt-4 break-all text-xs text-muted-foreground",
                 "{state.read().root}/config.toml"
             }
+        }
+    }
+}
+
+#[component]
+fn MiscSoundPreferences() -> Element {
+    let mut state = use_context::<Signal<AppState>>();
+    let disabled = state.read().saving || state.read().file.is_none();
+    rsx! {
+        Label { html_for: "misc-mode", {tr("audio-misc-mode")} }
+        select {
+            id: "misc-mode",
+            class: "h-9 rounded-md border border-border bg-background px-2",
+            value: state.read().settings.audio.misc_mode.clone(),
+            disabled: disabled || state.read().phase != Phase::Idle,
+            onchange: move |event| {
+                if state.peek().phase == Phase::Idle && !state.peek().saving
+                    && state.peek().file.is_some()
+                {
+                    let value = event.value();
+                    if matches!(value.as_str(), "none" | "beep" | "wav" | "tts") {
+                        state.write().settings.audio.misc_mode = value;
+                    }
+                }
+            },
+            option { value: "none", {tr("audio-misc-none")} }
+            option { value: "beep", {tr("audio-misc-beep")} }
+            option { value: "wav", {tr("audio-misc-wav")} }
+            option { value: "tts", {tr("audio-misc-tts")} }
+        }
+        Label { html_for: "misc-text", {tr("audio-misc-text")} }
+        Input {
+            id: "misc-text".to_owned(),
+            value: state.read().settings.audio.misc_text.clone(),
+            disabled: disabled || state.read().phase != Phase::Idle,
+            oninput: move |event: FormEvent| {
+                if state.peek().phase == Phase::Idle && !state.peek().saving
+                    && state.peek().file.is_some()
+                {
+                    state.write().settings.audio.misc_text = event.value();
+                }
+            },
         }
     }
 }
