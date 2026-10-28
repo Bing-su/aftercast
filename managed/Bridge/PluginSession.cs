@@ -74,6 +74,13 @@ internal sealed partial class PluginSession
         }
         return HostJson.Encode(result);
     });
+    internal byte[] CorrectionOperation(int command, CorrectionRequest request) => OnOwner(() =>
+    {
+        var host = Host();
+        return HostJson.Encode(command == 1 ? host.ReadCorrections() : host.SaveCorrections(request.Revision,
+            request.Renames ?? throw new ArgumentException("Missing rename rules"),
+            request.Redirects ?? throw new ArgumentException("Missing redirect rules")));
+    });
     internal byte[] TimerOperation(int command, TimerRequest request) => OnOwner(() =>
     {
         var host = Host();

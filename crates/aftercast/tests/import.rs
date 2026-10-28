@@ -647,3 +647,162 @@ async fn check_zero_hits(host: &Host, encounter: aftercast::EncounterId, enabled
     assert_eq!(strike.damage, 100);
     assert_eq!(strike.hits, if enabled { 2 } else { 1 });
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and fixture; run mise run test:plugins"]
+async fn correction_editor_is_atomic_session_owned_and_only_affects_new_actions(
+    deployment: Deployment,
+) {
+    use aftercast::{RedirectDefinition, RenameDefinition, TableLevel, TableQuery, TableScope};
+    let plugin_path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let plugin = || {
+        PluginConfig::builder()
+            .path(plugin_path.clone())
+            .type_name("Aftercast.PluginFixture.CorrectionProbePlugin")
+            .build()
+    };
+    let host = Host::start(deployment.config()).await.expect("host");
+    let id = host.create_plugin(plugin()).await.expect("plugin");
+    host.initialize_plugin(id).await.expect("initialize");
+    let first = host.corrections().await.expect("read");
+    let rename = RenameDefinition {
+        before: "Source".into(),
+        after: "Hero".into(),
+        active: true,
+    };
+    let redirect = RedirectDefinition {
+        ability: "Strike".into(),
+        destination: "Owner".into(),
+        r#type: 1,
+        active: true,
+    };
+    let saved = host
+        .save_corrections(
+            first.revision,
+            std::slice::from_ref(&rename),
+            std::slice::from_ref(&redirect),
+        )
+        .await
+        .expect("save");
+    host.save_corrections(first.revision, &[], &[])
+        .await
+        .expect_err("stale revision");
+    host.save_corrections(
+        saved.revision,
+        &[RenameDefinition {
+            before: " ".into(),
+            ..rename.clone()
+        }],
+        &[],
+    )
+    .await
+    .expect_err("empty name");
+    let path = deployment.directory().join("correction-synthetic.log");
+    std::fs::write(&path, "0|100\n").expect("source");
+    host.import_log(&path).await.expect("import");
+    let old = host.encounters(0, 16).await.expect("encounters").items[0].id;
+    let action = host
+        .encounter_actions(old, 0, 16)
+        .await
+        .expect("actions")
+        .expect("encounter");
+    assert_eq!(action.items[0].attacker, "Owner");
+    let catalog = host
+        .table_columns(TableLevel::Encounter)
+        .await
+        .expect("columns");
+    let query = TableQuery {
+        scope: TableScope::Encounters,
+        revision: catalog.revision,
+        columns: vec!["correction-probe".into()],
+        offset: 0,
+        limit: 16,
+        sort: None,
+    };
+    let page = host
+        .table_rows(&query)
+        .await
+        .expect("table")
+        .expect("scope");
+    assert_eq!(
+        page.rows[0].cells[0].text.as_deref(),
+        Some("Owner:Target:Source")
+    );
+    let changed = host
+        .save_corrections(saved.revision, std::slice::from_ref(&rename), &[])
+        .await
+        .expect("remove redirect");
+    host.import_log(&path).await.expect("reparse");
+    let rows = host.encounters(0, 16).await.expect("encounters");
+    assert_eq!(rows.total, 2);
+    let mut names = Vec::new();
+    for row in &rows.items {
+        names.push(
+            host.encounter_actions(row.id, 0, 16)
+                .await
+                .expect("actions")
+                .expect("encounter")
+                .items[0]
+                .attacker
+                .clone(),
+        );
+    }
+    names.sort();
+    assert_eq!(names, ["Hero", "Owner"]);
+    assert_eq!(host.save_history().await.expect("save history"), 2);
+    host.shutdown().await.expect("stop");
+    let host = Host::start(deployment.config()).await.expect("restart");
+    let id = host.create_plugin(plugin()).await.expect("plugin");
+    host.initialize_plugin(id).await.expect("initialize");
+    host.save_corrections(changed.revision, &[], &[])
+        .await
+        .expect_err("old session");
+    let current = host.corrections().await.expect("restored definitions");
+    assert_eq!(current.renames, [rename]);
+    assert!(current.redirects.is_empty());
+    assert_eq!(host.restore_history("").await.expect("restore"), 2);
+    let mut names = Vec::new();
+    for row in host.encounters(0, 16).await.expect("restored").items {
+        names.push(
+            host.encounter_actions(row.id, 0, 16)
+                .await
+                .expect("actions")
+                .expect("encounter")
+                .items[0]
+                .attacker
+                .clone(),
+        );
+    }
+    names.sort();
+    assert_eq!(names, ["Hero", "Owner"]);
+    let settings = deployment.state.join("DataCorrections.xml");
+    let bytes = std::fs::read(&settings).expect("settings");
+    std::fs::write(&settings, "<DataCorrections/>").expect("external change");
+    host.save_corrections(current.revision, &[], &[])
+        .await
+        .expect_err("external edit");
+    assert_eq!(
+        host.corrections()
+            .await
+            .expect("unchanged runtime")
+            .renames
+            .len(),
+        1
+    );
+    std::fs::write(&settings, bytes).expect("restore fixture");
+    host.save_corrections(current.revision, &[], &[])
+        .await
+        .expect("delete rules");
+    host.shutdown().await.expect("stop");
+    let host = Host::start(deployment.config()).await.expect("restart");
+    assert!(
+        host.corrections()
+            .await
+            .expect("deleted")
+            .renames
+            .is_empty()
+    );
+    host.shutdown().await.expect("stop");
+}

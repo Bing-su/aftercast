@@ -11,6 +11,10 @@ mod bridge;
 pub use archives::{ActExportOptions, ActFormat};
 mod avoidance_report;
 mod combat;
+mod corrections;
+pub use corrections::{
+    CorrectionRevision, CorrectionSnapshot, RedirectDefinition, RenameDefinition,
+};
 mod companions;
 mod death;
 pub use companions::{
@@ -104,6 +108,8 @@ pub use snapshots::{CombatRevision, CombatSnapshot, CombatSnapshotStatus, Combat
 pub enum Error {
     #[error("invalid text report request or response: {0}")]
     InvalidReportRequest(String),
+    #[error("Invalid correction request: {0}")]
+    InvalidCorrectionRequest(String),
     #[error("invalid companion request or response: {0}")]
     InvalidCompanionRequest(String),
     #[error("invalid table request or response: {0}")]
