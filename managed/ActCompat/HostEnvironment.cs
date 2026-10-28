@@ -216,6 +216,8 @@ namespace Aftercast.ActCompat
         public EncounterDetailData? ReadEncounter(ulong id, bool live) => main.ReadEncounter(id, live);
         public CombatPage<AttackSummaryData>? ReadEncounterAttacks(ulong id, int offset, int limit) => main.ReadEncounterAttacks(id, offset, limit);
         public CombatPage<EncounterActionData>? ReadEncounterActions(ulong id, int offset, int limit) => main.ReadEncounterActions(id, offset, limit);
+        public AvoidanceSnapshotInfo? CaptureCombatantAvoidance(ulong id, string combatant) => main.CaptureCombatantAvoidance(id, combatant);
+        public AvoidanceSnapshotChunk ReadCombatantAvoidance(ulong revision, int offset, int limit) => main.ReadCombatantAvoidance(revision, offset, limit);
         public ActionSnapshotData? CaptureActionSnapshot(ulong id) => main.CaptureActionSnapshot(id);
         public ActionSnapshotData? CaptureIncomingActionSnapshot(ulong id, string combatant) => main.CaptureIncomingActionSnapshot(id, combatant);
         public CombatPage<ClassifiedActionData> ReadActionSnapshot(ulong revision, int offset, int limit) => main.ReadActionSnapshot(revision, offset, limit);

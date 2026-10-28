@@ -153,7 +153,7 @@ category-name identity is ordinal, unlike the culture-sensitive outcome-key
 entry has had its AttackType changed to All, each link contributes twice to the
 projected All list. Missing mappings fail explicitly. Limits are 4,096 registered
 swings, 16,384 total category links, 1,024 distinct categories and 16,384 projected
-rows; these are aftercast safeguards, not ACT defaults. The returned action
+rows, 16,384 incoming attack groups and 65,536 scanned incoming rows; these are aftercast safeguards, not ACT defaults. The returned action
 references are only an intermediate owner-thread projection: caller must hold
 CombatGate and copy them before publishing. It is not a report snapshot, Bridge
 API or GUI yet. Synthetic managed tests cover duplicate routing, missing mappings,
@@ -175,3 +175,23 @@ non-skill pool selection, another swing in the same pool, failed-action sample
 inclusion, NaN fallback, absent averages, stale hit cache and setting restoration.
 The report still must capture its projected categories, estimates and logs
 atomically before Bridge/Rust/GUI integration.
+
+### Managed combatant snapshot progress
+
+The managed host now admits one combatant avoidance snapshot under CombatGate.
+It freezes category ordering, outcome counts and float32 ratios, per-occurrence
+estimates and selected sample rows, encounter summary, dropped-log count and
+retained source logs. Rows contain source identity from the same capture. Snapshot
+bytes are bounded to 64 MiB while serializing and read in bounded chunks; a
+successful replacement invalidates the prior revision. Failed capture leaves the
+prior bytes available and restores blockIsHit. Sample work is bounded to 4,000,000
+pool-row visits and 16,384 copied sample rows; these limits are aftercast-specific.
+Synthetic managed checks cover graph/log mutation after capture, missing mapping,
+settings restoration, stale revision, source identity, fallback sample evidence,
+nonfinite percentages and output-size failure.
+
+This is still an intermediate managed-only combatant scope: the encounter alias
+report, worker session-bound Bridge/Rust API and GUI/controller are not connected.
+The JSON document uses CLR named string literals for nonfinite values and must be
+validated when the typed API is implemented. Category ordering follows the
+original DamageTypeData.CompareTo (ascending Damage); exact ties are not stable.

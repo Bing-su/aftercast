@@ -31,12 +31,15 @@ public static class AvoidanceOutcomes
                 }
             }
         }
+        if (combatant.AllInc.Count > 16384) throw new InvalidDataException("Avoidance projection exceeds 16384 incoming attack groups");
         var count = 0;
+        var visited = 0;
         foreach (var attack in combatant.AllInc.Values)
         {
             if (attack.Type == allTerm) continue;
             foreach (var action in attack.Items)
             {
+                if (++visited > 65536) throw new InvalidDataException("Avoidance projection exceeds 65536 incoming rows");
                 if (!registered.Contains(action.SwingType) || action.Damage == Dnum.Death) continue;
                 foreach (var name in links[action.SwingType])
                 {

@@ -106,6 +106,77 @@ internal static class AvoidanceOutcomeChecks
                 if (cached.Average != 50) throw new Exception("Cached average preserved");
             }
             finally { ActGlobals.blockIsHit = priorBlock; }
+            var id = host.ListEncounters(0, 1).Items.Single().Id;
+            var snapshot = host.CaptureCombatantAvoidance(id, "Target")!;
+            if (ActGlobals.blockIsHit != priorBlock) throw new Exception("Block setting not restored after capture");
+            byte[] ReadSnapshot(AvoidanceSnapshotInfo value)
+            {
+                var result = new List<byte>();
+                for (var offset = 0; offset < value.ByteLength; offset += 17)
+                    result.AddRange(host.ReadCombatantAvoidance(value.Revision, offset, 17).Bytes);
+                return result.ToArray();
+            }
+            var bytes = ReadSnapshot(snapshot);
+            using (var json = JsonDocument.Parse(bytes))
+            {
+                var report = json.RootElement;
+                var category = report.GetProperty("categories")[0];
+                var outcomeJson = category.GetProperty("outcomes")[0];
+                if (category.GetProperty("name").GetString() != "Damage" || outcomeJson.GetProperty("count").GetInt32() != 2 ||
+                    Math.Abs(outcomeJson.GetProperty("estimatedDamage").GetDouble() - 1000) > 1e-9 || report.GetProperty("logs").GetArrayLength() != 3)
+                    throw new Exception("Frozen avoidance report content");
+                var firstEvidence = outcomeJson.GetProperty("evidence")[0];
+                if (firstEvidence.GetProperty("action").GetProperty("SourceIndex").GetInt32() != 1)
+                    throw new Exception("Frozen avoidance source identity");
+                if (firstEvidence.GetProperty("samples").GetArrayLength() != 4 ||
+                    !firstEvidence.GetProperty("samples").EnumerateArray().Any(sample => sample.GetProperty("SwingType").GetInt32() == 2))
+                    throw new Exception("Frozen cross-swing sample evidence");
+            }
+            var retained = encounter.LogLines.ToArray();
+            encounter.LogLines.Clear();
+            if (!ReadSnapshot(snapshot).SequenceEqual(bytes))
+                throw new Exception("Avoidance bytes changed after graph mutation");
+            encounter.LogLines.AddRange(retained);
+            var savedLinks = CombatantData.SwingTypeToDamageTypeDataLinksOutgoing[1];
+            CombatantData.SwingTypeToDamageTypeDataLinksOutgoing.Remove(1);
+            try { host.CaptureCombatantAvoidance(id, "Target"); throw new Exception("Expected missing mapping"); }
+            catch (InvalidDataException) { }
+            if (!ReadSnapshot(snapshot).SequenceEqual(bytes))
+                throw new Exception("Failed capture replaced snapshot");
+            CombatantData.SwingTypeToDamageTypeDataLinksOutgoing.Add(1, savedLinks);
+            var logCount = encounter.LogLines.Count;
+            var huge = new LogLineEntry(DateTime.UnixEpoch, new string('x', 1024 * 1024), 0, -12345);
+            encounter.LogLines.AddRange(Enumerable.Repeat(huge, 65));
+            try { host.CaptureCombatantAvoidance(id, "Target"); throw new Exception("Expected snapshot byte limit"); }
+            catch (InvalidDataException) { }
+            if (ActGlobals.blockIsHit != priorBlock || !ReadSnapshot(snapshot).SequenceEqual(bytes))
+                throw new Exception("Failed bounded capture changed state");
+            encounter.LogLines.RemoveRange(logCount, 65);
+            var replacement = host.CaptureCombatantAvoidance(id, "Target")!;
+            try { host.ReadCombatantAvoidance(snapshot.Revision, 0, 1); throw new Exception("Expected stale avoidance snapshot"); }
+            catch (InvalidOperationException) { }
+            if (host.ReadCombatantAvoidance(replacement.Revision, replacement.ByteLength, 1).Bytes.Length != 0)
+                throw new Exception("Avoidance snapshot end page");
+            var victimField = typeof(MasterSwing).GetProperty("Victim")!;
+            victimField.SetValue(failed, "Other");
+            var fallbackReport = host.CaptureCombatantAvoidance(id, "Target")!;
+            using (var json = JsonDocument.Parse(ReadSnapshot(fallbackReport)))
+            {
+                var evidence = json.RootElement.GetProperty("categories")[0].GetProperty("outcomes")[0].GetProperty("evidence")[0];
+                if (!evidence.GetProperty("UsedFallback").GetBoolean() || evidence.GetProperty("samples").GetArrayLength() != evidence.GetProperty("PoolCount").GetInt32())
+                    throw new Exception("Fallback sample evidence");
+            }
+            victimField.SetValue(failed, "Target");
+            CombatantData.DamageSwingTypes.Add(2);
+            CombatantData.SwingTypeToDamageTypeDataLinksOutgoing.Add(2, new() { "Empty" });
+            var emptyReport = host.CaptureCombatantAvoidance(id, "Target")!;
+            using (var json = JsonDocument.Parse(ReadSnapshot(emptyReport)))
+            {
+                var empty = json.RootElement.GetProperty("categories").EnumerateArray().Single(value => value.GetProperty("name").GetString() == "Empty");
+                if (empty.GetProperty("percentSwings").GetString() != "NaN") throw new Exception("Nonfinite percentage must be explicit");
+            }
+            CombatantData.DamageSwingTypes.Remove(2);
+            CombatantData.SwingTypeToDamageTypeDataLinksOutgoing.Remove(2);
             var changed = actor.AllInc["Strike"].Items[0];
             var attackType = typeof(MasterSwing).GetProperty("AttackType")!;
             attackType.SetValue(changed, "All");

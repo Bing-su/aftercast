@@ -4,7 +4,7 @@ namespace Aftercast.ActCompat;
 
 /// Estimate and exact sample positions in the selected attacker pool.
 public sealed record AvoidanceEstimateData(double Estimate, bool UsedFallback, bool HasSampleAverage,
-    string SamplePool, int[] MatchingSamples, int PoolCount);
+    string SamplePool, int[] MatchingSamples, int PoolCount, MasterSwing[] SampleRows);
 
 public static class AvoidanceEstimates
 {
@@ -54,7 +54,8 @@ public static class AvoidanceEstimates
             if (fallback) estimate = pool.Average;
             var available = !double.IsNaN(estimate);
             if (!available) estimate = 0;
-            return new(estimate, fallback, available, name, matches.ToArray(), pool.Items.Count);
+            var sampleRows = fallback ? pool.Items.ToArray() : matches.Select(index => pool.Items[index]).ToArray();
+            return new(estimate, fallback, available, name, matches.ToArray(), pool.Items.Count, sampleRows);
         }
         finally { ActGlobals.blockIsHit = originalBlock; }
     }
