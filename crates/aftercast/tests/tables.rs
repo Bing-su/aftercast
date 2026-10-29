@@ -860,6 +860,26 @@ async fn color_scalars_reach_plugin_events_on_owner_and_retire_with_session(
     })
     .await
     .expect_err("invalid");
+    host.set_color_scalars(ColorScalars {
+        invert: true,
+        luminosity: 13,
+        saturation: -75,
+    })
+    .await
+    .expect("reentrant precision");
+    host.set_color_controls(aftercast::ColorControls {
+        ally: Some(0x112233),
+        personal: None,
+    })
+    .await
+    .expect("reentrant alpha");
+    let runtime = host
+        .handle()
+        .runtime_colors()
+        .await
+        .expect("owner snapshot");
+    assert!((runtime.luminosity - 0.345).abs() < 0.00001);
+    assert_eq!(runtime.ally, Some(0x4008090a));
     host.deinitialize_plugin(id).await.expect("deinitialize");
     host.set_color_scalars(ColorScalars::default())
         .await

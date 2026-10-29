@@ -121,6 +121,7 @@ struct LoadedPlugin {
 struct AppState {
     root: Utf8PathBuf,
     settings: Settings,
+    runtime_colors: appearance::RuntimeState,
     file: Option<ConfigFile>,
     saving: bool,
     phase: Phase,
@@ -185,6 +186,7 @@ impl AppState {
         let mut file = self.file.clone()?;
         file.settings = self.settings.clone();
         self.saving = true;
+        self.runtime_colors.generation = self.runtime_colors.generation.wrapping_add(1);
         Some((self.root.clone(), file))
     }
 
@@ -203,6 +205,7 @@ impl AppState {
         Self {
             root,
             settings: Settings::default(),
+            runtime_colors: appearance::RuntimeState::default(),
             file: None,
             saving: false,
             phase: Phase::Idle,
@@ -324,6 +327,7 @@ pub fn App() -> Element {
     use_future(move || notifications::poll(state));
     use_future(move || companions::poll(state));
     use_future(move || mini_parse::poll(state));
+    use_future(move || appearance::poll_runtime(state));
     use_future(move || {
         let window = window.clone();
         async move {

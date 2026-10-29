@@ -843,3 +843,5 @@ odbc-all-term = ACT의 현지화된 전체 기술 이름
 odbc-invalid-term = ACT 전체 기술 이름을 1024바이트 이내로 입력하세요.
 odbc-current = 현재 표 미리보기
 odbc-hierarchy = 다섯 표 미리보기
+
+appearance-runtime-conflict = 플러그인의 실행 중 색상이 편집 값과 다릅니다. 표에는 실행 중인 값이 적용되며 초안은 유지됩니다.

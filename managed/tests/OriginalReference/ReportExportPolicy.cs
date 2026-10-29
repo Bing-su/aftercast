@@ -44,6 +44,12 @@ internal static class ReportExportPolicy
         var colorGetter=NamedBody("ColorControl","get_ForeColorSetting");Call(colorGetter,0x0006,"get_BackColor");
         var colorSetter=NamedBody("ColorControl","set_ForeColorSetting","value");Call(colorSetter,0x0007,"set_BackColor");
         var colorChanged=NamedBody("ColorControl","pbForeColor_BackColorChanged","sender","e");Call(colorChanged,0x0014,"get_BackColor");Call(colorChanged,0x0019,"Invoke");
+        foreach(var (getter,field) in new[]{("get_TreeViewEncounterColor1","ccEncLabel1"),("get_TreeViewEncounterColor2","ccEncLabel2"),("get_TreeViewEncounterColor3","ccEncLabel3"),("get_SpellTimerForeColor","ccSpellTimerForeColor"),("get_SpellTimerBackColor","ccSpellTimerBackColor"),("get_SpellTimerWarningColor","ccSpellTimerWarnColor"),("get_SpellTimerExpireColor","ccSpellTimerExpireColor"),("get_CustomTriggerActiveBackColor","ccCustomTriggerActive"),("get_CustomTriggerInactiveBackColor","ccCustomTriggerInactive"),("get_CustomTriggerCategoryRestrictionForeColor","ccCustomTriggerRestricted")})
+        { var getterBody=NamedBody("ColorSettings",getter);Check(Name(getterBody,0x000a)==field,"original ColorControl getter"); }
+        var colorMisc=NamedBody("Options_ColorMisc","InitializeComponent");
+        foreach(var (offset,method) in new[]{(0x0248,"get_ControlText"),(0x02c6,"get_DarkOrange"),(0x0348,"get_Firebrick"),(0x03ca,"get_Control"),(0x05d6,"get_Blue"),(0x0684,"get_LightPink"),(0x072f,"get_LightGreen")}) Call(colorMisc,offset,method);
+        var colorUi=NamedBody("Options_ColorUserInterface","InitializeComponent");
+        foreach(var (offset,method) in new[]{(0x093a,"get_ForestGreen"),(0x09e8,"get_DarkOrange"),(0x0a96,"get_Crimson")}) Call(colorUi,offset,method);
         var publicColors=Body("get_ActColorSettings"); Check(Name(publicColors,0x0001)=="<ActColorSettings>k__BackingField","public color settings owner");
         foreach(var (getter,field,method) in new[]{("get_InvertColors","cbInvertLuminosity","get_Checked"),("get_LuminosityOffset","nudLumOffset","get_Value"),("get_SaturationOffset","nudSatOffset","get_Value")})
         {

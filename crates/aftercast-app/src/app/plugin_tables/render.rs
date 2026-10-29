@@ -60,38 +60,45 @@ fn styled_cell(
     appearance: &crate::config::AppearancePreferences,
     ally: bool,
     personal: bool,
+    runtime: Option<aftercast::RuntimeColors>,
 ) -> String {
     if cell.error.is_some() {
         return String::new();
     }
     let mut style = appearance.grid_style();
     let configured = |value: &str| crate::config::valid_color(value) && !value.is_empty();
-    if ally && configured(&appearance.ally_foreground) {
-        style.push_str(&format!("color:{};", appearance.ally_foreground));
+    let ally_color = runtime.map_or_else(
+        || configured(&appearance.ally_foreground).then(|| appearance.ally_foreground.clone()),
+        |r| r.ally.map(|v| rgba(v.cast_signed())),
+    );
+    let personal_color = runtime.map_or_else(
+        || configured(&appearance.self_background).then(|| appearance.self_background.clone()),
+        |r| r.personal.map(|v| rgba(v.cast_signed())),
+    );
+    let (invert, lum, sat) = runtime.map_or(
+        (
+            appearance.invert_plugin_colors,
+            f32::from(appearance.plugin_luminosity) / 100.0,
+            f32::from(appearance.plugin_saturation) / 100.0,
+        ),
+        |r| (r.invert, r.luminosity, r.saturation),
+    );
+    if let Some(color) = ally_color.filter(|_| ally) {
+        style.push_str(&format!("color:{color};"));
     } else if let Some(color) = cell.foreground_argb {
         style.push_str(&format!(
             "color:{};",
-            rgba(super::color_adjust::adjust(
-                color,
-                appearance.invert_plugin_colors,
-                appearance.plugin_luminosity,
-                appearance.plugin_saturation
-            ))
+            rgba(super::color_adjust::adjust_runtime(color, invert, lum, sat))
         ));
     } else if configured(&appearance.grid_foreground) {
         style.push_str(&format!("color:{};", appearance.grid_foreground));
     }
-    if personal && configured(&appearance.self_background) {
-        style.push_str(&format!("background-color:{};", appearance.self_background));
+    if let Some(color) = personal_color.filter(|_| personal) {
+        style.push_str(&format!("background-color:{color};"));
     } else if let Some(color) = cell.background_argb {
         style.push_str(&format!(
             "background-color:{};",
-            rgba(super::color_adjust::adjust(
-                color,
-                appearance.invert_plugin_colors,
-                appearance.plugin_luminosity,
-                appearance.plugin_saturation
-            ))
+            rgba(super::color_adjust::adjust_runtime(color, invert, lum, sat))
         ));
     } else if configured(&appearance.grid_background) {
         style.push_str(&format!("background-color:{};", appearance.grid_background));
@@ -101,7 +108,15 @@ fn styled_cell(
 #[component]
 fn CellView(cell: TableCell, ally: bool, personal: bool) -> Element {
     let state = use_context::<Signal<AppState>>();
-    let style = styled_cell(&cell, &state.read().settings.appearance, ally, personal);
+    let current = state.read();
+    let style = styled_cell(
+        &cell,
+        &current.settings.appearance,
+        ally,
+        personal,
+        current.runtime_color_snapshot(),
+    );
+    drop(current);
     if cell.error.is_some() {
         rsx! {
             span { role: "note", class: "font-medium text-destructive", {tr("table-cell-error")} }
@@ -232,13 +247,13 @@ mod appearance_tests {
             background_argb: None,
             error: None,
         };
-        let style = styled_cell(&cell, &appearance, false, false);
+        let style = styled_cell(&cell, &appearance, false, false, None);
         assert!(style.contains("font-family:serif;") && style.contains("font-size:14px;"));
         assert!(style.contains("color:rgba(255, 0, 0, 1.0000);") && !style.contains("#123456"));
         assert!(style.contains("background-color:#abcdef;"));
         cell.foreground_argb = None;
         cell.background_argb = Some(-16776961);
-        let style = styled_cell(&cell, &appearance, false, false);
+        let style = styled_cell(&cell, &appearance, false, false, None);
         assert!(
             style.contains("color:#123456;")
                 && style.contains("background-color:rgba(0, 0, 255, 1.0000);")
@@ -248,12 +263,12 @@ mod appearance_tests {
         invalid.grid_foreground = "red;display:none".into();
         cell.foreground_argb = None;
         cell.background_argb = None;
-        assert!(!styled_cell(&cell, &invalid, false, false).contains("display"));
+        assert!(!styled_cell(&cell, &invalid, false, false, None).contains("display"));
         cell.foreground_argb = Some(-65536);
         cell.background_argb = Some(-16776961);
         invalid.ally_foreground = "#112233".into();
         invalid.self_background = "#445566".into();
-        let emphasized = styled_cell(&cell, &invalid, true, true);
+        let emphasized = styled_cell(&cell, &invalid, true, true, None);
         assert!(
             emphasized.contains("color:#112233;")
                 && emphasized.contains("background-color:#445566;")
@@ -262,16 +277,29 @@ mod appearance_tests {
         invalid.plugin_luminosity = 20;
         invalid.plugin_saturation = 20;
         cell.foreground_argb = Some(301924352);
-        let adjusted = styled_cell(&cell, &invalid, false, false);
+        let adjusted = styled_cell(&cell, &invalid, false, false, None);
         assert!(adjusted.contains("color:rgba(255, 102, 102, 0.0667);"));
-        let ally_priority = styled_cell(&cell, &invalid, true, true);
+        let live = aftercast::RuntimeColors {
+            invert: false,
+            luminosity: 0.345,
+            saturation: 0.0,
+            ally: Some(0x4008090a),
+            personal: Some(0xff010203),
+        };
+        let runtime = styled_cell(&cell, &invalid, true, true, Some(live));
+        assert!(
+            runtime.contains("color:rgba(8, 9, 10, 0.2510);")
+                && runtime.contains("background-color:rgba(1, 2, 3, 1.0000);")
+        );
+        assert_eq!(invalid.ally_foreground, "#112233");
+        let ally_priority = styled_cell(&cell, &invalid, true, true, None);
         assert!(
             ally_priority.contains("color:#112233;")
                 && ally_priority.contains("background-color:#445566;")
         );
         invalid.plugin_luminosity = 0;
         invalid.plugin_saturation = 0;
-        let ally_only = styled_cell(&cell, &invalid, true, false);
+        let ally_only = styled_cell(&cell, &invalid, true, false, None);
         assert!(
             ally_only.contains("color:#112233;")
                 && ally_only.contains("background-color:rgba(0, 0, 255, 1.0000);")

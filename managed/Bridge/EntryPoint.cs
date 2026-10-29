@@ -255,20 +255,31 @@ public static partial class EntryPoint
 
     public static int ColorSettingsCommand(nint buffer, int sizeBytes) => Run(() =>
     {
-        if (buffer == 0 || sizeBytes != 32) throw new ArgumentException("Invalid color settings buffer");
+        if (buffer == 0 || sizeBytes is not (32 or 48)) throw new ArgumentException("Invalid color settings buffer");
         ValidateHeader(buffer,sizeBytes,"Color settings ABI mismatch");
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer,8)));
         var first=Marshal.ReadInt32(buffer,16); var second=Marshal.ReadInt32(buffer,20); var third=Marshal.ReadInt32(buffer,24); var command=Marshal.ReadInt32(buffer,28);
-        if (command == 0)
+        if (command == 0 && sizeBytes == 32)
         {
             if (first is not (0 or 1) || second is < -100 or > 100 || third is < -100 or > 100) throw new ArgumentException("Invalid color scalar values");
             plugins.Value.ConfigureColors(first==1,second,third);
         }
-        else if (command == 1)
+        else if (command == 1 && sizeBytes == 32)
         {
             if (first is < 0 or > 3 || second is < 0 or > 0xffffff || third is < 0 or > 0xffffff || ((first & 1)==0 && second!=0) || ((first & 2)==0 && third!=0)) throw new ArgumentException("Invalid color controls");
             static System.Drawing.Color ConvertColor(bool present, int rgb, bool ally) => !present ? System.Drawing.Color.Empty : ally && rgb==0x228b22 ? System.Drawing.Color.ForestGreen : System.Drawing.Color.FromArgb(255,(rgb>>16)&255,(rgb>>8)&255,rgb&255);
             plugins.Value.ConfigureColorControls(ConvertColor((first&1)!=0,second,true),ConvertColor((first&2)!=0,third,false));
+        }
+        else if (command == 2 && sizeBytes == 48)
+        {
+            if (first!=0 || second!=0 || third!=0 || Marshal.ReadInt64(buffer,32)!=0 || Marshal.ReadInt64(buffer,40)!=0) throw new ArgumentException("Invalid color snapshot fields");
+            var state=plugins.Value.ReadRuntimeColors();
+            Marshal.WriteInt32(buffer,16,state.Invert?1:0);
+            Marshal.WriteInt32(buffer,20,BitConverter.SingleToInt32Bits(state.Luminosity));
+            Marshal.WriteInt32(buffer,24,BitConverter.SingleToInt32Bits(state.Saturation));
+            Marshal.WriteInt32(buffer,32,(state.Ally.IsEmpty?0:1)|(state.Personal.IsEmpty?0:2));
+            Marshal.WriteInt32(buffer,36,state.Ally.IsEmpty?0:state.Ally.ToArgb());
+            Marshal.WriteInt32(buffer,40,state.Personal.IsEmpty?0:state.Personal.ToArgb());
         }
         else throw new ArgumentException("Invalid color settings command");
         return 0;

@@ -245,4 +245,4 @@ pub mod log_search;
 
 pub use odbc::{OdbcColumn, OdbcHierarchyPreview, OdbcPreview};
 
-pub use color_settings::{ColorControls, ColorScalars};
+pub use color_settings::{ColorControls, ColorScalars, RuntimeColors};

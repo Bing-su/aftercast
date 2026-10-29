@@ -59,14 +59,23 @@ fn from_hsl(h: f32, s: f32, l: f64) -> [u8; 3] {
     }
     rgb.map(|v| (v * 255.0).round_ties_even() as u8)
 }
+#[cfg(test)]
 pub(super) fn adjust(argb: i32, invert: bool, luminosity: i8, saturation: i8) -> i32 {
+    adjust_runtime(
+        argb,
+        invert,
+        f32::from(luminosity) / 100.0,
+        f32::from(saturation) / 100.0,
+    )
+}
+pub(super) fn adjust_runtime(argb: i32, invert: bool, luminosity: f32, saturation: f32) -> i32 {
     let value = argb.cast_unsigned();
     let rgb = [(value >> 16) as u8, (value >> 8) as u8, value as u8];
     let (h, s, l) = hsl(rgb);
     let mut rgb = from_hsl(
         h,
-        (s + f32::from(saturation) / 100.0).clamp(-1.0, 1.0),
-        f64::from((l + f32::from(luminosity) / 100.0).clamp(-1.0, 1.0)),
+        (s + saturation).clamp(-1.0, 1.0),
+        f64::from((l + luminosity).clamp(-1.0, 1.0)),
     );
     if invert {
         let (h, s, l) = hsl(rgb);

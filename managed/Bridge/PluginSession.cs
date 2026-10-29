@@ -304,6 +304,8 @@ internal sealed partial class PluginSession
     internal int TtsVolume => ttsVolume;
     internal void ConfigureSound(bool enabled) => OnOwner(() => { soundEnabled = enabled; environment?.ConfigureSound(enabled); return 0; });
     internal (byte[] Bytes, int Volume) DrainSound() => OnOwner(() => environment?.DrainSound() ?? (Array.Empty<byte>(), 0));
+    internal (bool Invert, float Luminosity, float Saturation, System.Drawing.Color Ally, System.Drawing.Color Personal) ReadRuntimeColors() => OnOwner(() =>
+        environment?.ReadRuntimeColors() ?? (colorInvert, colorLuminosity / 100f, colorSaturation / 100f, colorAlly, colorPersonal));
     internal void ConfigureColorControls(System.Drawing.Color ally, System.Drawing.Color personal) => OnOwner(() =>
     {
         if ((!ally.IsEmpty && ally.A != 255) || (!personal.IsEmpty && personal.A != 255)) throw new ArgumentException("Colors must be opaque or empty");

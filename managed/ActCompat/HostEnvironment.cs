@@ -200,6 +200,7 @@ namespace Aftercast.ActCompat
         public HierarchyXmlCatalog? CaptureHierarchyXml(ulong encounterId,HierarchyXmlDepth depth) => main.CaptureHierarchyXml(encounterId,depth);
         public HierarchyXmlReport ReadHierarchyXml(ulong revision) => main.ReadHierarchyXml(revision);
         public TableReportCatalog? ReadTableReportCatalog(TableScope scope) => main.ReadTableReportCatalog(scope);
+        public (bool Invert, float Luminosity, float Saturation, System.Drawing.Color Ally, System.Drawing.Color Personal) ReadRuntimeColors() => main.ReadRuntimeColors();
         public void ApplyColorControls(System.Drawing.Color ally, System.Drawing.Color personal) => RunWithLogReadingSuspended(() => main.ApplyColorControls(ally,personal));
         public void ApplyColorScalars(bool invert, decimal luminosity, decimal saturation) => RunWithLogReadingSuspended(() => main.ApplyColorScalars(invert,luminosity,saturation));
         public TableReport ReadTableReport(ulong revision, TableReportOptions options) => main.ReadTableReport(revision,options);

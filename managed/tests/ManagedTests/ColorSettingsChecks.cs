@@ -12,6 +12,14 @@ internal static class ColorSettingsChecks
         {
             using var host=new HostEnvironment(directory.FullName); var main=ActGlobals.oFormActMain!; var settings=main.ActColorSettings;
             Check(!settings.InvertColors && settings.LuminosityOffset==0m && settings.SaturationOffset==0m,"defaults");
+            Check(settings.TreeViewEncounterColor1.ForeColorSetting==System.Drawing.Color.ForestGreen && settings.TreeViewEncounterColor2.ForeColorSetting==System.Drawing.Color.DarkOrange && settings.TreeViewEncounterColor3.ForeColorSetting==System.Drawing.Color.Crimson,"tree ACT defaults");
+            Check(settings.SpellTimerForeColor.ForeColorSetting==System.Drawing.SystemColors.ControlText && settings.SpellTimerBackColor.ForeColorSetting==System.Drawing.SystemColors.Control && settings.SpellTimerWarningColor.ForeColorSetting==System.Drawing.Color.Firebrick && settings.SpellTimerExpireColor.ForeColorSetting==System.Drawing.Color.DarkOrange,"timer ACT defaults");
+            Check(settings.CustomTriggerActiveBackColor.ForeColorSetting==System.Drawing.Color.LightGreen && settings.CustomTriggerInactiveBackColor.ForeColorSetting==System.Drawing.Color.LightPink && settings.CustomTriggerCategoryRestrictionForeColor.ForeColorSetting==System.Drawing.Color.Blue,"trigger ACT defaults");
+            var treeEvents=0; ColorControl.ColorSettingEventDelegate treeHandler=_=>treeEvents++;
+            settings.TreeViewEncounterColor1.ForeColorSettingChanged+=treeHandler; settings.TreeViewEncounterColor1.ForeColorSetting=System.Drawing.Color.Red;
+            settings.TreeViewEncounterColor1.ForeColorSettingChanged-=treeHandler; settings.TreeViewEncounterColor1.ForeColorSetting=System.Drawing.Color.Black;
+            Check(treeEvents==1,"additional control event and unsubscribe");
+
             Check(settings.DataGridAllyText.ForeColorSetting==System.Drawing.Color.ForestGreen && settings.DataGridPersonalBackground.ForeColorSetting.ToArgb()==System.Drawing.Color.FromArgb(200,255,200).ToArgb(),"color control defaults");
             var colorEvents=new List<string>();
             ColorControl.ColorSettingEventDelegate ally=value=>colorEvents.Add("ally:"+value.ToArgb());

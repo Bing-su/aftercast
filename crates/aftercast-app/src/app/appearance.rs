@@ -2,13 +2,89 @@ use super::{AppState, tr};
 use crate::components::{Input, Label, Separator};
 use dioxus::prelude::*;
 
+#[derive(Default)]
+pub(super) struct RuntimeState {
+    pub(super) generation: u64,
+    session: u64,
+    value: Option<aftercast::RuntimeColors>,
+}
+impl AppState {
+    pub(super) fn runtime_color_snapshot(&self) -> Option<aftercast::RuntimeColors> {
+        (self.runtime_colors.session == self.revision.session)
+            .then_some(self.runtime_colors.value)
+            .flatten()
+    }
+    fn accept_runtime_colors(
+        &mut self,
+        session: u64,
+        generation: u64,
+        value: aftercast::RuntimeColors,
+    ) -> bool {
+        if self.revision.session != session
+            || self.runtime_colors.generation != generation
+            || self.saving
+            || self.exit_requested
+            || self.phase != super::Phase::Ready
+        {
+            return false;
+        }
+        self.runtime_colors.session = session;
+        self.runtime_colors.value = Some(value);
+        true
+    }
+    fn runtime_color_conflict(&self) -> bool {
+        let Some(value) = self.runtime_color_snapshot() else {
+            return false;
+        };
+        let appearance = &self.settings.appearance;
+        let controls = appearance.color_controls();
+        value.invert != appearance.invert_plugin_colors
+            || value.luminosity.to_bits()
+                != (f32::from(appearance.plugin_luminosity) / 100.0).to_bits()
+            || value.saturation.to_bits()
+                != (f32::from(appearance.plugin_saturation) / 100.0).to_bits()
+            || value.ally != controls.ally.map(|rgb| rgb | 0xff00_0000)
+            || value.personal != controls.personal.map(|rgb| rgb | 0xff00_0000)
+    }
+}
+fn runtime_request(current: &AppState) -> Option<(aftercast::HostHandle, u64, u64)> {
+    if current.phase != super::Phase::Ready || current.saving || current.exit_requested {
+        return None;
+    }
+    Some((
+        current.handle()?,
+        current.revision.session,
+        current.runtime_colors.generation,
+    ))
+}
+pub(super) async fn poll_runtime(mut state: Signal<AppState>) {
+    loop {
+        dioxus_sdk::time::sleep(std::time::Duration::from_secs(1)).await;
+        let request = runtime_request(&state.read());
+        if let Some((handle, session, generation)) = request
+            && let Ok(value) = handle.runtime_colors().await
+        {
+            state
+                .write()
+                .accept_runtime_colors(session, generation, value);
+        }
+    }
+}
+
 #[component]
 pub(super) fn Controls() -> Element {
+    let state = use_context::<Signal<AppState>>();
+    let conflict = state.read().runtime_color_conflict();
     rsx! {
         Separator { class: "my-6".to_owned() }
         section { class: "space-y-4", "aria-label": tr("appearance-custom-title"),
             h2 { class: "text-sm font-semibold", {tr("appearance-custom-title")} }
             p { class: "text-xs text-muted-foreground", {tr("appearance-custom-help")} }
+            if conflict {
+                p { role: "status", class: "text-xs text-muted-foreground",
+                    {tr("appearance-runtime-conflict")}
+                }
+            }
             ColorAdjustmentControls {}
             SurfaceControls { mini: false }
             SurfaceControls { mini: true }
@@ -196,5 +272,37 @@ fn ColorAdjustmentControls() -> Element {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod runtime_tests {
+    use super::*;
+    #[test]
+    fn runtime_snapshot_preserves_draft_and_rejects_old_responses() {
+        let mut state = AppState::new("/tmp/synthetic".into());
+        state.phase = super::super::Phase::Ready;
+        state.revision.session = 5;
+        state.settings.appearance.ally_foreground = "#123456".into();
+        let value = aftercast::RuntimeColors {
+            invert: true,
+            luminosity: 0.345,
+            saturation: 0.0,
+            ally: Some(0x4008090a),
+            personal: None,
+        };
+        assert!(state.accept_runtime_colors(5, 0, value));
+        assert_eq!(state.runtime_color_snapshot(), Some(value));
+        assert!(state.runtime_color_conflict());
+        assert_eq!(state.settings.appearance.ally_foreground, "#123456");
+        state.runtime_colors.generation = 1;
+        assert!(!state.accept_runtime_colors(5, 0, value));
+        state.saving = true;
+        assert!(!state.accept_runtime_colors(5, 1, value));
+        state.saving = false;
+        state.revision.session = 6;
+        assert_eq!(state.runtime_color_snapshot(), None);
+        assert!(!state.accept_runtime_colors(5, 1, value));
+        assert_eq!(state.settings.appearance.ally_foreground, "#123456");
     }
 }

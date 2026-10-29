@@ -843,3 +843,5 @@ odbc-all-term = ACT localized All attack name
 odbc-invalid-term = Enter the ACT All attack name (maximum 1024 bytes).
 odbc-current = Preview current table
 odbc-hierarchy = Preview five tables
+
+appearance-runtime-conflict = Plugin runtime colors differ from this draft. The table uses runtime values; your draft is unchanged.

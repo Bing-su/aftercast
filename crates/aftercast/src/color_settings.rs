@@ -24,7 +24,31 @@ impl Default for ColorControls {
         }
     }
 }
+/// Current worker values. Colors retain the complete ARGB value; None is Color.Empty.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct RuntimeColors {
+    pub invert: bool,
+    pub luminosity: f32,
+    pub saturation: f32,
+    pub ally: Option<u32>,
+    pub personal: Option<u32>,
+}
 impl HostHandle {
+    /// Read once from the worker owner; this never changes settings or publishes events.
+    pub async fn runtime_colors(&self) -> Result<RuntimeColors, Error> {
+        let mut packet = BytesMut::with_capacity(48);
+        packet.put_u32_le(48);
+        packet.put_u32_le(1);
+        packet.put_u64_le(self.session);
+        packet.put_u32_le(0);
+        packet.put_u32_le(0);
+        packet.put_u32_le(0);
+        packet.put_u32_le(2);
+        packet.put_u64_le(0);
+        packet.put_u64_le(0);
+        self.request(Request::ColorSettings, &mut packet).await?;
+        decode_runtime_colors(&packet, self.session)
+    }
     pub async fn set_color_controls(&self, value: ColorControls) -> Result<(), Error> {
         if value.ally.is_some_and(|v| v > 0xffffff) || value.personal.is_some_and(|v| v > 0xffffff)
         {
@@ -60,5 +84,72 @@ impl HostHandle {
         packet.put_u32_le(0);
         self.request(Request::ColorSettings, &mut packet).await?;
         Ok(())
+    }
+}
+
+fn decode_runtime_colors(packet: &[u8], session: u64) -> Result<RuntimeColors, Error> {
+    fn word(packet: &[u8], offset: usize) -> Option<u32> {
+        Some(u32::from_le_bytes(
+            packet.get(offset..offset + 4)?.try_into().ok()?,
+        ))
+    }
+    let invalid = || Error::InvalidPluginRequest("Invalid color snapshot response".into());
+    if packet.len() != 48
+        || word(packet, 0) != Some(48)
+        || word(packet, 4) != Some(1)
+        || packet.get(8..16) != Some(session.to_le_bytes().as_slice())
+        || word(packet, 28) != Some(2)
+        || word(packet, 44) != Some(0)
+    {
+        return Err(invalid());
+    }
+    let invert = match word(packet, 16) {
+        Some(0) => false,
+        Some(1) => true,
+        _ => return Err(invalid()),
+    };
+    let luminosity = f32::from_bits(word(packet, 20).ok_or_else(invalid)?);
+    let saturation = f32::from_bits(word(packet, 24).ok_or_else(invalid)?);
+    let flags = word(packet, 32).ok_or_else(invalid)?;
+    let ally = word(packet, 36).ok_or_else(invalid)?;
+    let personal = word(packet, 40).ok_or_else(invalid)?;
+    if !luminosity.is_finite()
+        || !saturation.is_finite()
+        || !(-1.0..=1.0).contains(&luminosity)
+        || !(-1.0..=1.0).contains(&saturation)
+        || flags > 3
+        || flags & 1 == 0 && ally != 0
+        || flags & 2 == 0 && personal != 0
+    {
+        return Err(invalid());
+    }
+    Ok(RuntimeColors {
+        invert,
+        luminosity,
+        saturation,
+        ally: (flags & 1 != 0).then_some(ally),
+        personal: (flags & 2 != 0).then_some(personal),
+    })
+}
+
+#[cfg(test)]
+mod snapshot_tests {
+    use super::*;
+    #[test]
+    fn reject_malformed_or_wrong_session_snapshots() {
+        let mut data = [0_u8; 48];
+        data[0..4].copy_from_slice(&48_u32.to_le_bytes());
+        data[4..8].copy_from_slice(&1_u32.to_le_bytes());
+        data[8..16].copy_from_slice(&7_u64.to_le_bytes());
+        data[28..32].copy_from_slice(&2_u32.to_le_bytes());
+        decode_runtime_colors(&data, 7).expect("valid snapshot");
+        decode_runtime_colors(&data, 8).expect_err("wrong session");
+        data[20..24].copy_from_slice(&f32::NAN.to_bits().to_le_bytes());
+        decode_runtime_colors(&data, 7).expect_err("invalid snapshot");
+        data[20..24].copy_from_slice(&0_u32.to_le_bytes());
+        data[36..40].copy_from_slice(&1_u32.to_le_bytes());
+        decode_runtime_colors(&data, 7).expect_err("invalid snapshot");
+        data[32..36].copy_from_slice(&1_u32.to_le_bytes());
+        assert_eq!(decode_runtime_colors(&data, 7).unwrap().ally, Some(1));
     }
 }

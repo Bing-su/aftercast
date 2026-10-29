@@ -34,12 +34,9 @@ The headless CheckBox and NumericUpDown senders run on the plugin owner thread;
 unchanged values do not fire. Saved app values apply at worker startup and after
 a successful settings save. Subscriber exceptions propagate and can leave the
 sequential worker update partially applied; the save is retained and the app
-reports the runtime failure. Plugin changes made through an event sender remain
-worker-local and are not persisted or reflected in app rendering automatically.
-Any later successful app settings save reapplies the app color values to the worker.
+reports the runtime failure. Plugin runtime grid colors and adjustments are polled on the owner thread and applied to the table without changing or persisting the user’s settings draft. A conflict notice appears when the draft differs. Old-session and pre-save replies are rejected; a later successful settings save reapplies the saved app values. Polling occurs once per second while the session is ready, so updates are not instantaneous.
 
-This is not the complete `ColorSettings` API: other ColorControl and all
-FontColorControl properties/events remain unavailable. The original `FontSetting` signature uses
+The remaining original ColorControl getters are available with their original defaults: `TreeViewEncounterColor1/2/3`, `SpellTimerForeColor`, `SpellTimerBackColor`, `SpellTimerWarningColor`, `SpellTimerExpireColor`, `CustomTriggerActiveBackColor`, `CustomTriggerInactiveBackColor`, and `CustomTriggerCategoryRestrictionForeColor`. They retain their independent Color-valued change events. The app does not yet render all corresponding native ACT surfaces, so changing these controls does not imply a visible effect there. All `FontColorControl` properties/events remain unavailable. The original `FontSetting` signature uses
 `System.Drawing.Font` from System.Drawing.Common, which the project does not
 currently reference; a local compilation probe fails with CS1069. Adding that
 dependency and deciding Linux native-font semantics remain separate work. No font
