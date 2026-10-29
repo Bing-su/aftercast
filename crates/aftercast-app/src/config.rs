@@ -17,6 +17,7 @@ pub struct Settings {
     pub graphs: GraphSettings,
     pub audio: AudioPreferences,
     pub text_profiles: BTreeMap<String, aftercast::TextReportOptions>,
+    pub mini_parse: MiniParsePreferences,
 }
 
 impl Default for Settings {
@@ -29,6 +30,22 @@ impl Default for Settings {
             graphs: GraphSettings::default(),
             audio: AudioPreferences::default(),
             text_profiles: BTreeMap::new(),
+            mini_parse: MiniParsePreferences::default(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct MiniParsePreferences {
+    pub interval_seconds: u8,
+    pub profile: String,
+}
+impl Default for MiniParsePreferences {
+    fn default() -> Self {
+        Self {
+            interval_seconds: 5,
+            profile: String::new(),
         }
     }
 }
@@ -227,6 +244,12 @@ impl Settings {
         {
             return Err(miette!("Audio volume must be 0..100"));
         }
+        if !(1..=60).contains(&self.mini_parse.interval_seconds)
+            || self.mini_parse.profile.len() > 80
+            || self.mini_parse.profile.chars().any(char::is_control)
+        {
+            return Err(miette!("Invalid mini parse preferences"));
+        }
         if self.text_profiles.len() > 32
             || self
                 .text_profiles
@@ -400,6 +423,7 @@ impl ConfigFile {
             );
         }
         save_graphs(&mut self.document, &settings.graphs);
+        save_mini_parse(&mut self.document, &settings.mini_parse);
         save_text_profiles(&mut self.document, &settings.text_profiles)?;
         save_tables(&mut self.document, &settings.tables)?;
         let path = root.join("config.toml");
@@ -555,6 +579,21 @@ pub(crate) fn valid_text_profile(name: &str, profile: &aftercast::TextReportOpti
         && profile.allies_format.len() <= 16384
         && profile.sorting.len() <= 256
         && !profile.sorting.chars().any(char::is_control)
+}
+
+#[expect(
+    clippy::indexing_slicing,
+    reason = "TOML indexing inserts mini parse settings"
+)]
+fn save_mini_parse(document: &mut DocumentMut, settings: &MiniParsePreferences) {
+    set(
+        &mut document["mini_parse"]["interval_seconds"],
+        value(i64::from(settings.interval_seconds)),
+    );
+    set(
+        &mut document["mini_parse"]["profile"],
+        value(&settings.profile),
+    );
 }
 
 fn save_text_profiles(
@@ -1205,6 +1244,30 @@ mod text_profile_checks {
                 .text_profiles
                 .len(),
             1
+        );
+    }
+    #[test]
+    fn mini_parse_preferences_roundtrip_and_validate() {
+        let temp = tempfile::tempdir().expect("temp");
+        let root = Utf8Path::from_path(temp.path()).expect("UTF8");
+        let mut file = ConfigFile::load(root).expect("old config");
+        assert_eq!(file.settings.mini_parse.interval_seconds, 5);
+        assert!(file.settings.mini_parse.profile.is_empty());
+        file.settings.mini_parse.interval_seconds = 12;
+        file.settings.mini_parse.profile = "synthetic".into();
+        file.save(root).expect("save");
+        let mut loaded = ConfigFile::load(root).expect("reload");
+        assert_eq!(loaded.settings.mini_parse.interval_seconds, 12);
+        assert_eq!(loaded.settings.mini_parse.profile, "synthetic");
+        loaded.settings.mini_parse.interval_seconds = 0;
+        assert!(loaded.save(root).is_err());
+        assert_eq!(
+            ConfigFile::load(root)
+                .expect("prior")
+                .settings
+                .mini_parse
+                .interval_seconds,
+            12
         );
     }
 }

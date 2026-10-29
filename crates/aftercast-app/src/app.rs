@@ -13,6 +13,7 @@ mod interchange;
 mod log_search_panel;
 mod log_window;
 mod lookup;
+mod mini_parse;
 mod notifications;
 mod plugin_tables;
 mod plugins;
@@ -153,6 +154,7 @@ struct AppState {
     import_text: import_text::State,
     interchange: interchange::State,
     reports: reports::State,
+    mini_parse: mini_parse::State,
     companions: companions::State,
     reparse: reparse::ReparseState,
     clipboard: clipboard_import::State,
@@ -234,6 +236,7 @@ impl AppState {
             import_text: Default::default(),
             interchange: Default::default(),
             reports: Default::default(),
+            mini_parse: Default::default(),
             companions: Default::default(),
             reparse: Default::default(),
             clipboard: Default::default(),
@@ -319,6 +322,7 @@ pub fn App() -> Element {
     use_future(move || load_settings(state, i18n()));
     use_future(move || notifications::poll(state));
     use_future(move || companions::poll(state));
+    use_future(move || mini_parse::poll(state));
     use_future(move || {
         let window = window.clone();
         async move {
@@ -586,6 +590,7 @@ fn stop(mut state: Signal<AppState>) {
         state.import_text.reset_session();
         state.interchange.stop();
         state.reports.stop();
+        state.mini_parse.reset_session();
         state.companions.reset_session();
         state.notifications = Default::default();
         state.plugin_ui_pending = false;

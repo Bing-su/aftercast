@@ -31,6 +31,7 @@ pub(super) fn AnalysisPane() -> Element {
                     }
                 }
             }
+            super::mini_parse::Panel {}
             super::reports::Panel {}
             super::plugin_tables::PluginTablesPane {}
             if let Some(detail) = detail {
@@ -169,7 +170,11 @@ pub(super) fn AnalysisPane() -> Element {
                     p { {tr("analysis-empty-description")} }
                     Button {
                         variant: ButtonVariant::Outline,
-                        onclick: move |_| state.write().screen = "plugins",
+                        onclick: move |_| {
+                            let mut state = state.write();
+                            state.mini_parse.stop();
+                            state.screen = "plugins";
+                        },
                         {tr("configure-plugins")}
                     }
                 }

@@ -34,6 +34,9 @@ pub(super) fn Header() -> Element {
                                 super::history_sources::leave(state);
                                 state.write().interchange.leave();
                                 state.write().reports.leave();
+                                if screen != "analysis" {
+                                    state.write().mini_parse.stop();
+                                }
                                 state.write().screen = screen;
                             }
                         },

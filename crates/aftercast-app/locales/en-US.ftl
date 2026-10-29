@@ -801,3 +801,16 @@ report-sort-missing = The saved sort key is not currently registered. Load its p
 report-profile-delete = Delete profile
 report-profile-cancel = Cancel
 report-profile-confirm = Delete this saved local profile?
+
+mini-title = Live mini parse
+mini-help = Local preview of active live combat using ACT text formatting. It stops on leaving this page; no clipboard or network output is sent.
+mini-profile = Saved text profile
+mini-interval = Refresh interval (seconds)
+mini-save = Save mini parse settings
+mini-start = Start preview
+mini-stop = Stop preview
+mini-empty = No active live encounter.
+mini-missing-profile = The selected saved profile is no longer available.
+mini-empty-output = The active encounter produced an empty text result.
+mini-truncated = Preview limited to 64 KiB.
+mini-loading = Loading active combat…

@@ -527,7 +527,10 @@ fn RecastResults(
                                 .timers
                                 .receive_recast_draft(&timer_name, &timer_attacker, duration, timer_modifier)
                             {
-                                Ok(()) => app.screen = "timers",
+                                Ok(()) => {
+                                    app.mini_parse.stop();
+                                    app.screen = "timers";
+                                }
                                 Err(error) => state.write().error = Some(error.into()),
                             }
                         },

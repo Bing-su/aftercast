@@ -28,6 +28,15 @@ internal static class ReportExportPolicy
         }
         static void Check(bool value,string field){if(!value)throw new InvalidDataException("Original report policy changed: "+field);}
         void Call(byte[] body,int offset,string name){Check(body[offset]==OpCodes.Call.Value||body[offset]==OpCodes.Callvirt.Value||body[offset]==OpCodes.Newobj.Value,"call opcode");Check(Name(body,offset)==name,name);}
+        var mini=Body("UpdateMiniEnc");
+        Call(mini,0x0042,"get_ActiveZone");Call(mini,0x0047,"get_ActiveEncounter");
+        Check(Name(mini,0x010b)=="defaultTextFormat"&&Name(mini,0x0114)=="textExportFormats"&&Name(mini,0x0135)=="cbMiniColumnAlign","mini text format selection");
+        Call(mini,0x015e,"GetTextExport");Call(mini,0x0173,"GetTextExport");Call(mini,0x019c,"ControlSetText");
+        var tick=Body("tmrTick_Tick","sender","e");
+        Check(Name(tick,0x0589)=="nudMiniUpdateInterval"&&tick[0x0598]==OpCodes.Rem.Value,"mini interval modulo");Call(tick,0x059f,"UpdateMiniEnc");
+        var miniOptions=NamedBody("Options_MiniParse","InitializeComponent");
+        Check(miniOptions[0x050d]==OpCodes.Ldc_I4_S.Value&&miniOptions[0x050e]==60&&miniOptions[0x0528]==OpCodes.Ldc_I4_1.Value&&miniOptions[0x0572]==OpCodes.Ldc_I4_5.Value,"mini interval bounds and default");
+        var mainOptions=Body("InitializeComponent");Check(mainOptions[0x0e65]==OpCodes.Ldc_I4.Value&&BitConverter.ToInt32(mainOptions,0x0e66)==1000,"one second timer tick");Call(mainOptions,0x0e6a,"set_Interval");
         var basic=Body("GetTextExport","Encounter","ExportFormatting");
         Check(basic[0x0003]==OpCodes.Ldnull.Value&&basic[0x0004]==OpCodes.Ldc_I4_0.Value,"unaligned default/font and max-lines fallback");Call(basic,0x0005,"GetTextExport");
         var core=Body("GetTextExport","RtfFormat","Encounter","ExportFormatting","TabulateFont","MaxLines");

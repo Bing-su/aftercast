@@ -14,6 +14,7 @@ pub fn Accordion(
     #[props(default)] default_open: bool,
     #[props(default)] class: String,
     #[props(default)] trigger_class: String,
+    #[props(default)] on_toggle: Option<EventHandler<bool>>,
 ) -> Element {
     let mut expanded = use_signal(|| default_open);
     let id = use_hook(|| NEXT_ACCORDION.fetch_add(1, Ordering::Relaxed));
@@ -29,7 +30,12 @@ pub fn Accordion(
                 class: trigger_class,
                 "aria-expanded": expanded(),
                 "aria-controls": "accordion-{id}-panel",
-                onclick: move |_| expanded.toggle(),
+                onclick: move |_| {
+                    expanded.toggle();
+                    if let Some(callback) = on_toggle {
+                        callback.call(expanded());
+                    }
+                },
                 span { class: "min-w-0 flex-1", {header} }
                 span {
                     class: "accordion-chevron shrink-0 text-muted-foreground transition-transform duration-150 motion-reduce:transition-none",
