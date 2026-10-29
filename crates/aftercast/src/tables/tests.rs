@@ -61,6 +61,8 @@ fn page_bytes(cell_error: Option<&str>) -> Vec<u8> {
     text(&mut bytes, None);
     text(&mut bytes, None);
     bytes.put_u32_le(0);
+    bytes.put_u32_le(0); // ally
+    bytes.put_u32_le(0); // self
     bytes.put_u32_le(1);
     text(
         &mut bytes,
@@ -251,6 +253,8 @@ fn main_sort_decoder_keeps_general_unsorted_contract_strict() {
     text(&mut page, None);
     text(&mut page, None);
     page.put_u32_le(0);
+    page.put_u32_le(0); // ally
+    page.put_u32_le(0); // self
     page.put_u32_le(1);
     text(&mut page, Some("value"));
     page.put_u32_le(0);

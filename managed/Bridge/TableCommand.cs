@@ -86,7 +86,7 @@ internal static class TableEncoding
                 foreach (var row in page.Rows)
                 {
                     Number((uint)row.Index); Wide(row.EncounterId); Text(row.Combatant); Text(row.Category); Text(row.Attack);
-                    Optional(row.TimeSorter); Number((uint)row.Cells.Length);
+                    Optional(row.TimeSorter); Number(row.IsAlly ? 1u : 0u); Number(row.IsSelf ? 1u : 0u); Number((uint)row.Cells.Length);
                     foreach (var cell in row.Cells)
                     {
                         Text(cell.Text); Optional(cell.ForegroundArgb); Optional(cell.BackgroundArgb); Text(cell.Error);

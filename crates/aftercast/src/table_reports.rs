@@ -273,6 +273,8 @@ fn decode_catalog(
             category,
             attack,
             time_sorter,
+            is_ally: false,
+            is_self: false,
             cells: Vec::new(),
         });
     }

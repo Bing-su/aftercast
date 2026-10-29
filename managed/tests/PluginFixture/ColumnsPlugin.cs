@@ -68,3 +68,12 @@ public sealed class SortKeysPlugin : IActPluginV1
     }
     public void DeInitPlugin() { CombatantData.ColumnDefs.Remove("sort-keys"); inner.DeInitPlugin(); }
 }
+
+// No live game or user files: expose an ACT self/ally classification through the owned table query.
+public sealed class ClassificationPlugin : IActPluginV1
+{
+    private readonly ColumnsPlugin inner = new();
+    private string? previous;
+    public void InitPlugin(TabPage page, Label status) { previous = ActGlobals.charName; inner.InitPlugin(page, status); ActGlobals.charName = "Source"; }
+    public void DeInitPlugin() { inner.DeInitPlugin(); ActGlobals.charName = previous; }
+}

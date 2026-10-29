@@ -280,6 +280,8 @@ fn row(
     let category = reader.optional_text(1024)?;
     let attack = reader.optional_text(1024)?;
     let time_sorter = reader.optional_int()?;
+    let is_ally = reader.boolean()?;
+    let is_self = reader.boolean()?;
     let (encounter, _actor, requested_category, requested_attack) = query.scope.parts();
     let depth = query.scope.level() as u32;
     if id == 0
@@ -288,6 +290,7 @@ fn row(
         || category.is_some() != (depth >= 2)
         || attack.is_some() != (depth >= 3)
         || time_sorter.is_some() != (depth >= 4)
+        || (depth != 1 && (is_ally || is_self))
         || requested_category.is_some_and(|value| category.as_deref() != Some(value))
         || requested_attack.is_some_and(|value| attack.as_deref() != Some(value))
     {
@@ -306,6 +309,8 @@ fn row(
         category,
         attack,
         time_sorter,
+        is_ally,
+        is_self,
         cells,
     })
 }
@@ -361,6 +366,11 @@ pub(super) fn lookup_page(
         let category = reader.optional_text(1024)?;
         let attack = reader.optional_text(1024)?;
         let time_sorter = reader.optional_int()?;
+        let is_ally = reader.boolean()?;
+        let is_self = reader.boolean()?;
+        if is_ally || is_self {
+            return Err(invalid("lookup row cannot carry combatant emphasis"));
+        }
         if index >= total
             || !seen.insert(index)
             || id != encounter.value
@@ -393,6 +403,8 @@ pub(super) fn lookup_page(
             category,
             attack,
             time_sorter,
+            is_ally,
+            is_self,
             cells,
         });
     }
@@ -479,6 +491,9 @@ mod lookup_tests {
         row.put_u32_le(u32::MAX);
         row.put_u32_le(u32::MAX);
         row.put_u32_le(0);
+        let emphasis_offset = row.len();
+        row.put_u32_le(0); // no ally emphasis
+        row.put_u32_le(0); // no personal emphasis
         row.put_u32_le(1);
         text(&mut row, "600");
         row.put_u32_le(0);
@@ -493,6 +508,14 @@ mod lookup_tests {
                 .len(),
             1
         );
+        for invalid in [1u32, 2] {
+            let mut malformed = row.clone();
+            malformed
+                .get_mut(emphasis_offset..emphasis_offset + 4)
+                .expect("flag bytes")
+                .copy_from_slice(&invalid.to_le_bytes());
+            lookup_page(&malformed, 7, &first, None, None).expect_err("invalid lookup emphasis");
+        }
         lookup_page(&row, 7, &first, Some("wrong peer"), None).expect_err("wrong row identity");
     }
 }

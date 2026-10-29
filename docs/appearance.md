@@ -11,15 +11,19 @@ Invalid drafts are never interpolated as CSS and cannot be saved.
 
 In a normal grid cell, a nontransparent plugin foreground/background takes
 precedence over the corresponding base color; the other component falls back
-independently. Error cells retain the semantic error style. ACT additionally
-uses `GetAllies` to override the foreground for ally combatants and compares the
-combatant name to `ActGlobals.charName` to override the personal background,
-before consulting that component's plugin color. Its plugin colors are also
-passed through `ToAdjustedColor`. The first base-color slice does not yet
-implement these ally/self overrides or ACT luminosity/saturation transformation;
-it must not be described as full color-rule parity. Native font measurement,
-mini text column alignment, exact installed-family selection, and visual/native
-Windows behavior remain unverified.
+independently. Error cells retain the semantic error style. For combatant rows,
+ACT uses `GetAllies().Contains` to override the **first visible data cell**
+foreground and compares the combatant name to `ActGlobals.charName` to override
+the personal background on each data cell, before consulting that component's
+plugin color. The owned table snapshot now carries both classifications, uses
+ACT's name equality for ally membership and rejects classification changes during
+callbacks. The defaults match original ForestGreen (`#228b22`) and RGB
+`#c8ffc8`; clearing either override disables that emphasis in aftercast. Old
+settings that lack the fields migrate to the ACT defaults. Native ACT applies
+`ToAdjustedColor` to plugin colors; the app currently displays raw callback
+colors, so luminosity/saturation transformation remains incomplete. Native font
+measurement, arbitrary installed-family selection, mini text column alignment,
+and visual/native Windows behavior remain unverified.
 
 The embedded mini text and separate mini window use the same app-local style;
 the window receives updates through its existing session-safe frame. Native

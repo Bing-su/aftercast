@@ -818,7 +818,7 @@ mini-open-window = 미니 파스 창 열기
 mini-window-error = 미니 파스 창을 열지 못했습니다.
 
 appearance-custom-title = 데이터 표와 미니 파스 모양
-appearance-custom-help = 색상을 비우면 테마를 사용합니다. #RRGGBB 형식을 사용하세요. 잘못된 값은 적용하거나 저장하지 않습니다. 플러그인 셀 색상이 우선합니다. 설정 저장 버튼으로 저장하세요.
+appearance-custom-help = 색상을 비우면 테마를 사용합니다. #RRGGBB 형식을 사용하세요. 잘못된 값은 적용하거나 저장하지 않습니다. 아군 글자색과 본인 배경은 플러그인 색보다 우선합니다. 강조를 끄려면 해당 칸을 비우세요. 그 외에는 플러그인 색이 기본 색보다 우선합니다. 설정 저장 버튼으로 저장하세요.
 appearance-grid = 데이터 표
 appearance-mini = 미니 파스
 appearance-font = 글꼴 종류
@@ -826,3 +826,6 @@ appearance-size = 글꼴 크기
 appearance-default = 테마 기본값
 appearance-foreground = 글자 색상
 appearance-background = 배경 색상
+
+appearance-ally = 아군 글자 색상
+appearance-self = 내 전투원 배경 색상

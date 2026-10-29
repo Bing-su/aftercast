@@ -117,6 +117,7 @@ internal static class TableValueChecks
     {
         using var fixture = new Fixture();
         LevelsAndOrdering(fixture);
+        ColorClassifications(fixture);
         MainDefaultOrdering(fixture);
         PublishedMainSort(fixture);
         ZoneScope(fixture);
@@ -126,6 +127,26 @@ internal static class TableValueChecks
         LimitsAndValidation(fixture);
         ComparisonBudget(fixture);
         Console.WriteLine("Original-object owner-thread table cells/colors, bounded sorting, invalidation and failures passed.");
+    }
+    private static void ColorClassifications(Fixture fixture)
+    {
+        var a = fixture.Encounter.Items["A"]; var b = fixture.Encounter.Items["B"];
+        fixture.Encounter.SetAllies(new() { a, b });
+        try
+        {
+            var page = fixture.Read(fixture.Query());
+            var own = page.Rows.Single(row => row.Combatant == "A");
+            var ally = page.Rows.Single(row => row.Combatant == "B");
+            Check(own.IsAlly && own.IsSelf && ally.IsAlly && !ally.IsSelf);
+            Check(own.Cells[0].ForegroundArgb == Color.Red.ToArgb());
+            fixture.Encounter.SetAllies(new() { new CombatantData("b", fixture.Encounter) });
+            var byName = fixture.Read(fixture.Query());
+            Check(!byName.Rows.Single(row => row.Combatant == "A").IsAlly);
+            Check(byName.Rows.Single(row => row.Combatant == "B").IsAlly);
+            fixture.Plugin.OnCell = () => ActGlobals.charName = "B";
+            Throws<InvalidOperationException>(() => fixture.Read(fixture.Query()));
+        }
+        finally { fixture.Plugin.OnCell = null; ActGlobals.charName = "A"; fixture.Encounter.SetAllies(null); }
     }
     private static void ZoneScope(Fixture fixture)
     {

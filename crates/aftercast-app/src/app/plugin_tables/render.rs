@@ -41,6 +41,7 @@ fn rgba(argb: i32) -> String {
         f64::from(value >> 24) / 255.0
     )
 }
+#[cfg(test)]
 pub(super) fn cell_style(cell: &TableCell) -> String {
     let mut style = String::new();
     if cell.error.is_some() {
@@ -54,30 +55,37 @@ pub(super) fn cell_style(cell: &TableCell) -> String {
     }
     style
 }
-fn styled_cell(cell: &TableCell, appearance: &crate::config::AppearancePreferences) -> String {
+fn styled_cell(
+    cell: &TableCell,
+    appearance: &crate::config::AppearancePreferences,
+    ally: bool,
+    personal: bool,
+) -> String {
     if cell.error.is_some() {
         return String::new();
     }
     let mut style = appearance.grid_style();
-    if cell.foreground_argb.is_none()
-        && crate::config::valid_color(&appearance.grid_foreground)
-        && !appearance.grid_foreground.is_empty()
-    {
+    let configured = |value: &str| crate::config::valid_color(value) && !value.is_empty();
+    if ally && configured(&appearance.ally_foreground) {
+        style.push_str(&format!("color:{};", appearance.ally_foreground));
+    } else if let Some(color) = cell.foreground_argb {
+        style.push_str(&format!("color:{};", rgba(color)));
+    } else if configured(&appearance.grid_foreground) {
         style.push_str(&format!("color:{};", appearance.grid_foreground));
     }
-    if cell.background_argb.is_none()
-        && crate::config::valid_color(&appearance.grid_background)
-        && !appearance.grid_background.is_empty()
-    {
+    if personal && configured(&appearance.self_background) {
+        style.push_str(&format!("background-color:{};", appearance.self_background));
+    } else if let Some(color) = cell.background_argb {
+        style.push_str(&format!("background-color:{};", rgba(color)));
+    } else if configured(&appearance.grid_background) {
         style.push_str(&format!("background-color:{};", appearance.grid_background));
     }
-    style.push_str(&cell_style(cell));
     style
 }
 #[component]
-fn CellView(cell: TableCell) -> Element {
+fn CellView(cell: TableCell, ally: bool, personal: bool) -> Element {
     let state = use_context::<Signal<AppState>>();
-    let style = styled_cell(&cell, &state.read().settings.appearance);
+    let style = styled_cell(&cell, &state.read().settings.appearance, ally, personal);
     if cell.error.is_some() {
         rsx! {
             span { role: "note", class: "font-medium text-destructive", {tr("table-cell-error")} }
@@ -113,12 +121,19 @@ fn row_link(view: View, target: Option<TableScope>) -> Element {
         OpenRow { view, target }
     }
 }
+fn ally_first_column(is_ally: bool, index: usize) -> bool {
+    is_ally && index == 0
+}
 fn row_cell(row: &Row, index: usize) -> Element {
     let Some(cell) = row.cells.get(index) else {
         return rsx! {};
     };
     rsx! {
-        CellView { cell: cell.clone() }
+        CellView {
+            cell: cell.clone(),
+            ally: ally_first_column(row.is_ally, index),
+            personal: row.is_self,
+        }
     }
 }
 #[component]
@@ -192,19 +207,22 @@ mod appearance_tests {
             grid_background: "#abcdef".into(),
             ..Default::default()
         };
+        assert!(ally_first_column(true, 0));
+        assert!(!ally_first_column(true, 1));
+        assert!(!ally_first_column(false, 0));
         let mut cell = TableCell {
             text: Some("synthetic".into()),
             foreground_argb: Some(-65536),
             background_argb: None,
             error: None,
         };
-        let style = styled_cell(&cell, &appearance);
+        let style = styled_cell(&cell, &appearance, false, false);
         assert!(style.contains("font-family:serif;") && style.contains("font-size:14px;"));
         assert!(style.contains("color:rgba(255, 0, 0, 1.0000);") && !style.contains("#123456"));
         assert!(style.contains("background-color:#abcdef;"));
         cell.foreground_argb = None;
         cell.background_argb = Some(-16776961);
-        let style = styled_cell(&cell, &appearance);
+        let style = styled_cell(&cell, &appearance, false, false);
         assert!(
             style.contains("color:#123456;")
                 && style.contains("background-color:rgba(0, 0, 255, 1.0000);")
@@ -214,6 +232,21 @@ mod appearance_tests {
         invalid.grid_foreground = "red;display:none".into();
         cell.foreground_argb = None;
         cell.background_argb = None;
-        assert!(!styled_cell(&cell, &invalid).contains("display"));
+        assert!(!styled_cell(&cell, &invalid, false, false).contains("display"));
+        cell.foreground_argb = Some(-65536);
+        cell.background_argb = Some(-16776961);
+        invalid.ally_foreground = "#112233".into();
+        invalid.self_background = "#445566".into();
+        let emphasized = styled_cell(&cell, &invalid, true, true);
+        assert!(
+            emphasized.contains("color:#112233;")
+                && emphasized.contains("background-color:#445566;")
+        );
+        assert!(!emphasized.contains("rgba("));
+        let ally_only = styled_cell(&cell, &invalid, true, false);
+        assert!(
+            ally_only.contains("color:#112233;")
+                && ally_only.contains("background-color:rgba(0, 0, 255, 1.0000);")
+        );
     }
 }

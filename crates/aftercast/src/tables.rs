@@ -163,6 +163,9 @@ pub struct TableRow {
     pub category: Option<String>,
     pub attack: Option<String>,
     pub time_sorter: Option<i32>,
+    /// ACT ally/self classifications captured with this combatant row; false on other levels.
+    pub is_ally: bool,
+    pub is_self: bool,
     pub cells: Vec<TableCell>,
 }
 #[derive(Debug, Clone, PartialEq)]

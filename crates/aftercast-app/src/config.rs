@@ -37,17 +37,35 @@ impl Default for Settings {
     }
 }
 
-#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct AppearancePreferences {
     pub grid_font: String,
     pub grid_size: u8,
     pub grid_foreground: String,
     pub grid_background: String,
+    pub ally_foreground: String,
+    pub self_background: String,
     pub mini_font: String,
     pub mini_size: u8,
     pub mini_foreground: String,
     pub mini_background: String,
+}
+impl Default for AppearancePreferences {
+    fn default() -> Self {
+        Self {
+            grid_font: String::new(),
+            grid_size: 0,
+            grid_foreground: String::new(),
+            grid_background: String::new(),
+            ally_foreground: "#228b22".into(),
+            self_background: "#c8ffc8".into(),
+            mini_font: String::new(),
+            mini_size: 0,
+            mini_foreground: String::new(),
+            mini_background: String::new(),
+        }
+    }
 }
 fn valid_font(font: &str) -> bool {
     matches!(font, "" | "sans-serif" | "serif" | "monospace")
@@ -86,6 +104,8 @@ impl AppearancePreferences {
             && [
                 &self.grid_foreground,
                 &self.grid_background,
+                &self.ally_foreground,
+                &self.self_background,
                 &self.mini_foreground,
                 &self.mini_background,
             ]
@@ -679,6 +699,8 @@ fn save_appearance(document: &mut DocumentMut, settings: &AppearancePreferences)
         ("grid_font", &settings.grid_font),
         ("grid_foreground", &settings.grid_foreground),
         ("grid_background", &settings.grid_background),
+        ("ally_foreground", &settings.ally_foreground),
+        ("self_background", &settings.self_background),
         ("mini_font", &settings.mini_font),
         ("mini_foreground", &settings.mini_foreground),
         ("mini_background", &settings.mini_background),
@@ -1375,10 +1397,16 @@ mod text_profile_checks {
         let root = Utf8Path::from_path(temp.path()).expect("UTF8");
         let mut file = ConfigFile::load(root).expect("old config");
         assert_eq!(file.settings.appearance, AppearancePreferences::default());
+        let migrated =
+            ConfigFile::parse("[appearance]\ngrid_font = 'serif'\n").expect("prior appearance");
+        assert_eq!(migrated.settings.appearance.ally_foreground, "#228b22");
+        assert_eq!(migrated.settings.appearance.self_background, "#c8ffc8");
         file.settings.appearance.mini_font = "monospace".into();
         file.settings.appearance.mini_size = 16;
         file.settings.appearance.mini_foreground = "#Aa12F0".into();
         file.settings.appearance.grid_background = "#123456".into();
+        file.settings.appearance.ally_foreground = "#987654".into();
+        file.settings.appearance.self_background = "#abc123".into();
         file.save(root).expect("save");
         let mut loaded = ConfigFile::load(root).expect("restart");
         assert!(
@@ -1396,6 +1424,8 @@ mod text_profile_checks {
                 .contains("color:#Aa12F0;")
         );
         assert_eq!(loaded.settings.appearance.grid_background, "#123456");
+        assert_eq!(loaded.settings.appearance.ally_foreground, "#987654");
+        assert_eq!(loaded.settings.appearance.self_background, "#abc123");
         loaded.settings.appearance.mini_foreground = "#fff;display:none".into();
         assert!(!loaded.settings.appearance.mini_style().contains("display"));
         assert!(loaded.save(root).is_err());

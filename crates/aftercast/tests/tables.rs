@@ -590,3 +590,62 @@ async fn published_main_sort_is_observed_by_plugin_and_auto_reads_do_not_change_
         .expect_err("stale catalog");
     host.shutdown().await.expect("stop");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and fixture; run mise run test:plugins"]
+async fn actor_color_classification_survives_worker_boundary(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let id = host
+        .create_plugin(plugin("ClassificationPlugin"))
+        .await
+        .expect("plugin");
+    host.initialize_plugin(id).await.expect("initialize");
+    let input = deployment.directory().join("synthetic-colors.log");
+    std::fs::write(&input, "0|100\n").expect("synthetic input");
+    host.import_log(input).await.expect("import");
+    let encounter = host
+        .encounters(0, 16)
+        .await
+        .expect("encounters")
+        .items
+        .first()
+        .expect("encounter")
+        .id;
+    let request = query(&host, TableScope::Combatants(encounter), &["fixture"]).await;
+    let page = host
+        .table_rows(&request)
+        .await
+        .expect("table")
+        .expect("page");
+    let own = page
+        .rows
+        .iter()
+        .find(|row| {
+            row.combatant
+                .as_deref()
+                .is_some_and(|name| name.eq_ignore_ascii_case("Source"))
+        })
+        .expect("own actor");
+    assert!(own.is_self && own.is_ally);
+    assert_eq!(
+        own.cells.first().expect("plugin cell").foreground_argb,
+        Some(-65536)
+    );
+    let enemy = page
+        .rows
+        .iter()
+        .find(|row| {
+            row.combatant
+                .as_deref()
+                .is_some_and(|name| name.eq_ignore_ascii_case("Target"))
+        })
+        .expect("target");
+    assert!(!enemy.is_self && !enemy.is_ally);
+    let handle = host.handle();
+    host.shutdown().await.expect("shutdown");
+    handle
+        .table_rows(&request)
+        .await
+        .expect_err("stale session");
+}

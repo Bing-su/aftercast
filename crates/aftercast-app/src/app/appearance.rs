@@ -34,6 +34,8 @@ fn SurfaceControls(mini: bool) -> Element {
             appearance.grid_background.clone(),
         )
     };
+    let ally_foreground = appearance.ally_foreground.clone();
+    let self_background = appearance.self_background.clone();
     let disabled = current.saving || current.file.is_none();
     let key = if mini { "mini" } else { "grid" };
     let font_id = format!("appearance-{key}-font");
@@ -117,6 +119,28 @@ fn SurfaceControls(mini: bool) -> Element {
                             }
                         }
                     }
+                }
+            }
+            if !mini {
+                Label { html_for: "appearance-ally", {tr("appearance-ally")} }
+                Input {
+                    id: "appearance-ally".to_owned(),
+                    value: ally_foreground,
+                    disabled,
+                    placeholder: "#RRGGBB".to_owned(),
+                    oninput: move |event: FormEvent| {
+                        state.write().settings.appearance.ally_foreground = event.value();
+                    },
+                }
+                Label { html_for: "appearance-self", {tr("appearance-self")} }
+                Input {
+                    id: "appearance-self".to_owned(),
+                    value: self_background,
+                    disabled,
+                    placeholder: "#RRGGBB".to_owned(),
+                    oninput: move |event: FormEvent| {
+                        state.write().settings.appearance.self_background = event.value();
+                    },
                 }
             }
         }

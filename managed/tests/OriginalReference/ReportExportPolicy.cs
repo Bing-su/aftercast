@@ -42,7 +42,11 @@ internal static class ReportExportPolicy
         var grid=Body("lvDG_RetrieveVirtualItem","sender","e");
         Call(grid,0x02c1,"GetAllies");Call(grid,0x02d0,"Contains");Call(grid,0x02dc,"get_Name");
         Check(Name(grid,0x02e1)=="charName"&&grid[0x0363]==OpCodes.Brtrue_S.Value&&Name(grid,0x0371)=="GetCellForeColor"&&Name(grid,0x03be)=="ccDGAllyText","grid ally foreground precedence");
+        Check(Name(grid,0x04ac)=="GetCellForeColor"&&Name(grid,0x0501)=="GetCellBackColor", "subsequent combatant cells use plugin colors");
         Check(grid[0x03db]==OpCodes.Brtrue_S.Value&&Name(grid,0x03e9)=="GetCellBackColor"&&Name(grid,0x0436)=="ccDGPersonalBackcolor","grid personal background precedence");
+        var gridOptions=NamedBody("Options_ColorUserInterface","InitializeComponent");
+        Check(Name(gridOptions,0x0cac)=="ccDGAllyText","default ally color target");Call(gridOptions,0x0cb1,"get_ForestGreen");Call(gridOptions,0x0cb6,"set_ForeColorSetting");
+        Check(Name(gridOptions,0x0d58)=="ccDGPersonalBackcolor"&&BitConverter.ToInt32(gridOptions,0x0d5e)==200&&BitConverter.ToInt32(gridOptions,0x0d63)==255&&BitConverter.ToInt32(gridOptions,0x0d68)==200,"default personal background RGB");Call(gridOptions,0x0d6c,"FromArgb");
         var gridForeground=NamedBody("Options_ColorUserInterface","fccDataGrid_ForeColorSettingChanged","NewColor");
         Check(Name(gridForeground,0x0005)=="lvDG","grid base foreground");Call(gridForeground,0x000b,"set_ForeColor");
         var basic=Body("GetTextExport","Encounter","ExportFormatting");

@@ -10,7 +10,7 @@ namespace Aftercast.ActCompat
     public sealed record TableCellData(string? Text, int? ForegroundArgb, int? BackgroundArgb, string? Error);
     // Index belongs to this scope snapshot only; it is not a persistent action identity or a source-log link.
     public sealed record TableRowData(int Index, ulong EncounterId, string? Combatant, string? Category,
-        string? Attack, int? TimeSorter, TableCellData[] Cells);
+        string? Attack, int? TimeSorter, TableCellData[] Cells, bool IsAlly = false, bool IsSelf = false);
     public sealed record TablePageData(ulong Revision, int Total, TableColumnData[] Columns,
         TableRowData[] Rows, string? SortError);
     internal sealed class TableQueryInvalidatedException(string message) : InvalidOperationException(message);
@@ -259,6 +259,10 @@ namespace Advanced_Combat_Tracker
                     error => WriteExceptionLog(error, "Plugin table sort"), out sortError, reverseTies: query.MainDescending is not null);
             RequireTableRevision(level, query.Revision);
             var diagnosed = new HashSet<string>(StringComparer.Ordinal);
+            var character = ActGlobals.charName;
+            var parent = level == TableLevel.Combatant ? rows.FirstOrDefault()?.Value as CombatantData : null;
+            var encounter = parent?.Parent;
+            var allies = encounter?.GetAllies().ToArray();
             var result = new List<TableRowData>();
             long bytes = 0;
             foreach (var index in order.Skip(query.Offset).Take(query.Limit))
@@ -267,9 +271,15 @@ namespace Advanced_Combat_Tracker
                 var cells = columns.Select(column => ReadTableCell(level, snapshot, column, row.Value, diagnosed)).ToArray();
                 bytes += cells.Sum(cell => cell.Text is null ? 0L : ColumnUtf8.GetByteCount(cell.Text));
                 if (bytes > MaximumTableTextBytes) throw new InvalidDataException("Table response text exceeds 8 MiB");
-                result.Add(new(index, row.EncounterId, row.Combatant, row.Category, row.Attack, row.TimeSorter, cells));
+                var actor = level == TableLevel.Combatant ? row.Value as CombatantData : null;
+                result.Add(new(index, row.EncounterId, row.Combatant, row.Category, row.Attack, row.TimeSorter, cells,
+                    actor is not null && allies is not null && allies.Contains(actor), actor is not null && actor.Name == character));
             }
             RequireTableRevision(level, query.Revision);
+            if (level == TableLevel.Combatant && result.Any(item => rows[item.Index].Value is CombatantData actor && item.IsSelf != (actor.Name == character)))
+                throw new TableQueryInvalidatedException("Combatant personal classification changed during callbacks");
+            if (level == TableLevel.Combatant && (character != ActGlobals.charName || (encounter is not null && allies is not null && !allies.SequenceEqual(encounter.GetAllies(), ReferenceEqualityComparer.Instance))))
+                throw new TableQueryInvalidatedException("Combatant color classification changed during callbacks");
             var current = TableSources(query.Scope)?.Take(MaximumTableRows + 1).ToArray();
             if (current is null || rows.Length != current.Length || !rows.Zip(current).All(pair =>
                 ReferenceEquals(pair.First.Value, pair.Second.Value) && pair.First.EncounterId == pair.Second.EncounterId &&
