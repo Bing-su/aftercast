@@ -836,3 +836,10 @@ appearance-adjust-off = Off
 appearance-adjust-on = On
 appearance-plugin-lum = Luminosity offset
 appearance-plugin-sat = Saturation offset
+
+odbc-preview-title = Offline SQL preview
+odbc-preview-help = Generate synthetic destination schemas and positional parameters from registered SQL columns. No database connection or SQL execution is performed. Values may contain encounter data.
+odbc-all-term = ACT localized All attack name
+odbc-invalid-term = Enter the ACT All attack name (maximum 1024 bytes).
+odbc-current = Preview current table
+odbc-hierarchy = Preview five tables

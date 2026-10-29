@@ -238,14 +238,14 @@ mod tests {
             decode(&bytes, 12, &columns, 1, true).expect("valid").len(),
             1
         );
-        assert!(decode(&bytes, 13, &columns, 1, true).is_err());
-        assert!(decode(&bytes, 12, &columns, 0, true).is_err());
-        assert!(decode(&bytes, 12, &[vec!["wrong".into()]], 1, true).is_err());
+        decode(&bytes, 13, &columns, 1, true).expect_err("wrong revision");
+        decode(&bytes, 12, &columns, 0, true).expect_err("too many rows");
+        decode(&bytes, 12, &[vec!["wrong".into()]], 1, true).expect_err("wrong column");
         for n in 0..bytes.len() {
-            assert!(decode(&bytes[..n], 12, &columns, 1, true).is_err());
+            decode(&bytes[..n], 12, &columns, 1, true).expect_err("truncated");
         }
         let mut trailing = bytes;
         trailing.push(0);
-        assert!(decode(&trailing, 12, &columns, 1, true).is_err());
+        decode(&trailing, 12, &columns, 1, true).expect_err("trailing");
     }
 }

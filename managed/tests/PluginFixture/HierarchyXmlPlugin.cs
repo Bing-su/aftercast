@@ -115,7 +115,7 @@ public sealed class OdbcPreviewPlugin : HierarchyXmlPlugin, IActPluginV1
     {
         base.InitPlugin(page,status);
         EncounterData.ColumnDefs["odbc-synthetic"] = new("Synthetic",false,"TEXT","enc_sql",_=>"display",_=>"encounter");
-        CombatantData.ColumnDefs["odbc-encid"] = new("Synthetic",false,"TEXT","encid",_=>"display",_=>throw new InvalidOperationException("current EncId must not run"),(_,_)=>0);
+        CombatantData.ColumnDefs["odbc-encid"] = new("Synthetic",false,"TEXT","encid",_=>"display",_=>"nonempty-encid",(_,_)=>0);
     }
     public new void DeInitPlugin() { EncounterData.ColumnDefs.Remove("odbc-synthetic"); base.DeInitPlugin(); }
 }

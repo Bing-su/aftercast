@@ -46,9 +46,12 @@ A cooperative four-second whole-plan budget and an 8 MiB aggregate text limit
 apply; no partial plan is published if any table fails. Synthetic checks include
 registration mutations, stale revisions and failing callbacks.
 
-The managed paths are not yet connected to Bridge/Rust or a GUI;
-
-the offline hierarchy still does not reproduce ACT's original multi-encounter
+The Bridge/Rust worker APIs and existing Rust/UI report panel expose the offline
+plans. The UI uses registered SQL columns as synthetic destination schemas, shows
+parameters as text, and accepts an explicit localized All term. It does not
+connect to a database. Canceling or navigating away discards late UI responses;
+already-admitted worker computation is not preempted and remains subject to its
+cooperative budget. The offline hierarchy still does not reproduce ACT's original multi-encounter
 selection, native batch policy, SQL hacks or driver behavior. Native ACT ODBC execution, external database access and independent
 review remain unverified. The managed `current_table` preview returns an inert
 reset statement and inserts an empty EncId without invoking its callback, as

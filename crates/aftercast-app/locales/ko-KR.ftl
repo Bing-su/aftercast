@@ -836,3 +836,10 @@ appearance-adjust-off = 끄기
 appearance-adjust-on = 켜기
 appearance-plugin-lum = 명도 보정
 appearance-plugin-sat = 채도 보정
+
+odbc-preview-title = 오프라인 SQL 미리보기
+odbc-preview-help = 등록된 SQL 열로 합성 대상 스키마와 위치 매개변수를 생성합니다. 데이터베이스 접속이나 SQL 실행은 하지 않습니다. 값에 전투 데이터가 포함될 수 있습니다.
+odbc-all-term = ACT의 현지화된 전체 기술 이름
+odbc-invalid-term = ACT 전체 기술 이름을 1024바이트 이내로 입력하세요.
+odbc-current = 현재 표 미리보기
+odbc-hierarchy = 다섯 표 미리보기

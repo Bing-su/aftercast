@@ -296,6 +296,7 @@ pub(in crate::app) fn Panel() -> Element {
                 }
                 super::table_view::Editor {}
                 super::hierarchy::Editor {}
+                super::odbc::Editor {}
                 super::html_view::Editor {}
                 if let Some((active, _)) = pending {
                     div { class: "flex items-center gap-3", role: "status",

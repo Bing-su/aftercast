@@ -6,6 +6,7 @@ mod file;
 mod hierarchy;
 mod html;
 mod html_view;
+mod odbc;
 mod table_view;
 mod tables;
 #[cfg(test)]
@@ -31,6 +32,7 @@ enum Content {
     Text(TextReport, TextReportOptions),
     Table(aftercast::TableReport, aftercast::TableReportOptions),
     Hierarchy(aftercast::HierarchyXmlReport),
+    Odbc(String),
     Html(
         aftercast::HierarchyHtmlReport,
         Vec<aftercast::HierarchyHtmlLevel>,
@@ -44,6 +46,7 @@ impl Content {
             Self::Text(report, _) => &report.text,
             Self::Table(report, _) => &report.content,
             Self::Hierarchy(report) => &report.content,
+            Self::Odbc(text) => text,
             Self::Html(report, ..) => &report.content,
         }
     }
@@ -58,6 +61,7 @@ impl Content {
     fn description(&self) -> String {
         match self {
             Self::Text(_, options) => format!("Text · {}", options.sorting),
+            Self::Odbc(_) => super::tr("odbc-preview-title"),
             Self::Html(report, levels, _, graphs) => {
                 let label = super::tr(html::label(
                     levels
@@ -119,6 +123,7 @@ enum Request {
         Option<html::GraphCandidates>,
     ),
     Hierarchy(EncounterId, aftercast::HierarchyXmlDepth, String),
+    Odbc(EncounterId, bool, String, String),
     Catalog,
     TableCatalog(aftercast::TableScope),
     TableRender(
@@ -149,6 +154,7 @@ enum Reply {
         Option<aftercast::HierarchyHtmlGraphOptions>,
     ),
     Hierarchy(Option<aftercast::HierarchyXmlReport>, String),
+    Odbc(Option<String>, String),
     Catalog(TextReportCatalog),
     TableCatalog(Option<aftercast::TableReportCatalog>),
     TableReport(
@@ -167,6 +173,7 @@ enum Reply {
 pub(super) struct State {
     epoch: u64,
     hierarchy: hierarchy::Draft,
+    odbc: odbc::Draft,
     html: html::Draft,
     table: tables::Draft,
     table_catalog: Option<Arc<aftercast::TableReportCatalog>>,
@@ -493,6 +500,14 @@ impl AppState {
             Ok(Reply::HtmlReport(None, ..)) => {
                 self.reports.error = Some("report-unavailable".into())
             }
+            Ok(Reply::Odbc(Some(text), title)) => {
+                self.reports.preview = Some(Preview {
+                    token,
+                    report: Arc::new(Content::Odbc(text)),
+                    title,
+                });
+            }
+            Ok(Reply::Odbc(None, _)) => self.reports.error = Some("report-unavailable".into()),
             Ok(Reply::Hierarchy(Some(report), title)) => {
                 self.reports.preview = Some(Preview {
                     token,
@@ -605,6 +620,10 @@ async fn perform(handle: &HostHandle, request: &Request) -> Result<Reply, String
                 candidates.as_ref(),
             )
             .await
+        }
+        Request::Odbc(target, current, all_term, title) => {
+            let text = odbc::render(handle, *target, *current, all_term).await?;
+            Ok(Reply::Odbc(text, title.clone()))
         }
         Request::Hierarchy(target, depth, title) => {
             let report = match handle

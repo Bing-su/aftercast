@@ -276,6 +276,9 @@ async fn reports_ui_contract_drafts_failures_catalog_refresh_and_session_retirem
 #[path = "table_tests.rs"]
 mod tables;
 
+#[path = "odbc_tests.rs"]
+mod odbc;
+
 #[path = "hierarchy_tests.rs"]
 mod hierarchy;
 
