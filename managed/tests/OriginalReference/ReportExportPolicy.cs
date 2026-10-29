@@ -72,6 +72,13 @@ internal static class ReportExportPolicy
             Call(body,0x007f,"set_Indentation");Check(body[0x007e]==OpCodes.Ldc_I4_4.Value,"four-space XML indentation");
             Call(body,0x00f9,"get_ColHeaderCollection");Call(body,0x010e,"get_ColCollection");
         }
+        var odbc=Body("ThreadOdbcExportSingle");
+        foreach(var (offset,tableName) in new[]{(0x0360,"encounter_table"),(0x05c4,"combatant_table"),(0x0850,"damagetype_table"),(0x0af6,"attacktype_table"),(0x0d0c,"swing_table")})
+            Check(Literal(odbc,offset)==$"INSERT INTO {tableName} ({{1}}) VALUES ({{0}});","original ODBC table and literal format");
+        foreach(var offset in new[]{0x0308,0x056c,0x07f8,0x0a9e,0x0cb4})Call(odbc,offset,"SqlSafe");
+        var create=NamedBody("Options_Odbc","CreateOdbcTable","odbcConnection","TableName","ColHeaders","ColTypes");
+        Check(Literal(create,0x005e)=="CREATE TABLE {0} ({1});","original ODBC schema template"); Call(create,0x001d,"ToLower");
+        var safe=Body("SqlSafe","input"); foreach(var offset in new[]{0x0013,0x002a,0x0041,0x0050})Call(safe,offset,"Replace");
         foreach(var rowType in new[]{"CombatantData","DamageTypeData","AttackType","MasterSwing"})
         {
             var headers=NamedBody(rowType,"get_ColHeaderCollection");Call(headers,0x0030,"get_SqlDataName");

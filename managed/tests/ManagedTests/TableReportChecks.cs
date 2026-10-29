@@ -51,6 +51,7 @@ internal static class TableReportChecks
     }
     internal static void Run()
     {
+        HostLifetimeChecks.RunBounded(OfflineOdbc);
         HostLifetimeChecks.RunBounded(XmlAndSelection);
         HostLifetimeChecks.RunBounded(XmlCharacters);
         HostLifetimeChecks.RunBounded(HtmlEscaping);
@@ -58,6 +59,63 @@ internal static class TableReportChecks
         HostLifetimeChecks.RunBounded(BoundsAndEmpty);
         HostLifetimeChecks.RunBounded(StrictFailuresAndSerialization);
         Console.WriteLine("Owned current-table XML SQL values/roots/selection, escaped static HTML, dynamic columns, sorting and failure boundaries passed.");
+    }
+    private sealed class SyntheticSink
+    {
+        internal OdbcPreview? Value;
+        internal void Commit(OdbcPreview value) { Value = value; }
+    }
+    private static void OfflineOdbc()
+    {
+        using var f=new Fixture(); var catalog=f.Catalog(); var sink=new SyntheticSink();
+        EncounterData.ColumnDefs["offline-odbc-fixture"] = new("fixture",true,"TEXT","enc_fixture",_=>"cell", value=>{
+            Check(Environment.CurrentManagedThreadId==f.Owner && ReferenceEquals(value,f.Encounter),"encounter callback ownership"); return "enc-合成";
+        });
+        try
+        {
+            var encounter=f.Host.PreviewOdbcTable(catalog.Revision,["ENC_FIXTURE"],encounter:true);
+            Check(encounter.Table=="encounter_table" && encounter.Parameters.Length==1 && encounter.Parameters[0][0]=="enc-合成","encounter preview");
+        }
+        finally { EncounterData.ColumnDefs.Remove("offline-odbc-fixture"); }
+        var plan=f.Host.PreviewOdbcTable(catalog.Revision,["hidden","SQL_NAME"]); sink.Commit(plan);
+        Check(plan.Table=="combatant_table" && plan.Columns.Select(x=>x.Name).SequenceEqual(["hidden","SQL_NAME"]),"ODBC destination order and case matching");
+        Check(plan.CreateSql=="CREATE TABLE \"combatant_table\" (\"hidden\" TEXT, \"sql_name\" TEXT);", "synthetic schema");
+        Check(plan.InsertSql=="INSERT INTO \"combatant_table\" (\"hidden\", \"SQL_NAME\") VALUES (?, ?);", "placeholder insert");
+        Check(plan.Parameters.Length==3 && plan.Parameters[0].SequenceEqual(["hidden-sql","sql-A"]) && f.CellCalls==0,"SQL callback values");
+        Throws<ArgumentException>(()=>f.Host.PreviewOdbcTable(catalog.Revision,["hidden","HIDDEN"]));
+        Throws<InvalidDataException>(()=>f.Host.PreviewOdbcTable(catalog.Revision,["missing"]));
+        f.Callback=()=>throw new IOException("synthetic callback failure");
+        Throws<IOException>(()=>sink.Commit(f.Host.PreviewOdbcTable(catalog.Revision,["hidden"])));
+        Check(ReferenceEquals(sink.Value,plan),"failure preserves sink");
+        f.Callback=()=>f.Host.ReadTableReportCatalog(f.Scope());
+        Throws<InvalidOperationException>(()=>f.Host.PreviewOdbcTable(catalog.Revision,["hidden"]));
+        f.Callback=null;
+        f.Catalog(); Throws<InvalidOperationException>(()=>f.Host.PreviewOdbcTable(catalog.Revision,["hidden"]));
+        var oldCulture=System.Globalization.CultureInfo.CurrentCulture;
+        try
+        {
+            System.Globalization.CultureInfo.CurrentCulture=System.Globalization.CultureInfo.GetCultureInfo("fr-FR");
+            var badFloat=float.NaN.ToString()+"/"+float.PositiveInfinity.ToString()+"/"+float.NegativeInfinity.ToString();
+            CombatantData.ColumnDefs["display-key"]=new("label",true,"VARCHAR(32)","quote\"name",_=>"cell",_=>"a'\n日本 "+badFloat,(_,_)=>0);
+            var escaped=f.Catalog(); var quoted=f.Host.PreviewOdbcTable(escaped.Revision,["QUOTE\"NAME"]);
+            Check(quoted.CreateSql.Contains("\"quote\"\"name\" VARCHAR(32)") && quoted.InsertSql.Contains("?"),"quoted identifiers and type");
+            Check(quoted.Parameters[0][0]=="a'\n日本 0/0/0", "string and culture-specific special floats");
+            CombatantData.ColumnDefs["display-key"]=new("label",true,"TEXT); DROP TABLE X;--","bad",_=>"cell",_=>"x",(_,_)=>0);
+            var invalid=f.Catalog(); Throws<InvalidDataException>(()=>f.Host.PreviewOdbcTable(invalid.Revision,["bad"]));
+            CombatantData.ColumnDefs["display-key"]=new("label",true,"TEXT","bad",_=>"cell",_=>null!,(_,_)=>0);
+            invalid=f.Catalog(); Throws<InvalidDataException>(()=>f.Host.PreviewOdbcTable(invalid.Revision,["bad"]));
+            CombatantData.ColumnDefs["display-key"]=new("label",true,"TEXT","bad",_=>"cell",_=>new string('x',4097),(_,_)=>0);
+            invalid=f.Catalog(); Throws<InvalidDataException>(()=>f.Host.PreviewOdbcTable(invalid.Revision,["bad"]));
+        }
+        finally { System.Globalization.CultureInfo.CurrentCulture=oldCulture; }
+        var current=f.Catalog();
+        foreach(var level in new[]{TableLevel.Category,TableLevel.Attack,TableLevel.Action})
+        {
+            current=f.Catalog(f.Scope(level));
+            var name=current.Columns[0].SqlDataName;
+            var table=f.Host.PreviewOdbcTable(current.Revision,[name]);
+            Check(table.Parameters.Length>0 && table.Columns.Length==1,"scope preview");
+        }
     }
     private static void XmlAndSelection()
     {

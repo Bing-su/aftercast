@@ -128,7 +128,7 @@ namespace Advanced_Combat_Tracker
         private sealed record ReportValues(TableColumnData[] Columns,string[][] Rows,Action Check);
         private ReportValues ReadReportValues(ReportCapture capture,TableReportFormat format,int[] selected,
             ColumnBinding[] columns,TableSort? sort,ColumnBinding? primary,ColumnBinding? secondary,
-            Action? outerCheck=null,string? firstActionValue=null)
+            Action? outerCheck=null,string? firstActionValue=null,bool validateXml=true)
         {
             var clock=Stopwatch.StartNew();var errors=OwnerErrors.Item1;var level=capture.Scope.Level;
             void Check()
@@ -176,7 +176,7 @@ namespace Advanced_Combat_Tracker
                     }
                     else value=Invoke(column,()=>format==TableReportFormat.TableXml?SqlReportCell(column,row.Value):CellText(column,row.Value));
                     if(value is null||value.Contains('\0')||ColumnUtf8.GetByteCount(value)>MaximumCellBytes)throw new InvalidDataException("Invalid or oversized report cell");
-                    if(format==TableReportFormat.TableXml)XmlConvert.VerifyXmlChars(value);
+                    if(format==TableReportFormat.TableXml&&validateXml)XmlConvert.VerifyXmlChars(value);
                     bytes+=ColumnUtf8.GetByteCount(value);if(bytes>MaximumTableTextBytes)throw new InvalidDataException("Table report text exceeds 8 MiB");
                     cells.Add(value);
                 }
