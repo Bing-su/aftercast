@@ -44,6 +44,8 @@ internal static class Program
         if (mode is "contracts" or "query-load" or "archive-load" or "original" or "original-import" or "original-corpus" or "original-log" or "text-exports" or "timer-models" or "eq2-timestamps" or "parent-settings") Platform.Prepare();
         switch (mode)
         {
+            case "mixed-config-files": MixedConfigFileChecks.Run(); break;
+            case "mixed-config-crash": MixedConfigFileChecks.Child(args[1],args[2]); break;
             case "bridge": Bridge(); break;
             case "contracts": Contracts(); break;
             case "corrections-edit": Platform.Prepare(); CorrectionManagementChecks.Run(); break;
@@ -539,6 +541,7 @@ internal static class Program
         TriggerSnippetChecks.Run();
         TimerSnippetChecks.Run();
         ConfigBatchChecks.Run();
+        MixedConfigFileChecks.Run();
         SpeechRuleChecks.Run();
         ArchiveTriggerBudgetChecks.Run();
         NotificationChecks.Run();

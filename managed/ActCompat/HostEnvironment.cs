@@ -120,6 +120,7 @@ namespace Aftercast.ActCompat
             }
             try
             {
+                MixedConfigFiles.Recover(directory);
                 main.LoadCustomTriggers(Path.Combine(directory, "CustomTriggers.xml"));
                 main.LoadDataCorrections(Path.Combine(directory, "DataCorrections.xml"));
                 main.LoadSpeechRules();

@@ -26,3 +26,9 @@ accept text, preview all entries and mark conflicts; explicit import adds the wh
 batch. Controller tests cover cancellation, navigation and stale/session responses.
 The pinned original `ConfigBatchProbe` executes its serializers to check attribute
 names and values; native ACT UI and actual native desktop clicks are unverified.
+
+The [mixed publication core](mixed-config-transaction.md) now provides bounded
+before/after journaling and startup recovery for the two existing files. This
+alone does not enable mixed import: combined validation, registry publication,
+revision ownership and Bridge/Rust/UI are still pending. Do not remove the mixed
+section rejection until that integration is verified.
