@@ -69,14 +69,30 @@ fn styled_cell(
     if ally && configured(&appearance.ally_foreground) {
         style.push_str(&format!("color:{};", appearance.ally_foreground));
     } else if let Some(color) = cell.foreground_argb {
-        style.push_str(&format!("color:{};", rgba(color)));
+        style.push_str(&format!(
+            "color:{};",
+            rgba(super::color_adjust::adjust(
+                color,
+                appearance.invert_plugin_colors,
+                appearance.plugin_luminosity,
+                appearance.plugin_saturation
+            ))
+        ));
     } else if configured(&appearance.grid_foreground) {
         style.push_str(&format!("color:{};", appearance.grid_foreground));
     }
     if personal && configured(&appearance.self_background) {
         style.push_str(&format!("background-color:{};", appearance.self_background));
     } else if let Some(color) = cell.background_argb {
-        style.push_str(&format!("background-color:{};", rgba(color)));
+        style.push_str(&format!(
+            "background-color:{};",
+            rgba(super::color_adjust::adjust(
+                color,
+                appearance.invert_plugin_colors,
+                appearance.plugin_luminosity,
+                appearance.plugin_saturation
+            ))
+        ));
     } else if configured(&appearance.grid_background) {
         style.push_str(&format!("background-color:{};", appearance.grid_background));
     }
@@ -243,6 +259,18 @@ mod appearance_tests {
                 && emphasized.contains("background-color:#445566;")
         );
         assert!(!emphasized.contains("rgba("));
+        invalid.plugin_luminosity = 20;
+        invalid.plugin_saturation = 20;
+        cell.foreground_argb = Some(301924352);
+        let adjusted = styled_cell(&cell, &invalid, false, false);
+        assert!(adjusted.contains("color:rgba(255, 102, 102, 0.0667);"));
+        let ally_priority = styled_cell(&cell, &invalid, true, true);
+        assert!(
+            ally_priority.contains("color:#112233;")
+                && ally_priority.contains("background-color:#445566;")
+        );
+        invalid.plugin_luminosity = 0;
+        invalid.plugin_saturation = 0;
         let ally_only = styled_cell(&cell, &invalid, true, false);
         assert!(
             ally_only.contains("color:#112233;")

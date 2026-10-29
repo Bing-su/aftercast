@@ -19,9 +19,14 @@ plugin color. The owned table snapshot now carries both classifications, uses
 ACT's name equality for ally membership and rejects classification changes during
 callbacks. The defaults match original ForestGreen (`#228b22`) and RGB
 `#c8ffc8`; clearing either override disables that emphasis in aftercast. Old
-settings that lack the fields migrate to the ACT defaults. Native ACT applies
-`ToAdjustedColor` to plugin colors; the app currently displays raw callback
-colors, so luminosity/saturation transformation remains incomplete. Native font
+settings that lack the fields migrate to the ACT defaults. Native ACT applies `ToAdjustedColor` to plugin colors. The app now preserves
+its HSL adjustment and optional luminosity inversion, with alpha unchanged;
+preferences default to zero offsets and inversion off, and only callback colors
+are adjusted after the worker returns them. ACT source colors, including the ally
+and personal overrides, remain unchanged. The pinned original function validates
+1,024 deterministic synthetic cases. ACT plugin-facing `ColorSettings` events
+and getters are not yet exposed by the worker, so plugins cannot observe these
+preferences. Native font
 measurement, arbitrary installed-family selection, mini text column alignment,
 and visual/native Windows behavior remain unverified.
 

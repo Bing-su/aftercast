@@ -6,6 +6,7 @@ use crate::{
 use aftercast::{HostHandle, TableCatalog, TablePage, TableScope};
 use dioxus::{core::spawn_forever, prelude::*};
 use std::collections::BTreeMap;
+mod color_adjust;
 mod controls;
 mod render;
 const PAGE: u32 = 16;

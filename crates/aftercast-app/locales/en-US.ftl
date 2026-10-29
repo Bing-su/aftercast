@@ -829,3 +829,10 @@ appearance-background = Background color
 
 appearance-ally = Ally text color
 appearance-self = Your combatant background
+
+appearance-plugin-adjust = Plugin color adjustment
+appearance-plugin-invert = Invert luminosity
+appearance-adjust-off = Off
+appearance-adjust-on = On
+appearance-plugin-lum = Luminosity offset
+appearance-plugin-sat = Saturation offset

@@ -40,6 +40,9 @@ impl Default for Settings {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct AppearancePreferences {
+    pub invert_plugin_colors: bool,
+    pub plugin_luminosity: i8,
+    pub plugin_saturation: i8,
     pub grid_font: String,
     pub grid_size: u8,
     pub grid_foreground: String,
@@ -54,6 +57,9 @@ pub struct AppearancePreferences {
 impl Default for AppearancePreferences {
     fn default() -> Self {
         Self {
+            invert_plugin_colors: false,
+            plugin_luminosity: 0,
+            plugin_saturation: 0,
             grid_font: String::new(),
             grid_size: 0,
             grid_foreground: String::new(),
@@ -97,7 +103,9 @@ fn surface_style(font: &str, size: u8, foreground: &str, background: &str) -> St
 }
 impl AppearancePreferences {
     pub(crate) fn valid(&self) -> bool {
-        valid_font(&self.grid_font)
+        (-100..=100).contains(&self.plugin_luminosity)
+            && (-100..=100).contains(&self.plugin_saturation)
+            && valid_font(&self.grid_font)
             && valid_font(&self.mini_font)
             && (self.grid_size == 0 || (8..=32).contains(&self.grid_size))
             && (self.mini_size == 0 || (8..=32).contains(&self.mini_size))
@@ -695,6 +703,18 @@ fn save_mini_parse(document: &mut DocumentMut, settings: &MiniParsePreferences) 
     reason = "TOML indexing inserts appearance settings"
 )]
 fn save_appearance(document: &mut DocumentMut, settings: &AppearancePreferences) {
+    set(
+        &mut document["appearance"]["invert_plugin_colors"],
+        value(settings.invert_plugin_colors),
+    );
+    set(
+        &mut document["appearance"]["plugin_luminosity"],
+        value(i64::from(settings.plugin_luminosity)),
+    );
+    set(
+        &mut document["appearance"]["plugin_saturation"],
+        value(i64::from(settings.plugin_saturation)),
+    );
     for (key, text) in [
         ("grid_font", &settings.grid_font),
         ("grid_foreground", &settings.grid_foreground),
@@ -1401,6 +1421,9 @@ mod text_profile_checks {
             ConfigFile::parse("[appearance]\ngrid_font = 'serif'\n").expect("prior appearance");
         assert_eq!(migrated.settings.appearance.ally_foreground, "#228b22");
         assert_eq!(migrated.settings.appearance.self_background, "#c8ffc8");
+        file.settings.appearance.invert_plugin_colors = true;
+        file.settings.appearance.plugin_luminosity = 25;
+        file.settings.appearance.plugin_saturation = -75;
         file.settings.appearance.mini_font = "monospace".into();
         file.settings.appearance.mini_size = 16;
         file.settings.appearance.mini_foreground = "#Aa12F0".into();
@@ -1423,6 +1446,9 @@ mod text_profile_checks {
                 .mini_style()
                 .contains("color:#Aa12F0;")
         );
+        assert!(loaded.settings.appearance.invert_plugin_colors);
+        assert_eq!(loaded.settings.appearance.plugin_luminosity, 25);
+        assert_eq!(loaded.settings.appearance.plugin_saturation, -75);
         assert_eq!(loaded.settings.appearance.grid_background, "#123456");
         assert_eq!(loaded.settings.appearance.ally_foreground, "#987654");
         assert_eq!(loaded.settings.appearance.self_background, "#abc123");
@@ -1441,6 +1467,8 @@ mod text_profile_checks {
             "[appearance]\nmini_font = 'evil; color:red'",
             "[appearance]\nmini_size = 7",
             "[appearance]\ngrid_background = '#123'",
+            "[appearance]\nplugin_luminosity = 101",
+            "[appearance]\nplugin_saturation = -101",
         ] {
             assert!(ConfigFile::parse(source).is_err());
         }

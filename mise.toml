@@ -140,6 +140,7 @@ depends = ["managed:references"]
 run = [
   '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} import-policy',
   '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} report-export-policy',
+  '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} color-adjust crates/aftercast-app/tests/fixtures/act-color-adjust.txt',
   "{{vars.managed_tests}} act",
   '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}}',
   '{{vars.original_tests}} "{{vars.act}}" {{vars.forms}} values',

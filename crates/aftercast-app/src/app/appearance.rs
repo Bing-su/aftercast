@@ -9,6 +9,7 @@ pub(super) fn Controls() -> Element {
         section { class: "space-y-4", "aria-label": tr("appearance-custom-title"),
             h2 { class: "text-sm font-semibold", {tr("appearance-custom-title")} }
             p { class: "text-xs text-muted-foreground", {tr("appearance-custom-help")} }
+            ColorAdjustmentControls {}
             SurfaceControls { mini: false }
             SurfaceControls { mini: true }
         }
@@ -141,6 +142,57 @@ fn SurfaceControls(mini: bool) -> Element {
                     oninput: move |event: FormEvent| {
                         state.write().settings.appearance.self_background = event.value();
                     },
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn ColorAdjustmentControls() -> Element {
+    let mut state = use_context::<Signal<AppState>>();
+    let current = state.read();
+    let disabled = current.saving || current.file.is_none();
+    let invert = current.settings.appearance.invert_plugin_colors;
+    let lum = current.settings.appearance.plugin_luminosity;
+    let sat = current.settings.appearance.plugin_saturation;
+    drop(current);
+    rsx! {
+        div { class: "space-y-2 rounded-md border border-border p-3",
+            h3 { class: "text-sm font-medium", {tr("appearance-plugin-adjust")} }
+            Label { html_for: "appearance-plugin-invert", {tr("appearance-plugin-invert")} }
+            select {
+                id: "appearance-plugin-invert",
+                value: if invert { "true" } else { "false" },
+                disabled,
+                class: "h-9 w-full rounded-md border border-border bg-background px-2",
+                onchange: move |e| {
+                    state.write().settings.appearance.invert_plugin_colors = e.value() == "true";
+                },
+                option { value: "false", {tr("appearance-adjust-off")} }
+                option { value: "true", {tr("appearance-adjust-on")} }
+            }
+            for (kind, value, label) in [("lum", lum, "appearance-plugin-lum"), ("sat", sat, "appearance-plugin-sat")] {
+                div { class: "space-y-1",
+                    Label { html_for: format!("appearance-plugin-{kind}"), {tr(label)} }
+                    select {
+                        id: format!("appearance-plugin-{kind}"),
+                        value: value.to_string(),
+                        disabled,
+                        class: "h-9 w-full rounded-md border border-border bg-background px-2",
+                        onchange: move |event| {
+                            if let Ok(value) = event.value().parse::<i8>() && (-100..=100).contains(&value) {
+                                if kind == "lum" {
+                                    state.write().settings.appearance.plugin_luminosity = value;
+                                } else {
+                                    state.write().settings.appearance.plugin_saturation = value;
+                                }
+                            }
+                        },
+                        for value in -100..=100_i8 {
+                            option { value: value.to_string(), "{value}%" }
+                        }
+                    }
                 }
             }
         }

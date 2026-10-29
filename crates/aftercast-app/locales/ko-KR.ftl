@@ -829,3 +829,10 @@ appearance-background = 배경 색상
 
 appearance-ally = 아군 글자 색상
 appearance-self = 내 전투원 배경 색상
+
+appearance-plugin-adjust = 플러그인 색상 보정
+appearance-plugin-invert = 명도 반전
+appearance-adjust-off = 끄기
+appearance-adjust-on = 켜기
+appearance-plugin-lum = 명도 보정
+appearance-plugin-sat = 채도 보정
