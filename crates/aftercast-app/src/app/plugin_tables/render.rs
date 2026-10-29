@@ -54,17 +54,37 @@ pub(super) fn cell_style(cell: &TableCell) -> String {
     }
     style
 }
+fn styled_cell(cell: &TableCell, appearance: &crate::config::AppearancePreferences) -> String {
+    if cell.error.is_some() {
+        return String::new();
+    }
+    let mut style = appearance.grid_style();
+    if cell.foreground_argb.is_none()
+        && crate::config::valid_color(&appearance.grid_foreground)
+        && !appearance.grid_foreground.is_empty()
+    {
+        style.push_str(&format!("color:{};", appearance.grid_foreground));
+    }
+    if cell.background_argb.is_none()
+        && crate::config::valid_color(&appearance.grid_background)
+        && !appearance.grid_background.is_empty()
+    {
+        style.push_str(&format!("background-color:{};", appearance.grid_background));
+    }
+    style.push_str(&cell_style(cell));
+    style
+}
 #[component]
 fn CellView(cell: TableCell) -> Element {
+    let state = use_context::<Signal<AppState>>();
+    let style = styled_cell(&cell, &state.read().settings.appearance);
     if cell.error.is_some() {
         rsx! {
             span { role: "note", class: "font-medium text-destructive", {tr("table-cell-error")} }
         }
     } else {
         rsx! {
-            span {
-                class: "block min-h-6 whitespace-pre-wrap px-1",
-                style: cell_style(&cell),
+            span { class: "block min-h-6 whitespace-pre-wrap px-1", style,
                 {cell.text.as_deref().unwrap_or_default()}
             }
         }
@@ -103,6 +123,8 @@ fn row_cell(row: &Row, index: usize) -> Element {
 }
 #[component]
 pub(super) fn Grid(page: TablePage, level: TableLevel, view: View) -> Element {
+    let state = use_context::<Signal<AppState>>();
+    let grid_style = state.read().settings.appearance.grid_style();
     let labels = page.columns.clone();
     let rows = page
         .rows
@@ -142,7 +164,9 @@ pub(super) fn Grid(page: TablePage, level: TableLevel, view: View) -> Element {
         table
     });
     rsx! {
-        div { class: "plugin-data-table data-table overflow-auto tabular-nums [&_.chorale-root>div:last-child]:hidden",
+        div {
+            class: "plugin-data-table data-table overflow-auto tabular-nums [&_.chorale-root>div:last-child]:hidden",
+            style: grid_style,
             Table {
                 handle,
                 labels: super::super::analysis::table_labels(),
@@ -153,5 +177,43 @@ pub(super) fn Grid(page: TablePage, level: TableLevel, view: View) -> Element {
                 inline: true,
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod appearance_tests {
+    use super::*;
+    #[test]
+    fn explicit_plugin_colors_override_only_the_matching_base_color() {
+        let appearance = crate::config::AppearancePreferences {
+            grid_font: "serif".into(),
+            grid_size: 14,
+            grid_foreground: "#123456".into(),
+            grid_background: "#abcdef".into(),
+            ..Default::default()
+        };
+        let mut cell = TableCell {
+            text: Some("synthetic".into()),
+            foreground_argb: Some(-65536),
+            background_argb: None,
+            error: None,
+        };
+        let style = styled_cell(&cell, &appearance);
+        assert!(style.contains("font-family:serif;") && style.contains("font-size:14px;"));
+        assert!(style.contains("color:rgba(255, 0, 0, 1.0000);") && !style.contains("#123456"));
+        assert!(style.contains("background-color:#abcdef;"));
+        cell.foreground_argb = None;
+        cell.background_argb = Some(-16776961);
+        let style = styled_cell(&cell, &appearance);
+        assert!(
+            style.contains("color:#123456;")
+                && style.contains("background-color:rgba(0, 0, 255, 1.0000);")
+        );
+        assert!(!style.contains("#abcdef"));
+        let mut invalid = appearance;
+        invalid.grid_foreground = "red;display:none".into();
+        cell.foreground_argb = None;
+        cell.background_argb = None;
+        assert!(!styled_cell(&cell, &invalid).contains("display"));
     }
 }

@@ -816,3 +816,13 @@ mini-truncated = Preview limited to 64 KiB.
 mini-loading = Loading active combat…
 mini-open-window = Open mini parse window
 mini-window-error = Could not open the mini parse window.
+
+appearance-custom-title = Table and mini parse appearance
+appearance-custom-help = Leave colors blank to use the theme. Use #RRGGBB; invalid drafts are not applied and cannot be saved. Plugin cell colors take precedence. Save changes with the settings button.
+appearance-grid = Data table
+appearance-mini = Mini parse
+appearance-font = Font family
+appearance-size = Font size
+appearance-default = Theme default
+appearance-foreground = Text color
+appearance-background = Background color

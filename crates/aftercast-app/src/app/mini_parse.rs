@@ -22,6 +22,7 @@ struct Frame {
     error: Option<String>,
     truncated: bool,
     pending: bool,
+    style: String,
 }
 #[derive(Default)]
 struct WindowState {
@@ -69,6 +70,7 @@ pub(super) struct State {
     truncated: bool,
     error: Option<String>,
     window: WindowState,
+    mini_style: String,
 }
 impl State {
     fn reusable_end(&self, profile: &Option<TextReportOptions>) -> Option<EndedKey> {
@@ -93,6 +95,7 @@ impl State {
             error: self.error.clone(),
             truncated: self.truncated,
             pending: self.pending.is_some(),
+            style: self.mini_style.clone(),
         };
     }
     pub(super) fn stop(&mut self) {
@@ -333,6 +336,11 @@ pub(super) async fn poll(mut state: Signal<AppState>) {
         dioxus_sdk::time::sleep(Duration::from_secs(1)).await;
         {
             let mut current = state.write();
+            let style = current.settings.appearance.mini_style();
+            if current.mini_parse.mini_style != style {
+                current.mini_parse.mini_style = style;
+                current.mini_parse.publish();
+            }
             if current.exit_requested {
                 current.mini_parse.reset_session();
                 continue;
@@ -372,6 +380,7 @@ pub(super) fn Panel() -> Element {
         .map(|f| f.settings.text_profiles.keys().cloned().collect::<Vec<_>>())
         .unwrap_or_default();
     let missing_profile = !profile.is_empty() && !profiles.contains(&profile);
+    let mini_style = current.settings.appearance.mini_style();
     let output = current.mini_parse.output.clone();
     let truncated = current.mini_parse.truncated;
     let error = current.mini_parse.error.clone();
@@ -457,7 +466,9 @@ pub(super) fn Panel() -> Element {
                     }
                 }
                 if enabled {
-                    pre { class: "max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border p-3 text-sm",
+                    pre {
+                        class: "max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border p-3 text-sm",
+                        style: mini_style,
                         {
                             match output {
                                 Some(text) if text.is_empty() => tr("mini-empty-output"),
@@ -479,6 +490,23 @@ pub(super) fn Panel() -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn window_style_snapshot_survives_session_reset() {
+        let mut state = State {
+            mini_style: "font-size:16px;color:#abcdef;".into(),
+            ..Default::default()
+        };
+        state.publish();
+        assert_eq!(
+            state.window.frame.lock().expect("frame").style,
+            "font-size:16px;color:#abcdef;"
+        );
+        state.reset_session();
+        assert_eq!(
+            state.window.frame.lock().expect("frame").style,
+            "font-size:16px;color:#abcdef;"
+        );
+    }
     #[test]
     fn singleton_window_reservations_and_retirement() {
         let mut state = State::default();

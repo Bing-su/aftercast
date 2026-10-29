@@ -39,6 +39,12 @@ internal static class ReportExportPolicy
         var miniOptions=NamedBody("Options_MiniParse","InitializeComponent");
         Check(miniOptions[0x050d]==OpCodes.Ldc_I4_S.Value&&miniOptions[0x050e]==60&&miniOptions[0x0528]==OpCodes.Ldc_I4_1.Value&&miniOptions[0x0572]==OpCodes.Ldc_I4_5.Value,"mini interval bounds and default");
         var mainOptions=Body("InitializeComponent");Check(mainOptions[0x0e65]==OpCodes.Ldc_I4.Value&&BitConverter.ToInt32(mainOptions,0x0e66)==1000,"one second timer tick");Call(mainOptions,0x0e6a,"set_Interval");
+        var grid=Body("lvDG_RetrieveVirtualItem","sender","e");
+        Call(grid,0x02c1,"GetAllies");Call(grid,0x02d0,"Contains");Call(grid,0x02dc,"get_Name");
+        Check(Name(grid,0x02e1)=="charName"&&grid[0x0363]==OpCodes.Brtrue_S.Value&&Name(grid,0x0371)=="GetCellForeColor"&&Name(grid,0x03be)=="ccDGAllyText","grid ally foreground precedence");
+        Check(grid[0x03db]==OpCodes.Brtrue_S.Value&&Name(grid,0x03e9)=="GetCellBackColor"&&Name(grid,0x0436)=="ccDGPersonalBackcolor","grid personal background precedence");
+        var gridForeground=NamedBody("Options_ColorUserInterface","fccDataGrid_ForeColorSettingChanged","NewColor");
+        Check(Name(gridForeground,0x0005)=="lvDG","grid base foreground");Call(gridForeground,0x000b,"set_ForeColor");
         var basic=Body("GetTextExport","Encounter","ExportFormatting");
         Check(basic[0x0003]==OpCodes.Ldnull.Value&&basic[0x0004]==OpCodes.Ldc_I4_0.Value,"unaligned default/font and max-lines fallback");Call(basic,0x0005,"GetTextExport");
         var core=Body("GetTextExport","RtfFormat","Encounter","ExportFormatting","TabulateFont","MaxLines");

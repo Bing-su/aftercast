@@ -78,6 +78,7 @@ pub(super) fn SettingsPane() -> Element {
                 }
                 p { class: "mt-2 text-xs text-muted-foreground", {tr("runtime-description")} }
             }
+            super::appearance::Controls {}
             Separator { class: "my-6".to_owned() }
             div { class: "space-y-3",
                 h2 { class: "text-sm font-semibold", {tr("audio-settings")} }

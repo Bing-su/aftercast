@@ -1,4 +1,5 @@
 mod analysis;
+mod appearance;
 mod avoidance;
 mod clipboard_import;
 mod companions;

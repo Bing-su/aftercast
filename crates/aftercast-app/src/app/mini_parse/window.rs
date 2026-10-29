@@ -34,6 +34,8 @@ pub(super) fn open(mut state: Signal<AppState>) {
         let Some(serial) = current.mini_parse.window.reserve() else {
             return;
         };
+        current.mini_parse.mini_style = current.settings.appearance.mini_style();
+        current.mini_parse.publish();
         let appearance = super::super::log_window::WindowAppearance {
             title: tr("mini-title"),
             theme: current.settings.ui.theme.clone(),
@@ -160,7 +162,9 @@ fn root(props: Props) -> Element {
                     {if error == "report-sort-missing" { tr("report-sort-missing") } else { error }}
                 }
             }
-            pre { class: "max-h-[70vh] overflow-auto whitespace-pre-wrap rounded-md border border-border p-3 text-sm",
+            pre {
+                class: "max-h-[70vh] overflow-auto whitespace-pre-wrap rounded-md border border-border p-3 text-sm",
+                style: current.style,
                 {
                     match current.output {
                         Some(text) if text.is_empty() => tr("mini-empty-output"),

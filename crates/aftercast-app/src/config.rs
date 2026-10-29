@@ -18,6 +18,7 @@ pub struct Settings {
     pub audio: AudioPreferences,
     pub text_profiles: BTreeMap<String, aftercast::TextReportOptions>,
     pub mini_parse: MiniParsePreferences,
+    pub appearance: AppearancePreferences,
 }
 
 impl Default for Settings {
@@ -31,7 +32,76 @@ impl Default for Settings {
             audio: AudioPreferences::default(),
             text_profiles: BTreeMap::new(),
             mini_parse: MiniParsePreferences::default(),
+            appearance: AppearancePreferences::default(),
         }
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct AppearancePreferences {
+    pub grid_font: String,
+    pub grid_size: u8,
+    pub grid_foreground: String,
+    pub grid_background: String,
+    pub mini_font: String,
+    pub mini_size: u8,
+    pub mini_foreground: String,
+    pub mini_background: String,
+}
+fn valid_font(font: &str) -> bool {
+    matches!(font, "" | "sans-serif" | "serif" | "monospace")
+}
+pub(crate) fn valid_color(color: &str) -> bool {
+    color.is_empty()
+        || (color.len() == 7
+            && color.starts_with('#')
+            && color
+                .as_bytes()
+                .get(1..)
+                .is_some_and(|bytes| bytes.iter().all(u8::is_ascii_hexdigit)))
+}
+fn surface_style(font: &str, size: u8, foreground: &str, background: &str) -> String {
+    let mut style = String::new();
+    if valid_font(font) && !font.is_empty() {
+        style.push_str(&format!("font-family:{font};"));
+    }
+    if (8..=32).contains(&size) {
+        style.push_str(&format!("font-size:{size}px;"));
+    }
+    if valid_color(foreground) && !foreground.is_empty() {
+        style.push_str(&format!("color:{foreground};"));
+    }
+    if valid_color(background) && !background.is_empty() {
+        style.push_str(&format!("background-color:{background};"));
+    }
+    style
+}
+impl AppearancePreferences {
+    pub(crate) fn valid(&self) -> bool {
+        valid_font(&self.grid_font)
+            && valid_font(&self.mini_font)
+            && (self.grid_size == 0 || (8..=32).contains(&self.grid_size))
+            && (self.mini_size == 0 || (8..=32).contains(&self.mini_size))
+            && [
+                &self.grid_foreground,
+                &self.grid_background,
+                &self.mini_foreground,
+                &self.mini_background,
+            ]
+            .into_iter()
+            .all(|value| valid_color(value))
+    }
+    pub(crate) fn mini_style(&self) -> String {
+        surface_style(
+            &self.mini_font,
+            self.mini_size,
+            &self.mini_foreground,
+            &self.mini_background,
+        )
+    }
+    pub(crate) fn grid_style(&self) -> String {
+        surface_style(&self.grid_font, self.grid_size, "", "")
     }
 }
 
@@ -250,6 +320,9 @@ impl Settings {
         {
             return Err(miette!("Invalid mini parse preferences"));
         }
+        if !self.appearance.valid() {
+            return Err(miette!("Invalid appearance preferences"));
+        }
         if self.text_profiles.len() > 32
             || self
                 .text_profiles
@@ -424,6 +497,7 @@ impl ConfigFile {
         }
         save_graphs(&mut self.document, &settings.graphs);
         save_mini_parse(&mut self.document, &settings.mini_parse);
+        save_appearance(&mut self.document, &settings.appearance);
         save_text_profiles(&mut self.document, &settings.text_profiles)?;
         save_tables(&mut self.document, &settings.tables)?;
         let path = root.join("config.toml");
@@ -593,6 +667,31 @@ fn save_mini_parse(document: &mut DocumentMut, settings: &MiniParsePreferences) 
     set(
         &mut document["mini_parse"]["profile"],
         value(&settings.profile),
+    );
+}
+
+#[expect(
+    clippy::indexing_slicing,
+    reason = "TOML indexing inserts appearance settings"
+)]
+fn save_appearance(document: &mut DocumentMut, settings: &AppearancePreferences) {
+    for (key, text) in [
+        ("grid_font", &settings.grid_font),
+        ("grid_foreground", &settings.grid_foreground),
+        ("grid_background", &settings.grid_background),
+        ("mini_font", &settings.mini_font),
+        ("mini_foreground", &settings.mini_foreground),
+        ("mini_background", &settings.mini_background),
+    ] {
+        set(&mut document["appearance"][key], value(text));
+    }
+    set(
+        &mut document["appearance"]["grid_size"],
+        value(i64::from(settings.grid_size)),
+    );
+    set(
+        &mut document["appearance"]["mini_size"],
+        value(i64::from(settings.mini_size)),
     );
 }
 
@@ -1269,5 +1368,51 @@ mod text_profile_checks {
                 .interval_seconds,
             12
         );
+    }
+    #[test]
+    fn appearance_migrates_roundtrips_and_rejects_invalid_values() {
+        let temp = tempfile::tempdir().expect("temp");
+        let root = Utf8Path::from_path(temp.path()).expect("UTF8");
+        let mut file = ConfigFile::load(root).expect("old config");
+        assert_eq!(file.settings.appearance, AppearancePreferences::default());
+        file.settings.appearance.mini_font = "monospace".into();
+        file.settings.appearance.mini_size = 16;
+        file.settings.appearance.mini_foreground = "#Aa12F0".into();
+        file.settings.appearance.grid_background = "#123456".into();
+        file.save(root).expect("save");
+        let mut loaded = ConfigFile::load(root).expect("restart");
+        assert!(
+            loaded
+                .settings
+                .appearance
+                .mini_style()
+                .contains("font-size:16px;")
+        );
+        assert!(
+            loaded
+                .settings
+                .appearance
+                .mini_style()
+                .contains("color:#Aa12F0;")
+        );
+        assert_eq!(loaded.settings.appearance.grid_background, "#123456");
+        loaded.settings.appearance.mini_foreground = "#fff;display:none".into();
+        assert!(!loaded.settings.appearance.mini_style().contains("display"));
+        assert!(loaded.save(root).is_err());
+        assert_eq!(
+            ConfigFile::load(root)
+                .expect("preserved")
+                .settings
+                .appearance
+                .mini_foreground,
+            "#Aa12F0"
+        );
+        for source in [
+            "[appearance]\nmini_font = 'evil; color:red'",
+            "[appearance]\nmini_size = 7",
+            "[appearance]\ngrid_background = '#123'",
+        ] {
+            assert!(ConfigFile::parse(source).is_err());
+        }
     }
 }
