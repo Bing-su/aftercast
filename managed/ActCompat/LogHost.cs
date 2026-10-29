@@ -328,6 +328,7 @@ public partial class FormActMain
         try { StopLogFollower(); } catch (Exception error) { errors.Add(error); }
         try { StopCombatProcessing(); } catch (Exception error) { errors.Add(error); }
         try { DisposePluginSettingsWindow(); } catch (Exception error) { errors.Add(error); }
+        try { DisposeColorScalars(); } catch (Exception error) { errors.Add(error); }
         try { base.Dispose(true); } catch (Exception error) { errors.Add(error); }
         if (errors.Count != 0) throw new AggregateException("ACT root disposal failed", errors);
     }

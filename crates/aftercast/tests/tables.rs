@@ -649,3 +649,224 @@ async fn actor_color_classification_survives_worker_boundary(deployment: Deploym
         .await
         .expect_err("stale session");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and fixture; run mise run test:plugins"]
+async fn color_scalars_reach_plugin_events_on_owner_and_retire_with_session(
+    deployment: Deployment,
+) {
+    use aftercast::ColorScalars;
+    let host = Host::start(deployment.config()).await.expect("host");
+    host.set_color_scalars(ColorScalars {
+        invert: true,
+        luminosity: 25,
+        saturation: -75,
+    })
+    .await
+    .expect("initial");
+    let id = host
+        .create_plugin(plugin("ColorScalarPlugin"))
+        .await
+        .expect("plugin");
+    host.initialize_plugin(id).await.expect("init");
+    let input = deployment.directory().join("synthetic-color-events.log");
+    std::fs::write(&input, "0|100\n").expect("synthetic input");
+    host.import_log(input).await.expect("import");
+    let encounter = host
+        .encounters(0, 16)
+        .await
+        .expect("encounters")
+        .items
+        .first()
+        .expect("encounter")
+        .id;
+    let request = query(&host, TableScope::Combatants(encounter), &["color-probe"]).await;
+    let page = host
+        .table_rows(&request)
+        .await
+        .expect("table")
+        .expect("scope");
+    assert_eq!(
+        page.rows
+            .first()
+            .expect("row")
+            .cells
+            .first()
+            .expect("cell")
+            .text
+            .as_deref(),
+        Some("True|0.25|-0.75|")
+    );
+    host.set_color_scalars(ColorScalars {
+        invert: false,
+        luminosity: 10,
+        saturation: 20,
+    })
+    .await
+    .expect("changed");
+    let page = host
+        .table_rows(&request)
+        .await
+        .expect("table")
+        .expect("scope");
+    assert_eq!(
+        page.rows
+            .first()
+            .expect("row")
+            .cells
+            .first()
+            .expect("cell")
+            .text
+            .as_deref(),
+        Some("False|0.1|0.2|invert,number,number")
+    );
+    host.set_color_scalars(ColorScalars {
+        invert: false,
+        luminosity: 10,
+        saturation: 20,
+    })
+    .await
+    .expect("unchanged");
+    let page = host
+        .table_rows(&request)
+        .await
+        .expect("table")
+        .expect("scope");
+    assert_eq!(
+        page.rows
+            .first()
+            .expect("row")
+            .cells
+            .first()
+            .expect("cell")
+            .text
+            .as_deref(),
+        Some("False|0.1|0.2|invert,number,number")
+    );
+    host.set_color_scalars(ColorScalars {
+        invert: false,
+        luminosity: 12,
+        saturation: 20,
+    })
+    .await
+    .expect("plugin reentry");
+    let page = host
+        .table_rows(&request)
+        .await
+        .expect("table")
+        .expect("scope");
+    assert_eq!(
+        page.rows
+            .first()
+            .expect("row")
+            .cells
+            .first()
+            .expect("cell")
+            .text
+            .as_deref(),
+        Some("False|0.34|0.2|invert,number,number,number,number")
+    );
+    host.set_color_scalars(ColorScalars {
+        invert: false,
+        luminosity: 56,
+        saturation: 20,
+    })
+    .await
+    .expect_err("subscriber failure is explicit");
+    let page = host
+        .table_rows(&request)
+        .await
+        .expect("table")
+        .expect("scope");
+    assert!(
+        page.rows
+            .first()
+            .expect("row")
+            .cells
+            .first()
+            .expect("cell")
+            .text
+            .as_deref()
+            .is_some_and(|v| v.starts_with("False|0.56|0.2|"))
+    );
+    host.set_color_scalars(ColorScalars {
+        invert: false,
+        luminosity: 10,
+        saturation: 20,
+    })
+    .await
+    .expect("recovery");
+    let controls = aftercast::ColorControls {
+        ally: Some(0x010203),
+        personal: None,
+    };
+    host.set_color_controls(controls)
+        .await
+        .expect("control colors");
+    let control_request = query(
+        &host,
+        TableScope::Combatants(encounter),
+        &["color-controls-probe"],
+    )
+    .await;
+    let control_page = host
+        .table_rows(&control_request)
+        .await
+        .expect("table")
+        .expect("scope");
+    assert_eq!(
+        control_page
+            .rows
+            .first()
+            .expect("row")
+            .cells
+            .first()
+            .expect("cell")
+            .text
+            .as_deref(),
+        Some("-16711165|0|ally:-16711165,personal:0")
+    );
+    host.set_color_controls(controls)
+        .await
+        .expect("unchanged controls");
+    let control_page = host
+        .table_rows(&control_request)
+        .await
+        .expect("table")
+        .expect("scope");
+    assert_eq!(
+        control_page
+            .rows
+            .first()
+            .expect("row")
+            .cells
+            .first()
+            .expect("cell")
+            .text
+            .as_deref(),
+        Some("-16711165|0|ally:-16711165,personal:0")
+    );
+    host.set_color_controls(aftercast::ColorControls {
+        ally: Some(0x1000000),
+        personal: None,
+    })
+    .await
+    .expect_err("invalid RGB");
+    host.set_color_scalars(ColorScalars {
+        invert: false,
+        luminosity: 101,
+        saturation: 0,
+    })
+    .await
+    .expect_err("invalid");
+    host.deinitialize_plugin(id).await.expect("deinitialize");
+    host.set_color_scalars(ColorScalars::default())
+        .await
+        .expect("no retired subscriber");
+    let old = host.handle();
+    host.shutdown().await.expect("stop");
+    old.set_color_scalars(ColorScalars::default())
+        .await
+        .expect_err("stale session");
+}

@@ -39,6 +39,21 @@ internal static class ReportExportPolicy
         var miniOptions=NamedBody("Options_MiniParse","InitializeComponent");
         Check(miniOptions[0x050d]==OpCodes.Ldc_I4_S.Value&&miniOptions[0x050e]==60&&miniOptions[0x0528]==OpCodes.Ldc_I4_1.Value&&miniOptions[0x0572]==OpCodes.Ldc_I4_5.Value,"mini interval bounds and default");
         var mainOptions=Body("InitializeComponent");Check(mainOptions[0x0e65]==OpCodes.Ldc_I4.Value&&BitConverter.ToInt32(mainOptions,0x0e66)==1000,"one second timer tick");Call(mainOptions,0x0e6a,"set_Interval");
+        foreach(var (getter,field) in new[]{("get_DataGridAllyText","ccDGAllyText"),("get_DataGridPersonalBackground","ccDGPersonalBackcolor")})
+        { var data=NamedBody("ColorSettings",getter); Check(Name(data,0x000a)==field,"original grid color control"); }
+        var colorGetter=NamedBody("ColorControl","get_ForeColorSetting");Call(colorGetter,0x0006,"get_BackColor");
+        var colorSetter=NamedBody("ColorControl","set_ForeColorSetting","value");Call(colorSetter,0x0007,"set_BackColor");
+        var colorChanged=NamedBody("ColorControl","pbForeColor_BackColorChanged","sender","e");Call(colorChanged,0x0014,"get_BackColor");Call(colorChanged,0x0019,"Invoke");
+        var publicColors=Body("get_ActColorSettings"); Check(Name(publicColors,0x0001)=="<ActColorSettings>k__BackingField","public color settings owner");
+        foreach(var (getter,field,method) in new[]{("get_InvertColors","cbInvertLuminosity","get_Checked"),("get_LuminosityOffset","nudLumOffset","get_Value"),("get_SaturationOffset","nudSatOffset","get_Value")})
+        {
+            var data=NamedBody("ColorSettings",getter); Check(Name(data,0x0000)=="oFormActMain" && Name(data,0x000a)==field,"original color scalar control"); Call(data,0x000f,method);
+        }
+        foreach(var (field,propertyName,eventName) in new[]{("cbInvertLuminosity","InvertColorsChanged","CheckedChanged"),("nudLumOffset","LuminosityOffsetChanged","ValueChanged"),("nudSatOffset","SaturationOffsetChanged","ValueChanged")})
+        {
+            var add=NamedBody("ColorSettings","add_"+propertyName,"value"); var remove=NamedBody("ColorSettings","remove_"+propertyName,"value");
+            Check(Name(add,0x000a)==field && Name(remove,0x000a)==field,"original color event control");Call(add,0x0010,"add_"+eventName);Call(remove,0x0010,"remove_"+eventName);
+        }
         var grid=Body("lvDG_RetrieveVirtualItem","sender","e");
         Call(grid,0x02c1,"GetAllies");Call(grid,0x02d0,"Contains");Call(grid,0x02dc,"get_Name");
         Check(Name(grid,0x02e1)=="charName"&&grid[0x0363]==OpCodes.Brtrue_S.Value&&Name(grid,0x0371)=="GetCellForeColor"&&Name(grid,0x03be)=="ccDGAllyText","grid ally foreground precedence");

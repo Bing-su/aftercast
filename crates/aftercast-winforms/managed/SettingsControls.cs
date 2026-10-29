@@ -71,3 +71,25 @@ public class MessageBox
     public static DialogResult Show(string? text, string? caption, MessageBoxButtons buttons) =>
         throw new PlatformNotSupportedException("Linux WinForms message boxes are not implemented");
 }
+
+// Headless numeric value/events for ACT settings. Input, painting and spin buttons remain unsupported.
+public abstract class UpDownBase : ContainerControl { }
+public class NumericUpDown : UpDownBase
+{
+    private decimal minimum, maximum = 100m, current;
+    public decimal Minimum { get => minimum; set { if (value > maximum) maximum = value; minimum = value; if (current < minimum) Value = minimum; } }
+    public decimal Maximum { get => maximum; set { if (value < minimum) minimum = value; maximum = value; if (current > maximum) Value = maximum; } }
+    public decimal Value
+    {
+        get => current;
+        set
+        {
+            if (value < minimum || value > maximum) throw new ArgumentOutOfRangeException(nameof(value));
+            if (value == current) return;
+            current = value; OnValueChanged(EventArgs.Empty);
+        }
+    }
+    public event EventHandler? ValueChanged;
+    protected virtual void OnValueChanged(EventArgs e) => ValueChanged?.Invoke(this, e);
+    protected override void Dispose(bool disposing) { if (disposing) ValueChanged = null; base.Dispose(disposing); }
+}

@@ -26,4 +26,5 @@ public class CheckBox : ButtonBase
     }
     public event EventHandler? CheckedChanged;
     protected virtual void OnCheckedChanged(EventArgs e) => CheckedChanged?.Invoke(this, e);
+    protected override void Dispose(bool disposing) { if (disposing) CheckedChanged = null; base.Dispose(disposing); }
 }

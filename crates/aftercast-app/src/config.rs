@@ -102,6 +102,24 @@ fn surface_style(font: &str, size: u8, foreground: &str, background: &str) -> St
     style
 }
 impl AppearancePreferences {
+    pub(crate) fn color_controls(&self) -> aftercast::ColorControls {
+        fn rgb(value: &str) -> Option<u32> {
+            value
+                .get(1..)
+                .and_then(|digits| u32::from_str_radix(digits, 16).ok())
+        }
+        aftercast::ColorControls {
+            ally: rgb(&self.ally_foreground),
+            personal: rgb(&self.self_background),
+        }
+    }
+    pub(crate) fn color_scalars(&self) -> aftercast::ColorScalars {
+        aftercast::ColorScalars {
+            invert: self.invert_plugin_colors,
+            luminosity: self.plugin_luminosity,
+            saturation: self.plugin_saturation,
+        }
+    }
     pub(crate) fn valid(&self) -> bool {
         (-100..=100).contains(&self.plugin_luminosity)
             && (-100..=100).contains(&self.plugin_saturation)
@@ -1449,6 +1467,14 @@ mod text_profile_checks {
         assert!(loaded.settings.appearance.invert_plugin_colors);
         assert_eq!(loaded.settings.appearance.plugin_luminosity, 25);
         assert_eq!(loaded.settings.appearance.plugin_saturation, -75);
+        assert_eq!(
+            loaded.settings.appearance.color_scalars(),
+            aftercast::ColorScalars {
+                invert: true,
+                luminosity: 25,
+                saturation: -75
+            }
+        );
         assert_eq!(loaded.settings.appearance.grid_background, "#123456");
         assert_eq!(loaded.settings.appearance.ally_foreground, "#987654");
         assert_eq!(loaded.settings.appearance.self_background, "#abc123");

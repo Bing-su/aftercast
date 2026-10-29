@@ -873,18 +873,53 @@ fn archive_history(mut state: Signal<AppState>, restore: bool) {
     });
 }
 
+async fn apply_saved_colors(
+    handle: Option<aftercast::HostHandle>,
+    colors: aftercast::ColorScalars,
+    controls: aftercast::ColorControls,
+    saved: bool,
+) -> Option<String> {
+    if !saved {
+        return None;
+    }
+    let handle = handle?;
+    if let Err(error) = handle.set_color_scalars(colors).await {
+        return Some(error.to_string());
+    }
+    handle
+        .set_color_controls(controls)
+        .await
+        .err()
+        .map(|error| error.to_string())
+}
+
 fn save_settings(mut state: Signal<AppState>) {
     let Some((root, file)) = state.write().begin_settings_save() else {
         return;
     };
     let saved_message = tr("settings-saved");
+    let colors = file.settings.appearance.color_scalars();
+    let controls = file.settings.appearance.color_controls();
+    let (handle, session) = {
+        let current = state.read();
+        (current.handle(), current.revision.session)
+    };
     // Settings belong to the app: changing panes must not cancel I/O and strand the global saving flag.
     spawn_forever(async move {
         let result = tokio::task::spawn_blocking(move || file.save(&root)).await;
         let result = result
             .map_err(|error| miette::miette!(error))
             .and_then(|result| result);
-        state.write().receive_settings_save(result, saved_message);
+        let color_result = apply_saved_colors(handle, colors, controls, result.is_ok()).await;
+        let mut current = state.write();
+        current.receive_settings_save(result, saved_message);
+        if current.revision.session == session
+            && let Some(error) = color_result
+        {
+            current.fail_report(miette::miette!(
+                "ACT color event failed after settings save: {error}"
+            ));
+        }
     });
 }
 

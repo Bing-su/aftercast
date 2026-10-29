@@ -200,6 +200,8 @@ namespace Aftercast.ActCompat
         public HierarchyXmlCatalog? CaptureHierarchyXml(ulong encounterId,HierarchyXmlDepth depth) => main.CaptureHierarchyXml(encounterId,depth);
         public HierarchyXmlReport ReadHierarchyXml(ulong revision) => main.ReadHierarchyXml(revision);
         public TableReportCatalog? ReadTableReportCatalog(TableScope scope) => main.ReadTableReportCatalog(scope);
+        public void ApplyColorControls(System.Drawing.Color ally, System.Drawing.Color personal) => RunWithLogReadingSuspended(() => main.ApplyColorControls(ally,personal));
+        public void ApplyColorScalars(bool invert, decimal luminosity, decimal saturation) => RunWithLogReadingSuspended(() => main.ApplyColorScalars(invert,luminosity,saturation));
         public TableReport ReadTableReport(ulong revision, TableReportOptions options) => main.ReadTableReport(revision,options);
         public OdbcHierarchyPreview ReadOdbcHierarchy(ulong revision, string[][] destinationColumns, string allTerm) => main.ReadOdbcHierarchy(revision,destinationColumns,allTerm);
         public OdbcPreview PreviewOdbcTable(ulong revision, string[] destinationColumns, bool encounter = false, bool current = false) => main.PreviewOdbcTable(revision,destinationColumns,encounter,current);

@@ -408,3 +408,120 @@ async fn text_profile_deletion_confirms_and_preserves_failed_save() {
     );
     f.host.shutdown().await.expect("shutdown");
 }
+
+async fn first_table_text(host: &Host, query: &aftercast::TableQuery) -> String {
+    host.table_rows(query)
+        .await
+        .expect("table")
+        .expect("scope")
+        .rows
+        .first()
+        .expect("row")
+        .cells
+        .first()
+        .expect("cell")
+        .text
+        .clone()
+        .expect("text")
+}
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires managed fixture; run mise run test:gui-state"]
+async fn color_settings_ui_contract_saved_and_failed_save_worker_boundary() {
+    use aftercast::{TableLevel, TableQuery, TableScope};
+    let f = Fixture::new_with("ColorScalarPlugin", "0|100\n").await;
+    let encounter = f.ui.selected.expect("encounter");
+    let catalog = f
+        .host
+        .table_columns(TableLevel::Combatant)
+        .await
+        .expect("columns");
+    let query = TableQuery {
+        scope: TableScope::Combatants(encounter),
+        revision: catalog.revision,
+        columns: vec!["color-probe".into()],
+        offset: 0,
+        limit: 1,
+        sort: None,
+    };
+    let mut file = crate::config::ConfigFile::load(&f.root).expect("config");
+    file.settings.appearance.plugin_luminosity = 25;
+    file.settings.appearance.ally_foreground = "#010203".into();
+    file.settings.appearance.self_background.clear();
+    let colors = file.settings.appearance.color_scalars();
+    assert!(
+        super::super::apply_saved_colors(
+            Some(f.host.handle()),
+            colors,
+            file.settings.appearance.color_controls(),
+            false
+        )
+        .await
+        .is_none()
+    );
+    assert!(
+        first_table_text(&f.host, &query)
+            .await
+            .starts_with("False|0|0|")
+    );
+    file = file.save(&f.root).expect("synthetic save");
+    assert!(
+        super::super::apply_saved_colors(
+            Some(f.host.handle()),
+            file.settings.appearance.color_scalars(),
+            file.settings.appearance.color_controls(),
+            true
+        )
+        .await
+        .is_none()
+    );
+    assert!(
+        first_table_text(&f.host, &query)
+            .await
+            .starts_with("False|0.25|0|")
+    );
+    let controls_query = TableQuery {
+        scope: TableScope::Combatants(encounter),
+        revision: catalog.revision,
+        columns: vec!["color-controls-probe".into()],
+        offset: 0,
+        limit: 1,
+        sort: None,
+    };
+    assert_eq!(
+        first_table_text(&f.host, &controls_query).await,
+        "-16711165|0|ally:-16711165,personal:0"
+    );
+
+    file.settings.appearance.plugin_luminosity = 56;
+    file.save(&f.root).expect("save before callback error");
+    let failure = aftercast::ColorScalars {
+        invert: false,
+        luminosity: 56,
+        saturation: 0,
+    };
+    assert!(
+        super::super::apply_saved_colors(
+            Some(f.host.handle()),
+            failure,
+            aftercast::ColorControls::default(),
+            true
+        )
+        .await
+        .is_some()
+    );
+    assert_eq!(
+        crate::config::ConfigFile::load(&f.root)
+            .expect("saved")
+            .settings
+            .appearance
+            .plugin_luminosity,
+        56
+    );
+    assert!(
+        first_table_text(&f.host, &query)
+            .await
+            .starts_with("False|0.56|0|")
+    );
+    f.host.shutdown().await.expect("shutdown");
+}

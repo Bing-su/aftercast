@@ -253,6 +253,27 @@ public static partial class EntryPoint
         }
     });
 
+    public static int ColorSettingsCommand(nint buffer, int sizeBytes) => Run(() =>
+    {
+        if (buffer == 0 || sizeBytes != 32) throw new ArgumentException("Invalid color settings buffer");
+        ValidateHeader(buffer,sizeBytes,"Color settings ABI mismatch");
+        Owner(unchecked((ulong)Marshal.ReadInt64(buffer,8)));
+        var first=Marshal.ReadInt32(buffer,16); var second=Marshal.ReadInt32(buffer,20); var third=Marshal.ReadInt32(buffer,24); var command=Marshal.ReadInt32(buffer,28);
+        if (command == 0)
+        {
+            if (first is not (0 or 1) || second is < -100 or > 100 || third is < -100 or > 100) throw new ArgumentException("Invalid color scalar values");
+            plugins.Value.ConfigureColors(first==1,second,third);
+        }
+        else if (command == 1)
+        {
+            if (first is < 0 or > 3 || second is < 0 or > 0xffffff || third is < 0 or > 0xffffff || ((first & 1)==0 && second!=0) || ((first & 2)==0 && third!=0)) throw new ArgumentException("Invalid color controls");
+            static System.Drawing.Color ConvertColor(bool present, int rgb, bool ally) => !present ? System.Drawing.Color.Empty : ally && rgb==0x228b22 ? System.Drawing.Color.ForestGreen : System.Drawing.Color.FromArgb(255,(rgb>>16)&255,(rgb>>8)&255,rgb&255);
+            plugins.Value.ConfigureColorControls(ConvertColor((first&1)!=0,second,true),ConvertColor((first&2)!=0,third,false));
+        }
+        else throw new ArgumentException("Invalid color settings command");
+        return 0;
+    });
+
     public static int SpeechCommand(nint buffer, int sizeBytes) => Run(() =>
     {
         const int headerSize = 32;

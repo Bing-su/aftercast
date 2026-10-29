@@ -42,6 +42,23 @@ fn host_option_flags(config: &HostConfig) -> u64 {
         | (u64::from(!config.count_zero_damage_as_hit) << 21)
 }
 
+fn lock_state_directory(directory: &Utf8Path) -> Result<fs::File, Error> {
+    fs::create_dir_all(directory).map_err(|error| io_error(directory, error))?;
+    let path = directory.join(".aftercast.lock");
+    let file = fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .read(true)
+        .write(true)
+        .open(&path)
+        .map_err(|error| io_error(&path, error))?;
+    file.try_lock().map_err(|error| match error {
+        fs::TryLockError::WouldBlock => Error::StateInUse(directory.to_owned()),
+        fs::TryLockError::Error(source) => io_error(&path, source),
+    })?;
+    Ok(file)
+}
+
 // Own native delegates and thread affinity until managed shutdown has completed.
 pub(crate) struct ManagedSession {
     entry: ManagedFunctionWithDefaultSignature,
@@ -65,6 +82,7 @@ pub(crate) struct ManagedSession {
     text_report_command: ManagedFunctionWithDefaultSignature,
     table_report_command: ManagedFunctionWithDefaultSignature,
     correction_command: ManagedFunctionWithDefaultSignature,
+    color_settings_command: ManagedFunctionWithDefaultSignature,
     session: u64,
     running: bool,
     // Keep the native library and delegate loader alive for every managed function call.
@@ -78,20 +96,7 @@ pub(crate) struct ManagedSession {
 impl ManagedSession {
     pub(crate) fn start(config: HostConfig) -> Result<Self, Error> {
         let lease = acquire_lease()?;
-        fs::create_dir_all(&config.data_directory)
-            .map_err(|error| io_error(&config.data_directory, error))?;
-        let lock_path = config.data_directory.join(".aftercast.lock");
-        let state_lock = fs::OpenOptions::new()
-            .create(true)
-            .truncate(false)
-            .read(true)
-            .write(true)
-            .open(&lock_path)
-            .map_err(|error| io_error(&lock_path, error))?;
-        state_lock.try_lock().map_err(|error| match error {
-            fs::TryLockError::WouldBlock => Error::StateInUse(config.data_directory.clone()),
-            fs::TryLockError::Error(source) => io_error(&lock_path, source),
-        })?;
+        let state_lock = lock_state_directory(&config.data_directory)?;
         let root = canonicalize(&config.dotnet_root)?;
         let bridge = canonicalize(&config.bridge_directory)?;
         let fxr = find_hostfxr(&root)?;
@@ -129,6 +134,7 @@ impl ManagedSession {
         let text_report_command = function(pdcstr!("TextReportCommand"))?;
         let table_report_command = function(pdcstr!("TableReportCommand"))?;
         let correction_command = function(pdcstr!("CorrectionCommand"))?;
+        let color_settings_command = function(pdcstr!("ColorSettingsCommand"))?;
         let mut host = Self {
             entry,
             read_error,
@@ -151,6 +157,7 @@ impl ManagedSession {
             text_report_command,
             table_report_command,
             correction_command,
+            color_settings_command,
             session: 0,
             running: false,
             _loader: loader,
@@ -203,6 +210,7 @@ impl ManagedSession {
             Request::Reports => (&self.text_report_command, 20),
             Request::TableReports => (&self.table_report_command, 21),
             Request::Corrections => (&self.correction_command, 22),
+            Request::ColorSettings => (&self.color_settings_command, 23),
         };
         let length = i32::try_from(packet.len())
             .map_err(|error| Error::InvalidPluginRequest(error.to_string()))?;

@@ -24,9 +24,26 @@ its HSL adjustment and optional luminosity inversion, with alpha unchanged;
 preferences default to zero offsets and inversion off, and only callback colors
 are adjusted after the worker returns them. ACT source colors, including the ally
 and personal overrides, remain unchanged. The pinned original function validates
-1,024 deterministic synthetic cases. ACT plugin-facing `ColorSettings` events
-and getters are not yet exposed by the worker, so plugins cannot observe these
-preferences. Native font
+1,024 deterministic synthetic cases. The worker exposes ACT's nested
+`ActColorSettings` scalar getters (`InvertColors`, `LuminosityOffset`,
+`SaturationOffset`) and their corresponding EventHandler add/remove accessors.
+The existing ally and personal grid colors are also exposed as ACT `ColorControl`
+objects with `ForeColorSetting` and its Color-valued change event. An empty
+app color maps to `Color.Empty` as an aftercast-specific disabled highlight.
+The headless CheckBox and NumericUpDown senders run on the plugin owner thread;
+unchanged values do not fire. Saved app values apply at worker startup and after
+a successful settings save. Subscriber exceptions propagate and can leave the
+sequential worker update partially applied; the save is retained and the app
+reports the runtime failure. Plugin changes made through an event sender remain
+worker-local and are not persisted or reflected in app rendering automatically.
+Any later successful app settings save reapplies the app color values to the worker.
+
+This is not the complete `ColorSettings` API: other ColorControl and all
+FontColorControl properties/events remain unavailable. The original `FontSetting` signature uses
+`System.Drawing.Font` from System.Drawing.Common, which the project does not
+currently reference; a local compilation probe fails with CS1069. Adding that
+dependency and deciding Linux native-font semantics remain separate work. No font
+or OS setting was installed or changed. Native font
 measurement, arbitrary installed-family selection, mini text column alignment,
 and visual/native Windows behavior remain unverified.
 

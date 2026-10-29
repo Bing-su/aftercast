@@ -50,6 +50,7 @@ mod hierarchy_html;
 pub use hierarchy_html::{
     HierarchyHtmlGraphOptions, HierarchyHtmlLevel, HierarchyHtmlReport, HierarchyHtmlSelection,
 };
+mod color_settings;
 mod hierarchy_xml;
 mod odbc;
 mod reports;
@@ -243,3 +244,5 @@ pub use vcr::{
 pub mod log_search;
 
 pub use odbc::{OdbcColumn, OdbcHierarchyPreview, OdbcPreview};
+
+pub use color_settings::{ColorControls, ColorScalars};

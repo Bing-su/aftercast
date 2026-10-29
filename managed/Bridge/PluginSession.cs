@@ -35,6 +35,8 @@ internal sealed partial class PluginSession
     private int soundVolume = 100, ttsVolume = 100;
     private string[] timerSounds = ["none", "none", "none"];
     private string miscMode = "none", miscText = "";
+    private bool colorInvert; private int colorLuminosity, colorSaturation;
+    private System.Drawing.Color colorAlly = System.Drawing.Color.ForestGreen, colorPersonal = System.Drawing.Color.FromArgb(200,255,200);
     private readonly LogBuffer logs = new();
     internal Tuple<long, string[]> DiagnosticsSnapshot => environment?.DiagnosticsSnapshot ?? Tuple.Create(0L, Array.Empty<string>());
     internal T OnOwner<T>(Func<T> action) => context is null ? action() : context.Run(action);
@@ -217,6 +219,8 @@ internal sealed partial class PluginSession
         host.ConfigureSpeech(speechEnabled);
         host.ConfigureSound(soundEnabled);
         host.ConfigureAudio(soundVolume, ttsVolume, timerSounds, miscMode, miscText);
+        host.ApplyColorScalars(colorInvert, colorLuminosity / 100m, colorSaturation / 100m);
+        host.ApplyColorControls(colorAlly,colorPersonal);
         return environment = host;
     }
     private void RequireReusableWorker() => workerReuse.RequireReusable();
@@ -300,6 +304,20 @@ internal sealed partial class PluginSession
     internal int TtsVolume => ttsVolume;
     internal void ConfigureSound(bool enabled) => OnOwner(() => { soundEnabled = enabled; environment?.ConfigureSound(enabled); return 0; });
     internal (byte[] Bytes, int Volume) DrainSound() => OnOwner(() => environment?.DrainSound() ?? (Array.Empty<byte>(), 0));
+    internal void ConfigureColorControls(System.Drawing.Color ally, System.Drawing.Color personal) => OnOwner(() =>
+    {
+        if ((!ally.IsEmpty && ally.A != 255) || (!personal.IsEmpty && personal.A != 255)) throw new ArgumentException("Colors must be opaque or empty");
+        environment?.ApplyColorControls(ally,personal);
+        colorAlly=ally; colorPersonal=personal; return 0;
+    });
+    internal void ConfigureColors(bool invert, int luminosity, int saturation) => OnOwner(() =>
+    {
+        if (luminosity is < -100 or > 100 || saturation is < -100 or > 100) throw new ArgumentOutOfRangeException(nameof(luminosity));
+        // Preserve native sequential event semantics: an exception can leave controls partially changed.
+        environment?.ApplyColorScalars(invert, luminosity / 100m, saturation / 100m);
+        colorInvert = invert; colorLuminosity = luminosity; colorSaturation = saturation;
+        return 0;
+    });
     internal void ConfigureAudio(int sound, int tts, string[] timers, string mode, string text) => OnOwner(() =>
     {
         if (sound is < 0 or > 100 || tts is < 0 or > 100 || timers.Length != 3 || mode is not ("none" or "beep" or "wav" or "tts") || text.Any(char.IsControl)) throw new ArgumentException("Invalid audio settings");

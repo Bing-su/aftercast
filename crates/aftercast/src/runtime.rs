@@ -136,4 +136,5 @@ pub(crate) enum Request {
     Reports,
     TableReports,
     Corrections,
+    ColorSettings,
 }

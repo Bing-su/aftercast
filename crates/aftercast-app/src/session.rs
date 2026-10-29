@@ -12,6 +12,8 @@ pub struct RunningHost {
 impl RunningHost {
     pub async fn start(root: Utf8PathBuf, settings: Settings) -> Result<Self> {
         let audio = settings.audio.settings();
+        let colors = settings.appearance.color_scalars();
+        let color_controls = settings.appearance.color_controls();
         let deploy_root = root.clone();
         let selective = settings.host.selective_options();
         let recording = (
@@ -62,6 +64,18 @@ impl RunningHost {
         if let Err(error) = host.set_audio_settings(&audio).await {
             if let Err(shutdown_error) = host.shutdown().await {
                 tracing::warn!(error = %shutdown_error, "Failed to stop host after audio setup error");
+            }
+            return Err(error).into_diagnostic();
+        }
+        if let Err(error) = host.set_color_scalars(colors).await {
+            if let Err(shutdown_error) = host.shutdown().await {
+                tracing::warn!(error = %shutdown_error, "Failed to stop host after color setup error");
+            }
+            return Err(error).into_diagnostic();
+        }
+        if let Err(error) = host.set_color_controls(color_controls).await {
+            if let Err(shutdown_error) = host.shutdown().await {
+                tracing::warn!(error = %shutdown_error, "Failed to stop host after color control setup error");
             }
             return Err(error).into_diagnostic();
         }

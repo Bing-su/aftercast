@@ -519,6 +519,7 @@ internal static class Program
     {
         PluginBindingChecks.Run();
         SpeechChecks.Run();
+        ColorSettingsChecks.Run();
         SoundChecks.Run();
         TextExportChecks.Run();
         SpellTimerChecks.Run();
