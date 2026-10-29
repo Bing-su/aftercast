@@ -46,6 +46,7 @@ internal sealed partial class PluginSession
     });
     internal byte[] HierarchyHtmlOperation(int command, TableReportRequest request) => OnOwner(() => HierarchyHtmlEncoding.Encode(Host(),command,request));
     internal byte[] HierarchyXmlOperation(int command, TableReportRequest request) => OnOwner(() => HierarchyXmlEncoding.Encode(Host(),command,request));
+    internal byte[] OdbcOperation(int command, TableReportRequest request, int capacity) => OnOwner(() => OdbcEncoding.Encode(Host(), command, request, capacity));
     internal byte[] TableReportOperation(TableReportRequest request, int capacity) => OnOwner(() => TableReportEncoding.Encode(Host(), request, capacity));
     internal byte[] TableOperation(TableRequest request, int capacity) => OnOwner(() => TableEncoding.Encode(Host(), request, capacity));
     internal ArraySegment<byte> QueryCombat(int mode, ulong id, int offset, int limit, string? incomingCombatant) =>

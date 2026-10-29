@@ -20,7 +20,7 @@ impl From<HierarchyXmlDepth> for u32 {
 /// Counts are snapshot bounds; they do not imply successful rendering within the cooperative budget.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HierarchyXmlSelection {
-    revision: u64,
+    pub(crate) revision: u64,
     encounter: EncounterId,
     depth: HierarchyXmlDepth,
     tables: u32,

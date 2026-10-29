@@ -284,3 +284,97 @@ async fn table_report_worker_rejects_escaped_serialization_expansion(deployment:
     );
     host.shutdown().await.expect("stop after limit");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and fixture; run mise run test:plugins"]
+async fn offline_odbc_previews_use_owned_worker_snapshots(deployment: Deployment) {
+    use aftercast::HierarchyXmlDepth;
+    let host = Host::start(deployment.config()).await.expect("worker");
+    let plugin = PluginConfig::builder()
+        .path(Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll",
+        ))
+        .type_name("Aftercast.PluginFixture.OdbcPreviewPlugin")
+        .build();
+    let id = host.create_plugin(plugin).await.expect("plugin");
+    host.initialize_plugin(id).await.expect("init");
+    let path = deployment.directory().join("odbc-synthetic.log");
+    std::fs::write(&path, "0|100\n1|200\n").expect("synthetic input");
+    host.import_log(path).await.expect("import");
+    let encounter = host
+        .encounters(0, 16)
+        .await
+        .expect("encounters")
+        .items
+        .first()
+        .expect("encounter")
+        .id;
+    let scope = TableScope::Combatants(encounter);
+    let catalog = host
+        .table_report_catalog(&scope)
+        .await
+        .expect("catalog")
+        .expect("scope");
+    let current = host
+        .odbc_current_preview(&catalog.selection, &["encid".into(), "second".into()])
+        .await
+        .expect("current");
+    assert_eq!(
+        current.reset_sql.as_deref(),
+        Some("DELETE FROM \"current_table\";")
+    );
+    assert!(
+        current
+            .parameters
+            .iter()
+            .all(|row| row.first().is_some_and(String::is_empty))
+    );
+    let selection = host
+        .capture_hierarchy_xml(encounter, HierarchyXmlDepth::AllTables)
+        .await
+        .expect("capture")
+        .expect("scope");
+    let columns = [
+        vec!["enc_sql".into()],
+        vec!["second".into()],
+        vec!["first".into()],
+        vec!["first".into()],
+        vec!["second".into()],
+    ];
+    let plan = host
+        .odbc_hierarchy_preview(&selection, &columns, "All")
+        .await
+        .expect("hierarchy");
+    assert_eq!(plan.tables.len(), 5);
+    assert_eq!(
+        plan.tables
+            .first()
+            .expect("encounter")
+            .parameters
+            .first()
+            .expect("row")
+            .first()
+            .map(String::as_str),
+        Some("encounter")
+    );
+    assert!(
+        plan.tables
+            .iter()
+            .all(|table| table.reset_sql.is_none() && table.insert_sql.contains('?'))
+    );
+    let replacement = host
+        .capture_hierarchy_xml(encounter, HierarchyXmlDepth::AllTables)
+        .await
+        .expect("recapture")
+        .expect("scope");
+    host.odbc_hierarchy_preview(&selection, &columns, "All")
+        .await
+        .expect_err("old revision");
+    let handle = host.handle();
+    host.shutdown().await.expect("stop");
+    handle
+        .odbc_hierarchy_preview(&replacement, &columns, "All")
+        .await
+        .expect_err("closed session");
+}

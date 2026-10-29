@@ -20,7 +20,7 @@ public static partial class EntryPoint
         const int header = 32;
         if (buffer == 0 || sizeBytes < header) throw new ArgumentException("Invalid table report buffer");
         var command = Marshal.ReadInt32(buffer, 16);
-        var capacity = command switch { 1 => 56 * 1024 * 1024, 2 => 16 * 1024 * 1024 + 20, 3 => 4096, 4 => 16 * 1024 * 1024 + 32, 5 => 4096, 6 => 16 * 1024 * 1024 + 1024, _ => throw new ArgumentException("Invalid table report command") };
+        var capacity = command switch { 1 => 56 * 1024 * 1024, 2 => 16 * 1024 * 1024 + 20, 3 => 4096, 4 => 16 * 1024 * 1024 + 32, 5 => 4096, 6 => 16 * 1024 * 1024 + 1024, 7 or 8 => 32 * 1024 * 1024, _ => throw new ArgumentException("Invalid table report command") };
         // Reserve the bounded binary reply before callbacks; UTF-8 content needs no JSON re-escaping or retry.
         if (sizeBytes != header + capacity) throw new ArgumentException("Invalid table report capacity");
         ValidateHeader(buffer, sizeBytes, "Table report ABI size/version mismatch");
@@ -37,6 +37,7 @@ public static partial class EntryPoint
         }
         var request = JsonSerializer.Deserialize<TableReportRequest>(json, HostJson.Options)
             ?? throw new ArgumentException("Missing table report request");
+        if(command != 7 && request.OdbcHierarchy is not null || command != 8 && request.OdbcCurrent is not null) throw new ArgumentException("Unexpected ODBC fields");
         if(command <= 4 && (request.Html is not null || request.HtmlLevels is not null || request.Graphs is not null))throw new ArgumentException("Unexpected HTML hierarchy fields");
         var valid = command switch
         {
@@ -46,11 +47,13 @@ public static partial class EntryPoint
             4 => request.Scope is null && request.Revision != 0 && request.Options is null && request.Hierarchy is null,
             5 => request.Scope is null && request.Revision == 0 && request.Options is null && request.Hierarchy is null && request.HtmlLevels is null && request.Graphs is null && request.Html is {} html && html.Encounters is {Length:>=1 and <=64} ids && ids.All(id=>id!=0) && ids.Distinct().Count()==ids.Length && html.LastLevel is >=TableLevel.Combatant and <=TableLevel.Action,
             6 => request.Scope is null && request.Revision != 0 && request.Options is null && request.Hierarchy is null && request.Html is null && request.HtmlLevels is {} levels && ValidHtmlLevels(levels),
+            7 => request.Scope is null && request.Revision != 0 && request.Options is null && request.Hierarchy is null && request.Html is null && request.HtmlLevels is null && request.Graphs is null && request.OdbcHierarchy is not null,
+            8 => request.Scope is null && request.Revision != 0 && request.Options is null && request.Hierarchy is null && request.Html is null && request.HtmlLevels is null && request.Graphs is null && request.OdbcCurrent is not null,
             _ => false
         };
         if (!valid) throw new ArgumentException("Table report request does not match command");
         byte[] output;
-        try { output = command <= 2 ? plugins.Value.TableReportOperation(request, capacity) : command <= 4 ? plugins.Value.HierarchyXmlOperation(command, request) : plugins.Value.HierarchyHtmlOperation(command,request); }
+        try { output = command <= 2 ? plugins.Value.TableReportOperation(request, capacity) : command <= 4 ? plugins.Value.HierarchyXmlOperation(command, request) : command <= 6 ? plugins.Value.HierarchyHtmlOperation(command,request) : plugins.Value.OdbcOperation(command,request,capacity); }
         catch (Exception error) when (error.InnerException is not null)
         {
             // Preserve bounded callback causes across the native boundary; Describe tolerates hostile Message getters.
@@ -70,7 +73,8 @@ public static partial class EntryPoint
         return 0;
     });
 }
-internal sealed record TableReportRequest(TableScope? Scope = null, ulong Revision = 0, TableReportOptions? Options = null, HierarchyXmlRequest? Hierarchy = null, HierarchyHtmlRequest? Html = null, HierarchyHtmlLevel[]? HtmlLevels = null, HierarchyHtmlGraphOptions? Graphs = null);
+internal sealed record TableReportRequest(TableScope? Scope = null, ulong Revision = 0, TableReportOptions? Options = null, HierarchyXmlRequest? Hierarchy = null, HierarchyHtmlRequest? Html = null, HierarchyHtmlLevel[]? HtmlLevels = null, HierarchyHtmlGraphOptions? Graphs = null, OdbcHierarchyRequest? OdbcHierarchy = null, string[]? OdbcCurrent = null);
+internal sealed record OdbcHierarchyRequest(string[][] DestinationColumns, string AllTerm);
 internal sealed record HierarchyHtmlRequest(ulong[] Encounters,TableLevel LastLevel);
 internal sealed record HierarchyXmlRequest(ulong EncounterId, HierarchyXmlDepth Depth);
 internal static class TableReportEncoding
@@ -165,6 +169,29 @@ internal static class HierarchyHtmlEncoding
                 if(count>16*1024*1024)throw new InvalidDataException("Hierarchy HTML reply exceeds 16 MiB");
                 writer.Write((uint)count);writer.Write(report.Content.AsSpan());
             }
+        }
+        return stream.ToArray();
+    }
+}
+
+internal static class OdbcEncoding
+{
+    internal static byte[] Encode(HostEnvironment host, int command, TableReportRequest request, int capacity)
+    {
+        var plans = command == 7 ? host.ReadOdbcHierarchy(request.Revision, request.OdbcHierarchy!.DestinationColumns, request.OdbcHierarchy.AllTerm).Tables :
+            [host.PreviewOdbcTable(request.Revision, request.OdbcCurrent!, current:true)];
+        using var stream = new MemoryStream();
+        using var writer = new BinaryWriter(stream, new UTF8Encoding(false,true), true);
+        void Budget(long count) { if (count < 0 || stream.Length + count > capacity) throw new InvalidDataException("ODBC preview exceeds response capacity"); }
+        void Number(uint value) { Budget(4); writer.Write(value); }
+        void Text(string? value) { if (value is null) { Number(uint.MaxValue); return; } var bytes=Encoding.UTF8.GetByteCount(value); Budget(4L+bytes); writer.Write((uint)bytes); writer.Write(value.AsSpan()); }
+        Budget(8); writer.Write(request.Revision); Number((uint)plans.Length);
+        foreach (var plan in plans)
+        {
+            Text(plan.Table); Text(plan.CreateSql); Text(plan.InsertSql); Text(plan.ResetSql); Number((uint)plan.Columns.Length);
+            foreach(var column in plan.Columns) { Text(column.Name); Text(column.SqlType); }
+            Number((uint)plan.Parameters.Length);
+            foreach(var row in plan.Parameters) foreach(var value in row) Text(value);
         }
         return stream.ToArray();
     }

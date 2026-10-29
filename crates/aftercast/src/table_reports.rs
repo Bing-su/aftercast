@@ -15,8 +15,8 @@ const REPORT_CAPACITY: usize = MAX_CONTENT + 20;
 /// Row ordinals are snapshot-local, never action IDs or indices in a sorted report.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TableReportSelection {
-    session: u64,
-    revision: u64,
+    pub(crate) session: u64,
+    pub(crate) revision: u64,
     scope: TableScope,
     rows: u32,
 }
@@ -184,6 +184,7 @@ fn capacity(command: u32) -> usize {
         3 | 5 => 4096,
         4 => MAX_CONTENT + 32,
         6 => MAX_CONTENT + 1024,
+        7 | 8 => 32 * 1024 * 1024,
         _ => REPORT_CAPACITY,
     }
 }

@@ -108,3 +108,14 @@ public sealed class HierarchyHtmlPlugin:HierarchyXmlPlugin
 // Keep normal XML behavior unchanged; isolate serialized-size checks from large-row timing.
 public sealed class HierarchyXmlExpandedPlugin:HierarchyXmlPlugin
 {protected override bool ExpandedXml=>true;}
+
+public sealed class OdbcPreviewPlugin : HierarchyXmlPlugin, IActPluginV1
+{
+    public new void InitPlugin(TabPage page, Label status)
+    {
+        base.InitPlugin(page,status);
+        EncounterData.ColumnDefs["odbc-synthetic"] = new("Synthetic",false,"TEXT","enc_sql",_=>"display",_=>"encounter");
+        CombatantData.ColumnDefs["odbc-encid"] = new("Synthetic",false,"TEXT","encid",_=>"display",_=>throw new InvalidOperationException("current EncId must not run"),(_,_)=>0);
+    }
+    public new void DeInitPlugin() { EncounterData.ColumnDefs.Remove("odbc-synthetic"); base.DeInitPlugin(); }
+}

@@ -51,6 +51,7 @@ pub use hierarchy_html::{
     HierarchyHtmlGraphOptions, HierarchyHtmlLevel, HierarchyHtmlReport, HierarchyHtmlSelection,
 };
 mod hierarchy_xml;
+mod odbc;
 mod reports;
 pub use hierarchy_xml::{HierarchyXmlDepth, HierarchyXmlReport, HierarchyXmlSelection};
 mod snapshots;
@@ -240,3 +241,5 @@ pub use vcr::{
 
 /// In-memory encounter log search and copy-text generation.
 pub mod log_search;
+
+pub use odbc::{OdbcColumn, OdbcHierarchyPreview, OdbcPreview};
