@@ -1,13 +1,60 @@
 use super::{AppState, Phase, tr};
 use crate::components::{Accordion, Button, ButtonVariant, Label};
-use aftercast::{HostHandle, TextReportOptions};
+use aftercast::{EncounterId, EncounterStatus, HostHandle, TextReportOptions, TextReportRevision};
+use dioxus::desktop::WeakDesktopContext;
 use dioxus::{core::spawn_forever, prelude::*};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicBool, Ordering},
+};
 use std::time::{Duration, Instant};
+mod window;
+type EndedKey = (EncounterId, TextReportRevision);
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 struct Ticket {
     session: u64,
     generation: u64,
+}
+#[derive(Clone, Default)]
+struct Frame {
+    output: Option<String>,
+    error: Option<String>,
+    truncated: bool,
+    pending: bool,
+}
+#[derive(Default)]
+struct WindowState {
+    serial: u64,
+    pending: Option<u64>,
+    alive: Arc<AtomicBool>,
+    desktop: WeakDesktopContext,
+    frame: Arc<Mutex<Frame>>,
+    observed: bool,
+}
+impl WindowState {
+    fn reserve(&mut self) -> Option<u64> {
+        if self.alive.load(Ordering::SeqCst) || self.pending.is_some() {
+            return None;
+        }
+        let serial = self.serial.checked_add(1)?;
+        self.serial = serial;
+        self.pending = Some(serial);
+        self.desktop = WeakDesktopContext::default();
+        self.alive = Arc::new(AtomicBool::new(true));
+        self.observed = true;
+        Some(serial)
+    }
+    fn resolve(&mut self, serial: u64, success: bool) -> bool {
+        if self.pending != Some(serial) {
+            return false;
+        }
+        self.pending = None;
+        if !success {
+            self.alive.store(false, Ordering::SeqCst);
+        }
+        true
+    }
 }
 #[derive(Default)]
 pub(super) struct State {
@@ -16,26 +63,71 @@ pub(super) struct State {
     pending: Option<Ticket>,
     pending_settings: Option<(String, u8, Option<TextReportOptions>)>,
     last: Option<Duration>,
+    last_ended: Option<EndedKey>,
+    last_ended_profile: Option<Option<TextReportOptions>>,
     output: Option<String>,
     truncated: bool,
     error: Option<String>,
+    window: WindowState,
 }
 impl State {
+    fn reusable_end(&self, profile: &Option<TextReportOptions>) -> Option<EndedKey> {
+        (self.last_ended_profile.as_ref() == Some(profile))
+            .then_some(self.last_ended)
+            .flatten()
+    }
+    fn window_open(&self) -> bool {
+        self.window.alive.load(Ordering::SeqCst)
+    }
+    fn active(&self, screen: &str) -> bool {
+        self.window_open() || (self.enabled && screen == "analysis")
+    }
+    fn publish(&self) {
+        let mut frame = self
+            .window
+            .frame
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner);
+        *frame = Frame {
+            output: self.output.clone(),
+            error: self.error.clone(),
+            truncated: self.truncated,
+            pending: self.pending.is_some(),
+        };
+    }
     pub(super) fn stop(&mut self) {
         self.enabled = false;
-        self.invalidate();
+        if !self.window_open() {
+            self.invalidate();
+        }
     }
     pub(super) fn reset_session(&mut self) {
-        self.stop();
+        self.window.alive.store(false, Ordering::SeqCst);
+        self.window.pending = None;
+        self.window.serial = self.window.serial.wrapping_add(1);
+        self.window.observed = false;
+        self.enabled = false;
         self.pending = None;
         self.pending_settings = None;
+        self.invalidate();
+    }
+    fn observe_window(&mut self) {
+        if self.window.observed && !self.window_open() {
+            self.window.observed = false;
+            if !self.enabled {
+                self.invalidate();
+            }
+        }
     }
     fn invalidate(&mut self) {
         self.generation = self.generation.wrapping_add(1);
         self.last = None;
+        self.last_ended = None;
+        self.last_ended_profile = None;
         self.output = None;
         self.truncated = false;
         self.error = None;
+        self.publish();
     }
 }
 fn bounded_preview(text: String) -> (Option<String>, bool) {
@@ -54,15 +146,25 @@ fn due(last: Option<Duration>, now: Duration, seconds: u8) -> bool {
 }
 impl AppState {
     fn mini_toggle(&mut self) {
-        self.mini_parse.enabled = !self.mini_parse.enabled;
-        self.mini_parse.invalidate();
+        if self.mini_parse.enabled {
+            self.mini_parse.stop();
+        } else {
+            self.mini_parse.enabled = true;
+            if !self.mini_parse.window_open() {
+                self.mini_parse.invalidate();
+            }
+        }
     }
     fn mini_begin(
         &mut self,
         now: Duration,
-    ) -> Option<(Ticket, HostHandle, Option<TextReportOptions>)> {
-        if !self.mini_parse.enabled
-            || self.screen != "analysis"
+    ) -> Option<(
+        Ticket,
+        HostHandle,
+        Option<TextReportOptions>,
+        Option<EndedKey>,
+    )> {
+        if !self.mini_parse.active(self.screen)
             || self.phase != Phase::Ready
             || self.exit_requested
             || self.loading
@@ -97,6 +199,10 @@ impl AppState {
                     self.mini_parse.error = Some(tr("mini-missing-profile"));
                     self.mini_parse.last = Some(now);
                     self.mini_parse.output = None;
+                    self.mini_parse.truncated = false;
+                    self.mini_parse.last_ended = None;
+                    self.mini_parse.last_ended_profile = None;
+                    self.mini_parse.publish();
                     return None;
                 }
             }
@@ -112,9 +218,15 @@ impl AppState {
             self.settings.mini_parse.interval_seconds,
             profile.clone(),
         ));
-        Some((ticket, handle, profile))
+        self.mini_parse.publish();
+        let last_ended = self.mini_parse.reusable_end(&profile);
+        Some((ticket, handle, profile, last_ended))
     }
-    fn mini_finish(&mut self, ticket: Ticket, result: Result<Option<String>, String>) -> bool {
+    fn mini_finish(
+        &mut self,
+        ticket: Ticket,
+        result: Result<Option<(String, Option<EndedKey>)>, String>,
+    ) -> bool {
         if self.mini_parse.pending != Some(ticket) {
             return false;
         }
@@ -137,8 +249,7 @@ impl AppState {
             self.mini_parse.invalidate();
             return false;
         }
-        if !self.mini_parse.enabled
-            || self.screen != "analysis"
+        if !self.mini_parse.active(self.screen)
             || self.phase != Phase::Ready
             || self.exit_requested
             || self.revision.session != ticket.session
@@ -146,13 +257,20 @@ impl AppState {
         {
             self.mini_parse.output = None;
             self.mini_parse.truncated = false;
+            self.mini_parse.publish();
             return false;
         }
         match result {
-            Ok(output) => {
-                let (output, truncated) = output.map_or((None, false), bounded_preview);
+            Ok(Some((output, ended))) => {
+                self.mini_parse.last_ended = ended;
+                self.mini_parse.last_ended_profile = ended.map(|_| profile);
+                let (output, truncated) = bounded_preview(output);
                 self.mini_parse.output = output;
                 self.mini_parse.truncated = truncated;
+                self.mini_parse.error = None;
+            }
+            // During a transition or with no current encounter, retain the last frame.
+            Ok(None) => {
                 self.mini_parse.error = None;
             }
             Err(error) => {
@@ -161,14 +279,20 @@ impl AppState {
                 self.mini_parse.error = Some(error);
             }
         }
+        self.mini_parse.publish();
         true
     }
 }
 async fn fetch(
     handle: &HostHandle,
     profile: Option<TextReportOptions>,
-) -> Result<Option<String>, String> {
-    let Some(active) = handle.live_combat().await.map_err(|e| e.to_string())? else {
+    last_ended: Option<EndedKey>,
+) -> Result<Option<(String, Option<EndedKey>)>, String> {
+    let Some(active) = handle
+        .current_zone_encounter()
+        .await
+        .map_err(|e| e.to_string())?
+    else {
         return Ok(None);
     };
     let catalog = handle
@@ -181,33 +305,42 @@ async fn fetch(
     {
         return Err("report-sort-missing".to_owned());
     }
+    if active.summary.status == EncounterStatus::Ended
+        && last_ended == Some((active.summary.id, catalog.revision))
+    {
+        return Ok(None);
+    }
     let report = handle
         .text_report(active.summary.id, catalog.revision, &options)
         .await
         .map_err(|e| e.to_string())?;
-    let current = handle.live_combat().await.map_err(|e| e.to_string())?;
-    if current
-        .as_ref()
-        .is_none_or(|current| current.summary.id != active.summary.id)
-    {
+    let current = handle
+        .current_zone_encounter()
+        .await
+        .map_err(|e| e.to_string())?;
+    if current.as_ref().is_none_or(|current| {
+        current.summary.id != active.summary.id || current.summary.status != active.summary.status
+    }) {
         return Ok(None);
     }
-    Ok(report.map(|report| report.text))
+    let ended = (active.summary.status == EncounterStatus::Ended)
+        .then_some((active.summary.id, catalog.revision));
+    Ok(report.map(|report| (report.text, ended)))
 }
 pub(super) async fn poll(mut state: Signal<AppState>) {
     let start = Instant::now();
     loop {
         dioxus_sdk::time::sleep(Duration::from_secs(1)).await;
-        if state.peek().screen != "analysis" || state.peek().exit_requested {
-            let mut state = state.write();
-            if state.mini_parse.enabled {
-                state.mini_parse.enabled = false;
-                state.mini_parse.invalidate();
-            }
-            continue;
-        }
         {
             let mut current = state.write();
+            if current.exit_requested {
+                current.mini_parse.reset_session();
+                continue;
+            }
+            if current.screen != "analysis" && current.mini_parse.enabled {
+                current.mini_parse.stop();
+            }
+            current.mini_parse.observe_window();
             if current
                 .mini_parse
                 .pending
@@ -217,9 +350,9 @@ pub(super) async fn poll(mut state: Signal<AppState>) {
             }
         }
         let work = state.write().mini_begin(start.elapsed());
-        if let Some((ticket, handle, profile)) = work {
+        if let Some((ticket, handle, profile, last_ended)) = work {
             spawn_forever(async move {
-                let result = fetch(&handle, profile).await;
+                let result = fetch(&handle, profile, last_ended).await;
                 state.write().mini_finish(ticket, result);
             });
         }
@@ -300,6 +433,12 @@ pub(super) fn Panel() -> Element {
                 div { class: "flex flex-wrap gap-2",
                     Button {
                         variant: ButtonVariant::Outline,
+                        disabled: !ready,
+                        onclick: move |_| window::open(state),
+                        {tr("mini-open-window")}
+                    }
+                    Button {
+                        variant: ButtonVariant::Outline,
                         disabled: !can_save,
                         onclick: move |_| super::save_settings(state),
                         {tr("mini-save")}
@@ -341,6 +480,32 @@ pub(super) fn Panel() -> Element {
 mod tests {
     use super::*;
     #[test]
+    fn singleton_window_reservations_and_retirement() {
+        let mut state = State::default();
+        let first = state.window.reserve().expect("first");
+        assert!(state.window.reserve().is_none());
+        assert!(!state.window.resolve(first + 1, true));
+        assert!(state.window.resolve(first, true));
+        assert!(state.window.reserve().is_none());
+        assert!(
+            state.active("settings"),
+            "open window continues after navigation"
+        );
+        state.stop();
+        assert!(
+            state.active("settings"),
+            "embedded panel cannot stop an open window"
+        );
+        state.window.alive.store(false, Ordering::SeqCst);
+        state.observe_window();
+        assert!(!state.active("settings"), "last window close stops refresh");
+        let second = state.window.reserve().expect("reopen");
+        assert_ne!(first, second);
+        state.reset_session();
+        assert!(!state.window.resolve(second, true));
+        assert!(!state.window_open());
+    }
+    #[test]
     fn clock_interval_boundaries() {
         assert!(due(None, Duration::ZERO, 5));
         assert!(!due(Some(Duration::ZERO), Duration::from_secs(4), 5));
@@ -359,15 +524,19 @@ mod tests {
         };
         ui.mini_parse.pending = Some(ticket);
         ui.mini_parse.pending_settings = Some((String::new(), 5, None));
-        assert!(ui.mini_finish(ticket, Ok(Some("synthetic".into()))));
+        assert!(ui.mini_finish(ticket, Ok(Some(("synthetic".into(), None)))));
         assert_eq!(ui.mini_parse.output.as_deref(), Some("synthetic"));
         ui.mini_parse.pending = Some(ticket);
         ui.mini_parse.pending_settings = Some((String::new(), 5, None));
-        assert!(ui.mini_finish(ticket, Ok(Some(String::new()))));
+        assert!(ui.mini_finish(ticket, Ok(None)));
+        assert_eq!(ui.mini_parse.output.as_deref(), Some("synthetic"));
+        ui.mini_parse.pending = Some(ticket);
+        ui.mini_parse.pending_settings = Some((String::new(), 5, None));
+        assert!(ui.mini_finish(ticket, Ok(Some((String::new(), None)))));
         assert_eq!(ui.mini_parse.output.as_deref(), Some(""));
         ui.mini_parse.pending = Some(ticket);
         ui.mini_parse.pending_settings = Some((String::new(), 5, None));
-        assert!(ui.mini_finish(ticket, Ok(Some("한".repeat(30000)))));
+        assert!(ui.mini_finish(ticket, Ok(Some(("한".repeat(30000), None)))));
         assert!(ui.mini_parse.truncated);
         assert!(ui.mini_parse.output.as_ref().expect("bounded").len() <= 64 * 1024);
         ui.mini_parse.pending = Some(ticket);
@@ -384,7 +553,7 @@ mod tests {
             Some(ticket),
             "restart waits for the previous request"
         );
-        assert!(!ui.mini_finish(ticket, Ok(Some("late".into()))));
+        assert!(!ui.mini_finish(ticket, Ok(Some(("late".into(), None)))));
         assert!(ui.mini_parse.output.is_none());
         let ticket = Ticket {
             session: 7,
@@ -393,12 +562,12 @@ mod tests {
         ui.mini_parse.pending = Some(ticket);
         ui.mini_parse.pending_settings = Some((String::new(), 5, None));
         ui.revision.session = 8;
-        assert!(!ui.mini_finish(ticket, Ok(Some("old session".into()))));
+        assert!(!ui.mini_finish(ticket, Ok(Some(("old session".into(), None)))));
         ui.revision.session = 7;
         ui.mini_parse.pending = Some(ticket);
         ui.mini_parse.pending_settings = Some((String::new(), 5, None));
         ui.settings.mini_parse.interval_seconds = 10;
-        assert!(!ui.mini_finish(ticket, Ok(Some("old settings".into()))));
+        assert!(!ui.mini_finish(ticket, Ok(Some(("old settings".into(), None)))));
         assert!(ui.mini_parse.output.is_none());
         ui.settings.mini_parse.interval_seconds = 5;
         let ticket = Ticket {
@@ -408,7 +577,7 @@ mod tests {
         ui.mini_parse.pending = Some(ticket);
         ui.mini_parse.pending_settings = Some((String::new(), 5, None));
         ui.screen = "settings";
-        assert!(!ui.mini_finish(ticket, Ok(Some("late screen".into()))));
+        assert!(!ui.mini_finish(ticket, Ok(Some(("late screen".into(), None)))));
         ui.screen = "analysis";
         ui.settings.mini_parse.profile = "removed".into();
         let ticket = Ticket {
@@ -418,13 +587,56 @@ mod tests {
         ui.mini_parse.pending = Some(ticket);
         ui.mini_parse.pending_settings =
             Some(("removed".into(), 5, Some(TextReportOptions::default())));
-        assert!(!ui.mini_finish(ticket, Ok(Some("deleted profile".into()))));
+        assert!(!ui.mini_finish(ticket, Ok(Some(("deleted profile".into(), None)))));
         assert!(ui.mini_parse.output.is_none());
     }
-    #[tokio::test(flavor = "current_thread")]
-    #[ignore = "requires managed fixture; run mise run test:gui-state"]
-    async fn live_preview_uses_real_worker_and_synthetic_combat() {
-        use aftercast::{Host, HostConfig, PluginConfig, extract_bridge};
+    fn check_profile_cache(before: EndedKey, options: &TextReportOptions) {
+        let cache = State {
+            last_ended: Some(before),
+            last_ended_profile: Some(Some(options.clone())),
+            ..Default::default()
+        };
+        assert_eq!(cache.reusable_end(&Some(options.clone())), Some(before));
+        let mut changed = options.clone();
+        changed.player_format.push('!');
+        assert_eq!(cache.reusable_end(&Some(changed)), None);
+    }
+    async fn check_catalog_change(
+        host: &aftercast::Host,
+        key: EndedKey,
+        options: &TextReportOptions,
+    ) {
+        add_plugin(host, "MiniParseRegistryPlugin").await;
+        let revision = host
+            .text_report_catalog()
+            .await
+            .expect("updated catalog")
+            .revision;
+        assert_ne!(revision, key.1);
+        assert!(
+            fetch(&host.handle(), Some(options.clone()), Some(key))
+                .await
+                .expect("changed catalog")
+                .is_some()
+        );
+    }
+    async fn add_plugin(host: &aftercast::Host, name: &str) {
+        let path = camino::Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join(
+            "../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll",
+        );
+        let id = host
+            .create_plugin(
+                aftercast::PluginConfig::builder()
+                    .path(path)
+                    .type_name(format!("Aftercast.PluginFixture.{name}"))
+                    .build(),
+            )
+            .await
+            .expect("plugin");
+        host.initialize_plugin(id).await.expect("initialize");
+    }
+    async fn start_synthetic_host() -> (tempfile::TempDir, aftercast::Host) {
+        use aftercast::{Host, HostConfig, extract_bridge};
         use camino::{Utf8Path, Utf8PathBuf};
         let temp = tempfile::tempdir().expect("temp");
         let root = Utf8Path::from_path(temp.path()).expect("UTF8");
@@ -447,16 +659,19 @@ mod tests {
         )
         .await
         .expect("host");
+        (temp, host)
+    }
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires managed fixture; run mise run test:gui-state"]
+    async fn live_preview_uses_real_worker_and_synthetic_combat() {
+        let (_temp, host) = start_synthetic_host().await;
         assert!(
-            fetch(&host.handle(), None)
+            fetch(&host.handle(), None, None)
                 .await
                 .expect("no combat")
                 .is_none()
         );
-        let plugin = host.create_plugin(PluginConfig::builder().path(Utf8Path::new(env!("CARGO_MANIFEST_DIR")).join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll")).type_name("Aftercast.PluginFixture.MiniParsePlugin").build()).await.expect("plugin");
-        host.initialize_plugin(plugin)
-            .await
-            .expect("synthetic combat");
+        add_plugin(&host, "MiniParsePlugin").await;
         let options = TextReportOptions {
             player_format: "{report-name}:{report-unicode}".into(),
             sorting: "report-name".into(),
@@ -464,18 +679,72 @@ mod tests {
             show_allied_info: false,
             allies_format: String::new(),
         };
-        let text = fetch(&host.handle(), Some(options.clone()))
+        let text = fetch(&host.handle(), Some(options.clone()), None)
             .await
             .expect("preview")
             .expect("active");
-        assert!(text.contains("한글日本😀"));
+        assert!(text.0.contains("한글日本😀"));
+        let before = host
+            .current_zone_encounter()
+            .await
+            .expect("current")
+            .expect("active")
+            .summary
+            .id;
+        add_plugin(&host, "MiniParseEndPlugin").await;
+        assert!(host.live_combat().await.expect("idle").is_none());
+        assert_eq!(
+            host.current_zone_encounter()
+                .await
+                .expect("ended")
+                .expect("last")
+                .summary
+                .id,
+            before
+        );
+        assert!(
+            fetch(&host.handle(), Some(options.clone()), None)
+                .await
+                .expect("ended preview")
+                .expect("last")
+                .0
+                .contains("한글日本😀")
+        );
+        let revision = host.text_report_catalog().await.expect("catalog").revision;
+        let ended_key = (before, revision);
+        check_profile_cache(ended_key, &options);
+        assert!(
+            fetch(&host.handle(), Some(options.clone()), Some(ended_key))
+                .await
+                .expect("unchanged ended")
+                .is_none()
+        );
+        check_catalog_change(&host, ended_key, &options).await;
+        add_plugin(&host, "MiniParseNextPlugin").await;
+        assert_ne!(
+            host.current_zone_encounter()
+                .await
+                .expect("next")
+                .expect("active")
+                .summary
+                .id,
+            before
+        );
+        assert!(
+            fetch(&host.handle(), Some(options.clone()), None)
+                .await
+                .expect("next preview")
+                .expect("active")
+                .0
+                .contains("Next")
+        );
         let mut missing = options;
         missing.sorting = "no-such-plugin-key".into();
-        fetch(&host.handle(), Some(missing))
+        fetch(&host.handle(), Some(missing), None)
             .await
             .expect_err("missing sort key");
         let handle = host.handle();
         host.shutdown().await.expect("shutdown");
-        fetch(&handle, None).await.expect_err("closed worker");
+        fetch(&handle, None, None).await.expect_err("closed worker");
     }
 }

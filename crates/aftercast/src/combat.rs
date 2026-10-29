@@ -164,6 +164,13 @@ impl HostHandle {
         decode_detail(&payload, self.session)
     }
 
+    /// Reads the active zone's current encounter, including its last ended encounter.
+    /// Returns None while importing or a combat transition is incomplete.
+    pub async fn current_zone_encounter(&self) -> Result<Option<EncounterDetail>, Error> {
+        let payload = self.query_combat(28, None, 0, 1).await?;
+        decode_detail(&payload, self.session)
+    }
+
     /// Lists retained individual encounters, including imports and active combat; excludes zone All.
     ///
     /// `limit` must be 1..=256. Ordering follows ACT zone/encounter order, with imports first.

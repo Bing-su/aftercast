@@ -16,3 +16,30 @@ public sealed class MiniParsePlugin : IActPluginV1
     }
     public void DeInitPlugin() => inner.DeInitPlugin();
 }
+
+public sealed class MiniParseEndPlugin : IActPluginV1
+{
+    public void InitPlugin(TabPage page, Label label) { ActGlobals.oFormActMain!.EndCombat(true); }
+    public void DeInitPlugin() { }
+}
+
+public sealed class MiniParseNextPlugin : IActPluginV1
+{
+    public void InitPlugin(TabPage page, Label label)
+    {
+        var root = ActGlobals.oFormActMain!; var now = DateTime.Now.AddSeconds(1);
+        root.ChangeZone("Synthetic Next Zone");
+        if (!root.SetEncounter(now, "Next Source", "Next Target")) throw new InvalidOperationException("Synthetic encounter refused");
+        root.AddCombatAction(new MasterSwing(1, false, "", new Dnum(20), now, root.GlobalTimeSorter, "Strike", "Next Source", "Physical", "Next Target"));
+    }
+    public void DeInitPlugin() { }
+}
+
+public sealed class MiniParseRegistryPlugin : IActPluginV1
+{
+    public void InitPlugin(TabPage page, Label label)
+    {
+        CombatantData.ColumnDefs["mini-extra"] = new("Mini extra", true, "TEXT", "extra", _ => "x", _ => "x", (_, _) => 0);
+    }
+    public void DeInitPlugin() => CombatantData.ColumnDefs.Remove("mini-extra");
+}

@@ -25,7 +25,7 @@ impl WindowLifetime {
     pub(super) fn generation(&self) -> u64 {
         self.generation.load(Ordering::SeqCst)
     }
-    fn valid(&self, generation: u64) -> bool {
+    pub(super) fn valid(&self, generation: u64) -> bool {
         !self.closed.load(Ordering::SeqCst) && self.generation() == generation
     }
 }

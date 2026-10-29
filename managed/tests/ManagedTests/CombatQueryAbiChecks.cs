@@ -46,6 +46,10 @@ internal static class CombatQueryAbiChecks
             Check(EntryPoint.QueryCombat(memory, 48) == -1);
             Reset(48, 3);
             Check(EntryPoint.QueryCombat(memory, 48) == -1);
+            Reset(48, 28, 1); Check(EntryPoint.QueryCombat(memory, 48) == -1);
+            Reset(48, 28); Marshal.WriteInt32(memory, 20, 1); Check(EntryPoint.QueryCombat(memory, 48) == -1);
+            Reset(48, 28); Check(EntryPoint.QueryCombat(memory, 48) == 1 && Marshal.ReadInt32(memory, 40) == 52);
+            Reset(52, 28); Check(EntryPoint.QueryCombat(memory, 52) == 0 && Marshal.ReadInt32(memory, 48) == 0);
             // Capacity retries are read-only, including before any plugin has created an ACT graph.
             Reset();
             Check(EntryPoint.QueryCombat(memory, 48) == 1 && Marshal.ReadInt32(memory, 40) == 56);

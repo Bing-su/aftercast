@@ -149,6 +149,13 @@ namespace Advanced_Combat_Tracker
             }
         }
 
+        internal EncounterDetailData? ReadCurrentEncounter()
+        {
+            lock (CombatGate)
+                return !importingLogs && !startingCombat && !endingCombat && combatZone.ActiveEncounter is { } current
+                    ? Detail(current, false) : null;
+        }
+
         internal EncounterDetailData? ReadEncounter(ulong id, bool live)
         {
             lock (CombatGate)

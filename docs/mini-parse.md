@@ -1,30 +1,47 @@
 # Local mini parse preview
 
-The pinned ACT 3.8.5.288 IL (`test:original`, report-export-policy) has a
-one-second `tmrTick` and refreshes the visible mini parse at a configured
-1–60 tick interval, default 5. `UpdateMiniEnc` reads the active encounter and
-uses either the registered text format or ACT's default; the optional aligned
-font overload and native graph path are distinct. The IL probe is static: it
-does not run a native ACT window.
+Pinned ACT 3.8.5.288 IL (`test:original`, report-export-policy) has a
+one-second `tmrTick` and refreshes its visible mini window at a configured
+1–60 tick interval, default 5. `UpdateMiniEnc` reads the active zone's current
+encounter and uses the selected registered text format or ACT's default.
+`EndCombat` calls `UpdateMiniEnc` when the window is visible; the ordinary tick
+skips mini refresh while out of combat. The original thus refreshes its final
+frame at combat end and retains it while idle. These are static IL checks, not
+native ACT execution.
 
-The analysis screen offers an explicitly started local preview of the active
-live encounter. It uses the same registered formatter/sort callbacks and
-revision-checked text report as ordinary reports, choosing ACT's default or an
-explicitly saved local text profile. The 1–60 second interval and profile name
-persist in app settings; starting or stopping is not persisted. Missing profiles
-or their missing sort registration are shown as errors. Unregistered formatter
-variables keep the existing ACT-compatible token behavior. Plugin-registered
-presets can be copied into a local profile in the text-report editor.
+The analysis panel and an optional singleton nonmodal Dioxus window share one
+local preview and at most one accepted request per session. Repeated Open focuses
+the existing window. The window continues through main-page navigation, closes
+on host/session invalidation, and may be reopened. Closing the last view stops
+refreshing. A pending creation or result is generation-checked before use; an
+accepted in-flight request must finish before another is admitted in that session.
+The isolated worker still cannot preempt arbitrary native plugin hangs.
 
-Only one request is admitted at a time in a session, including after Stop or
-collapse until its accepted request finishes. Responses from older sessions,
-settings, hidden screens or encounters are discarded. Native plugin callbacks
-remain subject to the existing worker isolation limitations. The display is
-escaped text with an explicit 64 KiB preview limit; empty text and no active
-live encounter are distinct. No clipboard, network, audio or game input is used
-by this preview. It stops on collapse, navigation or host shutdown.
+The current-zone encounter endpoint excludes imports and incomplete transitions.
+It retains the last ended encounter, rather than treating idle as an empty
+result. The first poll after ending captures the final frame and subsequent idle
+polls skip formatting until an encounter, settings or registered formatter catalog changes. Unlike ACT's direct
+end callback, this can take up to the configured interval plus worker latency.
+No current encounter retains the previous frame, if any. A new encounter changes
+the identity and is rendered; both pre- and post-render identity/status are
+checked to discard stale results.
 
-ACT uses a separate native mini window, reads the active zone’s encounter, and
-supports column-aligned native font output and native graph. This bounded first slice uses
-an embedded panel and returns no encounter outside live combat; it does not claim
-native visuals, click-through, opacity, graph rendering or Windows execution.
+Both views reuse the existing registered formatter/sort callbacks, catalog
+revision and bounded report path, with ACT's default or a saved local text
+profile. The interval and profile name persist in app settings; starting is not
+persisted. Missing profiles or their missing sort registration are shown as
+errors. Unregistered formatter variables keep the existing ACT-compatible token
+behavior. Plugin presets can be copied to a local profile in the report editor.
+
+Output is escaped text with an explicit 64 KiB preview limit; empty text and no
+current encounter are distinct. No clipboard, network, audio or game input is
+used by this preview. ACT's native mini window, click-through, opacity, graph and
+native font alignment are not reproduced. No native window clicks or Windows
+execution have been validated.
+
+ACT’s native graph branch passes the selected format’s sorting key and the
+mini picture-box dimensions to `GenEncounterGraph`; its aligned text branch
+passes the native control font to the `GetTextExport` overload. The existing
+`GraphNumeric`/`GraphSvg` path serves static hierarchy reports and is not yet
+wired to this window or validated as the native mini graph. Font measurement,
+click-through and opacity remain separate native compatibility work.

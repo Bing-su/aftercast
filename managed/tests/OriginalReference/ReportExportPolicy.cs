@@ -32,7 +32,9 @@ internal static class ReportExportPolicy
         Call(mini,0x0042,"get_ActiveZone");Call(mini,0x0047,"get_ActiveEncounter");
         Check(Name(mini,0x010b)=="defaultTextFormat"&&Name(mini,0x0114)=="textExportFormats"&&Name(mini,0x0135)=="cbMiniColumnAlign","mini text format selection");
         Call(mini,0x015e,"GetTextExport");Call(mini,0x0173,"GetTextExport");Call(mini,0x019c,"ControlSetText");
+        var end=Body("EndCombat","export");Call(end,0x0748,"get_Visible");Call(end,0x0750,"UpdateMiniEnc");
         var tick=Body("tmrTick_Tick","sender","e");
+        Call(tick,0x0332,"get_InCombat");Check(tick[0x0337]==OpCodes.Brfalse.Value,"idle skips mini refresh");
         Check(Name(tick,0x0589)=="nudMiniUpdateInterval"&&tick[0x0598]==OpCodes.Rem.Value,"mini interval modulo");Call(tick,0x059f,"UpdateMiniEnc");
         var miniOptions=NamedBody("Options_MiniParse","InitializeComponent");
         Check(miniOptions[0x050d]==OpCodes.Ldc_I4_S.Value&&miniOptions[0x050e]==60&&miniOptions[0x0528]==OpCodes.Ldc_I4_1.Value&&miniOptions[0x0572]==OpCodes.Ldc_I4_5.Value,"mini interval bounds and default");
