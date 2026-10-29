@@ -125,11 +125,10 @@ Linux. The .NET encoding probe and existing native Windows QA remain separate.
 
 ## Remaining validation and follow-up
 
-Companion registration/dispatch and source matching remain separate finite tasks.
-Windows native import, legacy Framework code-page equivalence and actual plugin/UI
-behavior remain unexecuted. This does not claim arbitrary .NET encodings or
-live-follower encoding parity. The existing LogFollower forward reader and backward zone-context search
-both hardcode strict UTF-8, but ACT uses different constructors for ReadLog and
-FindZoneName. The verified [follower scope](follower-encoding.md) separates these
-policies; forward plugin encoding must not be copied blindly into zone search.
-Follower implementation remains the next Linux unit.
+The forward follower and independent initial-zone policies are now implemented;
+see [follower encodings](follower-encoding.md), including the explicit nonzero-tail
+BOM difference. Companion registration/dispatch and bounded source proposals are
+also connected; see [companion/source continuation](companion-source-plan.md).
+Windows native import, legacy Framework code-page equivalence and actual
+plugin/UI behavior remain unexecuted. This does not claim arbitrary .NET encoding
+support or native follower timing parity.

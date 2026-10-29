@@ -87,7 +87,9 @@ This is Linux managed/IL contract evidence, not native ACT export execution.
 Bridge/Rust session-typed hierarchy selection and actual isolated-worker tests are
 connected below. GUI depth selection and new-file save are connected as described below.
 
-## Remaining existing HTML/graph work, in order
+## Historical HTML/graph implementation plan
+
+This plan predates the connected graph implementation recorded in the later checkpoint sections; its imperative steps are historical, not a current to-do list.
 
 1. Static HTML table hierarchy is connected through managed capture/render,
    Bridge/Rust and the explicit multi-encounter/level/key/sort GUI with safe source

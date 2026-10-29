@@ -145,7 +145,7 @@ Once publication is admitted, the explicit save may complete after Stop, and lat
 UI replies remain ignored. This boundary is stated beside the save action. A
 completed file is not deleted to simulate cancellation. Failed saves preserve the
 preview and path for retry. Callback/render failures preserve the draft and never
-save a partial result. Real clipboard access and upload are absent. Current-table HTML/XML uses the separate explicit editor in the same panel; hierarchical static-table HTML has its separate multi-encounter editor and shared source save; graph output remains unfinished.
+save a partial result. Real clipboard access and upload are absent. Current-table HTML/XML uses the separate explicit editor in the same panel; hierarchical static-table HTML has its separate multi-encounter editor and shared source save; bounded static hierarchy graph output is connected; custom GDI delegates, arbitrary dimensions and native visual fidelity remain open.
 
 Synthetic file tests inject write/flush failures and publication races; actual
 isolated-Host controller tests exercise preset copy, Unicode bytes, repeated save,

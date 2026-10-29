@@ -67,15 +67,12 @@ DateTime's maximum day and 100 ns precision without timezone conversion.
 The Windows desktop scenario is discoverable but unexecuted on ser7; native
 clicks, focus and Windows runtime/input remain separate QA.
 
-## Remaining ACT compatibility assessment
+## Current ACT compatibility assessment
 
-| Gap                       | Assessment and next boundary                                                                                                                                                                                                                                                                                                             |
-| ------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Configurable LogEncoding  | Managed reader and explicit Bridge/Rust options are implemented with strict/standard-replacement policies and byte-progress regressions. Shared GUI selection, request snapshots and session-only drafts are connected with Host controller regressions. See [import encodings](import-encoding.md); no locale or content guess is used. |
-| Companion logs            | A real ACT pipeline gap. Linux can test synthetic synchronized streams, cancellation/ordering, missing files and cleanup. This requires companion registration/dispatch and bounded multi-reader ownership beyond the single-file range unit. Native plugin-specific companion effects still need Windows QA.                            |
-| Automatic source matching | Folder/character hints do not establish identity. Keep explicit source selection for this unit; evaluate ACT's metadata-based matching separately with missing/ambiguous-file behavior.                                                                                                                                                  |
-
-Live-follower encoding is implemented with the [documented reference limits](follower-encoding.md).
-Companion dispatch and automatic source matching remain tracked in the finite
-[companion/source continuation](companion-source-plan.md). See the encoding contract
-for the supported decoder scope and native QA limits.
+Configurable import encodings, companion dispatch and bounded explicit source
+matching are now connected. Their precise scopes, resource limits and original
+reference differences are in [import encodings](import-encoding.md), [follower
+encodings](follower-encoding.md) and [companion/source continuation](companion-source-plan.md).
+Source metadata is advisory, not proof of historical identity; no ambiguous
+candidate is silently selected. Actual Windows/plugin timing and native UI
+remain unverified.
