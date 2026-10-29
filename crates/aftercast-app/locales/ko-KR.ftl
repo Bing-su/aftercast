@@ -845,3 +845,13 @@ odbc-current = 현재 표 미리보기
 odbc-hierarchy = 다섯 표 미리보기
 
 appearance-runtime-conflict = 플러그인의 실행 중 색상이 편집 값과 다릅니다. 표에는 실행 중인 값이 적용되며 초안은 유지됩니다.
+
+odbc-batch = 선택 전투 일괄 미리보기
+odbc-batch-help = 아래 HTML 보고서에서 전투를 선택하세요. 규칙은 오프라인 매개변수 템플릿과 고정 합성 라벨 offline-preview에만 적용합니다. 일관된 테이블 이름 변경만 지원하며 값에 의존하는 규칙은 평가할 수 없습니다.
+odbc-batch-select = HTML 보고서에서 전투를 하나 이상 선택하세요.
+odbc-rule-connection = 합성 연결 정규식
+odbc-rule-find = SQL 템플릿 정규식
+odbc-rule-replacement = 대체 문자열
+odbc-rule-add = 규칙 추가
+odbc-rule-remove = 삭제
+odbc-rule-invalid = SQL 규칙이 잘못됐거나 너무 많습니다.

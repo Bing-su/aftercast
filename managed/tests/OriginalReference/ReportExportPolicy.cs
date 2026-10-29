@@ -96,6 +96,12 @@ internal static class ReportExportPolicy
         var currentOdbc=Body("GenerateCurrentOdbc");
         Check(Literal(currentOdbc,0x004f)=="DELETE FROM current_table;" && Literal(currentOdbc,0x018e)=="encid", "current table reset and EncId special case");
         Check(Name(currentOdbc,0x01a2)=="GetSqlData" && currentOdbc[0x01b0]==OpCodes.Ldsfld.Value,"current table skips EncId callback");
+        var batch=Body("ThreadOdbcExportBatch");
+        Call(batch,0x001c,"get_CheckBoxes"); Call(batch,0x005c,"get_Checked"); Call(batch,0x007f,"ThreadOdbcExportSingle");
+        var hackCtor=NamedBody("OdbcHack",".ctor","ConnectionStringMatch","SqlFind","SqlReplace");
+        Check(hackCtor[0x001d]==OpCodes.Ldc_I4_8.Value && hackCtor[0x002a]==OpCodes.Ldc_I4_8.Value,"ODBC regexes use compiled option without ignore-case");
+        var hack=Body("HackOdbc","Input");
+        Call(hack,0x0025,"get_RegexConnectionString"); Call(hack,0x003a,"IsMatch"); Call(hack,0x0042,"get_RegexFind"); Call(hack,0x0048,"IsMatch"); Call(hack,0x0057,"get_SqlReplace"); Call(hack,0x005c,"Replace");
         var odbc=Body("ThreadOdbcExportSingle");
         Check(Name(odbc,0x001b)=="OutgoingDamageTypeDataObjects" && Name(odbc,0x004e)=="IncomingDamageTypeDataObjects", "ODBC uses last registered direction keys");
         Call(odbc,0x0891,"get_Type");Call(odbc,0x08a0,"get_Type");Call(odbc,0x0b37,"get_Type");Call(odbc,0x0b49,"get_Type");

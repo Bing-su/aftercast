@@ -20,7 +20,7 @@ public static partial class EntryPoint
         const int header = 32;
         if (buffer == 0 || sizeBytes < header) throw new ArgumentException("Invalid table report buffer");
         var command = Marshal.ReadInt32(buffer, 16);
-        var capacity = command switch { 1 => 56 * 1024 * 1024, 2 => 16 * 1024 * 1024 + 20, 3 => 4096, 4 => 16 * 1024 * 1024 + 32, 5 => 4096, 6 => 16 * 1024 * 1024 + 1024, 7 or 8 => 32 * 1024 * 1024, _ => throw new ArgumentException("Invalid table report command") };
+        var capacity = command switch { 1 => 56 * 1024 * 1024, 2 => 16 * 1024 * 1024 + 20, 3 => 4096, 4 => 16 * 1024 * 1024 + 32, 5 => 4096, 6 => 16 * 1024 * 1024 + 1024, 7 or 8 or 9 => 32 * 1024 * 1024, _ => throw new ArgumentException("Invalid table report command") };
         // Reserve the bounded binary reply before callbacks; UTF-8 content needs no JSON re-escaping or retry.
         if (sizeBytes != header + capacity) throw new ArgumentException("Invalid table report capacity");
         ValidateHeader(buffer, sizeBytes, "Table report ABI size/version mismatch");
@@ -37,7 +37,7 @@ public static partial class EntryPoint
         }
         var request = JsonSerializer.Deserialize<TableReportRequest>(json, HostJson.Options)
             ?? throw new ArgumentException("Missing table report request");
-        if(command != 7 && request.OdbcHierarchy is not null || command != 8 && request.OdbcCurrent is not null) throw new ArgumentException("Unexpected ODBC fields");
+        if(command is not (7 or 9) && request.OdbcHierarchy is not null || command != 8 && request.OdbcCurrent is not null) throw new ArgumentException("Unexpected ODBC fields");
         if(command <= 4 && (request.Html is not null || request.HtmlLevels is not null || request.Graphs is not null))throw new ArgumentException("Unexpected HTML hierarchy fields");
         var valid = command switch
         {
@@ -48,6 +48,7 @@ public static partial class EntryPoint
             5 => request.Scope is null && request.Revision == 0 && request.Options is null && request.Hierarchy is null && request.HtmlLevels is null && request.Graphs is null && request.Html is {} html && html.Encounters is {Length:>=1 and <=64} ids && ids.All(id=>id!=0) && ids.Distinct().Count()==ids.Length && html.LastLevel is >=TableLevel.Combatant and <=TableLevel.Action,
             6 => request.Scope is null && request.Revision != 0 && request.Options is null && request.Hierarchy is null && request.Html is null && request.HtmlLevels is {} levels && ValidHtmlLevels(levels),
             7 => request.Scope is null && request.Revision != 0 && request.Options is null && request.Hierarchy is null && request.Html is null && request.HtmlLevels is null && request.Graphs is null && request.OdbcHierarchy is not null,
+            9 => request.Scope is null && request.Revision != 0 && request.Options is null && request.Hierarchy is null && request.Html is null && request.HtmlLevels is null && request.Graphs is null && request.OdbcHierarchy is not null,
             8 => request.Scope is null && request.Revision != 0 && request.Options is null && request.Hierarchy is null && request.Html is null && request.HtmlLevels is null && request.Graphs is null && request.OdbcCurrent is not null,
             _ => false
         };
@@ -74,7 +75,7 @@ public static partial class EntryPoint
     });
 }
 internal sealed record TableReportRequest(TableScope? Scope = null, ulong Revision = 0, TableReportOptions? Options = null, HierarchyXmlRequest? Hierarchy = null, HierarchyHtmlRequest? Html = null, HierarchyHtmlLevel[]? HtmlLevels = null, HierarchyHtmlGraphOptions? Graphs = null, OdbcHierarchyRequest? OdbcHierarchy = null, string[]? OdbcCurrent = null);
-internal sealed record OdbcHierarchyRequest(string[][] DestinationColumns, string AllTerm);
+internal sealed record OdbcHierarchyRequest(string[][] DestinationColumns, string AllTerm, OdbcRewriteRule[]? Rules = null);
 internal sealed record HierarchyHtmlRequest(ulong[] Encounters,TableLevel LastLevel);
 internal sealed record HierarchyXmlRequest(ulong EncounterId, HierarchyXmlDepth Depth);
 internal static class TableReportEncoding
@@ -178,8 +179,14 @@ internal static class OdbcEncoding
 {
     internal static byte[] Encode(HostEnvironment host, int command, TableReportRequest request, int capacity)
     {
-        var plans = command == 7 ? host.ReadOdbcHierarchy(request.Revision, request.OdbcHierarchy!.DestinationColumns, request.OdbcHierarchy.AllTerm).Tables :
-            [host.PreviewOdbcTable(request.Revision, request.OdbcCurrent!, current:true)];
+        if (command == 9 && request.OdbcHierarchy!.Rules is {} preflight) _ = OdbcRewrite.Apply([], preflight);
+        if (command == 7 && request.OdbcHierarchy!.Rules is not null) throw new ArgumentException("SQL rules require a batch preview");
+        var plans = command switch {
+            7 => host.ReadOdbcHierarchy(request.Revision, request.OdbcHierarchy!.DestinationColumns, request.OdbcHierarchy.AllTerm).Tables,
+            9 => host.ReadOdbcBatch(request.Revision, request.OdbcHierarchy!.DestinationColumns, request.OdbcHierarchy.AllTerm).Tables,
+            _ => [host.PreviewOdbcTable(request.Revision, request.OdbcCurrent!, current:true)]
+        };
+        if (command == 9 && request.OdbcHierarchy!.Rules is {} rules) plans = OdbcRewrite.Apply(plans, rules);
         using var stream = new MemoryStream();
         using var writer = new BinaryWriter(stream, new UTF8Encoding(false,true), true);
         void Budget(long count) { if (count < 0 || stream.Length + count > capacity) throw new InvalidDataException("ODBC preview exceeds response capacity"); }

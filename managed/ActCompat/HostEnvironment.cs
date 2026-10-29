@@ -205,6 +205,7 @@ namespace Aftercast.ActCompat
         public void ApplyColorScalars(bool invert, decimal luminosity, decimal saturation) => RunWithLogReadingSuspended(() => main.ApplyColorScalars(invert,luminosity,saturation));
         public TableReport ReadTableReport(ulong revision, TableReportOptions options) => main.ReadTableReport(revision,options);
         public OdbcHierarchyPreview ReadOdbcHierarchy(ulong revision, string[][] destinationColumns, string allTerm) => main.ReadOdbcHierarchy(revision,destinationColumns,allTerm);
+        public OdbcHierarchyPreview ReadOdbcBatch(ulong revision, string[][] destinationColumns, string allTerm) => main.ReadOdbcBatch(revision,destinationColumns,allTerm);
         public OdbcPreview PreviewOdbcTable(ulong revision, string[] destinationColumns, bool encounter = false, bool current = false) => main.PreviewOdbcTable(revision,destinationColumns,encounter,current);
         public TablePageData? ReadTable(TableQuery query) => main.ReadTable(query);
         public TextReportCatalog ReadTextReportCatalog() => main.ReadTextReportCatalog();

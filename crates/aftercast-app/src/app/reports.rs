@@ -124,6 +124,12 @@ enum Request {
     ),
     Hierarchy(EncounterId, aftercast::HierarchyXmlDepth, String),
     Odbc(EncounterId, bool, String, String),
+    OdbcBatch(
+        Vec<EncounterId>,
+        String,
+        Vec<aftercast::OdbcRewriteRule>,
+        String,
+    ),
     Catalog,
     TableCatalog(aftercast::TableScope),
     TableRender(
@@ -620,6 +626,10 @@ async fn perform(handle: &HostHandle, request: &Request) -> Result<Reply, String
                 candidates.as_ref(),
             )
             .await
+        }
+        Request::OdbcBatch(encounters, all_term, rules, title) => {
+            let text = odbc::render_batch(handle, encounters, all_term, rules).await?;
+            Ok(Reply::Odbc(text, title.clone()))
         }
         Request::Odbc(target, current, all_term, title) => {
             let text = odbc::render(handle, *target, *current, all_term).await?;

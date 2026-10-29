@@ -53,6 +53,7 @@ internal static class TableReportChecks
     {
         HostLifetimeChecks.RunBounded(OfflineOdbc);
         HostLifetimeChecks.RunBounded(OfflineOdbcHierarchy);
+        HostLifetimeChecks.RunBounded(OfflineOdbcBatch);
         HostLifetimeChecks.RunBounded(XmlAndSelection);
         HostLifetimeChecks.RunBounded(XmlCharacters);
         HostLifetimeChecks.RunBounded(HtmlEscaping);
@@ -155,6 +156,42 @@ internal static class TableReportChecks
             Throws<InvalidOperationException>(()=>f.Host.ReadOdbcHierarchy(snapshot.Revision,names,"All"));
         }
         finally { EncounterData.ColumnDefs.Remove("offline-odbc-hierarchy"); }
+    }
+    private static void OfflineOdbcBatch()
+    {
+        using var f=new Fixture(); var zone=f.Root.ZoneList[0];
+        var second=new EncounterData("A","Second synthetic",zone); zone.Items.Add(second);
+        var ids=f.Host.ListEncounters(0,16).Items.Select(x=>x.Id).ToArray(); var other=ids.Single(id=>id!=f.Id);
+        var failSecond=false;
+        EncounterData.ColumnDefs["offline-batch"] = new("fixture",true,"TEXT","enc_fixture",_=>"cell",value=>{
+            Check(Environment.CurrentManagedThreadId==f.Owner && (ReferenceEquals(value,f.Encounter)||ReferenceEquals(value,second)),"batch encounter owner");
+            if(failSecond && ReferenceEquals(value,second)) throw new IOException("synthetic second encounter failure");
+            return ReferenceEquals(value,f.Encounter)?"first":"second";
+        });
+        try
+        {
+            var capture=f.Host.CaptureHierarchyHtml([other,f.Id],TableLevel.Action)!;
+            var names=new[]{new[]{"enc_fixture"},new[]{"sql_name"},new[]{"category_sql"},new[]{"attack_sql"},new[]{"action_sql"}};
+            var plan=f.Host.ReadOdbcBatch(capture.Revision,names,"All");
+            Check(capture.Encounters.SequenceEqual([f.Id,other]),"batch tree order");
+            Check(plan.Tables.Length==5 && plan.Tables[0].Parameters.Select(row=>row[0]).SequenceEqual(["first","second"]),"atomic batch encounter order");
+            var longName=new string('a',1200); var wide=plan.Tables[0] with { Table=longName, CreateSql=$"CREATE TABLE \"{longName}\" (\"x\" TEXT);", InsertSql=$"INSERT INTO \"{longName}\" (\"x\") VALUES (?);" };
+            var expanding=new OdbcRewriteRule(".*","a+",string.Concat(Enumerable.Repeat("$0",500)));
+            Throws<InvalidDataException>(()=>OdbcRewrite.Apply([wide],[expanding]));
+            var expandingSuffix=new OdbcRewriteRule(".*","a+",string.Concat(Enumerable.Repeat("$'",500)));
+            Throws<InvalidDataException>(()=>OdbcRewrite.Apply([wide],[expandingSuffix]));
+            var sink=new SyntheticHierarchySink();sink.Commit(plan);
+            failSecond=true;
+            Throws<IOException>(()=>sink.Commit(f.Host.ReadOdbcBatch(capture.Revision,names,"All"))); failSecond=false;
+            Check(ReferenceEquals(sink.Value,plan),"later encounter failure cannot publish a partial batch");
+            f.Callback=()=>throw new IOException("synthetic batch failure");
+            Throws<IOException>(()=>sink.Commit(f.Host.ReadOdbcBatch(capture.Revision,names,"All"))); f.Callback=null;
+            Check(ReferenceEquals(sink.Value,plan),"failure cannot publish a partial batch");
+            f.Host.CaptureHierarchyHtml([f.Id],TableLevel.Action);
+            Throws<InvalidOperationException>(()=>f.Host.ReadOdbcBatch(capture.Revision,names,"All"));
+            Throws<ArgumentException>(()=>f.Host.CaptureHierarchyHtml([f.Id,f.Id],TableLevel.Action));
+        }
+        finally { EncounterData.ColumnDefs.Remove("offline-batch"); }
     }
     private sealed class SyntheticHierarchySink
     {

@@ -56,3 +56,34 @@ selection, native batch policy, SQL hacks or driver behavior. Native ACT ODBC ex
 review remain unverified. The managed `current_table` preview returns an inert
 reset statement and inserts an empty EncId without invoking its callback, as
 verified against original IL. This does not delete any table or data.
+
+## Multi-encounter preview and SQL rules
+
+The pinned `ThreadOdbcExportBatch` IL iterates checked encounter nodes in tree
+order; without checkboxes it uses one selected encounter. ACT's `HackOdbc`
+applies each ordered rule when its compiled, case-sensitive connection regex and
+SQL regex match, then runs .NET regex replacement. Its original path operates on
+SQL containing literal values and the configured connection string. No actual
+connection string, DSN, credentials, driver or database are read here.
+
+Aftercast reuses the owned full-depth HTML hierarchy capture for 1–64 distinct
+encounters in tree order. The preview groups rows by table (preserving encounter
+order within each table); ACT's batch executes all tables per encounter, so this
+is not a reproduction of cross-table execution order. One owner-guarded operation builds all five plans under
+the existing shared capture, callback, 8 MiB and cooperative time limits. A
+failure returns no plan; it does not roll back effects inside arbitrary third-party
+callbacks. Selection, table registrations, category registrations and session
+revision are checked around callbacks. Current-table preview stays separate.
+
+Rules in the editor are session-local drafts; they are not loaded from or saved
+to ACT's ODBC settings. The optional ordered rules match only a fixed `offline-preview` synthetic
+connection label and the **parameterized template**, never a connection string or
+literal values. Only a consistently renamed quoted table identifier is accepted
+in both CREATE and INSERT; changing columns, statement syntax, placeholders or
+only one of the two targets is an explicit unsupported error. Rules that depend
+on literal values cannot be evaluated faithfully, including when they happen not
+to match the template. Patterns are bounded and match operations use 50 ms regex
+timeouts, a cooperative two-second rule budget and bounded output; regex
+construction and uncooperative native plugin callbacks cannot be preempted.
+The output remains a preview and is not a valid claim of native driver execution,
+ACT literal-SQL equivalence or external database atomicity.

@@ -184,7 +184,7 @@ fn capacity(command: u32) -> usize {
         3 | 5 => 4096,
         4 => MAX_CONTENT + 32,
         6 => MAX_CONTENT + 1024,
-        7 | 8 => 32 * 1024 * 1024,
+        7..=9 => 32 * 1024 * 1024,
         _ => REPORT_CAPACITY,
     }
 }

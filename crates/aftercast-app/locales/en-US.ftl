@@ -845,3 +845,13 @@ odbc-current = Preview current table
 odbc-hierarchy = Preview five tables
 
 appearance-runtime-conflict = Plugin runtime colors differ from this draft. The table uses runtime values; your draft is unchanged.
+
+odbc-batch = Preview selected encounters
+odbc-batch-help = Select encounters in the HTML report section below. Rules apply to offline parameterized templates and the fixed synthetic label offline-preview. Only consistent table-name changes are supported; value-dependent rules and other SQL changes are rejected or cannot be evaluated.
+odbc-batch-select = Select one or more encounters in the HTML report section.
+odbc-rule-connection = Synthetic connection regex
+odbc-rule-find = SQL template regex
+odbc-rule-replacement = Replacement
+odbc-rule-add = Add rule
+odbc-rule-remove = Remove
+odbc-rule-invalid = Invalid or too many SQL rules.

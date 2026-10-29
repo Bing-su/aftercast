@@ -243,6 +243,6 @@ pub use vcr::{
 /// In-memory encounter log search and copy-text generation.
 pub mod log_search;
 
-pub use odbc::{OdbcColumn, OdbcHierarchyPreview, OdbcPreview};
+pub use odbc::{OdbcColumn, OdbcHierarchyPreview, OdbcPreview, OdbcRewriteRule};
 
 pub use color_settings::{ColorControls, ColorScalars, RuntimeColors};

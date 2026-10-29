@@ -5,8 +5,8 @@ use std::collections::HashSet;
 const MAX_CONTENT: usize = 16 * 1024 * 1024;
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct HierarchyHtmlSelection {
-    session: u64,
-    revision: u64,
+    pub(crate) session: u64,
+    pub(crate) revision: u64,
     encounters: Vec<EncounterId>,
     last_level: TableLevel,
     tables: u32,
