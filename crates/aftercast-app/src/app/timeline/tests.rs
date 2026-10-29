@@ -99,6 +99,7 @@ async fn timeline_ui_contract_actual_host_snapshot_range_and_lifecycle() {
     assert_eq!(logs_at(&loaded, 5.0, 5.0), vec![1]);
     assert_eq!(logs_at(&loaded, 10.0, 1.0), vec![2]);
     assert_eq!(loaded.logs[2].text, "10|200|Target");
+    super::log_window::verify_retained_view(&loaded);
     assert_eq!(point_time(&loaded, loaded.points as usize), None);
     assert!(!graph_points(&[0, 10, 20], 0, 3, 20.0).is_empty());
     let (cancelled, _) = controller.begin().expect("begin cancel");

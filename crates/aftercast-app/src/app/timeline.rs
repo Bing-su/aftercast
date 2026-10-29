@@ -475,7 +475,7 @@ fn TimelineResults(
                                 state.write().error = Some("Session ended.".into());
                             }
                         },
-                        "Open logs for range"
+                        "Open retained logs and highlight range"
                     }
                 }
             }

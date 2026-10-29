@@ -4,6 +4,36 @@ use dioxus::desktop::{Config, LogicalSize, WindowBuilder, WindowCloseBehaviour};
 use dioxus::prelude::*;
 use std::sync::Arc;
 
+const PAGE_SIZE: usize = 100;
+
+#[derive(Clone, Copy)]
+struct LogView {
+    time: f64,
+    width: f64,
+    start: usize,
+}
+impl LogView {
+    fn new(report: &TimelineReport, time: f64, width: f64) -> Self {
+        let mut view = Self {
+            time,
+            width,
+            start: 0,
+        };
+        view.select(report, time);
+        view
+    }
+    fn select(&mut self, report: &TimelineReport, time: f64) {
+        self.time = time;
+        self.start = logs_at(report, time, self.width)
+            .first()
+            .copied()
+            .unwrap_or(0);
+    }
+    fn matches(&self, seconds: f64) -> bool {
+        seconds >= self.time && seconds < self.time + self.width
+    }
+}
+
 #[derive(Clone)]
 struct Props {
     endpoint: ContextEndpoint,
@@ -46,8 +76,7 @@ pub(super) fn open(
 fn root(props: Props) -> Element {
     let endpoint = use_hook(|| props.endpoint.clone());
     let report = use_hook(|| props.report.clone());
-    let indices = use_hook(|| logs_at(&report, props.time, props.width));
-    let mut page = use_signal(|| 0_usize);
+    let mut view = use_signal(|| LogView::new(&report, props.time, props.width));
     let mut valid = use_signal(|| endpoint.valid());
     let window = dioxus::desktop::use_window();
     use_future(move || {
@@ -61,8 +90,11 @@ fn root(props: Props) -> Element {
             window.close();
         }
     });
-    let start = page().saturating_mul(100);
-    let end_time = props.time + props.width;
+    let current = view();
+    let start = current.start;
+    let end_time = current.time + current.width;
+    let max_time = f64::from(report.points) * current.width;
+    let has_matches = !logs_at(&report, current.time, current.width).is_empty();
     let theme = props.endpoint.appearance.theme.clone();
     rsx! {
         style { {include_str!("../../../assets/tailwind.css")} }
@@ -79,27 +111,72 @@ fn root(props: Props) -> Element {
                     p { role: "alert", "Session ended or changed." }
                 } else {
                     p {
-                        "Frozen range: +{props.time}s to +{end_time}s (end excluded). Omitted logs: {report.dropped_logs}."
+                        "Retained encounter logs: {report.logs.len()}. Omitted by retention limit: {report.dropped_logs}. This is not the complete game log."
                     }
-                    if indices.is_empty() {
+                    if report.summary.status == 3 {
+                        p { role: "note",
+                            "This encounter is a partial import; retained logs may be incomplete."
+                        }
+                    }
+                    p { "Highlighted range: +{current.time}s to +{end_time}s (end excluded)." }
+                    div { class: "flex gap-2",
+                        Button {
+                            variant: ButtonVariant::Outline,
+                            disabled: current.time <= current.width,
+                            onclick: {
+                                let report = report.clone();
+                                move |_| {
+                                    let mut next = view();
+                                    next.select(&report, (next.time - next.width).max(next.width));
+                                    view.set(next);
+                                }
+                            },
+                            "Previous range"
+                        }
+                        Button {
+                            variant: ButtonVariant::Outline,
+                            disabled: current.time >= max_time,
+                            onclick: {
+                                let report = report.clone();
+                                move |_| {
+                                    let mut next = view();
+                                    next.select(&report, (next.time + next.width).min(max_time));
+                                    view.set(next);
+                                }
+                            },
+                            "Next range"
+                        }
+                    }
+                    if !has_matches {
                         p { "No retained logs in this range." }
                     }
-                    for index in indices.iter().skip(start).take(100) {
-                        if let Some(log) = report.logs.get(*index) {
-                            p { class: "whitespace-pre-wrap", "{log.time}: {log.text}" }
+                    for log in report.logs.iter().skip(start).take(PAGE_SIZE) {
+                        p { class: if current.matches(log.seconds) { "whitespace-pre-wrap bg-accent text-accent-foreground" } else { "whitespace-pre-wrap" },
+                            if current.matches(log.seconds) {
+                                "[Selected] "
+                            }
+                            "{log.time}: {log.text}"
                         }
                     }
                     div { class: "flex gap-2",
                         Button {
                             variant: ButtonVariant::Outline,
                             disabled: start == 0,
-                            onclick: move |_| page.set(page().saturating_sub(1)),
+                            onclick: move |_| {
+                                let mut next = view();
+                                next.start = next.start.saturating_sub(PAGE_SIZE);
+                                view.set(next);
+                            },
                             "Previous"
                         }
                         Button {
                             variant: ButtonVariant::Outline,
-                            disabled: start.saturating_add(100) >= indices.len(),
-                            onclick: move |_| page.set(page().saturating_add(1)),
+                            disabled: start.saturating_add(PAGE_SIZE) >= report.logs.len(),
+                            onclick: move |_| {
+                                let mut next = view();
+                                next.start = next.start.saturating_add(PAGE_SIZE);
+                                view.set(next);
+                            },
                             "Next"
                         }
                     }
@@ -107,4 +184,41 @@ fn root(props: Props) -> Element {
             }
         }
     }
+}
+
+#[cfg(test)]
+pub(super) fn verify_retained_view(report: &TimelineReport) {
+    let mut sample = report.clone();
+    let original = sample.logs.first().expect("fixture log").clone();
+    sample.logs = (0..205)
+        .map(|i| {
+            let mut line = original.clone();
+            line.seconds = if i == 150 || i == 151 {
+                10.0
+            } else if i == 152 {
+                11.0
+            } else {
+                0.0
+            };
+            line
+        })
+        .collect();
+    sample.dropped_logs = 9;
+    let mut first = LogView::new(&sample, 10.0, 1.0);
+    let other = LogView::new(&sample, 10.0, 1.0);
+    assert_eq!(first.start, 150);
+    assert!(first.matches(sample.logs[150].seconds));
+    assert!(first.matches(sample.logs[151].seconds));
+    assert!(!first.matches(sample.logs[152].seconds));
+    assert_eq!(sample.logs.len(), 205);
+    assert_eq!(sample.dropped_logs, 9);
+    first.select(&sample, 11.0);
+    assert_eq!(first.start, 152);
+    assert!(first.matches(sample.logs[152].seconds));
+    assert!(other.matches(sample.logs[150].seconds));
+    first.select(&sample, 99.0);
+    assert_eq!(first.start, 0);
+    assert!(logs_at(&sample, first.time, first.width).is_empty());
+    let reopened = LogView::new(&sample, 10.0, 1.0);
+    assert_eq!(reopened.start, 150);
 }

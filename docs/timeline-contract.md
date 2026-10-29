@@ -29,7 +29,7 @@ category series and retained logs under the same combat lock. The typed worker
 API returns an immutable, session-owned snapshot; a new capture retires old
 worker pages. The UI supports metric selection (including markers only), grouping,
 rolling or segmented samples, per-group visibility, shared or individual scale,
-a bounded point viewport and a separate frozen log window for the selected time
+a bounded point viewport and a separate frozen retained-log window highlighting the selected time
 range. Request options are snapshotted at admission and stale or canceled UI
 responses are ignored.
 
@@ -50,9 +50,7 @@ verified English localization; custom localization overrides remain unsupported.
 The chart is a simplified static line rendering, not a pixel copy of ACT's native
 mirrored filled graph; axis rounding uses a floating-point approximation and
 negative overflow values are visually clipped. Exact signed values remain visible
-at a selected point. ACT highlights a time in the full log window; aftercast
-opens the corresponding frozen half-open time range, retaining source order and
-showing the omitted-log count. A cancellation stops waiting for a response but
+at a selected point. ACT highlights a time in the full log window; aftercast shows the encounter’s retained snapshot in source order, highlights the selected half-open range and opens at its first retained match. The window allows changing ranges and paging all retained rows; it displays the omitted count and does not claim to contain the complete game log. A cancellation stops waiting for a response but
 an admitted worker request may still finish. Windows native execution, physical
 GUI interactions and independent review remain unverified.
 
