@@ -18,16 +18,25 @@ namespace Advanced_Combat_Tracker
         internal OdbcPreview PreviewOdbcTable(ulong revision, string[] destinationColumns, bool encounter = false, bool current = false)
         {
             EnsureTextReportOwner(); ArgumentNullException.ThrowIfNull(destinationColumns);
-            var names = destinationColumns.ToArray();
-            if (names.Length is < 1 or > MaximumColumns || names.Any(string.IsNullOrEmpty) ||
-                names.Distinct(StringComparer.CurrentCultureIgnoreCase).Count() != names.Length)
-                throw new ArgumentException("Invalid synthetic destination columns");
+            var names = destinationColumns.ToArray(); ValidateDestinationNames(names);
             lock (CombatGate)
             {
                 var capture = tableReportCapture;
                 if (capture is null || revision == 0 || revision != capture.Revision)
                     throw new InvalidOperationException("Report selection revision mismatch");
-                CheckTableReport(capture);
+                CheckTableReport(capture); activeTableQuery = true;
+                try { return BuildOdbcPreview(capture,names,encounter,current,null); }
+                finally { activeTableQuery = false; }
+            }
+        }
+        private static void ValidateDestinationNames(string[] names)
+        {
+            if (names.Length is < 1 or > MaximumColumns || names.Any(string.IsNullOrEmpty) ||
+                names.Distinct(StringComparer.CurrentCultureIgnoreCase).Count() != names.Length)
+                throw new ArgumentException("Invalid synthetic destination columns");
+        }
+        private OdbcPreview BuildOdbcPreview(ReportCapture capture, string[] names, bool encounter, bool current, Action? outerCheck)
+        {
                 if ((encounter || current) && capture.Scope.Level != TableLevel.Combatant)
                     throw new ArgumentException("Encounter preview requires an encounter-owned combatant snapshot");
                 if (encounter && current) throw new ArgumentException("Choose encounter or current table");
@@ -41,23 +50,7 @@ namespace Advanced_Combat_Tracker
                     TableLevel.Attack => "attacktype_table", TableLevel.Action => "swing_table",
                     _ => throw new ArgumentException("Unsupported synthetic ODBC scope")
                 };
-                var selected = new List<ColumnBinding>();
-                foreach (var name in names)
-                {
-                    ColumnText(name);
-                    var matches = snapshot.Bindings.Where(c => string.Equals(c.Metadata.SqlDataName, name,
-                        StringComparison.CurrentCultureIgnoreCase)).ToArray();
-                    if (matches.Length != 1 || matches[0].Sql is null)
-                        throw new InvalidDataException("Destination column is missing, ambiguous, or has no SQL callback");
-                    selected.Add(matches[0]);
-                }
-                var columns = selected.Select((c, index) => new OdbcPreviewColumn(names[index],
-                    ValidateSyntheticSqlType(c.Metadata.SqlDataType))).ToArray();
-                static string Quote(string value) => "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
-                var schema = $"CREATE TABLE {Quote(table)} ({string.Join(", ", columns.Select(c => Quote(c.Name.ToLower(CultureInfo.CurrentCulture)) + " " + c.SqlType))});";
-                var insert = $"INSERT INTO {Quote(table)} ({string.Join(", ", columns.Select(c => Quote(c.Name)))}) VALUES ({string.Join(", ", columns.Select(_ => "?"))});";
-                activeTableQuery = true;
-                try
+                var (selected, shape) = OdbcShape(snapshot, names, table, capture.Revision, current);
                 {
                     // Read every value before returning the complete plan; failures cannot publish a partial plan.
                     string[][] rows;
@@ -67,7 +60,7 @@ namespace Advanced_Combat_Tracker
                         void Check()
                         {
                             if (clock.Elapsed > TimeSpan.FromSeconds(2)) throw new TimeoutException("ODBC preview exceeded cooperative two-second budget");
-                            CheckTableReport(capture); RequireTableRevision(level, columnRevision);
+                            outerCheck?.Invoke(); CheckTableReport(capture); RequireTableRevision(level, columnRevision);
                             if (OwnerErrors.Item1 != errors) throw new InvalidOperationException("ODBC callback reported an owner-thread exception");
                         }
                         var row = new List<string>();
@@ -94,14 +87,29 @@ namespace Advanced_Combat_Tracker
                     }
                     else
                     {
-                        var values = ReadReportValues(capture, TableReportFormat.TableXml, [], selected.ToArray(), null, null, null, validateXml:false, blankEncId:current);
+                        var values = ReadReportValues(capture, TableReportFormat.TableXml, [], selected, null, null, null, outerCheck, validateXml:false, blankEncId:current);
                         rows = values.Rows.Select(row => row.Select(SyntheticSqlValue).ToArray()).ToArray();
                         values.Check();
                     }
-                    return new(revision, table, columns, schema, insert, rows, current ? "DELETE FROM \"current_table\";" : null);
+                    return shape with { Parameters = rows };
                 }
-                finally { activeTableQuery = false; }
+        }
+        private static (ColumnBinding[] Selected, OdbcPreview Shape) OdbcShape(ColumnSnapshot snapshot, string[] names, string table, ulong revision, bool current)
+        {
+            ValidateDestinationNames(names);
+            var selected = new List<ColumnBinding>();
+            foreach (var name in names)
+            {
+                ColumnText(name);
+                var matches = snapshot.Bindings.Where(c => string.Equals(c.Metadata.SqlDataName, name, StringComparison.CurrentCultureIgnoreCase)).ToArray();
+                if (matches.Length != 1 || matches[0].Sql is null) throw new InvalidDataException("Destination column is missing, ambiguous, or has no SQL callback");
+                selected.Add(matches[0]);
             }
+            var columns = selected.Select((c, index) => new OdbcPreviewColumn(names[index], ValidateSyntheticSqlType(c.Metadata.SqlDataType))).ToArray();
+            static string Quote(string value) => "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+            var schema = $"CREATE TABLE {Quote(table)} ({string.Join(", ", columns.Select(c => Quote(c.Name.ToLower(CultureInfo.CurrentCulture)) + " " + c.SqlType))});";
+            var insert = $"INSERT INTO {Quote(table)} ({string.Join(", ", columns.Select(c => Quote(c.Name)))}) VALUES ({string.Join(", ", columns.Select(_ => "?"))});";
+            return (selected.ToArray(), new(revision, table, columns, schema, insert, [], current ? "DELETE FROM \"current_table\";" : null));
         }
         private static string ValidateSyntheticSqlType(string value)
         {

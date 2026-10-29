@@ -76,6 +76,9 @@ internal static class ReportExportPolicy
         Check(Literal(currentOdbc,0x004f)=="DELETE FROM current_table;" && Literal(currentOdbc,0x018e)=="encid", "current table reset and EncId special case");
         Check(Name(currentOdbc,0x01a2)=="GetSqlData" && currentOdbc[0x01b0]==OpCodes.Ldsfld.Value,"current table skips EncId callback");
         var odbc=Body("ThreadOdbcExportSingle");
+        Check(Name(odbc,0x001b)=="OutgoingDamageTypeDataObjects" && Name(odbc,0x004e)=="IncomingDamageTypeDataObjects", "ODBC uses last registered direction keys");
+        Call(odbc,0x0891,"get_Type");Call(odbc,0x08a0,"get_Type");Call(odbc,0x0b37,"get_Type");Call(odbc,0x0b49,"get_Type");
+        Check(Literal(odbc,0x0b54)=="attackTypeTerm-all", "ODBC swing uses localized All term");
         foreach(var (offset,tableName) in new[]{(0x0360,"encounter_table"),(0x05c4,"combatant_table"),(0x0850,"damagetype_table"),(0x0af6,"attacktype_table"),(0x0d0c,"swing_table")})
             Check(Literal(odbc,offset)==$"INSERT INTO {tableName} ({{1}}) VALUES ({{0}});","original ODBC table and literal format");
         foreach(var offset in new[]{0x0308,0x056c,0x07f8,0x0a9e,0x0cb4})Call(odbc,offset,"SqlSafe");

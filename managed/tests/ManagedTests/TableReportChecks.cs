@@ -52,6 +52,7 @@ internal static class TableReportChecks
     internal static void Run()
     {
         HostLifetimeChecks.RunBounded(OfflineOdbc);
+        HostLifetimeChecks.RunBounded(OfflineOdbcHierarchy);
         HostLifetimeChecks.RunBounded(XmlAndSelection);
         HostLifetimeChecks.RunBounded(XmlCharacters);
         HostLifetimeChecks.RunBounded(HtmlEscaping);
@@ -125,6 +126,40 @@ internal static class TableReportChecks
             var table=f.Host.PreviewOdbcTable(current.Revision,[name]);
             Check(table.Parameters.Length>0 && table.Columns.Length==1,"scope preview");
         }
+    }
+    private static void OfflineOdbcHierarchy()
+    {
+        using var f=new Fixture();
+        EncounterData.ColumnDefs["offline-odbc-hierarchy"] = new("fixture",true,"TEXT","enc_fixture",_=>"cell",value=>{
+            Check(ReferenceEquals(value,f.Encounter) && Environment.CurrentManagedThreadId==f.Owner,"hierarchy encounter owner"); return "enc";
+        });
+        try
+        {
+            var allOut=f.Encounter.Items["A"].Items["All Out"];
+            var all=new AttackType("All",allOut); allOut.Items["All"]=all; f.Known.Add(all);
+            foreach(var action in f.Encounter.Items["A"].Items["Category"].Items["Attack"].Items) all.Items.Add(action);
+            var snapshot=f.Host.CaptureHierarchyXml(f.Id,HierarchyXmlDepth.AllTables)!;
+            var names=new[]{new[]{"enc_fixture"},new[]{"sql_name"},new[]{"category_sql"},new[]{"attack_sql"},new[]{"action_sql"}};
+            var plan=f.Host.ReadOdbcHierarchy(snapshot.Revision,names,"All");
+            Check(plan.Tables.Select(x=>x.Table).SequenceEqual(["encounter_table","combatant_table","damagetype_table","attacktype_table","swing_table"]),"five table order");
+            Check(plan.Tables[0].Parameters.Length==1 && plan.Tables[1].Parameters.Length==3,"encounter and actor counts");
+            Check(plan.Tables[3].Parameters.Length==1 && plan.Tables[4].Parameters.Length==2,"last configured categories and All swings only");
+            Check(plan.Tables[4].Parameters[0][0]=="sql-action", "swing callback not XML EncId replacement");
+            var sink=new SyntheticHierarchySink();sink.Commit(plan);
+            f.Callback=()=>throw new IOException("synthetic hierarchy failure");
+            Throws<IOException>(()=>sink.Commit(f.Host.ReadOdbcHierarchy(snapshot.Revision,names,"All")));
+            f.Callback=null;Check(ReferenceEquals(sink.Value,plan),"no partial hierarchy published");
+            f.Callback=()=>CombatantData.OutgoingDamageTypeDataObjects["late"]=new("Late",0,Color.Red);
+            Throws<InvalidOperationException>(()=>f.Host.ReadOdbcHierarchy(snapshot.Revision,names,"All"));f.Callback=null;
+            f.Host.CaptureHierarchyXml(f.Id,HierarchyXmlDepth.AllTables);
+            Throws<InvalidOperationException>(()=>f.Host.ReadOdbcHierarchy(snapshot.Revision,names,"All"));
+        }
+        finally { EncounterData.ColumnDefs.Remove("offline-odbc-hierarchy"); }
+    }
+    private sealed class SyntheticHierarchySink
+    {
+        internal OdbcHierarchyPreview? Value;
+        internal void Commit(OdbcHierarchyPreview value) { Value=value; }
     }
     private static void XmlAndSelection()
     {

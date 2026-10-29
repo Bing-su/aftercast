@@ -201,6 +201,7 @@ namespace Aftercast.ActCompat
         public HierarchyXmlReport ReadHierarchyXml(ulong revision) => main.ReadHierarchyXml(revision);
         public TableReportCatalog? ReadTableReportCatalog(TableScope scope) => main.ReadTableReportCatalog(scope);
         public TableReport ReadTableReport(ulong revision, TableReportOptions options) => main.ReadTableReport(revision,options);
+        public OdbcHierarchyPreview ReadOdbcHierarchy(ulong revision, string[][] destinationColumns, string allTerm) => main.ReadOdbcHierarchy(revision,destinationColumns,allTerm);
         public OdbcPreview PreviewOdbcTable(ulong revision, string[] destinationColumns, bool encounter = false, bool current = false) => main.PreviewOdbcTable(revision,destinationColumns,encounter,current);
         public TablePageData? ReadTable(TableQuery query) => main.ReadTable(query);
         public TextReportCatalog ReadTextReportCatalog() => main.ReadTextReportCatalog();

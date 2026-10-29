@@ -35,10 +35,21 @@ cooperative two-second limits; a native callback that never returns cannot be
 preempted by this budget. No partial plan is returned on a failure. Synthetic
 managed tests use a local in-memory sink and synthetic data only.
 
-The managed single-table path is not yet connected to Bridge/Rust or a GUI;
-one capture per scope does not establish one atomic five-table hierarchy or
-reproduce ACT's original multi-table selection, batch policy, SQL hacks or driver
-behavior. Native ACT ODBC execution, external database access and independent
+The managed `ReadOdbcHierarchy` takes an existing all-tables hierarchy capture,
+returns all five plans together, and validates that capture and every column and
+category registration around callbacks. It includes all category rows, attack
+rows only for ACT's last registered outgoing/incoming category keys, and swing
+rows only for the last outgoing key's localized All attack. The caller supplies
+the All term explicitly; the current built-in English ACT term is `All`.
+The existing hierarchy snapshot limits and XML-valid name constraints also apply.
+A cooperative four-second whole-plan budget and an 8 MiB aggregate text limit
+apply; no partial plan is published if any table fails. Synthetic checks include
+registration mutations, stale revisions and failing callbacks.
+
+The managed paths are not yet connected to Bridge/Rust or a GUI;
+
+the offline hierarchy still does not reproduce ACT's original multi-encounter
+selection, native batch policy, SQL hacks or driver behavior. Native ACT ODBC execution, external database access and independent
 review remain unverified. The managed `current_table` preview returns an inert
 reset statement and inserts an empty EncId without invoking its callback, as
 verified against original IL. This does not delete any table or data.
