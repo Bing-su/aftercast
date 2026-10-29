@@ -83,6 +83,7 @@ pub struct HostHandle {
     sender: mpsc::SyncSender<Command>,
     thread: Thread,
     control: Arc<Control>,
+    combat_changes: watch::Receiver<u64>,
 }
 
 impl Deref for Host {
@@ -110,6 +111,7 @@ impl Host {
         let (ready, initialized) = oneshot::channel::<u64>();
         let (finished, completion) = oneshot::channel();
         let (audio_errors, errors) = tokio::sync::mpsc::channel(32);
+        let (combat_sender, combat_changes) = watch::channel(0_u64);
         let control = Arc::new(Control {
             stopping: AtomicBool::new(false),
             process_id: AtomicU32::new(0),
@@ -127,6 +129,7 @@ impl Host {
                     finished,
                     worker_control,
                     audio_errors,
+                    combat_sender,
                 )
             })
             .map_err(|e| Error::WorkerFailed(e.to_string()))?;
@@ -152,6 +155,7 @@ impl Host {
                 sender,
                 thread,
                 control,
+                combat_changes,
             },
             finished: Some(completion),
             audio_errors: errors,
@@ -193,6 +197,11 @@ impl Drop for Host {
 }
 
 impl HostHandle {
+    /// Coalesced completion notifications for this session. A change means the owner has published a newer combat snapshot; it is not an encounter archive.
+    pub fn combat_changes(&self) -> watch::Receiver<u64> {
+        self.combat_changes.clone()
+    }
+
     /// OS process identifier for diagnostics; a new Host owns a new process.
     pub fn process_id(&self) -> u32 {
         self.control.process_id.load(Ordering::Acquire)
@@ -401,13 +410,14 @@ fn worker_main(
     finished: Reply<()>,
     control: Arc<Control>,
     audio_errors: tokio::sync::mpsc::Sender<Error>,
+    combat_changes: watch::Sender<u64>,
 ) {
     let result = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
         let session = RemoteSession::start(config, control.clone())?;
         if ready.send(session.id()).is_err() {
             return session.stop();
         }
-        run(session, receiver, &control, audio_errors)
+        run(session, receiver, &control, audio_errors, &combat_changes)
     }))
     .unwrap_or_else(|_| Err(Error::WorkerFailed("host thread panicked".into())));
     control.record(&result);
@@ -477,6 +487,7 @@ fn run(
     receiver: mpsc::Receiver<Command>,
     control: &Control,
     audio_errors: tokio::sync::mpsc::Sender<Error>,
+    combat_changes: &watch::Sender<u64>,
 ) -> Result<(), Error> {
     let mut operations = None;
     let outcome = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| {
@@ -485,6 +496,7 @@ fn run(
             &receiver,
             control,
             &audio_errors,
+            combat_changes,
             &mut operations,
         )
     }))
@@ -510,6 +522,7 @@ fn run_loop(
     receiver: &mpsc::Receiver<Command>,
     control: &Control,
     audio_errors: &tokio::sync::mpsc::Sender<Error>,
+    combat_changes: &watch::Sender<u64>,
     operations: &mut Option<Operation>,
 ) -> Result<(), Error> {
     loop {
@@ -517,7 +530,11 @@ fn run_loop(
         if stopping {
             return Ok(());
         }
-        let callbacks = session.call(4)?.runtime_major;
+        let pump = session.call(4)?.runtime_major;
+        if pump & 0x8000_0000 != 0 {
+            combat_changes.send_modify(|value| *value = value.wrapping_add(1));
+        }
+        let callbacks = pump & 0x7fff_ffff;
         while let Some(error) = session.audio_error() {
             audio_errors.try_send(error).map_err(audio_overflow)?;
         }
@@ -641,6 +658,7 @@ mod tests {
             sender,
             thread: thread::current(),
             control: control.clone(),
+            combat_changes: watch::channel(0).1,
         };
         let unpolled = handle.end_combat();
         assert!(matches!(

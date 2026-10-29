@@ -327,6 +327,7 @@ pub fn App() -> Element {
     use_future(move || notifications::poll(state));
     use_future(move || companions::poll(state));
     use_future(move || mini_parse::poll(state));
+    use_future(move || mini_parse::monitor_combat(state));
     use_future(move || appearance::poll_runtime(state));
     use_future(move || {
         let window = window.clone();

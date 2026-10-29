@@ -43,3 +43,14 @@ public sealed class MiniParseRegistryPlugin : IActPluginV1
     }
     public void DeInitPlugin() => CombatantData.ColumnDefs.Remove("mini-extra");
 }
+
+public sealed class MiniParseEmptyPlugin : IActPluginV1
+{
+    public void InitPlugin(TabPage page, Label label)
+    {
+        var root = ActGlobals.oFormActMain!;
+        if (!root.SetEncounter(DateTime.Now, "Empty Source", "Empty Target")) throw new InvalidOperationException("Synthetic empty encounter refused");
+        root.EndCombat(true);
+    }
+    public void DeInitPlugin() { }
+}

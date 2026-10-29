@@ -64,6 +64,8 @@ pub(super) struct State {
     pending: Option<Ticket>,
     pending_settings: Option<(String, u8, Option<TextReportOptions>)>,
     last: Option<Duration>,
+    clock: Option<Instant>,
+    force_refresh: bool,
     last_ended: Option<EndedKey>,
     last_ended_profile: Option<Option<TextReportOptions>>,
     output: Option<String>,
@@ -73,6 +75,17 @@ pub(super) struct State {
     mini_style: String,
 }
 impl State {
+    fn now(&mut self) -> Duration {
+        self.clock.get_or_insert_with(Instant::now).elapsed()
+    }
+    fn combat_changed(&mut self) {
+        if !self.force_refresh {
+            self.force_refresh = true;
+            if self.pending.is_some() {
+                self.generation = self.generation.wrapping_add(1);
+            }
+        }
+    }
     fn reusable_end(&self, profile: &Option<TextReportOptions>) -> Option<EndedKey> {
         (self.last_ended_profile.as_ref() == Some(profile))
             .then_some(self.last_ended)
@@ -125,6 +138,7 @@ impl State {
     fn invalidate(&mut self) {
         self.generation = self.generation.wrapping_add(1);
         self.last = None;
+        self.force_refresh = false;
         self.last_ended = None;
         self.last_ended_profile = None;
         self.output = None;
@@ -167,6 +181,18 @@ impl AppState {
         Option<TextReportOptions>,
         Option<EndedKey>,
     )> {
+        self.mini_begin_on(now, self.handle()?)
+    }
+    fn mini_begin_on(
+        &mut self,
+        now: Duration,
+        handle: HostHandle,
+    ) -> Option<(
+        Ticket,
+        HostHandle,
+        Option<TextReportOptions>,
+        Option<EndedKey>,
+    )> {
         if !self.mini_parse.active(self.screen)
             || self.phase != Phase::Ready
             || self.exit_requested
@@ -176,14 +202,15 @@ impl AppState {
         {
             return None;
         }
-        if !due(
-            self.mini_parse.last,
-            now,
-            self.settings.mini_parse.interval_seconds,
-        ) {
+        if !self.mini_parse.force_refresh
+            && !due(
+                self.mini_parse.last,
+                now,
+                self.settings.mini_parse.interval_seconds,
+            )
+        {
             return None;
         }
-        let handle = self.handle()?;
         let profile = if self.settings.mini_parse.profile.is_empty() {
             None
         } else {
@@ -222,7 +249,12 @@ impl AppState {
             profile.clone(),
         ));
         self.mini_parse.publish();
-        let last_ended = self.mini_parse.reusable_end(&profile);
+        let forced = std::mem::take(&mut self.mini_parse.force_refresh);
+        let last_ended = if forced {
+            None
+        } else {
+            self.mini_parse.reusable_end(&profile)
+        };
         Some((ticket, handle, profile, last_ended))
     }
     fn mini_finish(
@@ -250,6 +282,14 @@ impl AppState {
             || current != profile
         {
             self.mini_parse.invalidate();
+            return false;
+        }
+        if self.mini_parse.generation != ticket.generation
+            && self.mini_parse.force_refresh
+            && self.revision.session == ticket.session
+            && !self.exit_requested
+        {
+            self.mini_parse.publish();
             return false;
         }
         if !self.mini_parse.active(self.screen)
@@ -330,8 +370,75 @@ async fn fetch(
         .then_some((active.summary.id, catalog.revision));
     Ok(report.map(|report| (report.text, ended)))
 }
+fn launch(mut state: Signal<AppState>) {
+    let work = {
+        let mut current = state.write();
+        let now = current.mini_parse.now();
+        current.mini_begin(now)
+    };
+    if let Some((ticket, handle, profile, last_ended)) = work {
+        spawn_forever(async move {
+            let result = fetch(&handle, profile, last_ended).await;
+            state.write().mini_finish(ticket, result);
+            let refresh = state.read().mini_parse.force_refresh;
+            if refresh {
+                launch(state);
+            }
+        });
+    }
+}
+
+fn notify_combat(mut state: Signal<AppState>, session: u64) {
+    {
+        let mut current = state.write();
+        if current.revision.session != session
+            || current.exit_requested
+            || !current.mini_parse.active(current.screen)
+        {
+            return;
+        }
+        current.mini_parse.combat_changed();
+    }
+    launch(state);
+}
+
+pub(super) async fn monitor_combat(state: Signal<AppState>) {
+    loop {
+        let endpoint = {
+            let current = state.read();
+            if current.exit_requested {
+                None
+            } else {
+                current
+                    .handle()
+                    .map(|handle| (current.revision.session, handle))
+            }
+        };
+        let Some((session, handle)) = endpoint else {
+            dioxus_sdk::time::sleep(Duration::from_millis(200)).await;
+            continue;
+        };
+        let mut changes = handle.combat_changes();
+        if *changes.borrow_and_update() != 0 {
+            notify_combat(state, session);
+        }
+        loop {
+            tokio::select! {
+                changed = changes.changed() => {
+                    if changed.is_err() { break; }
+                    notify_combat(state, session);
+                }
+                () = dioxus_sdk::time::sleep(Duration::from_millis(200)) => {
+                    let current = state.read();
+                    if current.revision.session != session || current.handle().is_none() || current.exit_requested { break; }
+                }
+            }
+        }
+        dioxus_sdk::time::sleep(Duration::from_millis(200)).await;
+    }
+}
+
 pub(super) async fn poll(mut state: Signal<AppState>) {
-    let start = Instant::now();
     loop {
         dioxus_sdk::time::sleep(Duration::from_secs(1)).await;
         {
@@ -357,13 +464,7 @@ pub(super) async fn poll(mut state: Signal<AppState>) {
                 current.mini_parse.reset_session();
             }
         }
-        let work = state.write().mini_begin(start.elapsed());
-        if let Some((ticket, handle, profile, last_ended)) = work {
-            spawn_forever(async move {
-                let result = fetch(&handle, profile, last_ended).await;
-                state.write().mini_finish(ticket, result);
-            });
-        }
+        launch(state);
     }
 }
 #[component]
@@ -618,6 +719,42 @@ mod tests {
         assert!(!ui.mini_finish(ticket, Ok(Some(("deleted profile".into(), None)))));
         assert!(ui.mini_parse.output.is_none());
     }
+    #[test]
+    fn combat_signal_retires_inflight_result_and_coalesces() {
+        let mut ui = AppState::new("/tmp".into());
+        ui.phase = Phase::Ready;
+        ui.screen = "analysis";
+        ui.revision.session = 7;
+        ui.mini_parse.enabled = true;
+        ui.mini_parse.output = Some("previous".into());
+        let old = Ticket {
+            session: 7,
+            generation: ui.mini_parse.generation,
+        };
+        ui.mini_parse.pending = Some(old);
+        ui.mini_parse.pending_settings = Some((String::new(), 5, None));
+        ui.mini_parse.combat_changed();
+        let generation = ui.mini_parse.generation;
+        ui.mini_parse.combat_changed();
+        assert_eq!(ui.mini_parse.generation, generation);
+        assert!(ui.mini_parse.force_refresh);
+        assert!(!ui.mini_finish(old, Ok(Some(("stale".into(), None)))));
+        assert_eq!(ui.mini_parse.output.as_deref(), Some("previous"));
+        assert!(ui.mini_parse.pending.is_none());
+        let pending = Ticket {
+            session: 7,
+            generation: ui.mini_parse.generation,
+        };
+        ui.mini_parse.pending = Some(pending);
+        ui.mini_parse.pending_settings = Some((String::new(), 5, None));
+        ui.mini_parse.force_refresh = false;
+        ui.mini_parse.combat_changed();
+        ui.revision.session = 8;
+        assert!(!ui.mini_finish(pending, Ok(Some(("previous session".into(), None)))));
+        assert!(ui.mini_parse.output.is_none());
+        ui.mini_parse.stop();
+        assert!(!ui.mini_parse.force_refresh);
+    }
     fn check_profile_cache(before: EndedKey, options: &TextReportOptions) {
         let cache = State {
             last_ended: Some(before),
@@ -689,6 +826,69 @@ mod tests {
         .expect("host");
         (temp, host)
     }
+    async fn check_completion_signal(host: &aftercast::Host, before: EncounterId) {
+        let mut changes = host.handle().combat_changes();
+        changes.borrow_and_update();
+        add_plugin(host, "MiniParseEndPlugin").await;
+        tokio::time::timeout(Duration::from_secs(2), changes.changed())
+            .await
+            .expect("prompt owner notification")
+            .expect("open channel");
+        assert!(*changes.borrow_and_update() > 0);
+        let mut controller = AppState::new("/tmp/synthetic-mini".into());
+        controller.phase = Phase::Ready;
+        controller.screen = "analysis";
+        controller.revision.session = 7;
+        controller.mini_parse.enabled = true;
+        controller.settings.mini_parse.interval_seconds = 60;
+        controller.mini_parse.last = Some(Duration::ZERO);
+        assert!(
+            controller
+                .mini_begin_on(Duration::from_secs(1), host.handle())
+                .is_none()
+        );
+        controller.mini_parse.combat_changed();
+        let (ticket, handle, profile, last) = controller
+            .mini_begin_on(Duration::from_secs(1), host.handle())
+            .expect("completion bypasses configured interval");
+        let final_frame = fetch(&handle, profile, last)
+            .await
+            .expect("final frame")
+            .expect("ended");
+        assert_eq!(final_frame.1.expect("ended identity").0, before);
+        assert!(controller.mini_finish(ticket, Ok(Some(final_frame))));
+        assert!(!controller.mini_parse.force_refresh);
+        assert!(
+            tokio::time::timeout(Duration::from_millis(50), changes.changed())
+                .await
+                .is_err(),
+            "no duplicate notification"
+        );
+    }
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires managed fixture; run mise run test:gui-state"]
+    async fn empty_combat_publishes_notification_and_safe_frame() {
+        let (_temp, host) = start_synthetic_host().await;
+        let mut changes = host.handle().combat_changes();
+        changes.borrow_and_update();
+        add_plugin(&host, "MiniParseEmptyPlugin").await;
+        tokio::time::timeout(Duration::from_secs(2), changes.changed())
+            .await
+            .expect("empty completion notification")
+            .expect("channel");
+        let current = host
+            .current_zone_encounter()
+            .await
+            .expect("current")
+            .expect("ended empty");
+        assert_eq!(current.summary.combatants, 0);
+        let frame = fetch(&host.handle(), None, None)
+            .await
+            .expect("empty frame");
+        let (_, ended) = frame.expect("empty encounter frame");
+        assert_eq!(ended.expect("ended identity").0, current.summary.id);
+        host.shutdown().await.expect("shutdown");
+    }
     #[tokio::test(flavor = "current_thread")]
     #[ignore = "requires managed fixture; run mise run test:gui-state"]
     async fn live_preview_uses_real_worker_and_synthetic_combat() {
@@ -719,7 +919,7 @@ mod tests {
             .expect("active")
             .summary
             .id;
-        add_plugin(&host, "MiniParseEndPlugin").await;
+        check_completion_signal(&host, before).await;
         assert!(host.live_combat().await.expect("idle").is_none());
         assert_eq!(
             host.current_zone_encounter()
@@ -741,6 +941,22 @@ mod tests {
         let revision = host.text_report_catalog().await.expect("catalog").revision;
         let ended_key = (before, revision);
         check_profile_cache(ended_key, &options);
+        let mut failing = options.clone();
+        failing.player_format = "{report-fail}".into();
+        let failure = fetch(&host.handle(), Some(failing), None)
+            .await
+            .expect_err("plugin callback failure");
+        let mut failed_ui = AppState::new("/tmp/synthetic-mini".into());
+        failed_ui.phase = Phase::Ready;
+        failed_ui.mini_parse.enabled = true;
+        let ticket = Ticket {
+            session: failed_ui.revision.session,
+            generation: failed_ui.mini_parse.generation,
+        };
+        failed_ui.mini_parse.pending = Some(ticket);
+        failed_ui.mini_parse.pending_settings = Some((String::new(), 5, None));
+        assert!(failed_ui.mini_finish(ticket, Err(failure)));
+        assert!(failed_ui.mini_parse.error.is_some());
         assert!(
             fetch(&host.handle(), Some(options.clone()), Some(ended_key))
                 .await

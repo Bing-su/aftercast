@@ -73,23 +73,24 @@ pub(super) fn open(
         ),
     )
 }
+async fn close_on_session_end(
+    endpoint: ContextEndpoint,
+    window: dioxus::desktop::DesktopContext,
+    mut valid: Signal<bool>,
+) {
+    while endpoint.valid() {
+        dioxus_sdk::time::sleep(std::time::Duration::from_millis(100)).await;
+    }
+    valid.set(false);
+    window.close();
+}
 fn root(props: Props) -> Element {
     let endpoint = use_hook(|| props.endpoint.clone());
     let report = use_hook(|| props.report.clone());
     let mut view = use_signal(|| LogView::new(&report, props.time, props.width));
-    let mut valid = use_signal(|| endpoint.valid());
+    let valid = use_signal(|| endpoint.valid());
     let window = dioxus::desktop::use_window();
-    use_future(move || {
-        let endpoint = endpoint.clone();
-        let window = window.clone();
-        async move {
-            while endpoint.valid() {
-                dioxus_sdk::time::sleep(std::time::Duration::from_millis(100)).await;
-            }
-            valid.set(false);
-            window.close();
-        }
-    });
+    use_future(move || close_on_session_end(endpoint.clone(), window.clone(), valid));
     let current = view();
     let start = current.start;
     let end_time = current.time + current.width;

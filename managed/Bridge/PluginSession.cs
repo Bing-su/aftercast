@@ -53,6 +53,7 @@ internal sealed partial class PluginSession
     internal byte[] TableOperation(TableRequest request, int capacity) => OnOwner(() => TableEncoding.Encode(Host(), request, capacity));
     internal ArraySegment<byte> QueryCombat(int mode, ulong id, int offset, int limit, string? incomingCombatant) =>
         OnOwner(() => CombatQueryEncoding.Encode(environment, mode, id, offset, limit, incomingCombatant));
+    private ulong notifiedCombatRevision;
     internal int Pump()
     {
         // Pump is the caller's startup boundary; pending plugin instances keep deferred integrations paused.
@@ -60,6 +61,12 @@ internal sealed partial class PluginSession
             plugins.Values.All(plugin => plugin.State is not (PluginState.Constructed or PluginState.Initializing))); return 0; });
         var callbacks = context?.Pump() ?? 0;
         OnOwner(() => { environment?.AdvanceTimers(); environment?.AdvanceIdleTimer(); return 0; });
+        var revision = environment?.CombatSnapshotRevision ?? 0;
+        if (revision != notifiedCombatRevision)
+        {
+            notifiedCombatRevision = revision;
+            return callbacks | int.MinValue;
+        }
         return callbacks;
     }
     internal byte[] TriggerOperation(int command, TriggerRequest request) => OnOwner(() =>

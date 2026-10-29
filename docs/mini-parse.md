@@ -19,9 +19,16 @@ The isolated worker still cannot preempt arbitrary native plugin hangs.
 
 The current-zone encounter endpoint excludes imports and incomplete transitions.
 It retains the last ended encounter, rather than treating idle as an empty
-result. The first poll after ending captures the final frame and subsequent idle
-polls skip formatting until an encounter, settings or registered formatter catalog changes. Unlike ACT's direct
-end callback, this can take up to the configured interval plus worker latency.
+result. After combat finalization and end subscribers, the owner publishes its
+combat snapshot revision; the worker pump sends a coalesced, session-owned change
+notification to the mini controller. It requests a final frame without waiting for
+the configured periodic interval. If an older request is in flight, its response is
+retired and one refresh follows; repeated notifications coalesce. The current-zone
+identity and status are checked before and after rendering, so a new combat or zone
+takes precedence over an older final frame. Idle polls skip formatting until an
+encounter, settings or registered formatter catalog changes. Notification delivery
+is subject to worker pump, busy operations and callback latency: this is not a
+claim of identical native ACT timing.
 No current encounter retains the previous frame, if any. A new encounter changes
 the identity and is rendered; both pre- and post-render identity/status are
 checked to discard stale results.

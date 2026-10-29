@@ -42,7 +42,7 @@ namespace Advanced_Combat_Tracker
             }
         }
 
-        private ulong GetCombatSnapshotRevision()
+        internal ulong GetCombatSnapshotRevision()
         {
             lock (CombatGate) return combatSnapshotRevision;
         }
