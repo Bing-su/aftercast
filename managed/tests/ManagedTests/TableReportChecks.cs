@@ -77,6 +77,15 @@ internal static class TableReportChecks
             Check(encounter.Table=="encounter_table" && encounter.Parameters.Length==1 && encounter.Parameters[0][0]=="enc-合成","encounter preview");
         }
         finally { EncounterData.ColumnDefs.Remove("offline-odbc-fixture"); }
+        CombatantData.ColumnDefs["odbc-current"] = new("fixture",true,"TEXT","encid",_=>"cell",_=>throw new Exception("current EncId must not run"),(_,_)=>0);
+        try
+        {
+            var currentCatalog=f.Catalog();
+            var currentPlan=f.Host.PreviewOdbcTable(currentCatalog.Revision,["ENCID"],current:true);
+            Check(currentPlan.Table=="current_table" && currentPlan.ResetSql=="DELETE FROM \"current_table\";" && currentPlan.Parameters.All(row=>row[0]==""),"current EncId skipped, reset remains synthetic");
+        }
+        finally { CombatantData.ColumnDefs.Remove("odbc-current"); }
+        catalog=f.Catalog();
         var plan=f.Host.PreviewOdbcTable(catalog.Revision,["hidden","SQL_NAME"]); sink.Commit(plan);
         Check(plan.Table=="combatant_table" && plan.Columns.Select(x=>x.Name).SequenceEqual(["hidden","SQL_NAME"]),"ODBC destination order and case matching");
         Check(plan.CreateSql=="CREATE TABLE \"combatant_table\" (\"hidden\" TEXT, \"sql_name\" TEXT);", "synthetic schema");

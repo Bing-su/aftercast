@@ -7,7 +7,7 @@ namespace Aftercast.ActCompat
     // Offline data only. These records do not expose any database or network operation.
     public sealed record OdbcPreviewColumn(string Name, string SqlType);
     public sealed record OdbcPreview(ulong Revision, string Table, OdbcPreviewColumn[] Columns,
-        string CreateSql, string InsertSql, string[][] Parameters);
+        string CreateSql, string InsertSql, string[][] Parameters, string? ResetSql = null);
 }
 
 namespace Advanced_Combat_Tracker
@@ -15,7 +15,7 @@ namespace Advanced_Combat_Tracker
     using Aftercast.ActCompat;
     public partial class FormActMain
     {
-        internal OdbcPreview PreviewOdbcTable(ulong revision, string[] destinationColumns, bool encounter = false)
+        internal OdbcPreview PreviewOdbcTable(ulong revision, string[] destinationColumns, bool encounter = false, bool current = false)
         {
             EnsureTextReportOwner(); ArgumentNullException.ThrowIfNull(destinationColumns);
             var names = destinationColumns.ToArray();
@@ -28,13 +28,14 @@ namespace Advanced_Combat_Tracker
                 if (capture is null || revision == 0 || revision != capture.Revision)
                     throw new InvalidOperationException("Report selection revision mismatch");
                 CheckTableReport(capture);
-                if (encounter && capture.Scope.Level != TableLevel.Combatant)
+                if ((encounter || current) && capture.Scope.Level != TableLevel.Combatant)
                     throw new ArgumentException("Encounter preview requires an encounter-owned combatant snapshot");
+                if (encounter && current) throw new ArgumentException("Choose encounter or current table");
                 var level = encounter ? TableLevel.Encounter : capture.Scope.Level;
                 var catalog = encounter ? ReadTableColumns(level) : null;
                 var snapshot = encounter ? columnSnapshots[level].Snapshot : capture.Columns;
                 var columnRevision = encounter ? catalog!.Revision : capture.ColumnRevision;
-                var table = level switch
+                var table = current ? "current_table" : level switch
                 {
                     TableLevel.Encounter => "encounter_table", TableLevel.Combatant => "combatant_table", TableLevel.Category => "damagetype_table",
                     TableLevel.Attack => "attacktype_table", TableLevel.Action => "swing_table",
@@ -93,11 +94,11 @@ namespace Advanced_Combat_Tracker
                     }
                     else
                     {
-                        var values = ReadReportValues(capture, TableReportFormat.TableXml, [], selected.ToArray(), null, null, null, validateXml:false);
+                        var values = ReadReportValues(capture, TableReportFormat.TableXml, [], selected.ToArray(), null, null, null, validateXml:false, blankEncId:current);
                         rows = values.Rows.Select(row => row.Select(SyntheticSqlValue).ToArray()).ToArray();
                         values.Check();
                     }
-                    return new(revision, table, columns, schema, insert, rows);
+                    return new(revision, table, columns, schema, insert, rows, current ? "DELETE FROM \"current_table\";" : null);
                 }
                 finally { activeTableQuery = false; }
             }

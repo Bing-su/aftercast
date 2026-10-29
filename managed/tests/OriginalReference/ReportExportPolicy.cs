@@ -72,6 +72,9 @@ internal static class ReportExportPolicy
             Call(body,0x007f,"set_Indentation");Check(body[0x007e]==OpCodes.Ldc_I4_4.Value,"four-space XML indentation");
             Call(body,0x00f9,"get_ColHeaderCollection");Call(body,0x010e,"get_ColCollection");
         }
+        var currentOdbc=Body("GenerateCurrentOdbc");
+        Check(Literal(currentOdbc,0x004f)=="DELETE FROM current_table;" && Literal(currentOdbc,0x018e)=="encid", "current table reset and EncId special case");
+        Check(Name(currentOdbc,0x01a2)=="GetSqlData" && currentOdbc[0x01b0]==OpCodes.Ldsfld.Value,"current table skips EncId callback");
         var odbc=Body("ThreadOdbcExportSingle");
         foreach(var (offset,tableName) in new[]{(0x0360,"encounter_table"),(0x05c4,"combatant_table"),(0x0850,"damagetype_table"),(0x0af6,"attacktype_table"),(0x0d0c,"swing_table")})
             Check(Literal(odbc,offset)==$"INSERT INTO {tableName} ({{1}}) VALUES ({{0}});","original ODBC table and literal format");

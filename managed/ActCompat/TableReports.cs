@@ -128,7 +128,7 @@ namespace Advanced_Combat_Tracker
         private sealed record ReportValues(TableColumnData[] Columns,string[][] Rows,Action Check);
         private ReportValues ReadReportValues(ReportCapture capture,TableReportFormat format,int[] selected,
             ColumnBinding[] columns,TableSort? sort,ColumnBinding? primary,ColumnBinding? secondary,
-            Action? outerCheck=null,string? firstActionValue=null,bool validateXml=true)
+            Action? outerCheck=null,string? firstActionValue=null,bool validateXml=true,bool blankEncId=false)
         {
             var clock=Stopwatch.StartNew();var errors=OwnerErrors.Item1;var level=capture.Scope.Level;
             void Check()
@@ -168,7 +168,8 @@ namespace Advanced_Combat_Tracker
                 foreach(var column in columns)
                 {
                     string value;
-                    if(firstActionValue is not null&&level==TableLevel.Action&&ReferenceEquals(column,columns[0]))
+                    if(blankEncId&&string.Equals(column.Metadata.SqlDataName,"encid",StringComparison.CurrentCultureIgnoreCase)) value=string.Empty;
+                    else if(firstActionValue is not null&&level==TableLevel.Action&&ReferenceEquals(column,columns[0]))
                     {
                         // Native evaluates whole ColCollection when any later field exists; retain first-field failures once.
                         if(columns.Length>1)Invoke(column,()=>SqlReportCell(column,row.Value));

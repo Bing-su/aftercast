@@ -39,5 +39,6 @@ The managed single-table path is not yet connected to Bridge/Rust or a GUI;
 one capture per scope does not establish one atomic five-table hierarchy or
 reproduce ACT's original multi-table selection, batch policy, SQL hacks or driver
 behavior. Native ACT ODBC execution, external database access and independent
-review remain unverified. ACT's `current_table` special EncId behavior is also
-not yet implemented here.
+review remain unverified. The managed `current_table` preview returns an inert
+reset statement and inserts an empty EncId without invoking its callback, as
+verified against original IL. This does not delete any table or data.
