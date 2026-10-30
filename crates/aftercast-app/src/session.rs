@@ -11,6 +11,7 @@ pub struct RunningHost {
 
 impl RunningHost {
     pub async fn start(root: Utf8PathBuf, settings: Settings) -> Result<Self> {
+        settings.validate()?;
         let audio = settings.audio.settings();
         let colors = settings.appearance.color_scalars();
         let color_controls = settings.appearance.color_controls();

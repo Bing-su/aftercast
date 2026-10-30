@@ -175,6 +175,50 @@ pub struct AudioPreferences {
     pub tts_volume: u8,
     pub misc_mode: String,
     pub misc_text: String,
+    pub timer_start: TimerCuePreferences,
+    pub timer_warning: TimerCuePreferences,
+    pub timer_expire: TimerCuePreferences,
+}
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct TimerCuePreferences {
+    pub mode: String,
+    pub path: String,
+}
+impl Default for TimerCuePreferences {
+    fn default() -> Self {
+        Self::none()
+    }
+}
+impl TimerCuePreferences {
+    fn none() -> Self {
+        Self {
+            mode: "none".into(),
+            path: String::new(),
+        }
+    }
+    fn warning_default() -> Self {
+        Self {
+            mode: "beep".into(),
+            path: String::new(),
+        }
+    }
+    fn valid(&self) -> bool {
+        matches!(self.mode.as_str(), "none" | "beep" | "wav" | "tts")
+            && self.path.len() <= 4000
+            && !self.path.chars().any(char::is_control)
+            && (self.mode != "wav"
+                || (!self.path.trim().is_empty()
+                    && !matches!(self.path.as_str(), "none" | "beep" | "tts")
+                    && !self.path.starts_with("tts ")))
+    }
+    fn cue(&self) -> String {
+        if self.mode == "wav" {
+            self.path.clone()
+        } else {
+            self.mode.clone()
+        }
+    }
 }
 impl Default for AudioPreferences {
     fn default() -> Self {
@@ -183,6 +227,9 @@ impl Default for AudioPreferences {
             tts_volume: 100,
             misc_mode: "none".into(),
             misc_text: String::new(),
+            timer_start: TimerCuePreferences::none(),
+            timer_warning: TimerCuePreferences::warning_default(),
+            timer_expire: TimerCuePreferences::none(),
         }
     }
 }
@@ -193,7 +240,9 @@ impl AudioPreferences {
             tts_volume: self.tts_volume,
             misc_mode: self.misc_mode.clone(),
             misc_text: self.misc_text.clone(),
-            ..Default::default()
+            timer_start: self.timer_start.cue(),
+            timer_warning: self.timer_warning.cue(),
+            timer_expire: self.timer_expire.cue(),
         }
     }
 }
@@ -424,8 +473,24 @@ impl Settings {
             )
             || self.audio.misc_text.len() > 4000
             || self.audio.misc_text.chars().any(char::is_control)
+            || !self.audio.timer_start.valid()
+            || !self.audio.timer_warning.valid()
+            || !self.audio.timer_expire.valid()
         {
-            return Err(miette!("Audio volume must be 0..100"));
+            return Err(miette!("Invalid audio volumes or timer cue settings"));
+        }
+        let cues = self.audio.settings();
+        if cues.timer_start.len()
+            + cues.timer_warning.len()
+            + cues.timer_expire.len()
+            + cues.misc_mode.len()
+            + cues.misc_text.len()
+            + 4
+            > 4096
+        {
+            return Err(miette!(
+                "Combined audio cue settings exceed 4096 UTF-8 bytes"
+            ));
         }
         if !(1..=60).contains(&self.mini_parse.interval_seconds)
             || self.mini_parse.profile.len() > 80
@@ -510,21 +575,33 @@ pub struct ConfigFile {
 impl ConfigFile {
     pub fn load(root: &Utf8Path) -> Result<Self> {
         let path = root.join("config.toml");
-        let text = match fs::read_to_string(&path) {
-            Ok(text) => text,
-            Err(error) if error.kind() == std::io::ErrorKind::NotFound => String::new(),
+        let (text, existing) = match fs::read_to_string(&path) {
+            Ok(text) => (text, true),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => (String::new(), false),
             Err(error) => {
                 return Err(error)
                     .into_diagnostic()
                     .wrap_err_with(|| format!("Read {path}"));
             }
         };
-        Self::parse(&text).wrap_err_with(|| format!("Read {path}"))
+        let mut file = Self::parse(&text).wrap_err_with(|| format!("Read {path}"))?;
+        if !existing {
+            file.settings.audio.timer_warning = TimerCuePreferences::warning_default();
+        }
+        Ok(file)
     }
 
     fn parse(text: &str) -> Result<Self> {
         let document = text.parse::<DocumentMut>().into_diagnostic()?;
-        let settings: Settings = toml_edit::de::from_str(text).into_diagnostic()?;
+        let mut settings: Settings = toml_edit::de::from_str(text).into_diagnostic()?;
+        // Older aftercast configurations had no timer cues and always used silence.
+        if document
+            .get("audio")
+            .and_then(|audio| audio.get("timer_warning"))
+            .is_none()
+        {
+            settings.audio.timer_warning = TimerCuePreferences::none();
+        }
         settings.validate()?;
         Ok(Self { settings, document })
     }
@@ -672,6 +749,14 @@ fn save_audio(document: &mut DocumentMut, audio: &AudioPreferences) {
     );
     set(&mut document["audio"]["misc_mode"], value(&audio.misc_mode));
     set(&mut document["audio"]["misc_text"], value(&audio.misc_text));
+    for (key, cue) in [
+        ("timer_start", &audio.timer_start),
+        ("timer_warning", &audio.timer_warning),
+        ("timer_expire", &audio.timer_expire),
+    ] {
+        set(&mut document["audio"][key]["mode"], value(&cue.mode));
+        set(&mut document["audio"][key]["path"], value(&cue.path));
+    }
 }
 
 #[expect(clippy::indexing_slicing, reason = "TOML indexing inserts UI fields")]
@@ -1130,6 +1215,68 @@ mod tests {
                 .map(String::as_str)
                 .collect::<Vec<_>>(),
             ["first", "middle", "last"]
+        );
+    }
+
+    #[test]
+    fn timer_cues_migrate_silently_and_new_configs_use_act_designer_default() {
+        let temp = tempfile::tempdir().expect("temporary settings");
+        let root = Utf8Path::from_path(temp.path()).expect("UTF8");
+        let partial =
+            ConfigFile::parse("[audio.timer_warning]\npath = 'unused.wav'\n").expect("partial cue");
+        assert_eq!(partial.settings.audio.settings().timer_warning, "none");
+        let fresh = ConfigFile::load(root).expect("new config");
+        assert_eq!(fresh.settings.audio.settings().timer_warning, "beep");
+        std::fs::write(root.join("config.toml"), "[audio]\nsound_volume = 61\n")
+            .expect("old config");
+        let mut old = ConfigFile::load(root).expect("migrate");
+        assert_eq!(old.settings.audio.settings().timer_warning, "none");
+        old.settings.audio.timer_start.mode = "tts".into();
+        old.settings.audio.timer_warning.mode = "beep".into();
+        old.settings.audio.timer_expire.mode = "wav".into();
+        old.settings.audio.timer_expire.path = "synthetic.wav".into();
+        old.save(root).expect("save preferences");
+        let mut restored = ConfigFile::load(root).expect("restart");
+        let cues = restored.settings.audio.settings();
+        assert_eq!(
+            (
+                &*cues.timer_start,
+                &*cues.timer_warning,
+                &*cues.timer_expire
+            ),
+            ("tts", "beep", "synthetic.wav")
+        );
+        let before = std::fs::read(root.join("config.toml")).expect("stored");
+        restored.settings.audio.timer_expire.path = "beep".into();
+        restored.save(root).err().expect("ambiguous path rejected");
+        assert_eq!(
+            std::fs::read(root.join("config.toml")).expect("preserved"),
+            before
+        );
+        let mut oversized = ConfigFile::load(root).expect("original");
+        oversized.settings.audio.timer_start.mode = "wav".into();
+        oversized.settings.audio.timer_start.path = "a".repeat(3000);
+        oversized.settings.audio.timer_warning.mode = "wav".into();
+        oversized.settings.audio.timer_warning.path = "b".repeat(3000);
+        oversized.save(root).err().expect("combined request bound");
+        assert_eq!(
+            std::fs::read(root.join("config.toml")).expect("preserved"),
+            before
+        );
+        let mut failed = ConfigFile::load(root).expect("original");
+        failed.settings.audio.timer_warning.mode = "none".into();
+        failed
+            .save(&root.join("missing"))
+            .err()
+            .expect("write failure");
+        assert_eq!(
+            ConfigFile::load(root)
+                .expect("unchanged")
+                .settings
+                .audio
+                .timer_warning
+                .mode,
+            "beep"
         );
     }
 

@@ -88,3 +88,30 @@ public sealed class MiscSoundProbePlugin : IActPluginV1
     }
     public void DeInitPlugin() { }
 }
+
+// Synthetic timer cue probe: substitute in-memory delegates and advance the worker's fake clock.
+public sealed class TimerCuesProbePlugin : IActPluginV1
+{
+    public void InitPlugin(TabPage tab, Label label)
+    {
+        var root = ActGlobals.oFormActMain!;
+        var timers = ActGlobals.oFormSpellTimers!;
+        var previousSound = root.PlaySoundMethod; var previousSpeech = root.PlayTtsMethod;
+        var events = new List<string>();
+        try
+        {
+            root.PlaySoundMethod = (source, _) => events.Add("sound:" + source);
+            root.PlayTtsMethod = text => events.Add("tts:" + text);
+            var definition = new TimerData("Probe", "Synthetic") { TimerValue = 30, WarningValue = 10 };
+            timers.AddEditTimerDef(definition); timers.RebuildSpellTreeView();
+            root.LastKnownTime = DateTime.UnixEpoch;
+            timers.NotifySpell("Caster", "Probe", true, "Target", true);
+            var advance = timers.GetType().GetMethod("Advance", System.Reflection.BindingFlags.Instance | System.Reflection.BindingFlags.NonPublic)!;
+            root.LastKnownTime = DateTime.UnixEpoch.AddSeconds(21); advance.Invoke(timers, null);
+            root.LastKnownTime = DateTime.UnixEpoch.AddSeconds(31); advance.Invoke(timers, null);
+            label.Text = string.Join("|", events);
+        }
+        finally { root.PlaySoundMethod = previousSound; root.PlayTtsMethod = previousSpeech; }
+    }
+    public void DeInitPlugin() { }
+}

@@ -219,3 +219,39 @@ async fn misc_sound_settings_reach_plugin_delegate(deployment: Deployment) {
     }
     host.shutdown().await.expect("shutdown");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and synthetic fixture; run mise run test:plugins"]
+async fn timer_cues_reach_fake_delegates_across_worker_restart(deployment: Deployment) {
+    let settings = AudioSettings {
+        timer_start: "beep".into(),
+        timer_warning: "tts".into(),
+        timer_expire: "beep".into(),
+        ..AudioSettings::default()
+    };
+    let assembly = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    for _ in 0..2 {
+        let host = Host::start(deployment.config()).await.expect("host");
+        host.set_audio_settings(&settings)
+            .await
+            .expect("cue settings");
+        let id = host
+            .create_plugin(
+                PluginConfig::builder()
+                    .path(assembly.clone())
+                    .type_name("Aftercast.PluginFixture.TimerCuesProbePlugin")
+                    .build(),
+            )
+            .await
+            .expect("fixture");
+        assert_eq!(
+            host.initialize_plugin(id).await.expect("fake sink"),
+            "sound:beep|tts: Probe warning|sound:beep"
+        );
+        host.shutdown().await.expect("shutdown");
+    }
+    assert!(!deployment.state.join("tts.txt").exists());
+    assert!(!deployment.state.join("sound.txt").exists());
+}

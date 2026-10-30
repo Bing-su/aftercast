@@ -523,6 +523,7 @@ internal static class Program
         SpeechChecks.Run();
         ColorSettingsChecks.Run();
         SoundChecks.Run();
+        TimerCueChecks.Run();
         TextExportChecks.Run();
         SpellTimerChecks.Run();
         TimerManagementChecks.Run();

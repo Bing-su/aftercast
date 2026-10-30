@@ -880,3 +880,9 @@ mini-surface-outline = Outline (#RRGGBB)
 mini-surface-grid = Grid lines (#RRGGBB)
 mini-surface-text = Bar text (#RRGGBB)
 mini-surface-totals = Total and average (#RRGGBB)
+
+audio-timer-start = Timer start
+audio-timer-warning = Timer warning
+audio-timer-expire = Timer expiry
+audio-timer-path = WAV path
+audio-timer-help = Changes apply when the host next starts. Save to keep them across app restarts; older configurations retain silent defaults.

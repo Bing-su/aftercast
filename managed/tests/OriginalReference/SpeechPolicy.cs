@@ -40,6 +40,51 @@ internal static class SpeechPolicy
         Call(misc, 0x0012, "get_Beep"); Call(misc, 0x003f, "PlaySound"); Call(misc, 0x0067, "TTS"); Call(misc, 0x0076, "WriteExceptionLog");
         var sound = Body("Options_Sound", "InitializeComponent");
         Check(sound[0x239c] == OpCodes.Ldc_I4_S.Value && sound[0x239d] == 100 && sound[0x24cd] == OpCodes.Ldc_I4_S.Value && sound[0x24ce] == 100, "default volumes");
-        return new { ordered = true, enabledOnly = true, delimiter = "▶", ignoreCase = true, soundVolume = 100, ttsVolume = 100 };
+        bool HasMember(byte[] body, string name)
+        {
+            for (var i = 0; i + 5 <= body.Length; i++)
+            {
+                if (body[i] != OpCodes.Ldfld.Value && body[i] != OpCodes.Call.Value && body[i] != OpCodes.Callvirt.Value) continue;
+                try { if (Name(body, i) == name) return true; } catch (Exception) { }
+            }
+            return false;
+        }
+        bool StartsChecked(string field)
+        {
+            for (var i = 0; i + 11 <= sound.Length; i++)
+            {
+                if (sound[i] != OpCodes.Ldfld.Value || sound[i + 5] != OpCodes.Ldc_I4_1.Value || sound[i + 6] != OpCodes.Callvirt.Value) continue;
+                try { if (Name(sound, i) == field && Name(sound, i + 6) == "set_Checked") return true; } catch (Exception) { }
+            }
+            return false;
+        }
+        Check(StartsChecked("rbSndStartNone") && StartsChecked("rbSndWarnBeep") && StartsChecked("rbSndTimerNone"), "timer designer defaults");
+        var registration = Body("FormActMain", "PopulateNewConfig");
+        foreach (var field in new[] { "rbSndStartNone", "rbSndWarnBeep", "rbSndTimerNone", "tbSndStart", "tbSndWarn", "tbSndTimer" })
+            Check(HasMember(registration, field), "timer setting registration " + field);
+        Check(HasMember(Body("FormActMain", "InitACT"), "LoadNewSettings"), "startup settings load");
+        var importSettings = Body("SettingsSerializer", "ImportFromXml");
+        bool HasRadioSetter()
+        {
+            for (var i = 0; i + 5 <= importSettings.Length; i++)
+            {
+                if (importSettings[i] != OpCodes.Callvirt.Value) continue;
+                try
+                {
+                    var handle = MetadataTokens.EntityHandle(BitConverter.ToInt32(importSettings, i + 1));
+                    if (handle.Kind != HandleKind.MemberReference) continue;
+                    var member = reader.GetMemberReference((MemberReferenceHandle)handle);
+                    if (reader.GetString(member.Name) == "set_Checked" && member.Parent.Kind == HandleKind.TypeReference
+                        && reader.GetString(reader.GetTypeReference((TypeReferenceHandle)member.Parent).Name) == "RadioButton") return true;
+                }
+                catch (Exception) { }
+            }
+            return false;
+        }
+        Check(HasRadioSetter(), "radio restoration");
+        var timer = Body("FormSpellTimers", "TimerSound");
+        foreach (var field in new[] { "rbSndStartBeep", "rbSndWarnBeep", "rbSndTimerBeep" }) Check(HasMember(timer, field), "timer cue " + field);
+        Check(HasMember(timer, "IsNullOrWhiteSpace"), "timer per-definition fallback");
+        return new { ordered = true, enabledOnly = true, delimiter = "▶", ignoreCase = true, soundVolume = 100, ttsVolume = 100, timerDefaults = new[] { "none", "beep", "none" }, timerSettingsRestored = true, nativeUiExecuted = false };
     }
 }

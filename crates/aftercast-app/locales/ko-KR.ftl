@@ -880,3 +880,9 @@ mini-surface-outline = 테두리 (#RRGGBB)
 mini-surface-grid = 격자선 (#RRGGBB)
 mini-surface-text = 막대 글자 (#RRGGBB)
 mini-surface-totals = 합계와 평균 (#RRGGBB)
+
+audio-timer-start = 타이머 시작
+audio-timer-warning = 타이머 경고
+audio-timer-expire = 타이머 종료
+audio-timer-path = WAV 경로
+audio-timer-help = 타이머 소리 변경은 다음 호스트 시작부터 적용됩니다. 앱 재시작 후에도 유지하려면 저장하세요. 기존 설정의 기본 무음은 유지됩니다.

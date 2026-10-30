@@ -103,6 +103,10 @@ pub(super) fn SettingsPane() -> Element {
                 h2 { class: "text-sm font-semibold", {tr("audio-settings")} }
                 p { class: "text-xs text-muted-foreground", {tr("audio-provider-unavailable")} }
                 MiscSoundPreferences {}
+                TimerCueControl { slot: "start", label: "audio-timer-start" }
+                TimerCueControl { slot: "warning", label: "audio-timer-warning" }
+                TimerCueControl { slot: "expire", label: "audio-timer-expire" }
+                p { class: "text-xs text-muted-foreground", {tr("audio-timer-help")} }
                 for (id, label, volume) in [
                     ("sound-volume", "audio-sound-volume", state.read().settings.audio.sound_volume),
                     ("tts-volume", "audio-tts-volume", state.read().settings.audio.tts_volume),
@@ -568,6 +572,77 @@ pub(super) fn SettingsPane() -> Element {
     }
 }
 
+fn timer_cue<'a>(
+    audio: &'a crate::config::AudioPreferences,
+    slot: &str,
+) -> &'a crate::config::TimerCuePreferences {
+    match slot {
+        "start" => &audio.timer_start,
+        "warning" => &audio.timer_warning,
+        _ => &audio.timer_expire,
+    }
+}
+fn timer_cue_mut<'a>(
+    audio: &'a mut crate::config::AudioPreferences,
+    slot: &str,
+) -> &'a mut crate::config::TimerCuePreferences {
+    match slot {
+        "start" => &mut audio.timer_start,
+        "warning" => &mut audio.timer_warning,
+        _ => &mut audio.timer_expire,
+    }
+}
+
+#[component]
+fn TimerCueControl(slot: &'static str, label: &'static str) -> Element {
+    let mut state = use_context::<Signal<AppState>>();
+    let id = format!("timer-cue-{slot}");
+    let path_id = format!("timer-cue-{slot}-path");
+    let cue = timer_cue(&state.read().settings.audio, slot).clone();
+    let disabled =
+        state.read().saving || state.read().file.is_none() || state.read().phase != Phase::Idle;
+    rsx! {
+        div { class: "flex flex-wrap items-center gap-2",
+            Label { html_for: id.clone(), {tr(label)} }
+            select {
+                id,
+                class: "h-9 rounded-md border border-border bg-background px-2",
+                value: cue.mode.clone(),
+                disabled,
+                onchange: move |event| {
+                    if state.peek().phase == Phase::Idle && !state.peek().saving
+                        && state.peek().file.is_some()
+                    {
+                        let mode = event.value();
+                        if matches!(mode.as_str(), "none" | "beep" | "wav" | "tts") {
+                            timer_cue_mut(&mut state.write().settings.audio, slot).mode = mode;
+                        }
+                    }
+                },
+                option { value: "none", {tr("audio-misc-none")} }
+                option { value: "beep", {tr("audio-misc-beep")} }
+                option { value: "wav", {tr("audio-misc-wav")} }
+                option { value: "tts", {tr("audio-misc-tts")} }
+            }
+            if cue.mode == "wav" {
+                Label { html_for: path_id.clone(), {tr("audio-timer-path")} }
+                Input {
+                    id: path_id,
+                    value: cue.path,
+                    disabled,
+                    oninput: move |event: FormEvent| {
+                        if state.peek().phase == Phase::Idle && !state.peek().saving
+                            && state.peek().file.is_some()
+                        {
+                            timer_cue_mut(&mut state.write().settings.audio, slot).path = event.value();
+                        }
+                    },
+                }
+            }
+        }
+    }
+}
+
 #[component]
 fn MiscSoundPreferences() -> Element {
     let mut state = use_context::<Signal<AppState>>();
@@ -613,6 +688,28 @@ fn MiscSoundPreferences() -> Element {
 #[cfg(test)]
 mod selective_tests {
     use super::*;
+    #[test]
+    fn timer_cue_draft_save_uses_snapshot_and_preserves_failure() {
+        let temporary = tempfile::tempdir().expect("settings fixture");
+        let root = camino::Utf8Path::from_path(temporary.path()).expect("UTF8");
+        let file = crate::config::ConfigFile::load(root).expect("settings");
+        let mut state = AppState::new(root.to_owned());
+        state.settings = file.settings.clone();
+        state.file = Some(file);
+        timer_cue_mut(&mut state.settings.audio, "warning").mode = "tts".into();
+        timer_cue_mut(&mut state.settings.audio, "start").mode = "beep".into();
+        let (_, snapshot) = state.begin_settings_save().expect("save snapshot");
+        assert_eq!(snapshot.settings.audio.settings().timer_warning, "tts");
+        timer_cue_mut(&mut state.settings.audio, "warning").mode = "none".into();
+        assert_eq!(snapshot.settings.audio.settings().timer_warning, "tts");
+        state.revision.session += 1;
+        state.receive_settings_save(Err(miette::miette!("synthetic failure")), "saved".into());
+        assert_eq!(timer_cue(&state.settings.audio, "warning").mode, "none");
+        assert_eq!(timer_cue(&state.settings.audio, "start").mode, "beep");
+        assert!(state.error.is_some());
+        assert!(!root.join("config.toml").exists());
+    }
+
     #[test]
     fn selective_apply_preserves_draft_and_rejects_old_sessions() {
         let mut state = AppState::new(camino::Utf8PathBuf::from("/synthetic"));
