@@ -92,8 +92,19 @@ internal sealed partial class PluginSession
         }
         else if (command == 13)
         {
-            host.ImportMixedConfig(request.Snippet ?? throw new ArgumentException("Missing Config"), request.Revision, request.TimerRevision);
-            result = true;
+            try
+            {
+                host.ImportMixedConfig(request.Snippet ?? throw new ArgumentException("Missing Config"), request.Revision, request.TimerRevision);
+                result = new { faulted = false, error = "" };
+            }
+            catch (Exception error) when (host.IsFaulted)
+            {
+                workerReuse.MarkUnsafe();
+                var message = error.Message;
+                if (string.IsNullOrEmpty(message)) message = "Mixed Config publication failed";
+                if (message.Length > 512) message = message[..512];
+                result = new { faulted = true, error = message };
+            }
         }
         else if (command == 10) result = host.PreviewTriggerConfig(request.Snippet ?? throw new ArgumentException("Missing Config"));
         else if (command == 11) { object? batch = null; host.RunWithLogReadingSuspended(() => batch = host.SaveTriggerBatch(request.Revision, request.Definitions ?? throw new ArgumentException("Missing definitions"))); result = batch!; }

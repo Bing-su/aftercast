@@ -54,7 +54,7 @@ impl Draft {
 pub(super) struct EditorState {
     snippet: snippet::State,
     config_batch: config_batch::State,
-    loaded: bool,
+    pub(super) loaded: bool,
     busy: bool,
     page: Option<TimerPage>,
     offset: u32,

@@ -250,14 +250,26 @@ impl HostHandle {
                 "mixed Config belongs to another session or has conflicts",
             ));
         }
-        let accepted: bool = self
+        #[derive(Deserialize)]
+        #[serde(deny_unknown_fields)]
+        struct ImportReply {
+            faulted: bool,
+            error: String,
+        }
+        let reply: ImportReply = self
             .trigger_call(
                 13,
                 &serde_json::json!({"revision":preview.trigger_revision,
             "timerRevision":preview.timer_revision, "snippet":preview.xml}),
             )
             .await?;
-        if !accepted {
+        if reply.faulted {
+            if reply.error.is_empty() || reply.error.len() > 4096 {
+                return Err(trigger_error("invalid mixed Config fault response"));
+            }
+            return Err(Error::MixedConfigHostFault(reply.error));
+        }
+        if !reply.error.is_empty() {
             return Err(trigger_error("invalid mixed Config import response"));
         }
         Ok(())
@@ -570,7 +582,7 @@ mod tests {
             "timers": {"revision": 2, "items": [{"key":"z", "definition":timer}], "conflicts":[]}
         });
         let parse = |v: serde_json::Value| serde_json::from_value::<MixedResponse>(v).unwrap();
-        assert!(validate_mixed_preview(parse(valid.clone()), 4, "original").is_ok());
+        validate_mixed_preview(parse(valid.clone()), 4, "original").expect("valid mixed preview");
         for bad in [
             {
                 let mut v = valid.clone();
@@ -598,7 +610,7 @@ mod tests {
                 v
             },
         ] {
-            assert!(validate_mixed_preview(parse(bad), 4, "original").is_err());
+            validate_mixed_preview(parse(bad), 4, "original").expect_err("malformed mixed preview");
         }
         let mut extra = valid;
         extra["unexpected"] = true.into();

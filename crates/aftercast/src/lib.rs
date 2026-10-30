@@ -130,6 +130,8 @@ pub enum Error {
     InvalidNotificationRequest(String),
     #[error("invalid trigger request or response: {0}")]
     InvalidTriggerRequest(String),
+    #[error("mixed Config publication retired the host; restart required: {0}")]
+    MixedConfigHostFault(String),
     #[error("the host command queue is full or a conflicting operation is active")]
     Busy,
     #[error("import canceled after retaining partial history and restoring live state")]

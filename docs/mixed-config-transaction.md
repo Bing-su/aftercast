@@ -2,8 +2,8 @@
 
 The managed `HostEnvironment.PreviewMixedConfig` and `ImportMixedConfig` now validate
 and publish a mixed Trigger/Spell Config. Existing single-section importers and
-Bridge/Rust expose a combined session-owned preview/import; the existing UI still
-rejects mixed input and its integration is the next step. Both existing XML file formats remain unchanged.
+Bridge/Rust and the Trigger-pane mixed Config UI expose combined session-owned
+preview and explicit import. Single-kind interfaces still reject mixed input. Both existing XML file formats remain unchanged.
 The allowlist and original ACT serializers are documented in
 [Config batches](config-batch.md). ACT can continue after per-section failures;
 aftercast rejects the whole mixed admission on validation/conflict failure.
@@ -78,10 +78,21 @@ real child-process exits and startup recovery at journaled file boundaries.
 These are process-failure/contract checks, not native ACT UI or OS/power-loss tests.
 Independent review remains quota-pending.
 
-## Next connection
+## UI and worker boundary
 
-The UI must retain the Rust preview with both revisions and session ownership,
-call the managed operation once after
-explicit admission, and treat post-commit fail-stop errors as requiring a new worker.
-Single-kind preview/import APIs remain unchanged and must keep rejecting mixed
-sections. No external subscription, clipboard access or network import is added.
+The existing Trigger pane uses the Rust preview object, which owns the exact XML,
+both revisions and the worker session. Editing or canceling discards the preview;
+conflicting entries disable import. A successful explicit import refreshes both
+lists. Failure preserves the text draft and never retries automatically. A typed
+post-commit publication fault and an uncertain transport/response failure retire
+the affected worker even if its result arrives after the pane was edited or left;
+a response from an older session cannot stop the replacement. Normal stale revision
+and validation failures leave the worker available. The next session can preview
+the preserved draft again.
+
+Synthetic controller tests cover editing, cancellation, duplicate clicks, stale
+timer revision, late results and session replacement. Isolated workers cover mixed
+success, both stale revisions, immutable input and restart. A synthetic plugin uses
+the existing private managed fault seam in a worker to exercise memory-publication
+failure, request rejection and new-worker recovery. This is not a native ACT or
+desktop click test; native Windows and GUI behavior remain unverified.

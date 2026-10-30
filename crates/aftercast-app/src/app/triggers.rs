@@ -1,5 +1,6 @@
 use super::{AppState, Phase, tr};
 mod config_batch;
+mod mixed_config;
 mod snippet;
 use crate::components::{Accordion, Button, ButtonVariant, Input, Label};
 use aftercast::{
@@ -13,6 +14,7 @@ const PAGE: u32 = 16;
 pub(super) struct EditorState {
     snippet: snippet::State,
     config_batch: config_batch::State,
+    mixed_config: mixed_config::State,
     loaded: bool,
     results_loaded: bool,
     busy: bool,
@@ -151,6 +153,7 @@ pub(super) fn TriggersPane() -> Element {
             }
             snippet::Panel {}
             config_batch::Panel {}
+            mixed_config::Panel {}
             TriggerForm {}
             TriggerResults {}
         }

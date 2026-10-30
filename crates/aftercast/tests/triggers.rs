@@ -394,3 +394,36 @@ async fn mixed_config_owns_input_and_both_revisions(deployment: Deployment) {
     assert_eq!(restarted.timer_definitions(0, 16).await.unwrap().total, 2);
     restarted.shutdown().await.unwrap();
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
+async fn mixed_publication_failure_retires_isolated_worker(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let assembly = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let id = host
+        .create_plugin(
+            PluginConfig::builder()
+                .path(assembly)
+                .type_name("Aftercast.PluginFixture.MixedConfigFaultPlugin")
+                .build(),
+        )
+        .await
+        .unwrap();
+    host.initialize_plugin(id)
+        .await
+        .expect("synthetic fault injected");
+    host.triggers(0, 16)
+        .await
+        .expect_err("faulted worker rejects requests");
+    if let Err(error) = host.shutdown().await {
+        eprintln!("faulted worker shutdown: {error}");
+    }
+    let restarted = Host::start(deployment.config())
+        .await
+        .expect("fresh worker loads committed files");
+    assert_eq!(restarted.triggers(0, 16).await.unwrap().total, 1);
+    assert_eq!(restarted.timer_definitions(0, 16).await.unwrap().total, 1);
+    restarted.shutdown().await.unwrap();
+}
