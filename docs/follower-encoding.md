@@ -30,13 +30,17 @@ truncation/replacement. Complete old records drain before rotation; incomplete o
 records are reported and discarded, including fragments discarded by truncation. A source record is bounded to 8 MiB; strict
 malformed records are reported and skipped, allowing later records to continue.
 
-Selected preambles precede other Unicode BOMs at byte zero. This keeps aftercast's
-existing generation-start BOM policy: a BOM appended at a nonzero tail is content.
-ACT's newly constructed StreamReader can detect a BOM at its initial tail position;
-this is a deliberate difference, not verified native parity. Existing partial
-historical records are discarded until their first encoded delimiter; they are
-never replayed. Strict fallback survives BOM override, unlike ACT StreamReader's
-replacement fallback reset. No encoding is guessed.
+Selected preambles precede other Unicode BOMs at byte zero and at the first
+read from a nonzero initial tail **when the captured history ends at a known
+record boundary or consists solely of the selected codec's preamble**. A recognized tail BOM starts a new code-unit alignment and
+clears any historical CR carry; split BOMs are retained across temporary EOF.
+Only this first reader prefix is inspected: later BOMs are content. With detection
+disabled, only the selected encoding's own preamble is consumed. If the captured
+history ends in a partial record or code unit, its continuation is discarded until
+an encoded delimiter and is never treated as a fresh BOM. This safety boundary
+still differs from ACT's newly constructed StreamReader at a partial tail. Strict
+fallback survives BOM override, unlike ACT StreamReader's replacement fallback
+reset. No encoding is guessed. Native ACT reader-thread timing remains unverified.
 
 `ReadInitialZone` uses the default StreamReader text policy: UTF-8 replacement
 without a BOM, or UTF-8/UTF-16 LE/BE/UTF-32 LE/BE selected by a byte-zero BOM.
@@ -50,12 +54,12 @@ explicit outcomes. A new reader starts with a fresh header policy.
 
 ### Reference differences and execution limits
 
-| Behavior                 | ACT evidence                                                                                                                                                                         | aftercast policy                                                                                                                                                                                  |
-| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| Encoding                 | Inspected FindZoneName constructs default StreamReader without LogEncoding. Constructor/BOM/CR/replacement contracts pass against the pinned binary's reference probe.               | Same default replacement codec family, independent of forward selection.                                                                                                                          |
-| Incomplete EOF record    | Default ReadLine returns the last unterminated fragment. The inspected search can consume it when its stream-position loop admits that read.                                         | Preserve the existing completed-record snapshot contract; exclude it so an unfinished zone cannot change current state.                                                                           |
-| Large-file BOM           | Inspected search initially seeks backward by 250000 bytes; the reader may begin beyond the original header. Its underlying-stream-position loop also depends on buffered read-ahead. | Read the actual byte-zero header once, then scan aligned reverse blocks. Do not reproduce window-dependent BOM/read-ahead artifacts or claim exact window parity.                                 |
-| BOM at nonzero live tail | The selected StreamReader at a nonzero initial position detects a newly appended Unicode BOM; a focused tail probe verifies this.                                                    | Keep the existing generation-start-only BOM rule. A mid-file BOM is content, preventing an appended marker from silently changing the active codec. This remains an explicit compatibility limit. |
+| Behavior                 | ACT evidence                                                                                                                                                                         | aftercast policy                                                                                                                                                                                                       |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Encoding                 | Inspected FindZoneName constructs default StreamReader without LogEncoding. Constructor/BOM/CR/replacement contracts pass against the pinned binary's reference probe.               | Same default replacement codec family, independent of forward selection.                                                                                                                                               |
+| Incomplete EOF record    | Default ReadLine returns the last unterminated fragment. The inspected search can consume it when its stream-position loop admits that read.                                         | Preserve the existing completed-record snapshot contract; exclude it so an unfinished zone cannot change current state.                                                                                                |
+| Large-file BOM           | Inspected search initially seeks backward by 250000 bytes; the reader may begin beyond the original header. Its underlying-stream-position loop also depends on buffered read-ahead. | Read the actual byte-zero header once, then scan aligned reverse blocks. Do not reproduce window-dependent BOM/read-ahead artifacts or claim exact window parity.                                                      |
+| BOM at nonzero live tail | The selected StreamReader at a nonzero initial position detects a newly appended Unicode BOM; a focused tail probe verifies this.                                                    | Detect a first-read BOM at a known historical record boundary, preserving partial-history discard and strict fallback. Later BOMs remain content; partial historical tails intentionally retain the safety difference. |
 
 An attempted invocation of the pinned ACT private FindZoneName failed with
 TypeLoadException because the existing Linux headless Forms shim does not define

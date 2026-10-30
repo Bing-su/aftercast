@@ -44,7 +44,9 @@ internal sealed class LiveLogDecoder : IDisposable
         encoding = configured;
         SetWidth();
         alignmentSkip = (int)((width - position % width) % width);
-        checkingPrefix = position == 0;
+        // A fresh reader also detects a BOM at its initial tail, provided that
+        // tail ends at a known record boundary rather than inside old history.
+        checkingPrefix = position == 0 || !discard;
         discarding = discard;
         skipLf = previousCr;
     }
@@ -89,6 +91,9 @@ internal sealed class LiveLogDecoder : IDisposable
                 if (count >= bom.Length && bytes[..bom.Length].SequenceEqual(bom))
                 { encoding = ImportTextOptions.BomEncoding(codePage, configured); skip = bom.Length; break; }
         SetWidth(); checkingPrefix = false;
+        // A recognized BOM starts a new codec stream at this exact byte, independent
+        // of the old file offset or a CR at the end of the historical stream.
+        if (skip != 0) { alignmentSkip = 0; skipLf = false; }
         for (var index = skip; index < count; index++) if (!Frame(bytes[index], deliver, report)) return false;
         return true;
     }
