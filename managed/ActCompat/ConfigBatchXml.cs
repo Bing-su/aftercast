@@ -18,6 +18,27 @@ internal static class ConfigBatchXml
         if (root is null || root.Name != "Config" || root.NamespaceURI.Length != 0) throw new InvalidDataException("Expected ACT Config");
         return root;
     }
+    internal static (string Triggers,string Timers) SplitMixed(string text)
+    {
+        var root=Document(text);
+        if(root.HasAttribute("Xml"))
+        {
+            if(root.Attributes.Count!=1 || root.ChildNodes.Count!=0) throw new InvalidDataException("Invalid Config wrapper");
+            var embedded=root.GetAttribute("Xml");
+            if(embedded.Contains("logFilePath",StringComparison.Ordinal)) throw new InvalidDataException("Config snippet contains a forbidden path setting");
+            root=Document(embedded);
+        }
+        if(root.Attributes.Count!=0) throw new InvalidDataException("Unsupported Config attributes");
+        var parts=root.ChildNodes.Cast<XmlNode>().ToArray();
+        if(parts.Length!=2 || parts.Any(node=>node is not XmlElement) ||
+           parts.OfType<XmlElement>().Count(node=>node.Name=="CustomTriggers" && node.NamespaceURI.Length==0)!=1 ||
+           parts.OfType<XmlElement>().Count(node=>node.Name=="SpellTimers" && node.NamespaceURI.Length==0)!=1)
+            throw new InvalidDataException("Expected exactly one CustomTriggers and one SpellTimers section");
+        var triggers=(XmlElement)parts.Single(node=>node.Name=="CustomTriggers");
+        var timers=(XmlElement)parts.Single(node=>node.Name=="SpellTimers");
+        if(triggers.ChildNodes.Count+timers.ChildNodes.Count>32) throw new InvalidDataException("Mixed Config exceeds 32 items");
+        return ("<Config>"+triggers.OuterXml+"</Config>","<Config>"+timers.OuterXml+"</Config>");
+    }
     internal static XmlElement[] Read(string text, string section, string row, params string[] allowedAttributes)
     {
         var root = Document(text);

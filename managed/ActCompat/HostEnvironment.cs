@@ -227,6 +227,11 @@ namespace Aftercast.ActCompat
         public Task<int> RestoreSelectedHistoryAsync(HistorySelection selection) => main.RestoreSelectedHistoryAsync(selection);
         public int ArchiveOperation(int command, string text, ulong id, bool compressed, bool includeLogs = true, bool processTriggers = false) => main.ArchiveOperation(command, text, id, compressed, includeLogs, processTriggers);
         public Task<int> ArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool includeLogs = true, bool processTriggers = false) => main.ArchiveOperationAsync(command, text, id, compressed, includeLogs: includeLogs, processTriggers: processTriggers);
+        public (TriggerBatchPreview Triggers, TimerBatchPreview Timers) PreviewMixedConfig(string text)
+        {
+            var sections=ConfigBatchXml.SplitMixed(text);
+            return (main.PreviewTriggerConfig(sections.Triggers),timers.PreviewTimerConfig(sections.Timers));
+        }
         public CombatSnapshotData? ReadCombatSnapshot(ulong afterRevision) => main.ReadCombatSnapshot(afterRevision);
         public ulong CombatSnapshotRevision => main.GetCombatSnapshotRevision();
         public CombatPage<ZoneSummaryData> ListZones(int offset, int limit) => main.ListZones(offset, limit);

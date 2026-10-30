@@ -1,7 +1,7 @@
 # Mixed Config publication core
 
 This is a managed storage/design checkpoint, not completed mixed Config import.
-`ConfigBatchXml` still rejects mixed Trigger/Spell sections. Existing homogeneous
+Existing single-section importers still reject mixed Trigger/Spell sections. `HostEnvironment.PreviewMixedConfig` now validates both allowlisted sections and returns their existing previews without mutation; it does not admit or save a mixed import. The two revisions are observed independently and must both be revalidated under the future publication gates. Existing homogeneous
 imports and the two XML file formats are unchanged. Original ACT Config serializers
 and the allowlist remain documented in [Config batches](config-batch.md): ACT may
 continue after per-section failures, whereas aftercast intends all-or-none admission.
@@ -33,8 +33,7 @@ is local rollback material, not a new archive/backup policy.
 
 ## Remaining managed integration before enabling mixed input
 
-1. Parse one allowlisted mixed Config, with the existing total 16 KiB/32-item
-   budget across both sections; compile all definitions and reject all conflicts.
+1. Mixed preview enforces the total 16 KiB/32-item budget and compiles both definitions. The future import must revalidate both revisions and reject all conflicts under the publication gates.
 2. Suspend parsing and obtain both definition gates in one fixed order. Snapshot
    both registry revisions and both file before-images. Existing standalone save
    paths must participate in the same serialization boundary; do not enable a

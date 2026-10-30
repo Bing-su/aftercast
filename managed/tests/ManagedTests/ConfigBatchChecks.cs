@@ -21,6 +21,11 @@ internal static class ConfigBatchChecks
                 host.ConfigureSpeech(true);
                 var main = ActGlobals.oFormActMain!;
                 var timers = ActGlobals.oFormSpellTimers!;
+                var mixed=host.PreviewMixedConfig("<Config><CustomTriggers><Trigger Category='Fixture' Regex='mixed'/></CustomTriggers><SpellTimers><Spell Name='Mixed' Category='Fixture'/></SpellTimers></Config>");
+                Check(mixed.Triggers.Items.Length==1 && mixed.Timers.Items.Length==1 && main.ReadTriggers(0,16).Total==0 && timers.ReadTimerDefinitions(0,16).Total==0,"Mixed preview must not publish");
+                Reject(()=>host.PreviewMixedConfig("<Config><CustomTriggers><Trigger Category='x' Regex='['/></CustomTriggers><SpellTimers><Spell Name='Mixed'/></SpellTimers></Config>"));
+                Reject(()=>host.PreviewMixedConfig("<Config><CustomTriggers><Trigger Category='x' Regex='ok'/></CustomTriggers><SpellTimers><Spell Name='Mixed' Timer='bad'/></SpellTimers></Config>"));
+                Reject(()=>host.PreviewMixedConfig("<Config><CustomTriggers>"+string.Concat(Enumerable.Repeat("<Trigger Category='x' Regex='a'/>",32))+"</CustomTriggers><SpellTimers><Spell Name='one'/></SpellTimers></Config>"));
                 const string trigger = "<Config><CustomTriggers><Trigger Category='Fixture' Regex='one' Active='True' SoundType='3' SoundData='no sound' Timer='True' Tabbed='True'/><Trigger Category='Fixture' Regex='two'/></CustomTriggers></Config>";
                 var preview = main.PreviewTriggerConfig(trigger);
                 Check(preview.Items.Length == 2 && preview.Conflicts.Length == 0 && main.ReadTriggers(0,16).Total == 0, "Preview changed trigger registry");
