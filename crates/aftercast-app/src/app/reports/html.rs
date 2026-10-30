@@ -188,6 +188,9 @@ impl Draft {
             simple_column: self.graph_simple_column.clone(),
             only_allies: self.graph_only_allies,
             totals: self.graph_totals,
+            use_suffix: true,
+            suffix_decimals: true,
+            bar_colors: crate::config::GraphSettings::default().bar_colors,
             distribution: self.graph_distribution.clone(),
             action_sort: self.graph_action_sort.clone(),
             all_label: self.graph_all.clone(),
@@ -352,7 +355,11 @@ impl AppState {
         if !self.report_html_editable(token) || !self.can_save_settings() {
             return Ok(false);
         }
-        self.settings.graphs = self.reports.html.graph_settings()?;
+        let mut graph = self.reports.html.graph_settings()?;
+        graph.use_suffix = self.settings.graphs.use_suffix;
+        graph.suffix_decimals = self.settings.graphs.suffix_decimals;
+        graph.bar_colors = self.settings.graphs.bar_colors.clone();
+        self.settings.graphs = graph;
         Ok(true)
     }
     pub(super) fn report_html_graph_candidates_begin(

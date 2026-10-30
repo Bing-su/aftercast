@@ -866,3 +866,10 @@ mini-graph-axis = Axis
 mini-graph-no-actors = No actors
 mini-graph-empty = No positive values
 mini-graph-omitted = additional rows omitted
+
+mini-graph-suffix = Abbreviate values
+mini-graph-suffix-decimals = Suffix decimals
+
+mini-graph-color-one = Bar color 1 (#RRGGBB)
+mini-graph-color-two = Bar color 2 (#RRGGBB)
+mini-graph-color-self = Personal bar color (#RRGGBB)

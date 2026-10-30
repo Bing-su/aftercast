@@ -778,6 +778,9 @@ fn graph_settings_loading_and_save_snapshot_are_guarded() {
     assert!(!ui.report_html_graph_edit(token, "window", "20".into()));
     assert!(!ui.report_html_prepare_graph_save(token).expect("guard"));
     ui.saving = false;
+    ui.settings.graphs.use_suffix = false;
+    ui.settings.graphs.suffix_decimals = false;
+    ui.settings.graphs.bar_colors = ["#123456".into(), "#abcdef".into(), "#334455".into()];
     assert!(ui.report_html_graph_edit(ui.report_token(), "window", "20".into()));
     assert!(
         !ui.report_html_prepare_graph_save(token)
@@ -798,6 +801,12 @@ fn graph_settings_loading_and_save_snapshot_are_guarded() {
             .window,
         20
     );
+    let persisted = crate::config::ConfigFile::load(&root)
+        .expect("reloaded")
+        .settings
+        .graphs;
+    assert!(!persisted.use_suffix && !persisted.suffix_decimals);
+    assert_eq!(persisted.bar_colors, ["#123456", "#abcdef", "#334455"]);
     assert_eq!(ui.reports.html.graph_window, "20");
 }
 

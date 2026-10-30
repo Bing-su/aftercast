@@ -1,5 +1,5 @@
 use super::{AppState, Phase, tr};
-use crate::components::{Accordion, Button, ButtonVariant, Label};
+use crate::components::{Accordion, Button, ButtonVariant, Input, Label};
 use aftercast::{EncounterId, EncounterStatus, HostHandle, TextReportOptions, TextReportRevision};
 use dioxus::desktop::WeakDesktopContext;
 use dioxus::{core::spawn_forever, prelude::*};
@@ -22,6 +22,7 @@ struct Frame {
     graph: Option<aftercast::MiniGraph>,
     graph_mode: bool,
     graph_totals: bool,
+    bar_colors: [String; 3],
     error: Option<String>,
     truncated: bool,
     pending: bool,
@@ -66,8 +67,8 @@ pub(super) struct State {
     generation: u64,
     pending: Option<Ticket>,
     pending_settings: Option<(String, u8, Option<TextReportOptions>)>,
-    pending_graph_settings: Option<(bool, bool, bool)>,
-    last_ended_graph_settings: Option<(bool, bool, bool)>,
+    pending_graph_settings: Option<(bool, bool, bool, bool, bool)>,
+    last_ended_graph_settings: Option<(bool, bool, bool, bool, bool)>,
     last: Option<Duration>,
     clock: Option<Instant>,
     force_refresh: bool,
@@ -81,6 +82,7 @@ pub(super) struct State {
     error: Option<String>,
     window: WindowState,
     mini_style: String,
+    bar_colors: [String; 3],
 }
 impl State {
     fn now(&mut self) -> Duration {
@@ -127,6 +129,7 @@ impl State {
             graph: self.graph.clone(),
             graph_mode: self.graph_mode,
             graph_totals: self.graph_totals,
+            bar_colors: self.bar_colors.clone(),
             error: self.error.clone(),
             truncated: self.truncated,
             pending: self.pending.is_some(),
@@ -265,6 +268,8 @@ impl AppState {
             self.settings.mini_parse.graph,
             self.settings.graphs.only_allies,
             self.settings.graphs.totals,
+            self.settings.graphs.use_suffix,
+            self.settings.graphs.suffix_decimals,
         );
         self.mini_parse.graph_mode = graph_settings.0;
         self.mini_parse.graph_totals = graph_settings.2;
@@ -323,6 +328,8 @@ impl AppState {
             self.settings.mini_parse.graph,
             self.settings.graphs.only_allies,
             self.settings.graphs.totals,
+            self.settings.graphs.use_suffix,
+            self.settings.graphs.suffix_decimals,
         );
         if self
             .mini_parse
@@ -425,11 +432,22 @@ async fn fetch(
         .then_some((active.summary.id, catalog.revision));
     Ok(report.map(|report| (report.text, ended)))
 }
+#[cfg(test)]
 async fn fetch_graph(
     handle: &HostHandle,
     profile: Option<TextReportOptions>,
     last_ended: Option<EndedKey>,
     only_allies: bool,
+) -> Result<Option<(aftercast::MiniGraph, Option<EndedKey>)>, String> {
+    fetch_graph_options(handle, profile, last_ended, only_allies, true, true).await
+}
+async fn fetch_graph_options(
+    handle: &HostHandle,
+    profile: Option<TextReportOptions>,
+    last_ended: Option<EndedKey>,
+    only_allies: bool,
+    use_suffix: bool,
+    suffix_decimals: bool,
 ) -> Result<Option<(aftercast::MiniGraph, Option<EndedKey>)>, String> {
     let Some(active) = handle
         .current_zone_encounter()
@@ -452,7 +470,13 @@ async fn fetch_graph(
         return Ok(None);
     }
     let graph = handle
-        .mini_graph(active.summary.id, &options.sorting, only_allies)
+        .mini_graph_with_format(
+            active.summary.id,
+            &options.sorting,
+            only_allies,
+            use_suffix,
+            suffix_decimals,
+        )
         .await
         .map_err(|e| e.to_string())?;
     let current = handle
@@ -469,19 +493,31 @@ async fn fetch_graph(
     Ok(Some((graph, ended)))
 }
 
-fn mini_bar_style(value: f64, axis: f64, index: usize, is_self: bool) -> String {
-    let color = if is_self {
-        "#9400d3"
-    } else if index.is_multiple_of(2) {
-        "#8b0000"
+fn mini_bar_style(
+    value: f64,
+    axis: f64,
+    index: usize,
+    is_self: bool,
+    colors: &[String; 3],
+) -> String {
+    let slot = if is_self { 2 } else { index % 2 };
+    let defaults = ["#8b0000", "#00008b", "#9400d3"];
+    let candidate = colors.get(slot).map(String::as_str).unwrap_or("");
+    let color = if !candidate.is_empty() && crate::config::valid_color(candidate) {
+        candidate
     } else {
-        "#00008b"
+        defaults.get(slot).copied().unwrap_or("#8b0000")
     };
     format!("background:{color};width:{:.3}%;", value / axis * 100.0)
 }
 
 #[component]
-fn GraphView(graph: aftercast::MiniGraph, totals: bool, style: String) -> Element {
+fn GraphView(
+    graph: aftercast::MiniGraph,
+    totals: bool,
+    style: String,
+    colors: [String; 3],
+) -> Element {
     let content = match graph.data {
         None => {
             rsx! {
@@ -515,7 +551,7 @@ fn GraphView(graph: aftercast::MiniGraph, totals: bool, style: String) -> Elemen
                             div { class: "h-3 w-full rounded bg-muted",
                                 div {
                                     class: "h-3 rounded",
-                                    style: mini_bar_style(item.value, data.axis, index, formatted.is_self),
+                                    style: mini_bar_style(item.value, data.axis, index, formatted.is_self, &colors),
                                 }
                             }
                         }
@@ -549,10 +585,19 @@ fn launch(mut state: Signal<AppState>) {
             .peek()
             .mini_parse
             .pending_graph_settings
-            .unwrap_or((false, true, true));
+            .unwrap_or((false, true, true, true, true));
         spawn_forever(async move {
             let (result, graph) = if graph_settings.0 {
-                match fetch_graph(&handle, profile, last_ended, graph_settings.1).await {
+                match fetch_graph_options(
+                    &handle,
+                    profile,
+                    last_ended,
+                    graph_settings.1,
+                    graph_settings.3,
+                    graph_settings.4,
+                )
+                .await
+                {
                     Ok(Some((graph, ended))) => (Ok(Some((String::new(), ended))), Some(graph)),
                     Ok(None) => (Ok(None), None),
                     Err(error) => (Err(error), None),
@@ -625,8 +670,10 @@ pub(super) async fn poll(mut state: Signal<AppState>) {
         {
             let mut current = state.write();
             let style = current.settings.appearance.mini_style();
-            if current.mini_parse.mini_style != style {
+            let colors = current.settings.graphs.bar_colors.clone();
+            if current.mini_parse.mini_style != style || current.mini_parse.bar_colors != colors {
                 current.mini_parse.mini_style = style;
+                current.mini_parse.bar_colors = colors;
                 current.mini_parse.publish();
             }
             if current.exit_requested {
@@ -668,6 +715,9 @@ pub(super) fn Panel() -> Element {
     let graph_mode = current.settings.mini_parse.graph;
     let graph_totals = current.settings.graphs.totals;
     let graph_allies = current.settings.graphs.only_allies;
+    let bar_colors = current.settings.graphs.bar_colors.clone();
+    let use_suffix = current.settings.graphs.use_suffix;
+    let suffix_decimals = current.settings.graphs.suffix_decimals;
     let truncated = current.mini_parse.truncated;
     let error = current.mini_parse.error.clone();
     let ready = current.phase == Phase::Ready && !current.exit_requested;
@@ -761,6 +811,38 @@ pub(super) fn Panel() -> Element {
                         Button {
                             variant: ButtonVariant::Outline,
                             disabled: !can_save,
+                            aria_pressed: use_suffix,
+                            onclick: move |_| {
+                                let mut s = state.write();
+                                if !s.can_save_settings() || !s.settings.mini_parse.graph
+                                    || s.settings.graphs.use_suffix != use_suffix
+                                {
+                                    return;
+                                }
+                                s.settings.graphs.use_suffix = !use_suffix;
+                                s.mini_parse.invalidate();
+                            },
+                            {tr("mini-graph-suffix")}
+                        }
+                        Button {
+                            variant: ButtonVariant::Outline,
+                            disabled: !can_save || !use_suffix,
+                            aria_pressed: suffix_decimals,
+                            onclick: move |_| {
+                                let mut s = state.write();
+                                if !s.can_save_settings() || !s.settings.mini_parse.graph
+                                    || s.settings.graphs.suffix_decimals != suffix_decimals
+                                {
+                                    return;
+                                }
+                                s.settings.graphs.suffix_decimals = !suffix_decimals;
+                                s.mini_parse.invalidate();
+                            },
+                            {tr("mini-graph-suffix-decimals")}
+                        }
+                        Button {
+                            variant: ButtonVariant::Outline,
+                            disabled: !can_save,
                             aria_pressed: graph_totals,
                             onclick: move |_| {
                                 let mut s = state.write();
@@ -774,6 +856,33 @@ pub(super) fn Panel() -> Element {
                                 s.mini_parse.invalidate();
                             },
                             {tr("mini-graph-totals")}
+                        }
+                    }
+                }
+                if graph_mode {
+                    div { class: "grid gap-2 sm:grid-cols-3",
+                        for (index, id, label) in [
+                            (0, "mini-bar-one", "mini-graph-color-one"),
+                            (1, "mini-bar-two", "mini-graph-color-two"),
+                            (2, "mini-bar-self", "mini-graph-color-self"),
+                        ]
+                        {
+                            div {
+                                Label { html_for: id, {tr(label)} }
+                                Input {
+                                    id: id.to_owned(),
+                                    value: bar_colors.get(index).cloned().unwrap_or_default(),
+                                    disabled: !can_save,
+                                    oninput: move |event: FormEvent| {
+                                        let mut s = state.write();
+                                        if s.can_save_settings()
+                                            && let Some(color) = s.settings.graphs.bar_colors.get_mut(index)
+                                        {
+                                            *color = event.value();
+                                        }
+                                    },
+                                }
+                            }
                         }
                     }
                 }
@@ -809,6 +918,7 @@ pub(super) fn Panel() -> Element {
                             graph,
                             totals: graph_totals,
                             style: mini_style.clone(),
+                            colors: bar_colors.clone(),
                         }
                     } else if pending {
                         p { {tr("mini-loading")} }
@@ -843,16 +953,47 @@ mod tests {
     use super::*;
     #[test]
     fn graph_bar_color_and_axis_scale_are_deterministic() {
+        let custom = ["#123456".into(), "bad;color:red".into(), "#654321".into()];
         assert_eq!(
-            mini_bar_style(50.0, 100.0, 0, false),
+            mini_bar_style(1.0, 2.0, 0, false, &custom),
+            "background:#123456;width:50.000%;"
+        );
+        assert_eq!(
+            mini_bar_style(1.0, 2.0, 1, false, &custom),
+            "background:#00008b;width:50.000%;"
+        );
+        assert_eq!(
+            mini_bar_style(1.0, 2.0, 1, true, &custom),
+            "background:#654321;width:50.000%;"
+        );
+        assert_eq!(
+            mini_bar_style(
+                50.0,
+                100.0,
+                0,
+                false,
+                &crate::config::GraphSettings::default().bar_colors
+            ),
             "background:#8b0000;width:50.000%;"
         );
         assert_eq!(
-            mini_bar_style(25.0, 100.0, 1, true),
+            mini_bar_style(
+                25.0,
+                100.0,
+                1,
+                true,
+                &crate::config::GraphSettings::default().bar_colors
+            ),
             "background:#9400d3;width:25.000%;"
         );
         assert_eq!(
-            mini_bar_style(100.0, 110.0, 1, false),
+            mini_bar_style(
+                100.0,
+                110.0,
+                1,
+                false,
+                &crate::config::GraphSettings::default().bar_colors
+            ),
             "background:#00008b;width:90.909%;"
         );
     }
@@ -869,9 +1010,20 @@ mod tests {
         };
         ui.mini_parse.pending = Some(ticket);
         ui.mini_parse.pending_settings = Some((String::new(), 5, None));
-        ui.mini_parse.pending_graph_settings = Some((true, true, true));
+        ui.mini_parse.pending_graph_settings = Some((true, true, true, true, true));
         ui.settings.mini_parse.graph = true;
         ui.settings.graphs.only_allies = false;
+        assert!(!ui.mini_finish(ticket, Ok(Some((String::new(), None)))));
+        assert!(ui.mini_parse.graph.is_none());
+        let ticket = Ticket {
+            session: 7,
+            generation: ui.mini_parse.generation,
+        };
+        ui.mini_parse.pending = Some(ticket);
+        ui.mini_parse.pending_settings = Some((String::new(), 5, None));
+        ui.mini_parse.pending_graph_settings = Some((true, true, true, true, true));
+        ui.settings.graphs.only_allies = true;
+        ui.settings.graphs.use_suffix = false;
         assert!(!ui.mini_finish(ticket, Ok(Some((String::new(), None)))));
         assert!(ui.mini_parse.graph.is_none());
         let first = ui.mini_parse.window.reserve().unwrap();
@@ -928,6 +1080,20 @@ mod tests {
         assert!((data.axis - 110.0).abs() < 0.00001);
         assert_eq!(data.total, 150.0);
         assert_eq!(data.average, 75.0);
+        let abbreviated = host
+            .mini_graph_with_format(active.summary.id, "mini-graph-scaled", false, true, true)
+            .await
+            .expect("suffix");
+        let plain = host
+            .mini_graph_with_format(active.summary.id, "mini-graph-scaled", false, false, true)
+            .await
+            .expect("plain");
+        assert!(
+            abbreviated.display.expect("display").rows[0]
+                .label
+                .ends_with('K')
+        );
+        assert_eq!(plain.display.expect("display").rows[0].label, "2000");
         let partial = host
             .mini_graph(active.summary.id, "mini-graph-partial", false)
             .await

@@ -208,6 +208,9 @@ pub struct GraphSettings {
     pub simple_column: String,
     pub only_allies: bool,
     pub totals: bool,
+    pub use_suffix: bool,
+    pub suffix_decimals: bool,
+    pub bar_colors: [String; 3],
     pub distribution: String,
     pub action_sort: String,
     pub all_label: String,
@@ -224,6 +227,9 @@ impl Default for GraphSettings {
             simple_column: String::new(),
             only_allies: true,
             totals: true,
+            use_suffix: true,
+            suffix_decimals: true,
+            bar_colors: ["#8b0000".into(), "#00008b".into(), "#9400d3".into()],
             distribution: String::new(),
             action_sort: String::new(),
             all_label: "All".into(),
@@ -235,6 +241,10 @@ impl Default for GraphSettings {
 impl GraphSettings {
     pub(crate) fn validate(&self) -> Result<()> {
         if !(1..=120).contains(&self.window)
+            || self
+                .bar_colors
+                .iter()
+                .any(|color| color.is_empty() || !valid_color(color))
             || [
                 &self.simple_column,
                 &self.distribution,
@@ -664,6 +674,14 @@ fn save_graphs(document: &mut DocumentMut, graph: &GraphSettings) {
     );
     set(&mut document["graphs"]["totals"], value(graph.totals));
     set(
+        &mut document["graphs"]["use_suffix"],
+        value(graph.use_suffix),
+    );
+    set(
+        &mut document["graphs"]["suffix_decimals"],
+        value(graph.suffix_decimals),
+    );
+    set(
         &mut document["graphs"]["distribution"],
         value(&graph.distribution),
     );
@@ -678,6 +696,16 @@ fn save_graphs(document: &mut DocumentMut, graph: &GraphSettings) {
     set(
         &mut document["graphs"]["ward_prefix"],
         value(&graph.ward_prefix),
+    );
+    set(
+        &mut document["graphs"]["bar_colors"],
+        value(
+            graph
+                .bar_colors
+                .iter()
+                .map(String::as_str)
+                .collect::<toml_edit::Array>(),
+        ),
     );
     if let Some(keys) = &graph.solo_categories {
         set(
@@ -924,6 +952,7 @@ mod tests {
         std::fs::write(root.join("config.toml"), old).expect("synthetic config");
         let mut file = super::ConfigFile::load(root).expect("old schema");
         assert_eq!(file.settings.graphs, super::GraphSettings::default());
+        assert!(file.settings.graphs.use_suffix && file.settings.graphs.suffix_decimals);
         file.settings.graphs.levels = [true, true, false, false];
         file.settings.graphs.simple_column = "key".into();
         file.settings.graphs.solo_categories = Some(vec!["Damage".into()]);
@@ -932,15 +961,31 @@ mod tests {
         assert!(saved.contains("# preserved") && saved.contains("unknown = \"keep\""));
         let mut changed = super::ConfigFile::load(root).expect("first restart");
         changed.settings.graphs.levels = [false, true, false, false];
+        changed.settings.graphs.use_suffix = false;
+        changed.settings.graphs.suffix_decimals = false;
+        changed.settings.graphs.bar_colors = ["#123456".into(), "#abcdef".into(), "#abcdef".into()];
         changed.save(root).expect("save changed levels");
         let loaded = super::ConfigFile::load(root).expect("restart");
         assert_eq!(loaded.settings.graphs.levels, [false, true, false, false]);
+        assert!(!loaded.settings.graphs.use_suffix && !loaded.settings.graphs.suffix_decimals);
+        assert_eq!(loaded.settings.graphs.bar_colors[0], "#123456");
         let saved = std::fs::read_to_string(root.join("config.toml")).expect("changed config");
         assert_eq!(
             loaded.settings.graphs.solo_categories,
             Some(vec!["Damage".into()])
         );
         assert_eq!(loaded.settings.graphs.simple_column, "key");
+        let mut bad_color = loaded.clone();
+        bad_color.settings.graphs.bar_colors = [
+            "red;display:none".into(),
+            "#abcdef".into(),
+            "#123456".into(),
+        ];
+        assert!(bad_color.save(root).is_err());
+        assert_eq!(
+            std::fs::read_to_string(root.join("config.toml")).expect("unchanged colors"),
+            saved
+        );
         let mut bad = loaded.clone();
         bad.settings.graphs.window = 0;
         assert!(bad.save(root).is_err());

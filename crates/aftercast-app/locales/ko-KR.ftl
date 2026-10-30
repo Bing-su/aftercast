@@ -866,3 +866,10 @@ mini-graph-axis = 축
 mini-graph-no-actors = 전투원이 없습니다
 mini-graph-empty = 양수 값이 없습니다
 mini-graph-omitted = 개 행 생략
+
+mini-graph-suffix = 수치 접미사
+mini-graph-suffix-decimals = 접미사 소수점
+
+mini-graph-color-one = 막대 색상 1 (#RRGGBB)
+mini-graph-color-two = 막대 색상 2 (#RRGGBB)
+mini-graph-color-self = 내 막대 색상 (#RRGGBB)
