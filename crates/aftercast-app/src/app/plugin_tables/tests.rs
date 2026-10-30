@@ -608,7 +608,7 @@ async fn zone_ui_contract_preserves_identity_paging_and_rejects_late_results() {
 
 #[tokio::test(flavor = "current_thread")]
 #[ignore = "requires .NET 10 and actual synthetic Host; run mise run test:gui-state"]
-async fn header_click_controller_serializes_and_preserves_draft_and_rejects_stale() {
+async fn header_click_ui_contract_serializes_and_preserves_draft_and_rejects_stale() {
     let temporary = tempfile::tempdir().expect("isolated controller");
     let root = Utf8Path::from_path(temporary.path()).expect("UTF8 root");
     let host = Host::start(config(root)).await.expect("host");
