@@ -339,3 +339,58 @@ async fn trigger_config_batch_is_atomic_and_session_owned(deployment: Deployment
         .expect_err("old session");
     restarted.shutdown().await.expect("shutdown");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
+async fn mixed_config_owns_input_and_both_revisions(deployment: Deployment) {
+    let host = Host::start(deployment.config()).await.expect("host");
+    let mut xml = "<Config><CustomTriggers><Trigger Regex='mixed' Category='Fixture'/></CustomTriggers><SpellTimers><Spell Name='Mixed' Category='Fixture'/></SpellTimers></Config>".to_owned();
+    let stale_timer = host.preview_mixed_config(&xml).await.expect("preview");
+    assert_eq!(host.triggers(0, 16).await.unwrap().total, 0);
+    assert_eq!(host.timer_definitions(0, 16).await.unwrap().total, 0);
+    let timers = host.timer_definitions(0, 16).await.unwrap();
+    let timer = aftercast::TimerDefinition {
+        name: "Other".into(),
+        category: "Fixture".into(),
+        ..Default::default()
+    };
+    host.save_timer_definition(timers.revision, None, &timer)
+        .await
+        .unwrap();
+    host.import_mixed_config(&stale_timer)
+        .await
+        .expect_err("stale timer revision");
+    let stale_trigger = host.preview_mixed_config(&xml).await.unwrap();
+    let page = host.triggers(0, 16).await.unwrap();
+    let trigger = TriggerDefinition {
+        category: "Fixture".into(),
+        regex: "other".into(),
+        ..Default::default()
+    };
+    host.save_trigger(page.revision, None, &trigger)
+        .await
+        .unwrap();
+    host.import_mixed_config(&stale_trigger)
+        .await
+        .expect_err("stale trigger revision");
+    let preview = host.preview_mixed_config(&xml).await.unwrap();
+    xml.clear();
+    host.import_mixed_config(&preview)
+        .await
+        .expect("owned snapshot");
+    host.import_mixed_config(&preview)
+        .await
+        .expect_err("duplicate retry");
+    assert_eq!(host.triggers(0, 16).await.unwrap().total, 2);
+    assert_eq!(host.timer_definitions(0, 16).await.unwrap().total, 2);
+    host.shutdown().await.unwrap();
+    let restarted = Host::start(deployment.config()).await.unwrap();
+    restarted
+        .import_mixed_config(&preview)
+        .await
+        .expect_err("old session");
+    assert_eq!(restarted.triggers(0, 16).await.unwrap().total, 2);
+    assert_eq!(restarted.timer_definitions(0, 16).await.unwrap().total, 2);
+    restarted.shutdown().await.unwrap();
+}

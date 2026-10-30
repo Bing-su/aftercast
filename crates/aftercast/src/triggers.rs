@@ -59,6 +59,32 @@ struct RawTriggerBatchPreview {
     conflicts: Vec<String>,
 }
 
+/// An immutable mixed Config preview owned by one host session.
+#[derive(Debug, Clone)]
+pub struct MixedConfigPreview {
+    session: u64,
+    trigger_revision: u64,
+    timer_revision: u64,
+    xml: String,
+    pub triggers: Vec<TriggerItem>,
+    pub trigger_conflicts: Vec<String>,
+    pub timers: Vec<crate::TimerItem>,
+    pub timer_conflicts: Vec<String>,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct MixedResponse {
+    triggers: RawTriggerBatchPreview,
+    timers: MixedTimers,
+}
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct MixedTimers {
+    revision: u64,
+    items: Vec<crate::TimerItem>,
+    conflicts: Vec<String>,
+}
+
 #[derive(Debug, Clone)]
 pub struct TriggerSnippetPreview {
     pub revision: TriggerRevision,
@@ -204,6 +230,39 @@ impl HostHandle {
             items: page.items,
         })
     }
+    /// Validate both Config sections without changing files or registries.
+    pub async fn preview_mixed_config(&self, xml: &str) -> Result<MixedConfigPreview, Error> {
+        if xml.len() > 16384 || xml.contains('\0') {
+            return Err(trigger_error("invalid mixed Config input"));
+        }
+        let raw: MixedResponse = self
+            .trigger_call(12, &serde_json::json!({"snippet":xml}))
+            .await?;
+        validate_mixed_preview(raw, self.session, xml)
+    }
+    /// Explicitly import the exact text that was previewed; a faulted worker must be replaced.
+    pub async fn import_mixed_config(&self, preview: &MixedConfigPreview) -> Result<(), Error> {
+        if preview.session != self.session
+            || !preview.trigger_conflicts.is_empty()
+            || !preview.timer_conflicts.is_empty()
+        {
+            return Err(trigger_error(
+                "mixed Config belongs to another session or has conflicts",
+            ));
+        }
+        let accepted: bool = self
+            .trigger_call(
+                13,
+                &serde_json::json!({"revision":preview.trigger_revision,
+            "timerRevision":preview.timer_revision, "snippet":preview.xml}),
+            )
+            .await?;
+        if !accepted {
+            return Err(trigger_error("invalid mixed Config import response"));
+        }
+        Ok(())
+    }
+
     /// Preview one allowlisted, homogeneous ACT Config section without changes.
     pub async fn preview_trigger_config(
         &self,
@@ -429,6 +488,51 @@ impl HostHandle {
         decode_reply(&packet)
     }
 }
+fn validate_mixed_preview(
+    raw: MixedResponse,
+    session: u64,
+    xml: &str,
+) -> Result<MixedConfigPreview, Error> {
+    let triggers = &raw.triggers;
+    let timers = &raw.timers;
+    let tk: std::collections::HashSet<_> = triggers.items.iter().map(|item| &item.key).collect();
+    let mk: std::collections::HashSet<_> = timers.items.iter().map(|item| &item.key).collect();
+    let tc: std::collections::HashSet<_> = triggers.conflicts.iter().collect();
+    let mc: std::collections::HashSet<_> = timers.conflicts.iter().collect();
+    if triggers.revision == 0
+        || timers.revision == 0
+        || triggers.items.is_empty()
+        || timers.items.is_empty()
+        || triggers.items.len() + timers.items.len() > 32
+        || tk.len() != triggers.items.len()
+        || mk.len() != timers.items.len()
+        || tc.len() != triggers.conflicts.len()
+        || mc.len() != timers.conflicts.len()
+        || triggers.items.iter().any(|i| {
+            i.key.is_empty()
+                || i.key.len() > 8192
+                || i.key != format!("{}|{}", i.definition.category, i.definition.regex)
+        })
+        || timers
+            .items
+            .iter()
+            .any(|i| i.key.is_empty() || i.key.len() > 8192)
+        || triggers.conflicts.iter().any(|key| !tk.contains(key))
+        || timers.conflicts.iter().any(|key| !mk.contains(key))
+    {
+        return Err(trigger_error("invalid mixed Config preview"));
+    }
+    Ok(MixedConfigPreview {
+        session,
+        trigger_revision: triggers.revision,
+        timer_revision: timers.revision,
+        xml: xml.to_owned(),
+        triggers: raw.triggers.items,
+        trigger_conflicts: raw.triggers.conflicts,
+        timers: raw.timers.items,
+        timer_conflicts: raw.timers.conflicts,
+    })
+}
 fn trigger_error(error: impl std::fmt::Display) -> Error {
     Error::InvalidTriggerRequest(error.to_string())
 }
@@ -449,6 +553,57 @@ fn decode_reply<T: DeserializeOwned>(packet: &[u8]) -> Result<T, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn mixed_preview_rejects_malformed_worker_responses() {
+        let trigger = TriggerDefinition {
+            category: "x".into(),
+            regex: "y".into(),
+            ..Default::default()
+        };
+        let timer = crate::TimerDefinition {
+            name: "z".into(),
+            category: "x".into(),
+            ..Default::default()
+        };
+        let valid = serde_json::json!({
+            "triggers": {"revision": 1, "items": [{"key":"x|y", "definition":trigger}], "conflicts":[]},
+            "timers": {"revision": 2, "items": [{"key":"z", "definition":timer}], "conflicts":[]}
+        });
+        let parse = |v: serde_json::Value| serde_json::from_value::<MixedResponse>(v).unwrap();
+        assert!(validate_mixed_preview(parse(valid.clone()), 4, "original").is_ok());
+        for bad in [
+            {
+                let mut v = valid.clone();
+                v["triggers"]["revision"] = 0.into();
+                v
+            },
+            {
+                let mut v = valid.clone();
+                v["timers"]["revision"] = 0.into();
+                v
+            },
+            {
+                let mut v = valid.clone();
+                v["triggers"]["items"][0]["key"] = "wrong".into();
+                v
+            },
+            {
+                let mut v = valid.clone();
+                v["timers"]["conflicts"] = serde_json::json!(["unknown"]);
+                v
+            },
+            {
+                let mut v = valid.clone();
+                v["timers"]["items"] = serde_json::json!([]);
+                v
+            },
+        ] {
+            assert!(validate_mixed_preview(parse(bad), 4, "original").is_err());
+        }
+        let mut extra = valid;
+        extra["unexpected"] = true.into();
+        assert!(serde_json::from_value::<MixedResponse>(extra).is_err());
+    }
     #[test]
     fn legacy_signed_sound_type_is_readable_without_normalizing_plugin_state() {
         let item: TriggerItem = serde_json::from_str(r#"{"key":"x|x","definition":{"category":"x","regex":"x","soundType":-1,"soundData":"","active":true,"restrictToCategoryZone":false,"timer":false,"timerName":"","tabbed":false}}"#)

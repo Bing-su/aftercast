@@ -80,9 +80,9 @@ pub use timers::{
 };
 pub use triggers::TriggerResultCursor;
 pub use triggers::{
-    TriggerBatchPreview, TriggerBenchmarkResult, TriggerBenchmarkRow, TriggerCapture,
-    TriggerDefinition, TriggerItem, TriggerPage, TriggerResult, TriggerResultPage, TriggerRevision,
-    TriggerSnippetPreview,
+    MixedConfigPreview, TriggerBatchPreview, TriggerBenchmarkResult, TriggerBenchmarkRow,
+    TriggerCapture, TriggerDefinition, TriggerItem, TriggerPage, TriggerResult, TriggerResultPage,
+    TriggerRevision, TriggerSnippetPreview,
 };
 
 pub use avoidance_report::{

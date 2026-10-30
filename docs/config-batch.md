@@ -30,8 +30,8 @@ names and values; native ACT UI and actual native desktop clicks are unverified.
 The [mixed publication path](mixed-config-transaction.md) now supports managed
 combined preview/import with bounded journaling, startup recovery, both registry
 revisions, and fail-stop shutdown when committed memory publication fails. Existing
-single-kind importers and Bridge/Rust/UI still reject mixed input until their
-combined session-owned integration is implemented; the restrictions above describe
-those currently exposed interfaces. Synthetic managed publication tests prove both
+single-kind importers and the existing UI still reject mixed input; Bridge/Rust
+now expose a combined session-owned preview/import API. The restrictions above
+describe the single-kind interfaces. Synthetic managed publication tests prove both
 registry admission and committed-pair preservation through failed publication and
 restart. They do not prove OS crash/power-loss durability or native ACT UI parity.

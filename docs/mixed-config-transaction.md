@@ -2,8 +2,8 @@
 
 The managed `HostEnvironment.PreviewMixedConfig` and `ImportMixedConfig` now validate
 and publish a mixed Trigger/Spell Config. Existing single-section importers and
-Bridge/Rust/UI still reject mixed input; their combined owner/session-bound request
-is the next integration step. Both existing XML file formats remain unchanged.
+Bridge/Rust expose a combined session-owned preview/import; the existing UI still
+rejects mixed input and its integration is the next step. Both existing XML file formats remain unchanged.
 The allowlist and original ACT serializers are documented in
 [Config batches](config-batch.md). ACT can continue after per-section failures;
 aftercast rejects the whole mixed admission on validation/conflict failure.
@@ -80,8 +80,8 @@ Independent review remains quota-pending.
 
 ## Next connection
 
-Bridge/Rust/UI must carry both preview revisions and session ownership together,
-retain preview text/selection as a snapshot, call the managed operation once after
+The UI must retain the Rust preview with both revisions and session ownership,
+call the managed operation once after
 explicit admission, and treat post-commit fail-stop errors as requiring a new worker.
 Single-kind preview/import APIs remain unchanged and must keep rejecting mixed
 sections. No external subscription, clipboard access or network import is added.

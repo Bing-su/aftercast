@@ -85,7 +85,17 @@ internal sealed partial class PluginSession
     {
         var host = Host();
         object result;
-        if (command == 10) result = host.PreviewTriggerConfig(request.Snippet ?? throw new ArgumentException("Missing Config"));
+        if (command == 12)
+        {
+            var preview = host.PreviewMixedConfig(request.Snippet ?? throw new ArgumentException("Missing Config"));
+            result = new { triggers = preview.Triggers, timers = preview.Timers };
+        }
+        else if (command == 13)
+        {
+            host.ImportMixedConfig(request.Snippet ?? throw new ArgumentException("Missing Config"), request.Revision, request.TimerRevision);
+            result = true;
+        }
+        else if (command == 10) result = host.PreviewTriggerConfig(request.Snippet ?? throw new ArgumentException("Missing Config"));
         else if (command == 11) { object? batch = null; host.RunWithLogReadingSuspended(() => batch = host.SaveTriggerBatch(request.Revision, request.Definitions ?? throw new ArgumentException("Missing definitions"))); result = batch!; }
         else if (command == 9) result = host.PreviewTriggerSnippet(request.Snippet ?? throw new ArgumentException("Missing trigger snippet"));
         else if (command == 8) result = host.BenchmarkTriggers(request.Revision, request.Snapshot, request.Keys ?? throw new ArgumentException("Missing benchmark selection"));
