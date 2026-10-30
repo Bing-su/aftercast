@@ -210,7 +210,8 @@ namespace Aftercast.ActCompat
         public OdbcHierarchyPreview ReadOdbcBatch(ulong revision, string[][] destinationColumns, string allTerm) => main.ReadOdbcBatch(revision,destinationColumns,allTerm);
         public OdbcPreview PreviewOdbcTable(ulong revision, string[] destinationColumns, bool encounter = false, bool current = false) => main.PreviewOdbcTable(revision,destinationColumns,encounter,current);
         public TablePageData? ReadTable(TableQuery query) => main.ReadTable(query);
-        public MainSortClickResult ClickMainSort(TableLevel level, ulong revision, string key, bool descending) => main.ClickMainSort(level, revision, key, descending);
+        public MainSortClickResult ClickMainSort(TableLevel level, ulong revision, string key, bool descending, ulong operationId = 0) => main.ClickMainSort(level, revision, key, descending, operationId);
+        public MainSortClickResult? ReadMainSortClick(TableLevel level, ulong operationId) => main.ReadMainSortClick(level, operationId);
         public TextReportCatalog ReadTextReportCatalog() => main.ReadTextReportCatalog();
         public TextReport? ReadTextReport(ulong encounterId, ulong revision, TextReportOptions options) => main.ReadTextReport(encounterId, revision, options);
         public TableColumnCatalog ReadTableColumns(TableLevel level) => main.ReadTableColumns(level);

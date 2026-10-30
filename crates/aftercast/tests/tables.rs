@@ -589,18 +589,33 @@ async fn published_main_sort_is_observed_by_plugin_and_auto_reads_do_not_change_
         .await
         .expect("click catalog");
     let click = host
-        .click_main_sort(&catalog, "fixture", false)
+        .click_main_sort(&catalog, "fixture", false, 1)
         .await
         .expect("click");
     assert_eq!(click.primary, "fixture");
     assert_eq!(click.secondary.as_deref(), Some("fixture"));
     assert!(click.descending);
     let click = host
-        .click_main_sort(&catalog, "probe", click.descending)
+        .click_main_sort(&catalog, "probe", click.descending, 2)
         .await
         .expect("different click");
     assert_eq!(click.secondary.as_deref(), Some("fixture"));
     assert!(click.descending);
+    host.click_main_sort(&catalog, "probe", click.descending, 2)
+        .await
+        .expect_err("duplicate click id");
+    assert_eq!(
+        host.recover_main_sort_click(&catalog, 2)
+            .await
+            .expect("recover"),
+        Some(click.clone())
+    );
+    assert_eq!(
+        host.recover_main_sort_click(&catalog, 1)
+            .await
+            .expect("old id"),
+        None
+    );
     let page = host
         .main_table_rows(&request, click.descending, false)
         .await
@@ -608,7 +623,7 @@ async fn published_main_sort_is_observed_by_plugin_and_auto_reads_do_not_change_
         .expect("scope");
     assert_eq!(page.rows[0].cells[0].text.as_deref(), Some("probe|fixture"));
     host.deinitialize_plugin(plugin_id).await.expect("remove");
-    host.click_main_sort(&catalog, "fixture", false)
+    host.click_main_sort(&catalog, "fixture", false, 1)
         .await
         .expect_err("stale click catalog");
     host.main_table_rows(&request, false, true)
@@ -617,7 +632,7 @@ async fn published_main_sort_is_observed_by_plugin_and_auto_reads_do_not_change_
     host.shutdown().await.expect("stop");
     let restarted = Host::start(deployment.config()).await.expect("restart");
     restarted
-        .click_main_sort(&catalog, "fixture", false)
+        .click_main_sort(&catalog, "fixture", false, 1)
         .await
         .expect_err("old catalog session");
     restarted.shutdown().await.expect("restart stop");

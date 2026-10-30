@@ -605,3 +605,102 @@ async fn zone_ui_contract_preserves_identity_paging_and_rejects_late_results() {
         .expect_err("old session");
     fresh.shutdown().await.expect("shutdown");
 }
+
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and actual synthetic Host; run mise run test:gui-state"]
+async fn header_click_controller_serializes_and_preserves_draft_and_rejects_stale() {
+    let temporary = tempfile::tempdir().expect("isolated controller");
+    let root = Utf8Path::from_path(temporary.path()).expect("UTF8 root");
+    let host = Host::start(config(root)).await.expect("host");
+    plugin(&host).await;
+    let input = root.join("source.log");
+    std::fs::write(&input, "0|100\n1|200\n").expect("synthetic source");
+    host.import_log(&input).await.expect("import");
+    let encounter = host.encounters(0, 1).await.expect("encounters").items[0].id;
+    let mut ui = AppState::new(root.to_owned());
+    ui.file = Some(ConfigFile::load(root).expect("config"));
+    ui.phase = Phase::Ready;
+    ui.revision.session = 1;
+    ui.selected = Some(encounter);
+    receive(&host, &mut ui, Mode::Refresh).await;
+    let expected = view(&ui);
+    assert!(ui.edit_table(expected, |draft| controls::toggle(draft, "probe")));
+    let draft = editor(&ui).draft.clone();
+    let catalog = ui
+        .plugin_tables
+        .frame
+        .as_ref()
+        .expect("frame")
+        .catalog
+        .clone();
+    assert_eq!(
+        queue_header(&mut ui, expected, "fixture".into()),
+        Some(true)
+    );
+    assert_eq!(
+        queue_header(&mut ui, expected, "fixture".into()),
+        Some(false)
+    );
+    assert_eq!(queue_header(&mut ui, expected, "missing".into()), None);
+    let key = ui.plugin_tables.header_queue.pop_front().expect("first");
+    let reverse = ui.settings.ui.main_table_reverse;
+    let first = host
+        .click_main_sort(&catalog, &key, reverse, 100)
+        .await
+        .expect("first click");
+    assert!(accept_header(
+        &mut ui,
+        expected,
+        catalog.level,
+        reverse,
+        Ok(first)
+    ));
+    assert_eq!(editor(&ui).draft, draft);
+    let key = ui.plugin_tables.header_queue.pop_front().expect("second");
+    let reverse = ui.settings.ui.main_table_reverse;
+    let second = host
+        .click_main_sort(&catalog, &key, reverse, 101)
+        .await
+        .expect("second click");
+    assert_eq!(
+        host.recover_main_sort_click(&catalog, 101)
+            .await
+            .expect("recover"),
+        Some(second.clone())
+    );
+    assert!(accept_header(
+        &mut ui,
+        expected,
+        catalog.level,
+        reverse,
+        Ok(second)
+    ));
+    assert_eq!(editor(&ui).draft, draft);
+    let reverse = ui.settings.ui.main_table_reverse;
+    ui.settings.ui.main_table_reverse = !reverse;
+    assert!(!accept_header(
+        &mut ui,
+        expected,
+        catalog.level,
+        reverse,
+        Ok(aftercast::TableSort {
+            primary: "fixture".into(),
+            secondary: None,
+            descending: reverse
+        })
+    ));
+    assert_eq!(ui.settings.ui.main_table_reverse, !reverse);
+    assert_eq!(editor(&ui).draft, draft);
+    ui.plugin_tables.header_running = true;
+    let reverse = ui.settings.ui.main_table_reverse;
+    ui.plugin_tables.invalidate();
+    assert!(!accept_header(
+        &mut ui,
+        expected,
+        catalog.level,
+        reverse,
+        Err("late".into())
+    ));
+    assert!(ui.plugin_tables.header_queue.is_empty());
+    host.shutdown().await.expect("shutdown");
+}

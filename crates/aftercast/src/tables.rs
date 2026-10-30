@@ -250,8 +250,10 @@ impl HostHandle {
         catalog: &TableCatalog,
         key: &str,
         descending: bool,
+        operation_id: u64,
     ) -> Result<TableSort, Error> {
-        if catalog.revision.session != self.session
+        if operation_id == 0
+            || catalog.revision.session != self.session
             || catalog.revision.level != catalog.level
             || catalog.revision.value == 0
             || !matches!(
@@ -266,8 +268,40 @@ impl HostHandle {
         {
             return Err(invalid("invalid header click ownership or column"));
         }
-        let output = self.table_call(4, &serde_json::json!({"click": {"level": catalog.level, "revision": catalog.revision.value, "key": key, "descending": descending}})).await?;
+        let output = self.table_call(4, &serde_json::json!({"click": {"level": catalog.level, "revision": catalog.revision.value, "key": key, "descending": descending, "operationId": operation_id}})).await?;
         decode_main_sort_click(&output, key)
+    }
+    /// Read the result of the last accepted click without repeating its toggle.
+    pub async fn recover_main_sort_click(
+        &self,
+        catalog: &TableCatalog,
+        operation_id: u64,
+    ) -> Result<Option<TableSort>, Error> {
+        if operation_id == 0
+            || catalog.revision.session != self.session
+            || catalog.revision.level != catalog.level
+            || !matches!(
+                catalog.level,
+                TableLevel::Combatant | TableLevel::Attack | TableLevel::Action
+            )
+        {
+            return Err(invalid("invalid header recovery ownership"));
+        }
+        let output = self.table_call(5, &serde_json::json!({"click": {"level": catalog.level, "revision": catalog.revision.value, "key": "", "descending": false, "operationId": operation_id, "recover": true}})).await?;
+        let mut reader = decode::Reader(&output);
+        if !reader.boolean()? {
+            reader.finish()?;
+            return Ok(None);
+        }
+        let primary = reader.text(1024)?;
+        let secondary = reader.text(1024)?;
+        let descending = reader.boolean()?;
+        reader.finish()?;
+        Ok(Some(TableSort {
+            primary,
+            secondary: Some(secondary),
+            descending,
+        }))
     }
     /// Reads one owned page after bounded whole-scope sorting. No callback capacity retry is performed.
     /// Cells/sort errors remain explicit. Plugin code is not preempted here; shutdown uses the existing process boundary.
@@ -356,7 +390,7 @@ impl HostHandle {
         if !(2..=256 * 1024).contains(&input.len()) {
             return Err(invalid("table request exceeds bounded input"));
         }
-        let capacity = if command == 1 || command == 4 {
+        let capacity = if command == 1 || command == 4 || command == 5 {
             CATALOG_CAPACITY
         } else {
             ROW_CAPACITY

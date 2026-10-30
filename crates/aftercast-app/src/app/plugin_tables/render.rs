@@ -172,6 +172,10 @@ pub(super) fn Grid(page: TablePage, level: TableLevel, view: View) -> Element {
     let state = use_context::<Signal<AppState>>();
     let grid_style = state.read().settings.appearance.grid_style();
     let labels = page.columns.clone();
+    let header_keys = labels
+        .iter()
+        .map(|column| column.key.clone())
+        .collect::<Vec<_>>();
     let rows = page
         .rows
         .into_iter()
@@ -192,7 +196,7 @@ pub(super) fn Grid(page: TablePage, level: TableLevel, view: View) -> Element {
             continue;
         };
         let id = ColumnId(slot);
-        definitions.push(ColumnDef::new(
+        let mut definition = ColumnDef::new(
             id,
             format!("{} [{}]", column.label, column.key),
             move |row: &Row| {
@@ -201,7 +205,11 @@ pub(super) fn Grid(page: TablePage, level: TableLevel, view: View) -> Element {
                     .and_then(|cell| cell.text.clone())
                     .map_or(CellValue::Empty, CellValue::Text)
             },
-        ));
+        );
+        if column.can_sort && uses_global_reverse(level) {
+            definition = definition.sortable();
+        }
+        definitions.push(definition);
         renderers.insert(id, Arc::new(move |row, _| row_cell(row, index)));
     }
     let handle = use_table(move || {
@@ -219,6 +227,13 @@ pub(super) fn Grid(page: TablePage, level: TableLevel, view: View) -> Element {
                 theme: Theme::Custom,
                 row_cell_renderers: RowCellRenderers::new(renderers),
                 sort_enabled: false,
+                on_header_click: move |id: ColumnId| {
+                    if let Some(index) = SLOTS.iter().position(|slot| *slot == id.0)
+                        && let Some(key) = header_keys.get(index)
+                    {
+                        super::header_click(state, view, key.clone());
+                    }
+                },
                 resize_enabled: true,
                 inline: true,
             }

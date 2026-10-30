@@ -5,7 +5,7 @@ use crate::{
 };
 use aftercast::{HostHandle, TableCatalog, TablePage, TableScope};
 use dioxus::{core::spawn_forever, prelude::*};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, VecDeque};
 mod color_adjust;
 mod controls;
 mod render;
@@ -70,6 +70,9 @@ struct SaveToken {
 #[derive(Default)]
 pub(super) struct BrowserState {
     generation: u64,
+    header_queue: VecDeque<String>,
+    header_running: bool,
+    next_header_operation: u64,
     base: Option<TableScope>,
     scope: Option<TableScope>,
     history: Vec<TableScope>,
@@ -93,6 +96,8 @@ pub(super) struct BrowserState {
 impl BrowserState {
     pub(super) fn invalidate(&mut self) {
         self.generation += 1;
+        self.header_queue.clear();
+        self.header_running = false;
         self.pending = None;
         self.attempted = None;
         self.frame = None;
@@ -549,6 +554,136 @@ async fn read(
         missing,
         notices,
     })
+}
+fn queue_header(current: &mut AppState, expected: View, key: String) -> Option<bool> {
+    let running = current.plugin_tables.header_running;
+    let valid = current.plugin_tables.frame.as_ref().is_some_and(|frame| {
+        frame.token.view == expected
+            && expected.session == current.revision.session
+            && frame.token.scope == scope(current)
+            && uses_global_reverse(frame.catalog.level)
+            && frame.page.as_ref().is_some_and(|page| {
+                page.columns
+                    .iter()
+                    .any(|column| column.key == key && column.can_sort)
+            })
+    });
+    if !valid || (!running && !current_view(current, expected)) {
+        return None;
+    }
+    if current.plugin_tables.header_queue.len() >= 32 {
+        current.plugin_tables.error =
+            Some("Too many pending header clicks; wait for sorting to finish.".into());
+        return None;
+    }
+    current.plugin_tables.header_queue.push_back(key);
+    if running {
+        Some(false)
+    } else {
+        current.plugin_tables.header_running = true;
+        current.phase = Phase::ReadingTables;
+        Some(true)
+    }
+}
+fn accept_header(
+    current: &mut AppState,
+    expected: View,
+    level: aftercast::TableLevel,
+    reverse: bool,
+    result: Result<aftercast::TableSort, String>,
+) -> bool {
+    if view(current) != expected || !current.plugin_tables.header_running {
+        return false;
+    }
+    match result {
+        Ok(sort) if current.settings.ui.main_table_reverse == reverse => {
+            current.settings.ui.main_table_reverse = sort.descending;
+            if let Some(editor) = current.plugin_tables.editors.get_mut(level_key(level)) {
+                let clean = editor.draft == editor.applied;
+                editor.applied.primary = None;
+                editor.applied.secondary = None;
+                if clean {
+                    editor.draft = editor.applied.clone();
+                }
+            }
+            true
+        }
+        result => {
+            let error = result.err().unwrap_or_else(|| "Sort direction changed while the header request was running; refresh before continuing.".into());
+            current.plugin_tables.header_queue.clear();
+            current.plugin_tables.header_running = false;
+            current.phase = Phase::Ready;
+            current.plugin_tables.error = Some(error);
+            false
+        }
+    }
+}
+enum NextHeader {
+    Retired,
+    Finished,
+    Work(String, TableCatalog, bool, u64),
+}
+fn next_header(current: &mut AppState, expected: View) -> NextHeader {
+    if view(current) != expected || !current.plugin_tables.header_running {
+        return NextHeader::Retired;
+    }
+    let Some(key) = current.plugin_tables.header_queue.pop_front() else {
+        current.plugin_tables.header_running = false;
+        current.phase = Phase::Ready;
+        return NextHeader::Finished;
+    };
+    let Some(frame) = current.plugin_tables.frame.as_ref() else {
+        current.plugin_tables.header_running = false;
+        current.phase = Phase::Ready;
+        return NextHeader::Retired;
+    };
+    let catalog = frame.catalog.clone();
+    let reverse = current.settings.ui.main_table_reverse;
+    let Some(id) = current.plugin_tables.next_header_operation.checked_add(1) else {
+        current.plugin_tables.header_running = false;
+        current.phase = Phase::Ready;
+        current.plugin_tables.error = Some("Header operation counter exhausted".into());
+        return NextHeader::Retired;
+    };
+    current.plugin_tables.next_header_operation = id;
+    NextHeader::Work(key, catalog, reverse, id)
+}
+fn header_click(mut state: Signal<AppState>, expected: View, key: String) {
+    let Some(handle) = state.read().handle() else {
+        return;
+    };
+    let Some(start) = queue_header(&mut state.write(), expected, key) else {
+        return;
+    };
+    if !start {
+        return;
+    }
+    spawn_forever(async move {
+        loop {
+            let next = next_header(&mut state.write(), expected);
+            let (key, catalog, reverse, id) = match next {
+                NextHeader::Work(key, catalog, reverse, id) => (key, catalog, reverse, id),
+                NextHeader::Finished => {
+                    load(state, Mode::Auto, 0);
+                    return;
+                }
+                NextHeader::Retired => return,
+            };
+            let result = match handle.click_main_sort(&catalog, &key, reverse, id).await {
+                Ok(value) => Ok(value),
+                Err(error) => match handle.recover_main_sort_click(&catalog, id).await {
+                    Ok(Some(value)) => Ok(value),
+                    Ok(None) => Err(format!("Header click was not confirmed: {error}")),
+                    Err(recovery) => Err(format!(
+                        "Header click state is uncertain: {error}; recovery: {recovery}"
+                    )),
+                },
+            };
+            if !accept_header(&mut state.write(), expected, catalog.level, reverse, result) {
+                return;
+            }
+        }
+    });
 }
 fn load(mut state: Signal<AppState>, mode: Mode, offset: u32) {
     let Some(handle) = state.read().handle() else {

@@ -668,8 +668,6 @@ dependencies = [
 [[package]]
 name = "chorale-dioxus"
 version = "0.2.3"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a8913e2e4e1ad5016b84a90a68e8314335bba53e17a049d5e6bd110ca7fd7e67"
 dependencies = [
  "chorale-core",
  "dioxus",

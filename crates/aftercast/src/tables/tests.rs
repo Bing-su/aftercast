@@ -285,11 +285,11 @@ fn header_click_response_rejects_bad_key_flags_and_trailing_bytes() {
     let result = decode_main_sort_click(&bytes, "new").expect("click");
     assert_eq!(result.secondary.as_deref(), Some("old"));
     assert!(result.descending);
-    assert!(decode_main_sort_click(&bytes, "other").is_err());
+    decode_main_sort_click(&bytes, "other").expect_err("wrong key");
     let mut malformed = bytes.clone();
     let n = malformed.len();
     malformed[n - 4..].copy_from_slice(&2u32.to_le_bytes());
-    assert!(decode_main_sort_click(&malformed, "new").is_err());
+    decode_main_sort_click(&malformed, "new").expect_err("invalid flag");
     bytes.push(0);
-    assert!(decode_main_sort_click(&bytes, "new").is_err());
+    decode_main_sort_click(&bytes, "new").expect_err("trailing bytes");
 }

@@ -26,6 +26,7 @@ namespace Advanced_Combat_Tracker
         private sealed record TableSource(object Value, ulong EncounterId, string? Combatant = null,
             string? Category = null, string? Attack = null, int? TimeSorter = null);
         private bool activeTableQuery;
+        private (ulong Id, TableLevel Level, bool Descending)? lastMainSortClick;
         private const int MaximumTableRows = 16384, MaximumSelectedColumns = 32;
         private const int MaximumCellBytes = 4096, MaximumTableTextBytes = 8 * 1024 * 1024;
 
@@ -222,13 +223,14 @@ namespace Advanced_Combat_Tracker
                 finally { activeTableQuery = false; }
             }
         }
-        internal MainSortClickResult ClickMainSort(TableLevel level, ulong revision, string key, bool descending)
+        internal MainSortClickResult ClickMainSort(TableLevel level, ulong revision, string key, bool descending, ulong operationId = 0)
         {
             if (Environment.CurrentManagedThreadId != ownerThread) throw new InvalidOperationException("Tables must be accessed on the host owner thread");
             ObjectDisposedException.ThrowIf(actionsClosed, this);
             lock (CombatGate)
             {
                 if (activeTableQuery) throw new InvalidOperationException("Reentrant table queries are not supported");
+                if (operationId != 0 && lastMainSortClick is { } previous && operationId <= previous.Id) throw new InvalidOperationException("Header operation id must increase");
                 if (level is not (TableLevel.Combatant or TableLevel.Attack or TableLevel.Action)) throw new ArgumentException("Main sorting is unavailable at this table level");
                 if (revision == 0 || ReadTableColumns(level).Revision != revision) throw new TableQueryInvalidatedException("Column catalog revision mismatch");
                 SelectTableColumn(columnSnapshots[level].Snapshot, key, true);
@@ -240,11 +242,31 @@ namespace Advanced_Combat_Tracker
                     primary = key;
                     return new(primary, secondary, descending);
                 }
-                return level switch {
+                var result = level switch {
                     TableLevel.Combatant => Click(ref ActGlobals.eDSort, ref ActGlobals.eDSort2, key, descending),
                     TableLevel.Attack => Click(ref ActGlobals.mDSort, ref ActGlobals.mDSort2, key, descending),
                     TableLevel.Action => Click(ref ActGlobals.aTSort, ref ActGlobals.aTSort2, key, descending),
                     _ => throw new ArgumentException("Main sorting is unavailable at this table level") };
+                if (operationId != 0) lastMainSortClick = (operationId, level, result.Descending);
+                return result;
+            }
+        }
+        internal MainSortClickResult? ReadMainSortClick(TableLevel level, ulong operationId)
+        {
+            if (Environment.CurrentManagedThreadId != ownerThread) throw new InvalidOperationException("Tables must be accessed on the host owner thread");
+            ObjectDisposedException.ThrowIf(actionsClosed, this);
+            lock (CombatGate)
+            {
+                if (activeTableQuery) throw new InvalidOperationException("Reentrant table queries are not supported");
+                if (operationId == 0) throw new ArgumentException("Operation id must be nonzero");
+                if (level is not (TableLevel.Combatant or TableLevel.Attack or TableLevel.Action)) throw new ArgumentException("Main sorting is unavailable at this table level");
+                if (lastMainSortClick is not { } last || last.Id != operationId || last.Level != level) return null;
+                var (primary, secondary) = level switch {
+                    TableLevel.Combatant => (ActGlobals.eDSort, ActGlobals.eDSort2),
+                    TableLevel.Attack => (ActGlobals.mDSort, ActGlobals.mDSort2),
+                    TableLevel.Action => (ActGlobals.aTSort, ActGlobals.aTSort2),
+                    _ => throw new ArgumentException("Main sorting is unavailable at this table level") };
+                return new(ColumnText(primary), ColumnText(secondary), last.Descending);
             }
         }
         private static void PublishMainSort(TableLevel level, TableSort sort)

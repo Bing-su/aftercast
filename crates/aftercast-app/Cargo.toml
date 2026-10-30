@@ -14,7 +14,7 @@ aftercast = { path = "../aftercast" }
 arboard = { version = "3", default-features = false }
 camino.workspace = true
 chorale-core = "0.2.3"
-chorale-dioxus = "0.2.3"
+chorale-dioxus = { path = "../../vendor/chorale-dioxus" }
 dioxus = { version = "=0.7.10", default-features = false, features = ["desktop", "launch", "lib"] }
 dioxus-charts = "0.4"
 dioxus-i18n = "=0.6.0"
