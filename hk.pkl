@@ -17,8 +17,8 @@ local linters = new Mapping {
         fix = "cargo fmt --manifest-path {{workspace_indicator}} --all"
     }
     ["dx_fmt"] = new Step {
-        check = "dx fmt --check"
-        fix = "dx fmt"
+        check = "dx fmt --package aftercast-app --check"
+        fix = "dx fmt --package aftercast-app"
         depends = List("cargo_fmt")
     }
 }

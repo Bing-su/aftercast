@@ -1107,13 +1107,13 @@ dioxus.send(parts.join('\n'));"
                             let b64 = to_base64(&bytes);
                             let js = format!(
                                 r"(()=>{{
-                                                        var r=atob('{b64}'),n=r.length,u=new Uint8Array(n);
-                                                        for(var i=0;i<n;i++)u[i]=r.charCodeAt(i);
-                                                        var bl=new Blob([u],{{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}});
-                                                        var url=URL.createObjectURL(bl),a=document.createElement('a');
-                                                        a.href=url;a.download='chorale-export.xlsx';a.click();
-                                                        setTimeout(()=>URL.revokeObjectURL(url),100);
-                                                    }})()",
+                                    var r=atob('{b64}'),n=r.length,u=new Uint8Array(n);
+                                    for(var i=0;i<n;i++)u[i]=r.charCodeAt(i);
+                                    var bl=new Blob([u],{{type:'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'}});
+                                    var url=URL.createObjectURL(bl),a=document.createElement('a');
+                                    a.href=url;a.download='chorale-export.xlsx';a.click();
+                                    setTimeout(()=>URL.revokeObjectURL(url),100);
+                                }})()"
                             );
                             dioxus::document::eval(&js);
                         },
@@ -1159,53 +1159,35 @@ dioxus.send(parts.join('\n'));"
                         let mut sig = handle.signal();
                         let state = sig.peek();
                         if let Some(source_range) = state.range_selection.first() {
-                            let writes = fill_handle_targets(
-                                &*state, // Build TSV from writes
-                                source_range,
-                                target_row,
-                                target_col,
-                            );
+                            let writes = fill_handle_targets(&*state, source_range, target_row, target_col);
                             if !writes.is_empty() {
-                                let mut rows_map: std::collections::HashMap<
-                                    usize,
-                                    Vec<(ColumnId, CellValue)>,
-                                > = std::collections::HashMap::new();
+                                // Build TSV from writes
+                                let mut rows_map: std::collections::HashMap<usize, Vec<(ColumnId, CellValue)>> =
+                                    std::collections::HashMap::new();
                                 for (r, c, v) in &writes {
                                     rows_map.entry(*r).or_default().push((*c, v.clone()));
                                 }
-                                let mut row_idxs: Vec<usize> = rows_map
-                                    .keys()
-                                    .copied()
-                                    .collect();
+                                let mut row_idxs: Vec<usize> = rows_map.keys().copied().collect();
                                 row_idxs.sort_unstable();
-                                let tsv = row_idxs
-                                    .iter()
-                                    .map(|ri| {
-                                        let cols = &rows_map[ri];
-                                        cols.iter()
-                                            .map(|(_, v)| v.to_csv_string())
-                                            .collect::<Vec<_>>()
-                                            .join("\t")
-                                    })
-                                    .collect::<Vec<_>>()
-                                    .join("\n");
+                                let tsv = row_idxs.iter().map(|ri| {
+                                    let cols = &rows_map[ri];
+                                    cols.iter().map(|(_, v)| v.to_csv_string()).collect::<Vec<_>>().join("\t")
+                                }).collect::<Vec<_>>().join("\n");
+
+                                // Determine extension range for on_paste
                                 let first_row = *row_idxs.first().unwrap_or(&target_row);
                                 let last_row = *row_idxs.last().unwrap_or(&target_row);
-                                let first_col = writes
-                                    .first()
-                                    .map_or(target_col, |(_, c, _)| *c);
+                                let first_col = writes.first().map_or(target_col, |(_, c, _)| *c);
                                 let last_col = writes.last().map_or(target_col, |(_, c, _)| *c);
                                 let ext_range = chorale_core::RangeSelection::new(
                                     (first_row, first_col),
                                     (last_row, last_col),
                                 );
+                                // Update state range to extension
                                 drop(state);
                                 sig.write().range_selection = vec![ext_range.clone()];
                                 if let Some(cb) = on_paste {
-                                    cb.call(chorale_core::ClipboardPasteEvent {
-                                        tsv,
-                                        range: ext_range,
-                                    });
+                                    cb.call(chorale_core::ClipboardPasteEvent { tsv, range: ext_range });
                                 }
                             }
                         }
@@ -1240,306 +1222,272 @@ dioxus.send(parts.join('\n'));"
                     // an interactive child element (input, select, textarea, button).
                     // Checking document.activeElement after the click event fires works
                     // because the browser sets focus during mousedown — before onclick.
-                    dioxus::document::eval(
-                        &format!(
-                            "var ae=document.activeElement;
-                                 var tag=ae&&ae.nodeName||'';
-                                 if(!['INPUT','SELECT','TEXTAREA','BUTTON'].includes(tag)){{
-                                   var el=document.getElementById('{id}');if(el)el.focus();
-                                 }}",
-                        ),
-                    );
+                    dioxus::document::eval(&format!(
+                        "var ae=document.activeElement;
+                         var tag=ae&&ae.nodeName||'';
+                         if(!['INPUT','SELECT','TEXTAREA','BUTTON'].includes(tag)){{
+                           var el=document.getElementById('{id}');if(el)el.focus();
+                         }}"
+                    ));
                 }
             },
             onkeydown: {
                 let scroll_id_kb = scroll_id.clone();
                 let kb_id_kb = kb_id.clone();
                 move |e: KeyboardEvent| {
-                    // A nested child table's keydown bubbles to this (parent)
-                    // container too; without stopping it, both tables would
-                    // navigate at once. Stop propagation so only the focused table
-                    // handles the key (issue #17 part 2).
-                    e.stop_propagation();
-                    let shift = e.modifiers().contains(Modifiers::SHIFT);
-                    let ctrl = e.modifiers().contains(Modifiers::CONTROL)
-                        || e.modifiers().contains(Modifiers::META);
-                    let dir_opt: Option<NavDirection> = match e.key() {
-                        Key::ArrowDown => Some(NavDirection::Down),
-                        Key::ArrowUp => Some(NavDirection::Up),
-                        Key::ArrowLeft => Some(NavDirection::Left),
-                        Key::ArrowRight => Some(NavDirection::Right),
-                        _ => None,
-                    };
-                    if let Some(dir) = dir_opt {
-                        e.prevent_default();
-                        let mut sig_w = handle.signal();
-                        if shift {
-                            let cols = visible_col_ids_for_kb.clone();
-                            let total = total_rows_for_kb;
-                            let new_s = {
-                                let s = sig_w.peek();
-                                let focus = s
-                                    .range_selection
-                                    .last()
-                                    .map(|r| r.focus)
-                                    .or_else(|| {
-                                        s.active_cell.map(|ac| (ac.row_idx, ac.column_id))
-                                    });
-                                if let Some((row, col_id)) = focus {
-                                    let col_idx = cols
-                                        .iter()
-                                        .position(|id| *id == col_id)
-                                        .unwrap_or(0);
-                                    let last_row = total.saturating_sub(1);
-                                    let last_col = cols.len().saturating_sub(1);
-                                    let (new_row, new_col_idx) = match dir {
-                                        NavDirection::Up => (row.saturating_sub(1), col_idx),
-                                        NavDirection::Down => ((row + 1).min(last_row), col_idx),
-                                        NavDirection::Left => (row, col_idx.saturating_sub(1)),
-                                        NavDirection::Right => (row, (col_idx + 1).min(last_col)),
-                                        _ => (row, col_idx),
-                                    };
-                                    let new_col_id = cols
-                                        .get(new_col_idx)
-                                        .copied()
-                                        .unwrap_or(col_id);
-                                    extend_range_to(&*s, new_row, new_col_id)
-                                } else {
-                                    s.clone()
-                                }
+                // A nested child table's keydown bubbles to this (parent)
+                // container too; without stopping it, both tables would
+                // navigate at once. Stop propagation so only the focused table
+                // handles the key (issue #17 part 2).
+                e.stop_propagation();
+                let shift = e.modifiers().contains(Modifiers::SHIFT);
+                let ctrl = e.modifiers().contains(Modifiers::CONTROL)
+                    || e.modifiers().contains(Modifiers::META);
+                let dir_opt: Option<NavDirection> = match e.key() {
+                    Key::ArrowDown => Some(NavDirection::Down),
+                    Key::ArrowUp => Some(NavDirection::Up),
+                    Key::ArrowLeft => Some(NavDirection::Left),
+                    Key::ArrowRight => Some(NavDirection::Right),
+                    _ => None,
+                };
+                if let Some(dir) = dir_opt {
+                    e.prevent_default();
+                    let mut sig_w = handle.signal();
+                    if shift {
+                        let cols = visible_col_ids_for_kb.clone();
+                        let total = total_rows_for_kb;
+                        let new_s = {
+                            let s = sig_w.peek();
+                            let focus = s
+                                .range_selection
+                                .last()
+                                .map(|r| r.focus)
+                                .or_else(|| s.active_cell.map(|ac| (ac.row_idx, ac.column_id)));
+                            if let Some((row, col_id)) = focus {
+                                let col_idx = cols.iter().position(|id| *id == col_id).unwrap_or(0);
+                                let last_row = total.saturating_sub(1);
+                                let last_col = cols.len().saturating_sub(1);
+                                let (new_row, new_col_idx) = match dir {
+                                    NavDirection::Up => (row.saturating_sub(1), col_idx),
+                                    NavDirection::Down => ((row + 1).min(last_row), col_idx),
+                                    NavDirection::Left => (row, col_idx.saturating_sub(1)),
+                                    NavDirection::Right => (row, (col_idx + 1).min(last_col)),
+                                    _ => (row, col_idx),
+                                };
+                                let new_col_id = cols.get(new_col_idx).copied().unwrap_or(col_id);
+                                extend_range_to(&*s, new_row, new_col_id)
+                            } else {
+                                s.clone()
+                            }
+                        };
+                        sig_w.set(new_s);
+                    } else if ctrl {
+                        let new_s = move_active_cell_to_edge(&*sig_w.peek(), dir);
+                        sig_w.set(new_s);
+                        ensure_active_row_visible(
+                            handle, &scroll_id_kb, variable_row_height, inline,
+                        );
+                    } else {
+                        let new_s = move_active_cell(&*sig_w.peek(), dir);
+                        sig_w.set(new_s);
+                        ensure_active_row_visible(
+                            handle, &scroll_id_kb, variable_row_height, inline,
+                        );
+                    }
+                } else {
+                    match e.key() {
+                        Key::Home => {
+                            e.prevent_default();
+                            let mut sig_w = handle.signal();
+                            let new_s = if ctrl {
+                                move_active_cell_first(&*sig_w.peek())
+                            } else {
+                                move_active_cell_home(&*sig_w.peek())
                             };
                             sig_w.set(new_s);
-                        } else if ctrl {
-                            let new_s = move_active_cell_to_edge(&*sig_w.peek(), dir);
+                            ensure_active_row_visible(
+                                handle, &scroll_id_kb, variable_row_height, inline,
+                            );
+                        }
+                        Key::End => {
+                            e.prevent_default();
+                            let mut sig_w = handle.signal();
+                            let new_s = if ctrl {
+                                move_active_cell_last(&*sig_w.peek())
+                            } else {
+                                move_active_cell_end(&*sig_w.peek())
+                            };
                             sig_w.set(new_s);
                             ensure_active_row_visible(
-                                handle,
-                                &scroll_id_kb,
-                                variable_row_height,
-                                inline,
+                                handle, &scroll_id_kb, variable_row_height, inline,
+                            );
+                        }
+                        Key::PageUp => {
+                            e.prevent_default();
+                            let mut sig_w = handle.signal();
+                            let page_sz = sig_w.peek().page_size;
+                            let new_s = move_active_cell_page(&*sig_w.peek(), NavDirection::Up, page_sz);
+                            sig_w.set(new_s);
+                            ensure_active_row_visible(
+                                handle, &scroll_id_kb, variable_row_height, inline,
                             );
                         }
                         Key::PageDown => {
-                            let new_s = move_active_cell(&*sig_w.peek(), dir);
+                            e.prevent_default();
+                            let mut sig_w = handle.signal();
+                            let page_sz = sig_w.peek().page_size;
+                            let new_s = move_active_cell_page(&*sig_w.peek(), NavDirection::Down, page_sz);
                             sig_w.set(new_s);
                             ensure_active_row_visible(
-                                handle,
-                                &scroll_id_kb,
-                                variable_row_height,
-                                inline,
+                                handle, &scroll_id_kb, variable_row_height, inline,
                             );
                         }
-                    } else { // If this table is nested in another chorale table,
-                        match e.key() {
-                            Key::Home => {
-                                e.prevent_default();
-                                let mut sig_w = handle.signal();
-                                let new_s = if ctrl {
-                                    move_active_cell_first(&*sig_w.peek())
-                                } else {
-                                    move_active_cell_home(&*sig_w.peek())
-                                };
-                                sig_w.set(new_s);
-                                ensure_active_row_visible(
-                                    handle,
-                                    &scroll_id_kb,
-                                    variable_row_height,
-                                    inline,
-                                );
-                            }
-                            Key::End => {
-                                e.prevent_default();
-                                let mut sig_w = handle.signal();
-                                let new_s = if ctrl {
-                                    move_active_cell_last(&*sig_w.peek())
-                                } else {
-                                    move_active_cell_end(&*sig_w.peek())
-                                };
-                                sig_w.set(new_s);
-                                ensure_active_row_visible(
-                                    handle,
-                                    &scroll_id_kb,
-                                    variable_row_height,
-                                    inline,
-                                );
-                            }
-                            Key::PageUp => {
-                                e.prevent_default();
-                                let mut sig_w = handle.signal();
-                                let page_sz = sig_w.peek().page_size;
-                                let new_s = move_active_cell_page(
-                                    &*sig_w.peek(),
-                                    NavDirection::Up,
-                                    page_sz,
-                                );
-                                sig_w.set(new_s);
-                                ensure_active_row_visible(
-                                    handle,
-                                    &scroll_id_kb,
-                                    variable_row_height,
-                                    inline,
-                                );
-                            }
-                            Key::PageDown => {
-                                e.prevent_default();
-                                let mut sig_w = handle.signal();
-                                let page_sz = sig_w.peek().page_size;
-                                let new_s = move_active_cell_page(
-                                    &*sig_w.peek(),
-                                    NavDirection::Down,
-                                    page_sz,
-                                );
-                                sig_w.set(new_s);
-                                ensure_active_row_visible(
-                                    handle,
-                                    &scroll_id_kb,
-                                    variable_row_height,
-                                    inline,
-                                );
-                            }
-                            Key::Escape => {
-                                let mut sig_w = handle.signal();
-                                let new_s = {
-                                    let s = sig_w.peek();
-                                    let s2 = clear_range_selection(&*s);
-                                    clear_active_cell(&s2)
-                                };
-                                sig_w.set(new_s);
-                                focus_parent_container(&kb_id_kb);
-                            }
-                            Key::F2 | Key::Enter => {
-                                let mut sig_w = handle.signal();
+                        Key::Escape => {
+                            let mut sig_w = handle.signal();
+                            let new_s = {
                                 let s = sig_w.peek();
-                                if s.editing.is_none() {
-                                    let is_enter = matches!(e.key(), Key::Enter);
-                                    let on_expander = s
-                                        .active_cell
-                                        .is_some_and(|ac| {
-                                            ac.column_id == chorale_core::DETAIL_EXPANDER_COLUMN
-                                        });
-                                    if is_enter && on_expander {
-                                        e.prevent_default();
-                                        let new_s = chorale_core::toggle_active_row_expansion(&s);
-                                        drop(s);
-                                        sig_w.set(new_s);
-                                    } else if let Some(ac) = s.active_cell {
-                                        let rows = visible_view(&*s);
-                                        if let Some(RenderRow::Data { id: row_id, .. }) = rows
-                                            .get(ac.row_idx)
-                                        {
-                                            if let Ok(new_s) = chorale_core::start_edit(
-                                                &*s,
-                                                *row_id,
-                                                ac.column_id,
-                                            ) {
-                                                drop(s);
-                                                sig_w.set(new_s);
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            Key::Character(ref ch) if ch.to_lowercase() == "a" && ctrl => {
-                                e.prevent_default();
-                                let mut sig_w = handle.signal();
-                                let new_s = select_all_range(&*sig_w.peek());
-                                sig_w.set(new_s);
-                            }
-                            Key::Character(ref ch) if ch.to_lowercase() == "c" && ctrl => {
-                                e.prevent_default();
-                                let sig_r = handle.signal();
-                                let s = sig_r.peek();
-                                if let Ok(tsv) = to_clipboard_tsv(&*s) {
-                                    if !tsv.is_empty() {
-                                        let range = s.range_selection.first().cloned();
-                                        drop(s);
-                                        let js = format!(
-                                            "navigator.clipboard.writeText({}).catch(()=>{{}})",
-                                            js_string_literal(&tsv),
-                                        );
-                                        dioxus::document::eval(&js);
-                                        if let (Some(range), Some(cb)) = (range, on_copy) {
-                                            cb.call(ClipboardCopyEvent { tsv, range });
-                                        }
-                                    }
-                                }
-                            }
-                            Key::Character(ref ch) if ch.to_lowercase() == "v" && ctrl => {
-                                e.prevent_default();
-                                spawn(async move {
-                                    let mut eval = dioxus::document::eval(
-                                        "navigator.clipboard.readText()\
-                                             .then(t=>dioxus.send(t))\
-                                             .catch(()=>dioxus.send(''))",
-                                    );
-                                    if let Ok(tsv) = eval.recv::<String>().await {
-                                        if !tsv.trim().is_empty() {
-                                            let mut sig_w = handle.signal();
-                                            let new_s = {
-                                                let s = sig_w.peek();
-                                                paste_tsv_into_range(&*s, &tsv)
-                                            };
-                                            if let Ok(new_state) = new_s {
-                                                let range = new_state.range_selection.first().cloned();
-                                                sig_w.set(new_state);
-                                                if let (Some(range), Some(cb)) = (range, on_paste) {
-                                                    cb.call(ClipboardPasteEvent { tsv, range });
-                                                }
-                                            }
-                                        }
-                                    }
-                                });
-                            }
-                            Key::Tab => {
-                                e.prevent_default();
-                                let descend_row = if shift {
-                                    None
-                                } else {
-                                    let sig = handle.signal();
-                                    let s = sig.peek();
-                                    s.active_cell
-                                        .and_then(|ac| {
-                                            if ac.column_id != chorale_core::DETAIL_EXPANDER_COLUMN {
-                                                return None;
-                                            }
-                                            let view = visible_view(&s);
-                                            match view.get(ac.row_idx) {
-                                                Some(
-                                                    RenderRow::Data { id, .. },
-                                                ) if s.expanded_rows.contains(id) => Some(ac.row_idx),
-                                                _ => None,
-                                            }
-                                        })
-                                };
-                                if let Some(row_idx) = descend_row {
-                                    focus_child_subtable(&scroll_id_kb, row_idx);
-                                } else {
-                                    let tab_dir = if shift {
-                                        NavDirection::Left
-                                    } else {
-                                        NavDirection::Right
-                                    };
-                                    let mut sig_w = handle.signal();
-                                    let new_s = move_active_cell(&*sig_w.peek(), tab_dir);
-                                    let new_ac = new_s.active_cell;
-                                    sig_w.set(new_s);
-                                    if let (Some(ac), Some(cb)) = (new_ac, on_tab_to_editable) {
-                                        let s = sig_w.peek();
-                                        if s
-                                            .columns
-                                            .iter()
-                                            .any(|c| c.id == ac.column_id && c.editor.is_some())
-                                        {
-                                            cb.call(ac);
-                                        }
-                                    }
-                                }
-                            }
-                            _ => {}
+                                let s2 = clear_range_selection(&*s);
+                                clear_active_cell(&s2)
+                            };
+                            sig_w.set(new_s);
+                            // If this table is nested in another chorale table,
+                            // Escape returns focus to the parent (issue #17 part 2).
+                            // No-op for a top-level table.
+                            focus_parent_container(&kb_id_kb);
                         }
+                        // Item 7: F2 (or Enter) starts in-cell editing on the
+                        // active cell. The `editing.is_none()` guard matters:
+                        // keydowns from an open editor bubble to this handler
+                        // (e.g. Enter on a <select> picking an option), and
+                        // without the guard they would restart the edit and
+                        // wipe the in-progress editor text.
+                        Key::F2 | Key::Enter => {
+                            let mut sig_w = handle.signal();
+                            let s = sig_w.peek();
+                            if s.editing.is_none() {
+                                // Enter while the active cell is on the
+                                // detail-expander (chevron) column toggles that
+                                // row's panel (keyboard expand/collapse, issue
+                                // #17). F2 always edits; Enter on a data cell
+                                // still edits.
+                                let is_enter = matches!(e.key(), Key::Enter);
+                                let on_expander = s.active_cell.is_some_and(|ac| {
+                                    ac.column_id == chorale_core::DETAIL_EXPANDER_COLUMN
+                                });
+                                if is_enter && on_expander {
+                                    e.prevent_default();
+                                    let new_s = chorale_core::toggle_active_row_expansion(&s);
+                                    drop(s);
+                                    sig_w.set(new_s);
+                                } else if let Some(ac) = s.active_cell {
+                                    let rows = visible_view(&*s);
+                                    if let Some(RenderRow::Data { id: row_id, .. }) = rows.get(ac.row_idx) {
+                                        if let Ok(new_s) = chorale_core::start_edit(&*s, *row_id, ac.column_id) {
+                                            drop(s);
+                                            sig_w.set(new_s);
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        Key::Character(ref ch) if ch.to_lowercase() == "a" && ctrl => {
+                            e.prevent_default();
+                            let mut sig_w = handle.signal();
+                            let new_s = select_all_range(&*sig_w.peek());
+                            sig_w.set(new_s);
+                        }
+                        Key::Character(ref ch) if ch.to_lowercase() == "c" && ctrl => {
+                            e.prevent_default();
+                            let sig_r = handle.signal();
+                            let s = sig_r.peek();
+                            if let Ok(tsv) = to_clipboard_tsv(&*s) {
+                                if !tsv.is_empty() {
+                                    let range = s.range_selection.first().cloned();
+                                    drop(s);
+                                    let js = format!(
+                                        "navigator.clipboard.writeText({}).catch(()=>{{}})",
+                                        js_string_literal(&tsv)
+                                    );
+                                    dioxus::document::eval(&js);
+                                    if let (Some(range), Some(cb)) = (range, on_copy) {
+                                        cb.call(ClipboardCopyEvent { tsv, range });
+                                    }
+                                }
+                            }
+                        }
+                        Key::Character(ref ch) if ch.to_lowercase() == "v" && ctrl => {
+                            e.prevent_default();
+                            spawn(async move {
+                                let mut eval = dioxus::document::eval(
+                                    "navigator.clipboard.readText()\
+                                     .then(t=>dioxus.send(t))\
+                                     .catch(()=>dioxus.send(''))",
+                                );
+                                if let Ok(tsv) = eval.recv::<String>().await {
+                                    if !tsv.trim().is_empty() {
+                                        let mut sig_w = handle.signal();
+                                        let new_s = {
+                                            let s = sig_w.peek();
+                                            paste_tsv_into_range(&*s, &tsv)
+                                        };
+                                        if let Ok(new_state) = new_s {
+                                            let range =
+                                                new_state.range_selection.first().cloned();
+                                            sig_w.set(new_state);
+                                            if let (Some(range), Some(cb)) = (range, on_paste) {
+                                                cb.call(ClipboardPasteEvent { tsv, range });
+                                            }
+                                        }
+                                    }
+                                }
+                            });
+                        }
+                        Key::Tab => {
+                            e.prevent_default();
+                            // Tab on the chevron of an EXPANDED row descends into
+                            // that row's sub-table (issue #17 part 2). The active
+                            // cell otherwise tab-navigates cells as before.
+                            let descend_row = if shift {
+                                None
+                            } else {
+                                let sig = handle.signal();
+                                let s = sig.peek();
+                                s.active_cell.and_then(|ac| {
+                                    if ac.column_id != chorale_core::DETAIL_EXPANDER_COLUMN {
+                                        return None;
+                                    }
+                                    let view = visible_view(&s);
+                                    match view.get(ac.row_idx) {
+                                        Some(RenderRow::Data { id, .. })
+                                            if s.expanded_rows.contains(id) =>
+                                        {
+                                            Some(ac.row_idx)
+                                        }
+                                        _ => None,
+                                    }
+                                })
+                            };
+                            if let Some(row_idx) = descend_row {
+                                focus_child_subtable(&scroll_id_kb, row_idx);
+                            } else {
+                                let tab_dir =
+                                    if shift { NavDirection::Left } else { NavDirection::Right };
+                                let mut sig_w = handle.signal();
+                                let new_s = move_active_cell(&*sig_w.peek(), tab_dir);
+                                let new_ac = new_s.active_cell;
+                                sig_w.set(new_s);
+                                if let (Some(ac), Some(cb)) = (new_ac, on_tab_to_editable) {
+                                    let s = sig_w.peek();
+                                    if s.columns.iter().any(|c| c.id == ac.column_id && c.editor.is_some()) {
+                                        cb.call(ac);
+                                    }
+                                }
+                            }
+                        }
+                        _ => {}
                     }
                 }
-            },
+            }},
 
             if column_toolbar {
                 {column_visibility_toolbar(&all_col_defs, &col_visibility, handle, &labels)}
@@ -1584,10 +1532,18 @@ dioxus.send(parts.join('\n'));"
             // Virtualized lists must always opt out of scroll anchoring.
             div {
                 id: "{scroll_id}",
-                style: if inline { "overflow: visible; height: auto;".to_string() } else { format!(
-                    "overflow-y: auto; overflow-x: auto; overflow-anchor: none; \
-                                     height: {viewport_height}px;",
-                ) },
+                style: if inline {
+                    // Inline mode: no own scroll, no height clamp. Body
+                    // flows at natural size; parent's scroll context owns
+                    // overflow. Wheel events bubble through cleanly with
+                    // no nested-scroll handoff discontinuity.
+                    "overflow: visible; height: auto;".to_string()
+                } else {
+                    format!(
+                        "overflow-y: auto; overflow-x: auto; overflow-anchor: none; \
+                         height: {viewport_height}px;"
+                    )
+                },
                 onscroll: move |e| {
                     let st = e.scroll_top();
                     handle.set_scroll(st);
@@ -1605,10 +1561,12 @@ dioxus.send(parts.join('\n'));"
                     }
                 },
 
-                table { style: "width: 100%; border-collapse: collapse; table-layout: fixed;",
+                table {
+                    style: "width: 100%; border-collapse: collapse; table-layout: fixed;",
 
                     thead {
-                        tr { style: "background: var(--chorale-header-bg, #f8f9fa);",
+                        tr {
+                            style: "background: var(--chorale-header-bg, #f8f9fa);",
                             if selection_enabled {
                                 {select_all_th(handle, all_page_selected, sticky_header)}
                             }
@@ -1624,58 +1582,39 @@ dioxus.send(parts.join('\n'));"
                                 // line under the header is continuous across all
                                 // columns. Omitting it left a visible gap in the
                                 // header underline above the chevron column.
-                                th { style: if sticky_header { "width: 24px; padding: 0; \
+                                th {
+                                    style: if sticky_header {
+                                        "width: 24px; padding: 0; \
                                          border-bottom: 1px solid var(--chorale-border, #ddd); \
                                          position: sticky; top: 0; \
-                                         background: var(--chorale-header-bg, #f8f9fa); z-index: 1;" } else { "width: 24px; padding: 0; \
+                                         background: var(--chorale-header-bg, #f8f9fa); z-index: 1;"
+                                    } else {
+                                        "width: 24px; padding: 0; \
                                          border-bottom: 1px solid var(--chorale-border, #ddd); \
                                          position: static; top: auto; \
                                          z-index: auto; \
-                                         background: var(--chorale-header-bg, #f8f9fa);" } }
+                                         background: var(--chorale-header-bg, #f8f9fa);"
+                                    }
+                                }
                             }
                             for (col_i, col) in visible_cols.iter().enumerate() {
-                                {
-                                    header_th(
-                                        col,
-                                        widths.get(&col.id).copied(),
-                                        handle,
-                                        sort_enabled,
-                                        current_sort,
-                                        resize_enabled,
-                                        drag_state,
-                                        column_reorder_enabled,
-                                        drag_col_id,
-                                        drag_over_col,
-                                        on_column_order_change,
-                                        on_header_click,
-                                        sticky_header_css.get(&col.id).map_or("", String::as_str),
-                                        sticky_header,
-                                        show_group_toggle && col_i == 0,
-                                        all_groups_expanded,
-                                    )
-                                }
+                                {header_th(col, widths.get(&col.id).copied(), handle, sort_enabled, current_sort, resize_enabled, drag_state, column_reorder_enabled, drag_col_id, drag_over_col, on_column_order_change, on_header_click, sticky_header_css.get(&col.id).map_or("", String::as_str), sticky_header, show_group_toggle && col_i == 0, all_groups_expanded)}
                             }
                         }
                         if filter_enabled {
-                            tr { style: "background: var(--chorale-surface, #fff);",
+                            tr {
+                                style: "background: var(--chorale-surface, #fff);",
                                 if selection_enabled {
-                                    th { style: "padding: 0.25rem; border-bottom: 1px solid var(--chorale-divider, #eee); \
-                                                background: var(--chorale-surface, #fff); width: 2.5rem;" }
+                                    th {
+                                        style: "padding: 0.25rem; border-bottom: 1px solid var(--chorale-divider, #eee); \
+                                                background: var(--chorale-surface, #fff); width: 2.5rem;",
+                                    }
                                 }
                                 if has_detail {
                                     th { style: "width: 24px; padding: 0; background: var(--chorale-surface, #fff);" }
                                 }
                                 for col in &visible_cols {
-                                    {
-                                        filter_th(
-                                            col,
-                                            widths.get(&col.id).copied(),
-                                            handle,
-                                            &filters,
-                                            &labels,
-                                            sticky_header_css.get(&col.id).map_or("", String::as_str),
-                                        )
-                                    }
+                                    {filter_th(col, widths.get(&col.id).copied(), handle, &filters, &labels, sticky_header_css.get(&col.id).map_or("", String::as_str))}
                                 }
                             }
                         }
@@ -1708,8 +1647,8 @@ dioxus.send(parts.join('\n'));"
                                     (start_idx as f64 * state.row_height).max(0.0);
                                 let bottom_pad_px =
                                     ((grouped_len.saturating_sub(end_idx)) as f64
-                                    * state.row_height)
-                                    .max(0.0);
+                                        * state.row_height)
+                                        .max(0.0);
                                 rsx! {
                                     if top_pad_px > 0.0 {
                                         tr {
@@ -1720,38 +1659,7 @@ dioxus.send(parts.join('\n'));"
                                         }
                                     }
                                     for (offset, grouped_row) in grouped_view_read[start_idx..end_idx].iter().cloned().enumerate() {
-                                        {
-                                            render_grouped_row(
-                                                grouped_row,
-                                                start_idx + offset,
-                                                effective_col_count,
-                                                selection_enabled,
-                                                has_detail,
-                                                handle,
-                                                &group_header_class,
-                                                &visible_cols,
-                                                row_height,
-                                                &widths,
-                                                variable_row_height,
-                                                &cell_renderers,
-                                                &row_cell_renderers,
-                                                &row_class,
-                                                editing_target,
-                                                editing_text,
-                                                edit_error,
-                                                &validate_edit,
-                                                on_commit_edit,
-                                                &sticky_body_css,
-                                                &selection_set,
-                                                active_cell,
-                                                &range_cells,
-                                                fill_focus_cell,
-                                                fill_drag_active,
-                                                fill_hover,
-                                                on_row_click,
-                                                &kb_id,
-                                            )
-                                        }
+                                        {render_grouped_row(grouped_row, start_idx + offset, effective_col_count, selection_enabled, has_detail, handle, &group_header_class, &visible_cols, row_height, &widths, variable_row_height, &cell_renderers, &row_cell_renderers, &row_class, editing_target, editing_text, edit_error, &validate_edit, on_commit_edit, &sticky_body_css, &selection_set, active_cell, &range_cells, fill_focus_cell, fill_drag_active, fill_hover, on_row_click, &kb_id)}
                                     }
                                     if bottom_pad_px > 0.0 {
                                         tr {
@@ -1791,51 +1699,14 @@ dioxus.send(parts.join('\n'));"
                                             let editing_col = editing_target
                                                 .filter(|t| t.row_id == row_id)
                                                 .map(|t| t.column_id);
-                                            data_tr(
-                                                row,
-                                                row_id,
-                                                win.start_index + i,
-                                                variable_row_height,
-                                                &visible_cols,
-                                                row_height,
-                                                &widths,
-                                                selection_enabled,
-                                                selection_set.contains(&row_id),
-                                                handle,
-                                                &cell_renderers,
-                                                &row_cell_renderers,
-                                                &row_class,
-                                                editing_col,
-                                                editing_text,
-                                                edit_error,
-                                                &validate_edit,
-                                                on_commit_edit,
-                                                &sticky_body_css,
-                                                active_cell,
-                                                &range_cells,
-                                                fill_focus_cell,
-                                                fill_drag_active,
-                                                fill_hover,
-                                                has_detail,
-                                                is_expanded,
-                                                on_row_click,
-                                                &kb_id,
-                                            )
+                                            data_tr(row, row_id, win.start_index + i, variable_row_height, &visible_cols, row_height, &widths, selection_enabled, selection_set.contains(&row_id), handle, &cell_renderers, &row_cell_renderers, &row_class, editing_col, editing_text, edit_error, &validate_edit, on_commit_edit, &sticky_body_css, active_cell, &range_cells, fill_focus_cell, fill_drag_active, fill_hover, has_detail, is_expanded, on_row_click, &kb_id)
                                         }
                                         RenderRow::DetailPanel { parent_row_id } => {
                                             let pid = *parent_row_id;
-                                            let parent = state
-                                                .rows
-                                                .iter()
+                                            let parent = state.rows.iter()
                                                 .find(|(rid, _)| *rid == pid)
                                                 .map(|(_, r)| r.clone());
-                                            detail_panel_tr(
-                                                pid,
-                                                parent,
-                                                detail_renderer.as_ref(),
-                                                effective_col_count,
-                                                win.start_index + i,
-                                            )
+                                            detail_panel_tr(pid, parent, detail_renderer.as_ref(), effective_col_count, win.start_index + i)
                                         }
                                     }
                                 }
@@ -1865,22 +1736,22 @@ dioxus.send(parts.join('\n'));"
 
             if is_infinite_scroll {
                 if has_more_rows {
-                    div { style: "padding: 0.75rem 1rem; text-align: center; \
+                    div {
+                        style: "padding: 0.75rem 1rem; text-align: center; \
                                 border-top: 1px solid var(--chorale-border, #ddd); background: var(--chorale-toolbar-bg, #fafafa); \
                                 font-size: 0.875rem; color: var(--chorale-text-subtle, #999);",
                         "{labels.load_more_label}"
                     }
                 }
             } else if !is_virtualized_grouped {
-                div { style: "padding: 0.5rem 1rem; display: flex; align-items: center; \
+                div {
+                    style: "padding: 0.5rem 1rem; display: flex; align-items: center; \
                             flex-wrap: wrap; gap: 0.25rem; border-top: 1px solid var(--chorale-border, #ddd); \
                             background: var(--chorale-toolbar-bg, #fafafa); font-size: 0.875rem; color: var(--chorale-text-muted, #555);",
                     button {
                         style: if prev_disabled { "{nav_btn_dis}" } else { "{nav_btn}" },
                         disabled: prev_disabled,
-                        onclick: move |_| {
-                            handle.set_page(page_idx.saturating_sub(1)).ok();
-                        },
+                        onclick: move |_| { handle.set_page(page_idx.saturating_sub(1)).ok(); },
                         "{labels.previous_page_label}"
                     }
                     for item in page_buttons {
@@ -1896,19 +1767,11 @@ dioxus.send(parts.join('\n'));"
                         },
                         "{labels.next_page_label}"
                     }
-                    span { style: "margin-left: 0.5rem; color: var(--chorale-text-subtle, #999);",
-                        "\u{00b7}"
-                    }
+                    span { style: "margin-left: 0.5rem; color: var(--chorale-text-subtle, #999);", "\u{00b7}" }
                     span { "{total_rows} rows" }
                     if total_pages > 1 {
-                        span { style: "margin-left: 0.5rem; color: var(--chorale-text-subtle, #999);",
-                            "\u{00b7}"
-                        }
-                        GotoPageInput::<TRow> {
-                            handle,
-                            total_pages,
-                            labels: labels.clone(),
-                        }
+                        span { style: "margin-left: 0.5rem; color: var(--chorale-text-subtle, #999);", "\u{00b7}" }
+                        GotoPageInput::<TRow> { handle, total_pages, labels: labels.clone() }
                     }
                     // `flex: 1` spacer pushes both export buttons to the
                     // right of the pagination/goto controls. Emitted when
@@ -1926,20 +1789,18 @@ dioxus.send(parts.join('\n'));"
                                 let sig = handle.signal();
                                 let csv = to_csv(&*sig.read());
                                 spawn(async move {
-                                    let js = dioxus::document::eval(
-                                        r"
-                                                                const csv = await dioxus.recv();
-                                                                const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
-                                                                const url = URL.createObjectURL(blob);
-                                                                const a = document.createElement('a');
-                                                                a.href = url;
-                                                                a.download = 'chorale-export.csv';
-                                                                document.body.appendChild(a);
-                                                                a.click();
-                                                                document.body.removeChild(a);
-                                                                URL.revokeObjectURL(url);
-                                                            ",
-                                    );
+                                    let js = dioxus::document::eval(r"
+                                        const csv = await dioxus.recv();
+                                        const blob = new Blob([csv], {type:'text/csv;charset=utf-8;'});
+                                        const url = URL.createObjectURL(blob);
+                                        const a = document.createElement('a');
+                                        a.href = url;
+                                        a.download = 'chorale-export.csv';
+                                        document.body.appendChild(a);
+                                        a.click();
+                                        document.body.removeChild(a);
+                                        URL.revokeObjectURL(url);
+                                    ");
                                     let _ = js.send(csv);
                                 });
                             },
@@ -2161,7 +2022,8 @@ fn detail_panel_tr<TRow: Clone + PartialEq + 'static>(
                     key: "{key}",
                     class: "chorale-row chorale-detail-panel",
                     "data-chorale-index": "{row_index}",
-                    td { colspan: "{colspan}",
+                    td {
+                        colspan: "{colspan}",
                         div { class: "chorale-detail-panel-inner", {content} }
                     }
                 }
@@ -2364,9 +2226,11 @@ fn header_th<TRow: Clone + PartialEq + 'static>(
             // a DOM node when is_drag_over flips rather than diffing an inline
             // style attribute (which proved unreliable post-reorder).
             if is_drag_over {
-                div { style: "position: absolute; inset: 0; \
+                div {
+                    style: "position: absolute; inset: 0; \
                             outline: 2px dashed var(--chorale-accent, #4a90e2); outline-offset: -2px; \
-                            pointer-events: none; z-index: 3;" }
+                            pointer-events: none; z-index: 3;",
+                }
             }
             if show_group_toggle {
                 span {
@@ -2394,11 +2258,7 @@ fn header_th<TRow: Clone + PartialEq + 'static>(
                             handle.expand_all_groups();
                         }
                     },
-                    if all_groups_expanded {
-                        "\u{25bc}"
-                    } else {
-                        "\u{25b6}"
-                    }
+                    if all_groups_expanded { "\u{25bc}" } else { "\u{25b6}" }
                 }
             }
             "{header}{sort_arrow}"
@@ -2440,19 +2300,13 @@ fn column_visibility_toolbar<TRow: Clone + PartialEq + 'static>(
 ) -> Element {
     let col_vis_label = labels.column_visibility_label.clone();
     rsx! {
-        div { style: "padding: 0.5rem 1rem; background: var(--chorale-group-header-bg, #f0f4ff); border-bottom: 1px solid var(--chorale-border, #ddd); \
+        div {
+            style: "padding: 0.5rem 1rem; background: var(--chorale-group-header-bg, #f0f4ff); border-bottom: 1px solid var(--chorale-border, #ddd); \
                     display: flex; gap: 0.75rem; flex-wrap: wrap; align-items: center; \
                     font-size: 0.8rem; color: var(--chorale-text, #444);",
             span { style: "font-weight: 600;", "{col_vis_label}" }
             for (col_id, header) in all_cols {
-                {
-                    column_vis_checkbox(
-                        *col_id,
-                        header,
-                        visibility.get(col_id).copied().unwrap_or(true),
-                        handle,
-                    )
-                }
+                {column_vis_checkbox(*col_id, header, visibility.get(col_id).copied().unwrap_or(true), handle)}
             }
         }
     }
@@ -2465,7 +2319,8 @@ fn column_vis_checkbox<TRow: Clone + PartialEq + 'static>(
     handle: UseTableHandle<TRow>,
 ) -> Element {
     rsx! {
-        label { style: "display: flex; align-items: center; gap: 0.25rem; cursor: pointer;",
+        label {
+            style: "display: flex; align-items: center; gap: 0.25rem; cursor: pointer;",
             input {
                 r#type: "checkbox",
                 checked: is_visible,
@@ -2500,9 +2355,7 @@ fn filter_th<TRow: Clone + PartialEq + 'static>(
     );
 
     match &col.filter {
-        FilterKind::None => rsx! {
-            th { key: "{col_id}", style: "{empty_th_style}" }
-        },
+        FilterKind::None => rsx! { th { key: "{col_id}", style: "{empty_th_style}" } },
         FilterKind::Text => {
             let text = match &current {
                 Some(FilterValue::Text(s)) => s.clone(),
@@ -2511,7 +2364,8 @@ fn filter_th<TRow: Clone + PartialEq + 'static>(
             let has_filter = current.is_some();
             rsx! {
                 th { key: "{col_id}", style: "{th_style}",
-                    div { style: "display: flex; align-items: center; gap: 2px;",
+                    div {
+                        style: "display: flex; align-items: center; gap: 2px;",
                         input {
                             r#type: "text",
                             placeholder: "{filter_placeholder}",
@@ -2539,7 +2393,8 @@ fn filter_th<TRow: Clone + PartialEq + 'static>(
             let has_filter = current.is_some();
             rsx! {
                 th { key: "{col_id}", style: "{th_style}",
-                    div { style: "display: flex; align-items: center; gap: 2px;",
+                    div {
+                        style: "display: flex; align-items: center; gap: 2px;",
                         div { style: "flex: 1; min-width: 0;",
                             MultiSelectFilter::<TRow> {
                                 col_id,
@@ -2562,7 +2417,8 @@ fn filter_th<TRow: Clone + PartialEq + 'static>(
             let has_filter = current.is_some();
             rsx! {
                 th { key: "{col_id}", style: "{th_style}",
-                    div { style: "display: flex; align-items: center; gap: 2px;",
+                    div {
+                        style: "display: flex; align-items: center; gap: 2px;",
                         div { style: "flex: 1; min-width: 0;",
                             MultiSelectFilter::<TRow> {
                                 col_id,
@@ -2584,7 +2440,8 @@ fn filter_th<TRow: Clone + PartialEq + 'static>(
             let has_filter = current.is_some();
             rsx! {
                 th { key: "{col_id}", style: "{th_style}",
-                    div { style: "display: flex; align-items: center; gap: 2px;",
+                    div {
+                        style: "display: flex; align-items: center; gap: 2px;",
                         div { style: "flex: 1; min-width: 0;",
                             NumericRangeFilter::<TRow> {
                                 col_id,
@@ -2606,7 +2463,8 @@ fn filter_th<TRow: Clone + PartialEq + 'static>(
             let has_filter = current.is_some();
             rsx! {
                 th { key: "{col_id}", style: "{th_style}",
-                    div { style: "display: flex; align-items: center; gap: 2px;",
+                    div {
+                        style: "display: flex; align-items: center; gap: 2px;",
                         div { style: "flex: 1; min-width: 0;",
                             DateRangeFilter::<TRow> {
                                 col_id,
@@ -2625,7 +2483,8 @@ fn filter_th<TRow: Clone + PartialEq + 'static>(
             let has_filter = current.is_some();
             rsx! {
                 th { key: "{col_id}", style: "{th_style}",
-                    div { style: "display: flex; align-items: center; gap: 2px;",
+                    div {
+                        style: "display: flex; align-items: center; gap: 2px;",
                         div { style: "flex: 1; min-width: 0;",
                             BooleanFilter::<TRow> {
                                 col_id,
@@ -2640,9 +2499,7 @@ fn filter_th<TRow: Clone + PartialEq + 'static>(
                 }
             }
         }
-        _ => rsx! {
-            th { key: "{col_id}", style: "{empty_th_style}" }
-        },
+        _ => rsx! { th { key: "{col_id}", style: "{empty_th_style}" } },
     }
 }
 
@@ -2728,25 +2585,19 @@ fn MultiSelectFilter<TRow: Clone + PartialEq + 'static>(
         details {
             "data-chorale-dropdown": "true",
             style: "position: relative; font-size: 0.8rem;",
-            summary { style: "cursor: pointer; padding: 2px 4px; border: 1px solid var(--chorale-input-border, #ccc); \
+            summary {
+                style: "cursor: pointer; padding: 2px 4px; border: 1px solid var(--chorale-input-border, #ccc); \
                         border-radius: 2px; background: var(--chorale-popover-bg, #fff); list-style: none;",
                 "{summary_label} \u{25be}"
             }
-            div { style: "position: absolute; left: 0; top: 100%; z-index: 10; \
+            div {
+                style: "position: absolute; left: 0; top: 100%; z-index: 10; \
                         background: var(--chorale-input-bg, #fff); border: 1px solid var(--chorale-input-border, #ccc); border-radius: 2px; \
                         padding: 4px 6px; min-width: 100%; white-space: nowrap; \
                         box-shadow: var(--chorale-popover-shadow, 0 2px 6px rgba(0,0,0,0.08)); max-height: 240px; \
                         overflow-y: auto;",
                 for opt in options.iter() {
-                    {
-                        multi_select_option(
-                            col_id,
-                            opt.clone(),
-                            selected.clone(),
-                            handle,
-                            separator.clone(),
-                        )
-                    }
+                    {multi_select_option(col_id, opt.clone(), selected.clone(), handle, separator.clone())}
                 }
             }
         }
@@ -2763,7 +2614,8 @@ fn multi_select_option<TRow: Clone + PartialEq + 'static>(
     let is_checked = selected.contains(&opt);
     let opt_label = opt.clone();
     rsx! {
-        label { style: "display: flex; align-items: center; gap: 0.35rem; padding: 2px 0; \
+        label {
+            style: "display: flex; align-items: center; gap: 0.35rem; padding: 2px 0; \
                     cursor: pointer;",
             input {
                 r#type: "checkbox",
@@ -2778,14 +2630,13 @@ fn multi_select_option<TRow: Clone + PartialEq + 'static>(
                     if next.is_empty() {
                         handle.set_filter(col_id, None);
                     } else if let Some(sep) = &separator {
-                        handle
-                            .set_filter(
-                                col_id,
-                                Some(FilterValue::MultiSelectContains {
-                                    selected: next,
-                                    separator: sep.clone(),
-                                }),
-                            );
+                        handle.set_filter(
+                            col_id,
+                            Some(FilterValue::MultiSelectContains {
+                                selected: next,
+                                separator: sep.clone(),
+                            }),
+                        );
                     } else {
                         handle.set_filter(col_id, Some(FilterValue::MultiSelect(next)));
                     }
@@ -2815,8 +2666,10 @@ fn NumericRangeFilter<TRow: Clone + PartialEq + 'static>(
     let max_display = format_compact_number(cur_max);
 
     rsx! {
-        div { style: "display: flex; flex-direction: column; gap: 2px; font-size: 0.75rem;",
-            div { style: "display: flex; justify-content: space-between; color: var(--chorale-text-muted, #555);",
+        div {
+            style: "display: flex; flex-direction: column; gap: 2px; font-size: 0.75rem;",
+            div {
+                style: "display: flex; justify-content: space-between; color: var(--chorale-text-muted, #555);",
                 span { "{min_display}" }
                 span { "{max_display}" }
             }
@@ -2830,14 +2683,7 @@ fn NumericRangeFilter<TRow: Clone + PartialEq + 'static>(
                 oninput: move |e| {
                     if let Ok(v) = e.value().parse::<f64>() {
                         let new_min = v.min(cur_max);
-                        commit_numeric_range(
-                            col_id,
-                            new_min,
-                            cur_max,
-                            bound_min,
-                            bound_max,
-                            &handle,
-                        );
+                        commit_numeric_range(col_id, new_min, cur_max, bound_min, bound_max, &handle);
                     }
                 },
             }
@@ -2851,14 +2697,7 @@ fn NumericRangeFilter<TRow: Clone + PartialEq + 'static>(
                 oninput: move |e| {
                     if let Ok(v) = e.value().parse::<f64>() {
                         let new_max = v.max(cur_min);
-                        commit_numeric_range(
-                            col_id,
-                            cur_min,
-                            new_max,
-                            bound_min,
-                            bound_max,
-                            &handle,
-                        );
+                        commit_numeric_range(col_id, cur_min, new_max, bound_min, bound_max, &handle);
                     }
                 },
             }
@@ -2933,7 +2772,8 @@ fn DateRangeFilter<TRow: Clone + PartialEq + 'static>(
     let max_str = cur_max.map_or_else(String::new, |d| d.format("%Y-%m-%d").to_string());
 
     rsx! {
-        div { style: "display: flex; gap: 4px; font-size: 0.75rem;",
+        div {
+            style: "display: flex; gap: 4px; font-size: 0.75rem;",
             input {
                 r#type: "date",
                 value: "{min_str}",
@@ -2946,8 +2786,7 @@ fn DateRangeFilter<TRow: Clone + PartialEq + 'static>(
                 // actually selected/committed, matching the leptos adapter's
                 // on:change date-filter semantics.
                 onchange: move |e| {
-                    let parsed = chorale_core::NaiveDate::parse_from_str(&e.value(), "%Y-%m-%d")
-                        .ok();
+                    let parsed = chorale_core::NaiveDate::parse_from_str(&e.value(), "%Y-%m-%d").ok();
                     commit_date_range(col_id, parsed, cur_max, &handle);
                 },
             }
@@ -2958,8 +2797,7 @@ fn DateRangeFilter<TRow: Clone + PartialEq + 'static>(
                         border-radius: 2px; font-size: 0.75rem;",
                 // See the min input above — change-only commit, per leptos.
                 onchange: move |e| {
-                    let parsed = chorale_core::NaiveDate::parse_from_str(&e.value(), "%Y-%m-%d")
-                        .ok();
+                    let parsed = chorale_core::NaiveDate::parse_from_str(&e.value(), "%Y-%m-%d").ok();
                     commit_date_range(col_id, cur_min, parsed, &handle);
                 },
             }
@@ -3015,20 +2853,14 @@ fn BooleanFilter<TRow: Clone + PartialEq + 'static>(
                     border: 1px solid var(--chorale-input-border, #ccc); border-radius: 2px; font-size: 0.8rem; background: var(--chorale-input-bg, #fff);",
             onchange: move |e| {
                 match e.value().as_str() {
-                    "yes" => {
-                        handle.set_filter(col_id, Some(FilterValue::Boolean(true)));
-                    }
-                    "no" => {
-                        handle.set_filter(col_id, Some(FilterValue::Boolean(false)));
-                    }
-                    _ => {
-                        handle.set_filter(col_id, None);
-                    }
+                    "yes" => { handle.set_filter(col_id, Some(FilterValue::Boolean(true))); }
+                    "no"  => { handle.set_filter(col_id, Some(FilterValue::Boolean(false))); }
+                    _     => { handle.set_filter(col_id, None); }
                 }
             },
             option { value: "all", "All" }
             option { value: "yes", "Yes" }
-            option { value: "no", "No" }
+            option { value: "no",  "No" }
         }
     }
 }
@@ -3049,7 +2881,8 @@ fn select_all_th<TRow: Clone + PartialEq + 'static>(
          top: auto; z-index: auto; background: var(--chorale-header-bg, #f8f9fa); width: 2.5rem; text-align: center;"
     };
     rsx! {
-        th { style: "{style}",
+        th {
+            style: "{style}",
             input {
                 r#type: "checkbox",
                 checked: all_page_selected,
@@ -3160,7 +2993,8 @@ fn data_tr<TRow: Clone + PartialEq + 'static>(
             "data-chorale-index": "{row_index}",
             "data-chorale-row-selected": "{row_selected}",
             if selection_enabled {
-                td { style: "padding: 0.25rem 0.5rem; width: 2.5rem; text-align: center; \
+                td {
+                    style: "padding: 0.25rem 0.5rem; width: 2.5rem; text-align: center; \
                             box-shadow: inset 0 -1px 0 {separator_color};",
                     input {
                         r#type: "checkbox",
@@ -3177,61 +3011,35 @@ fn data_tr<TRow: Clone + PartialEq + 'static>(
                     "aria-label": if is_expanded { "Collapse row" } else { "Expand row" },
                     "aria-expanded": if is_expanded { "true" } else { "false" },
                     onclick: move |_| handle.toggle_row_expansion(row_id),
-                    if is_expanded {
-                        "▼"
-                    } else {
-                        "▶"
-                    }
+                    if is_expanded { "▼" } else { "▶" }
                 }
             }
             for col in visible_cols {
                 if editing_col == Some(col.id) {
-                    {
-                        editor_td(
-                            row,
-                            row_id,
-                            col,
-                            row_height,
-                            variable_row_height,
-                            widths.get(&col.id).copied(),
-                            separator_color,
-                            editing_text,
-                            edit_error,
-                            validate_edit,
-                            on_commit_edit,
-                            handle,
-                            sticky_css_map.get(&col.id).map_or("", String::as_str),
-                            kb_id,
-                        )
-                    }
+                    {editor_td(
+                        row,
+                        row_id,
+                        col,
+                        row_height,
+                        variable_row_height,
+                        widths.get(&col.id).copied(),
+                        separator_color,
+                        editing_text,
+                        edit_error,
+                        validate_edit,
+                        on_commit_edit,
+                        handle,
+                        sticky_css_map.get(&col.id).map_or("", String::as_str),
+                        kb_id,
+                    )}
                 } else {
                     {
-                        let is_active = active_cell
-                            .is_some_and(|ac| ac.row_idx == row_index && ac.column_id == col.id);
+                        let is_active = active_cell.is_some_and(|ac| ac.row_idx == row_index && ac.column_id == col.id);
                         let is_in_range = range_cells.contains(&(row_index, col.id));
                         let is_focus_cell = fill_focus_cell == Some((row_index, col.id));
                         let cell_renderer = cell_renderers.get(col.id);
                         let row_renderer = row_cell_renderers.get(col.id);
-                        data_td(
-                            row,
-                            col,
-                            row_height,
-                            variable_row_height,
-                            widths.get(&col.id).copied(),
-                            cell_renderer.as_ref(),
-                            row_renderer.as_ref(),
-                            separator_color,
-                            sticky_css_map.get(&col.id).map_or("", String::as_str),
-                            is_active,
-                            is_in_range,
-                            row_index,
-                            row_id,
-                            handle,
-                            is_focus_cell,
-                            fill_drag_active,
-                            fill_hover,
-                            on_row_click,
-                        )
+                        data_td(row, col, row_height, variable_row_height, widths.get(&col.id).copied(), cell_renderer.as_ref(), row_renderer.as_ref(), separator_color, sticky_css_map.get(&col.id).map_or("", String::as_str), is_active, is_in_range, row_index, row_id, handle, is_focus_cell, fill_drag_active, fill_hover, on_row_click)
                     }
                 }
             }
@@ -3409,7 +3217,8 @@ fn group_header_tr<TRow: Clone + PartialEq + 'static>(
                 rsx! { "{text}" }
             };
             Some(rsx! {
-                span { style: "margin-left: 1.25rem; font-weight: 400; font-size: 0.8125rem; \
+                span {
+                    style: "margin-left: 1.25rem; font-weight: 400; font-size: 0.8125rem; \
                             color: var(--chorale-text-muted, #6b7280);",
                     "{prefix} {header}: "
                 }
@@ -3425,11 +3234,10 @@ fn group_header_tr<TRow: Clone + PartialEq + 'static>(
             key: "grp-{key}",
             class: "{extra_class}",
             style: "background: var(--chorale-group-header-bg, #f0f4ff); font-weight: 600; cursor: pointer;",
-            onclick: move |_| {
-                handle.toggle_group(key.clone());
-            },
+            onclick: move |_| { handle.toggle_group(key.clone()); },
             if selection_enabled {
-                td { style: "padding: 0.25rem 0.5rem; width: 2.5rem; text-align: center;",
+                td {
+                    style: "padding: 0.25rem 0.5rem; width: 2.5rem; text-align: center;",
                     input {
                         id: "{cb_id}",
                         r#type: "checkbox",
@@ -3438,20 +3246,14 @@ fn group_header_tr<TRow: Clone + PartialEq + 'static>(
                         // after mount when the group is partially selected.
                         onmounted: move |_| {
                             if group_partial {
-                                let _ = dioxus::document::eval(
-                                    &format!(
-                                        "var e=document.getElementById('{cb_id_mount}');if(e)e.indeterminate=true;",
-                                    ),
-                                );
+                                let _ = dioxus::document::eval(&format!(
+                                    "var e=document.getElementById('{cb_id_mount}');if(e)e.indeterminate=true;"
+                                ));
                             }
                         },
                         // Don't let the checkbox click bubble to the row's collapse toggle.
-                        onclick: move |e| {
-                            e.stop_propagation();
-                        },
-                        onchange: move |_| {
-                            handle.toggle_select_group(key_for_select.clone());
-                        },
+                        onclick: move |e| { e.stop_propagation(); },
+                        onchange: move |_| { handle.toggle_select_group(key_for_select.clone()); },
                     }
                 }
             }
@@ -3459,11 +3261,13 @@ fn group_header_tr<TRow: Clone + PartialEq + 'static>(
                 colspan: "{col_count - usize::from(selection_enabled)}",
                 style: "padding: 0.4rem 1rem 0.4rem {indent}px; \
                         border-bottom: 1px solid var(--chorale-group-header-border, #dce4ff); font-size: 0.875rem;",
-                span { style: "margin-right: 0.5rem; font-size: 0.75rem; color: var(--chorale-accent, #4a90e2);",
+                span {
+                    style: "margin-right: 0.5rem; font-size: 0.75rem; color: var(--chorale-accent, #4a90e2);",
                     "{toggle_icon}"
                 }
                 "{label}"
-                span { style: "margin-left: 0.5rem; font-size: 0.75rem; font-weight: 400; \
+                span {
+                    style: "margin-left: 0.5rem; font-size: 0.75rem; font-weight: 400; \
                             color: var(--chorale-text-subtle, #888);",
                     "({row_count})"
                 }
@@ -3611,29 +3415,31 @@ fn editor_td<TRow: Clone + PartialEq + 'static>(
                 style: "{editor_style}",
                 onchange: move |e| {
                     let raw = e.value();
-                    let result = validate_select
-                        .call(EditValidation {
-                            row_id,
-                            column_id: col_id,
-                            raw_value: raw.clone(),
-                        });
+                    let result = validate_select.call(EditValidation {
+                        row_id,
+                        column_id: col_id,
+                        raw_value: raw.clone(),
+                    });
                     match result {
                         Ok(()) => {
                             edit_error.set(None);
                             if let Some(handler) = &on_commit_edit {
-                                handler
-                                    .call(
-                                        CommittedEdit::new(
-                                            row_id,
-                                            col_id,
-                                            raw.clone(),
-                                            prior_row_select.clone(),
-                                        ),
-                                    );
+                                handler.call(CommittedEdit::new(
+                                    row_id,
+                                    col_id,
+                                    raw.clone(),
+                                    prior_row_select.clone(),
+                                ));
                             }
                             let mut sig = handle.signal();
                             let new_state = commit_edit(&*sig.read());
                             sig.set(new_state);
+                            // Commit unmounts the <select>; hand focus back
+                            // to the grid container so a keyboard pick
+                            // (arrows / typing a letter) flows straight back
+                            // into cell navigation. Without this, focus
+                            // silently drops to <body> when the element is
+                            // removed, and arrow keys scroll the page.
                             refocus_keyboard_container(&kb_for_select_change);
                         }
                         Err(msg) => edit_error.set(Some(msg)),
@@ -3750,25 +3556,35 @@ fn editor_td<TRow: Clone + PartialEq + 'static>(
                         }
                     }
                     let raw = editing_text.peek().clone();
-                    let result = validate_blur
-                        .call(EditValidation {
-                            row_id,
-                            column_id: col_id,
-                            raw_value: raw.clone(),
-                        });
+                    let result = validate_blur.call(EditValidation {
+                        row_id,
+                        column_id: col_id,
+                        raw_value: raw.clone(),
+                    });
                     if result.is_ok() {
                         edit_error.set(None);
                         if let Some(handler) = &on_commit_edit {
-                            handler
-                                .call(
-                                    CommittedEdit::new(
-                                        row_id,
-                                        col_id, // On validation error, leave editing open so user can fix.
-                                        raw.clone(),
-                                        prior_row_blur.clone(),
-                                    ),
-                                );
+                            handler.call(CommittedEdit::new(
+                                row_id,
+                                col_id,
+                                raw.clone(),
+                                prior_row_blur.clone(),
+                            ));
                         }
+                        // Clone-mutate-set, NOT sig.write(). The view memo's
+                        // view_key intentionally does not track row content
+                        // (perf optimisation: at 1M rows it avoids re-hashing
+                        // the full dataset per scroll tick). sig.write() only
+                        // invalidates fine-grained subscribers of the fields
+                        // it touched (editing, active_cell, range_selection)
+                        // and DOES NOT invalidate the view memo — so even
+                        // though state.rows holds the new row, the cell would
+                        // keep rendering the stale memoised view. sig.set()
+                        // on a fresh clone triggers the broader invalidation
+                        // the view memo picks up. The data_generation bump
+                        // inside update_row carries the cell-edit signal
+                        // through view_key for callers that already update
+                        // via the transition.
                         let mut sig = handle.signal();
                         let new_state = {
                             let snap = sig.peek();
@@ -3780,6 +3596,7 @@ fn editor_td<TRow: Clone + PartialEq + 'static>(
                         };
                         sig.set(new_state);
                     }
+                    // On validation error, leave editing open so user can fix.
                 },
                 onkeydown: move |e: KeyboardEvent| {
                     // While editing, no key may leak to the grid-level keydown
@@ -3794,24 +3611,33 @@ fn editor_td<TRow: Clone + PartialEq + 'static>(
                     match e.key() {
                         Key::Enter => {
                             let raw = editing_text.read().clone();
-                            let result = validate
-                                .call(EditValidation {
-                                    row_id,
-                                    column_id: col_id,
-                                    raw_value: raw.clone(),
-                                });
+                            let result = validate.call(EditValidation {
+                                row_id,
+                                column_id: col_id,
+                                raw_value: raw.clone(),
+                            });
                             match result {
                                 Ok(()) => {
                                     edit_error.set(None);
                                     if let Some(handler) = &on_commit_edit {
-                                        handler
-                                            .call(
-                                                CommittedEdit::new(row_id, col_id, raw, prior_row.clone()),
-                                            );
+                                        handler.call(CommittedEdit::new(
+                                            row_id,
+                                            col_id,
+                                            raw,
+                                            prior_row.clone(),
+                                        ));
                                     }
                                     let mut sig = handle.signal();
-                                    let new_state = commit_edit(&*sig.read()); // Tab cycles `editing` to the adjacent editable
+                                    let new_state = commit_edit(&*sig.read());
                                     sig.set(new_state);
+                                    // Successful keyboard commit: the input is
+                                    // about to unmount, which silently drops
+                                    // focus to <body>. Refocus the grid
+                                    // container so navigation resumes from the
+                                    // (still-set) active cell. Deliberately
+                                    // NOT done in onblur — blur is an
+                                    // intentional click-away and must not
+                                    // steal focus back.
                                     refocus_keyboard_container(&kb_for_input_keys);
                                 }
                                 Err(msg) => edit_error.set(Some(msg)),
@@ -3821,9 +3647,13 @@ fn editor_td<TRow: Clone + PartialEq + 'static>(
                             let mut sig = handle.signal();
                             let new_state = cancel_edit(&*sig.read());
                             sig.set(new_state);
+                            // Same refocus rationale as the Enter arm above.
                             refocus_keyboard_container(&kb_for_input_keys);
                         }
                         Key::Tab => {
+                            // Tab cycles `editing` to the adjacent editable
+                            // column; the next editor auto-focuses via the
+                            // edit-target effect, so no container refocus.
                             e.prevent_default();
                             let mut sig = handle.signal();
                             let new_state = if e.modifiers().contains(Modifiers::SHIFT) {
@@ -3841,10 +3671,13 @@ fn editor_td<TRow: Clone + PartialEq + 'static>(
     };
 
     rsx! {
-        td { key: "{col.id}", style: "{style}",
+        td {
+            key: "{col.id}",
+            style: "{style}",
             {editor_el}
             if let Some(err) = err_val {
-                div { style: "color: var(--chorale-error, #c0392b); font-size: 0.75rem; margin-top: 2px;",
+                div {
+                    style: "color: var(--chorale-error, #c0392b); font-size: 0.75rem; margin-top: 2px;",
                     "{err}"
                 }
             }
@@ -3946,17 +3779,21 @@ fn data_td<TRow: Clone + PartialEq + 'static>(
             // Range-cell overlay (children must come after attributes per rsx!
             // ordering rules). pointer-events:none so clicks pass through.
             if is_in_range {
-                div { style: "position: absolute; inset: 0; \
+                div {
+                    style: "position: absolute; inset: 0; \
                             background: var(--chorale-range-bg, rgba(0, 120, 212, 0.1)); \
-                            pointer-events: none; z-index: 1;" }
+                            pointer-events: none; z-index: 1;",
+                }
             }
             // Active-cell outline overlay. Drawn inset; sits over the range
             // background but below interactive content.
             if is_active_cell {
-                div { style: "position: absolute; inset: 0; \
+                div {
+                    style: "position: absolute; inset: 0; \
                             outline: 2px solid var(--chorale-active-cell-outline, #0078d4); \
                             outline-offset: -2px; \
-                            pointer-events: none; z-index: 2;" }
+                            pointer-events: none; z-index: 2;",
+                }
             }
             {content}
             // No fill-handle visual: a 6×6 blue square at the bottom-right
@@ -3997,16 +3834,12 @@ fn cell_element(val: &CellValue, kind: &RenderKind) -> Element {
     match (val, kind) {
         (CellValue::Boolean(b), RenderKind::Boolean) => {
             let icon = if *b { "\u{2713}" } else { "\u{2717}" };
-            rsx! {
-                span { "{icon}" }
-            }
+            rsx! { span { "{icon}" } }
         }
         (CellValue::Text(s), RenderKind::Badge(map)) => badge_span(s, map),
         _ => {
             let text = cell_text(val, kind);
-            rsx! {
-                span { "{text}" }
-            }
+            rsx! { span { "{text}" } }
         }
     }
 }
@@ -4015,13 +3848,9 @@ fn badge_span(text: &str, map: &BadgeVariantMap) -> Element {
     if let Some(v) = map.resolve(text) {
         let label = v.label.clone();
         let style = badge_style(&v.color);
-        rsx! {
-            span { style: "{style}", "{label}" }
-        }
+        rsx! { span { style: "{style}", "{label}" } }
     } else {
-        rsx! {
-            span { "{text}" }
-        }
+        rsx! { span { "{text}" } }
     }
 }
 
@@ -4205,7 +4034,8 @@ fn GotoPageInput<TRow: Clone + PartialEq + 'static>(
     let page_count_str = (labels.page_count)(*page_memo.read() + 1, max_page);
 
     rsx! {
-        span { style: "display: inline-flex; align-items: center; gap: 0.25rem; \
+        span {
+            style: "display: inline-flex; align-items: center; gap: 0.25rem; \
                     color: var(--chorale-text-muted, #555); font-size: 0.875rem;",
             "{labels.go_to_page_label}"
             input {
@@ -4238,7 +4068,8 @@ fn render_page_btn<TRow: Clone + PartialEq + 'static>(
 ) -> Element {
     let Some(p) = item else {
         return rsx! {
-            span { style: "padding: 0 0.25rem; color: var(--chorale-text-disabled, #aaa); font-size: 0.875rem;",
+            span {
+                style: "padding: 0 0.25rem; color: var(--chorale-text-disabled, #aaa); font-size: 0.875rem;",
                 "\u{2026}"
             }
         };
@@ -4254,9 +4085,7 @@ fn render_page_btn<TRow: Clone + PartialEq + 'static>(
     rsx! {
         button {
             style: "{style}",
-            onclick: move |_| {
-                handle.set_page(p).ok();
-            },
+            onclick: move |_| { handle.set_page(p).ok(); },
             "{p + 1}"
         }
     }
