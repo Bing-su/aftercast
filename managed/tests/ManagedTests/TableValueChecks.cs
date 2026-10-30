@@ -120,6 +120,7 @@ internal static class TableValueChecks
         ColorClassifications(fixture);
         MainDefaultOrdering(fixture);
         PublishedMainSort(fixture);
+        HeaderClickSort(fixture);
         ZoneScope(fixture);
         CellFailures(fixture);
         ReentryAndMutation(fixture);
@@ -179,6 +180,30 @@ internal static class TableValueChecks
             Check(ActGlobals.eDSort == "name" && ActGlobals.eDSort2 == "damage");
             Throws<ArgumentException>(() => fixture.Host.ReadTable(fixture.Query(sort: new TableSort("missing")) with { MainDescending = true, PublishMainSort = true }));
             Check(ActGlobals.eDSort == "name" && ActGlobals.eDSort2 == "damage");
+        }
+        finally { fixture.Plugin.OnCell = null; ActGlobals.eDSort = originalPrimary; ActGlobals.eDSort2 = originalSecondary; }
+    }
+
+    private static void HeaderClickSort(Fixture fixture)
+    {
+        var originalPrimary = ActGlobals.eDSort;
+        var originalSecondary = ActGlobals.eDSort2;
+        try
+        {
+            var catalog = fixture.Host.ReadTableColumns(TableLevel.Combatant);
+            ActGlobals.eDSort = "name"; ActGlobals.eDSort2 = "fixture";
+            var first = fixture.Host.ClickMainSort(TableLevel.Combatant, catalog.Revision, "damage", true);
+            Check(first.Primary == "damage" && first.Secondary == "name" && first.Descending);
+            var second = fixture.Host.ClickMainSort(TableLevel.Combatant, catalog.Revision, "damage", first.Descending);
+            Check(second.Primary == "damage" && second.Secondary == "damage" && !second.Descending);
+            ActGlobals.eDSort = "name"; // A plugin changed the key between clicks.
+            var third = fixture.Host.ClickMainSort(TableLevel.Combatant, catalog.Revision, "damage", second.Descending);
+            Check(third.Primary == "damage" && third.Secondary == "name" && !third.Descending);
+            Throws<ArgumentException>(() => fixture.Host.ClickMainSort(TableLevel.Combatant, catalog.Revision, "missing", true));
+            Throws<InvalidOperationException>(() => fixture.Host.ClickMainSort(TableLevel.Combatant, catalog.Revision + 1, "name", true));
+            Check(ActGlobals.eDSort == "damage" && ActGlobals.eDSort2 == "name");
+            fixture.Plugin.OnCell = () => Throws<InvalidOperationException>(() => fixture.Host.ClickMainSort(TableLevel.Combatant, catalog.Revision, "name", true));
+            fixture.Read(fixture.Query(columns: ["fixture"]));
         }
         finally { fixture.Plugin.OnCell = null; ActGlobals.eDSort = originalPrimary; ActGlobals.eDSort2 = originalSecondary; }
     }

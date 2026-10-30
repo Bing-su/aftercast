@@ -7,6 +7,7 @@ namespace Aftercast.ActCompat
     public sealed record TableSort(string Primary, string? Secondary = null, bool Descending = false);
     public sealed record TableQuery(TableScope Scope, ulong Revision, string[] Columns,
         int Offset = 0, int Limit = 16, TableSort? Sort = null, bool? MainDescending = null, bool PublishMainSort = false);
+    public sealed record MainSortClickResult(string Primary, string Secondary, bool Descending);
     public sealed record TableCellData(string? Text, int? ForegroundArgb, int? BackgroundArgb, string? Error);
     // Index belongs to this scope snapshot only; it is not a persistent action identity or a source-log link.
     public sealed record TableRowData(int Index, ulong EncounterId, string? Combatant, string? Category,
@@ -219,6 +220,30 @@ namespace Advanced_Combat_Tracker
                 activeTableQuery = true;
                 try { return BuildTable(query, snapshot, columns, primary, secondary, rows); }
                 finally { activeTableQuery = false; }
+            }
+        }
+        internal MainSortClickResult ClickMainSort(TableLevel level, ulong revision, string key, bool descending)
+        {
+            if (Environment.CurrentManagedThreadId != ownerThread) throw new InvalidOperationException("Tables must be accessed on the host owner thread");
+            ObjectDisposedException.ThrowIf(actionsClosed, this);
+            lock (CombatGate)
+            {
+                if (activeTableQuery) throw new InvalidOperationException("Reentrant table queries are not supported");
+                if (level is not (TableLevel.Combatant or TableLevel.Attack or TableLevel.Action)) throw new ArgumentException("Main sorting is unavailable at this table level");
+                if (revision == 0 || ReadTableColumns(level).Revision != revision) throw new TableQueryInvalidatedException("Column catalog revision mismatch");
+                SelectTableColumn(columnSnapshots[level].Snapshot, key, true);
+                static MainSortClickResult Click(ref string primary, ref string secondary, string key, bool descending)
+                {
+                    if (primary == key) descending = !descending;
+                    secondary = primary;
+                    primary = key;
+                    return new(primary, secondary, descending);
+                }
+                return level switch {
+                    TableLevel.Combatant => Click(ref ActGlobals.eDSort, ref ActGlobals.eDSort2, key, descending),
+                    TableLevel.Attack => Click(ref ActGlobals.mDSort, ref ActGlobals.mDSort2, key, descending),
+                    TableLevel.Action => Click(ref ActGlobals.aTSort, ref ActGlobals.aTSort2, key, descending),
+                    _ => throw new ArgumentException("Main sorting is unavailable at this table level") };
             }
         }
         private static void PublishMainSort(TableLevel level, TableSort sort)
