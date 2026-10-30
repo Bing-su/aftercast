@@ -212,6 +212,12 @@ issue below; a passing retry is not a fix.
   need a rendering design ([reports](hierarchical-reports.md)).
 - The desktop has no built-in audio/voice provider; provider choice and any new
   dependency are separate from fake-sink policy tests ([speech](speech-preferences.md)).
+- **ACT timer phrase localization:** pinned ACT's default English phrases match
+  aftercast before speech corrections. Non-English or plugin-modified phrases
+  use ACT's mutable localization dictionary, which aftercast's worker does not
+  expose or populate. Define the source, ownership and lifetime of supported
+  translations before implementation; the app's UI locale alone supplies no
+  equivalent ACT strings ([speech](speech-preferences.md)).
 - The [partial WinForms bridge](gui-plan.md#planned-partial-winforms-configuration-bridge) is **plan only** and needs
   explicit later implementation authorization; do not substitute Mono/Wine.
 - ODBC literal-value-dependent rewrite rules cannot generally be mapped safely to
