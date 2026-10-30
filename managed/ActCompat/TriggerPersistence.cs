@@ -1,5 +1,6 @@
 using System.Text;
 using System.Xml;
+using Aftercast.ActCompat;
 
 namespace Advanced_Combat_Tracker;
 
@@ -56,6 +57,7 @@ public partial class FormActMain
 
     private static void SaveCustomTriggersFile(string path, IEnumerable<CustomTrigger> definitions, bool originalLines, bool processImports)
     {
+        using var lease = MixedConfigFiles.AcquireSingle(path);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {

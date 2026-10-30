@@ -64,6 +64,14 @@ internal static class ConfigBatchChecks
                 Reject(() => timers.SaveTimerBatch(timerPath,timerPreview.Revision,timerValues));
                 Check(timers.ReadTimerDefinitions(0,16).Total == 0, "Failed batch save published timers");
                 Directory.Delete(timerPath);
+                var triggerBytes=File.ReadAllBytes(triggerPath);
+                using(var lease=new FileStream(Path.Combine(directory.FullName,".mixed-config.lock"),FileMode.OpenOrCreate,FileAccess.ReadWrite,FileShare.None))
+                {
+                    var current=main.ReadTriggers(0,16);
+                    Reject(()=>main.SaveTriggerOptions(current.Revision,!current.OriginalLines,current.ProcessImports));
+                    Reject(()=>timers.SaveTimerBatch(timerPath,timerPreview.Revision,timerValues));
+                    Check(main.ReadTriggers(0,16).Total==3 && timers.ReadTimerDefinitions(0,16).Total==0 && File.ReadAllBytes(triggerPath).SequenceEqual(triggerBytes) && !File.Exists(timerPath),"single saves must respect mixed lease without publishing");
+                }
                 timers.SaveTimerBatch(timerPath,timerPreview.Revision,timerValues);
                 Reject(() => timers.SaveTimerBatch(timerPath,timerPreview.Revision,timerValues));
                 Check(timers.ReadTimerDefinitions(0,16).Total == 2 && timers.GetTimerFrames().Count == 0 && host.DrainSpeech().Length == 0, "Timer batch published incorrectly or ran effects");

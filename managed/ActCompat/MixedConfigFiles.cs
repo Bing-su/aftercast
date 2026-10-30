@@ -63,6 +63,15 @@ public static class MixedConfigFiles
             throw new InvalidDataException("Invalid mixed Config journal");
         Rollback(directory,record);
     }
+    // Called while the owning registry gate is held. A pending journal is resolved
+    // before any standalone writer can publish into the same directory.
+    internal static IDisposable AcquireSingle(string path)
+    {
+        var directory=Path.GetDirectoryName(Path.GetFullPath(path)) ?? throw new ArgumentException("Missing definition directory");
+        var lease=Lease(directory);
+        try { RecoverOwned(directory); return lease; }
+        catch { lease.Dispose(); throw; }
+    }
     /// Restore an interrupted publication before either registry is loaded. Conflicts fail closed.
     public static void Recover(string directory)
     {

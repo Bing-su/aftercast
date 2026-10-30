@@ -73,6 +73,7 @@ public partial class FormSpellTimers
     }
     private void WriteTimerFile(string path,IEnumerable<TimerData> definitions)
     {
+        using var lease = MixedConfigFiles.AcquireSingle(path);
         var file = new TimerDefinitionsFile { Items = definitions.Select(TimerDefinition.FromData).ToArray() };
         foreach (var definition in file.Items) ValidateTimerText(definition);
         var temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";

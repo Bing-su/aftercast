@@ -18,7 +18,11 @@ Before loading either registry, HostEnvironment rolls back any unfinished journa
 A process exit after either file replacement therefore recovers the prior pair
 before plugin initialization. Recovery is idempotent, including midway rollback.
 
-A shared file lease excludes cooperating transactions. Expected before-images
+A shared file lease excludes cooperating transactions. The existing standalone
+trigger and timer file writers now acquire that lease while their registry gate
+is held and recover a pending journal before writing. Synthetic tests cover both
+writers refusing a held lease without changing disk or memory. This does not yet
+connect mixed publication or prevent noncooperating external writers. Expected before-images
 reject stale previews/duplicate publication. Recovery accepts only exact before
 or after bytes; an unrelated external edit causes a visible conflict and no
 attempt to overwrite that edited content. Checks are not a lock against a
@@ -35,9 +39,9 @@ is local rollback material, not a new archive/backup policy.
 
 1. Mixed preview enforces the total 16 KiB/32-item budget and compiles both definitions. The future import must revalidate both revisions and reject all conflicts under the publication gates.
 2. Suspend parsing and obtain both definition gates in one fixed order. Snapshot
-   both registry revisions and both file before-images. Existing standalone save
-   paths must participate in the same serialization boundary; do not enable a
-   mixed caller while another host-managed save can race its file publication.
+   both registry revisions and both file before-images. Standalone file writers now
+   participate in the common lease; the mixed caller still must acquire both
+   registry gates in a fixed order before entering that lease.
 3. Reuse existing XML serializers to prepare and validate the complete resulting
    pair. Prebuild registry updates without changing active timer frames or firing
    sound/TTS/trigger effects. The file core accepts bytes, not validated ACT XML.
