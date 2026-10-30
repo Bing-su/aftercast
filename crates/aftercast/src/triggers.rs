@@ -230,6 +230,18 @@ impl HostHandle {
             items: page.items,
         })
     }
+    /// Apply explicit session-only parsing options. Active imports must finish first.
+    pub async fn apply_selective_options(
+        &self,
+        options: &crate::SelectiveOptions,
+    ) -> Result<(), Error> {
+        options.validate()?;
+        let accepted: bool = self.trigger_call(14, &serde_json::json!({"selectiveMode":options.mode as u8,"selected":options.selected})).await?;
+        if !accepted {
+            return Err(trigger_error("invalid selective options response"));
+        }
+        Ok(())
+    }
     /// Validate both Config sections without changing files or registries.
     pub async fn preview_mixed_config(&self, xml: &str) -> Result<MixedConfigPreview, Error> {
         if xml.len() > 16384 || xml.contains('\0') {

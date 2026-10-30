@@ -51,6 +51,7 @@ internal static class RootActionChecks
     {
         HostLifetimeChecks.RunBounded(Pipeline);
         HostLifetimeChecks.RunBounded(SelectiveRouting);
+        HostLifetimeChecks.RunBounded(SelectiveRuntimeApply);
         HostLifetimeChecks.RunBounded(SelectiveImport);
         HostLifetimeChecks.RunBounded(IdleBoundary);
         HostLifetimeChecks.RunBounded(IdleOptions);
@@ -68,6 +69,20 @@ internal static class RootActionChecks
         HostLifetimeChecks.RunBounded(RejectCrossPipelineJoin);
         HostLifetimeChecks.RunBounded(BacklogContinues);
         Console.WriteLine("Root combat hooks, admitted-action draining, idle boundaries, pumped shutdown and backlog continuation passed.");
+    }
+
+    private static void SelectiveRuntimeApply()
+    {
+        using var fixture = new Fixture();
+        fixture.Environment.ConfigureSelectiveParsing(SelectiveParsingModeEnum.SelectiveEncountersStrict, ["Source"]);
+        Check(fixture.Root.SelectiveListGetMode() == SelectiveParsingModeEnum.SelectiveEncountersStrict);
+        Check(fixture.Root.SelectiveListGetSelected("source"));
+        fixture.Environment.BeginClipboardImport("synthetic line");
+        Throws<InvalidOperationException>(() => fixture.Environment.ConfigureSelectiveParsing(SelectiveParsingModeEnum.None, []));
+        Check(fixture.Root.SelectiveListGetMode() == SelectiveParsingModeEnum.SelectiveEncountersStrict);
+        Throws<OperationCanceledException>(() => { while (fixture.Environment.AdvanceImport(true) is null) Thread.Sleep(1); });
+        fixture.Environment.ConfigureSelectiveParsing(SelectiveParsingModeEnum.None, []);
+        Check(fixture.Root.SelectiveListGetMode() == SelectiveParsingModeEnum.None);
     }
 
     private static void SelectiveRouting()

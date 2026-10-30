@@ -11,7 +11,7 @@ selective encounter continues to require a selected participant. The original
 `EncounterData.AddCombatAction` object probe verifies victim-only acceptance in
 normal selective recording and rejection in strict recording.
 
-The managed host currently implements the mode/selection at construction and
+The managed host implements the mode/selection at construction and through an explicit owner-thread runtime apply, and
 routes newly created encounters through that policy. An existing encounter keeps
 its creation policy. Private history records that policy separately, rebuilding
 previously accepted actions before restoring it so a different current list cannot
@@ -19,9 +19,7 @@ silently discard saved actions. Older private histories without these attributes
 retain the previous nonselective interpretation. ACT interchange XML does not
 carry the aftercast private attributes.
 
-The app persists mode and one selected name per line; the settings take effect
-on the next host session, before plugin constructors run. Selection mutations
-by plugins work in that session but are not written back to the app settings.
+The app can save mode and one selected name per line as defaults for the next host session, before plugin constructors run. An explicit Apply button sends the current draft to the active session without saving it. Runtime apply is rejected while an import is active; already recorded actions are not rewritten. Selection mutations by plugins work in that session but are not written back to app settings or overwrite the draft.
 Managed graph and text-export generation applies the selected list, with allied
 totals filtered only in the dedicated mode; admitted reports reject selection
 changes during callbacks. A limited-recording encounter cannot recover actions

@@ -806,3 +806,90 @@ async fn correction_editor_is_atomic_session_owned_and_only_affects_new_actions(
     );
     host.shutdown().await.expect("stop");
 }
+
+#[rstest::rstest]
+#[tokio::test(flavor = "current_thread")]
+#[ignore = "requires .NET 10 and C# fixtures; run mise run test:plugins"]
+async fn selective_runtime_apply_is_session_only_and_filters_new_records(deployment: Deployment) {
+    use aftercast::{SelectiveMode, SelectiveOptions};
+    let host = Host::start(deployment.config()).await.unwrap();
+    let path = Utf8Path::new(env!("CARGO_MANIFEST_DIR"))
+        .join("../../managed/tests/PluginFixture/bin/Release/net10.0/Aftercast.PluginFixture.dll");
+    let plugin = host
+        .create_plugin(
+            PluginConfig::builder()
+                .path(path.clone())
+                .type_name("Aftercast.PluginFixture.SelectiveFixturePlugin")
+                .build(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(host.initialize_plugin(plugin).await.unwrap(), "None");
+    let options = SelectiveOptions {
+        mode: SelectiveMode::EncountersStrict,
+        selected: vec!["Source".into()],
+    };
+    host.apply_selective_options(&options).await.unwrap();
+    let log = deployment.directory().join("runtime-selective.log");
+    std::fs::write(&log, "0|Other|Target\n1|Other|Source\n2|Source|Target\n").unwrap();
+    host.import_log(&log).await.unwrap();
+    let encounter = host.encounters(0, 16).await.unwrap().items[0].id;
+    assert_eq!(
+        host.encounter_actions(encounter, 0, 16)
+            .await
+            .unwrap()
+            .unwrap()
+            .total,
+        1
+    );
+    host.apply_selective_options(&SelectiveOptions {
+        mode: SelectiveMode::GraphsExports,
+        selected: vec!["Source".into()],
+    })
+    .await
+    .unwrap();
+    assert_eq!(
+        host.encounter_actions(encounter, 0, 16)
+            .await
+            .unwrap()
+            .unwrap()
+            .total,
+        1,
+        "runtime transition must not reconstruct omitted history"
+    );
+    let old = host.handle();
+    host.shutdown().await.unwrap();
+    old.apply_selective_options(&options)
+        .await
+        .expect_err("closed session");
+    let fresh = Host::start(deployment.config()).await.unwrap();
+    let plugin = fresh
+        .create_plugin(
+            PluginConfig::builder()
+                .path(path)
+                .type_name("Aftercast.PluginFixture.SelectiveFixturePlugin")
+                .build(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(fresh.initialize_plugin(plugin).await.unwrap(), "None");
+    fresh
+        .apply_selective_options(&SelectiveOptions {
+            mode: SelectiveMode::GraphsExports,
+            selected: vec!["Source".into()],
+        })
+        .await
+        .unwrap();
+    fresh.import_log(&log).await.unwrap();
+    let encounter = fresh.encounters(0, 16).await.unwrap().items[0].id;
+    assert_eq!(
+        fresh
+            .encounter_actions(encounter, 0, 16)
+            .await
+            .unwrap()
+            .unwrap()
+            .total,
+        3
+    );
+    fresh.shutdown().await.unwrap();
+}

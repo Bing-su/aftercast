@@ -17,6 +17,14 @@ namespace Advanced_Combat_Tracker
     public partial class FormActMain
     {
         private ImportOperation? activeImport;
+        internal void ApplyRuntimeSelectiveParsing(SelectiveParsingModeEnum mode, string[] selected)
+        {
+            lock (CombatGate)
+            {
+                if (activeImport is not null) throw new InvalidOperationException("Cannot change selective parsing during an import");
+                ConfigureSelectiveParsing(mode, selected);
+            }
+        }
         public Encoding LogEncoding { get; set; } = new ImportTextOptions().Resolve();
 
         private void EnsureImportAdmission()

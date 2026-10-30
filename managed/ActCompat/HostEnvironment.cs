@@ -150,7 +150,7 @@ namespace Aftercast.ActCompat
         public static void ValidateSelectiveParsing(SelectiveParsingModeEnum mode, string[] selected) =>
             FormActMain.ValidateSelectiveParsing(mode, selected);
         public void ConfigureSelectiveParsing(SelectiveParsingModeEnum mode, string[] selected) =>
-            RunWithLogReadingSuspended(() => main.ConfigureSelectiveParsing(mode, selected));
+            RunWithLogReadingSuspended(() => main.ApplyRuntimeSelectiveParsing(mode, selected));
         public void ConfigureSpeech(bool enabled) => main.ConfigureSpeech(enabled);
         public byte[] DrainSpeech() => main.DrainSpeech();
         public void ConfigureSound(bool enabled) => main.ConfigureSound(enabled);

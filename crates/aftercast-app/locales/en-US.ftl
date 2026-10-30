@@ -671,7 +671,7 @@ selective-exports-allies = Filter graphs, text exports, and allied totals
 selective-record = Record actions by or against selected combatants
 selective-record-strict = Record actions by selected attackers only
 selective-names = Selected combatants, one name per line
-selective-help = Settings apply to the next host session. Recording limits permanently omit excluded actions; reparse the retained original log to recover them. Graph and text filters preserve recorded data.
+selective-help = Edit the saved defaults and explicitly apply them to the current session. Recording limits permanently omit excluded actions; reparse retained original logs to recover them. Graph and text filters preserve recorded data.
 
 history-selective-recording = Selective recording was enabled; actions may be excluded
 history-nonselective-recording = Selective recording was off
@@ -855,3 +855,6 @@ odbc-rule-replacement = Replacement
 odbc-rule-add = Add rule
 odbc-rule-remove = Remove
 odbc-rule-invalid = Invalid or too many SQL rules.
+
+selective-apply = Apply to current session
+selective-applied = Selective parsing applied to the current session.

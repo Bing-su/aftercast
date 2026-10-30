@@ -4,6 +4,25 @@ use dioxus::core::spawn_forever;
 use dioxus::prelude::*;
 use dioxus_i18n::prelude::*;
 
+impl AppState {
+    fn receive_selective_apply(
+        &mut self,
+        session: u64,
+        result: Result<(), aftercast::Error>,
+        message: String,
+    ) -> bool {
+        if self.revision.session != session || self.phase != Phase::UpdatingCorrections {
+            return false;
+        }
+        self.phase = Phase::Ready;
+        match result {
+            Ok(()) => self.message = message,
+            Err(error) => self.fail(error),
+        }
+        true
+    }
+}
+
 #[component]
 pub(super) fn SettingsPane() -> Element {
     let mut state = use_context::<Signal<AppState>>();
@@ -254,10 +273,12 @@ pub(super) fn SettingsPane() -> Element {
                 select {
                     id: "selective-mode",
                     class: "h-9 max-w-full rounded-md border border-border bg-background px-2",
-                    disabled: disabled || state.read().phase != Phase::Idle,
+                    disabled: disabled || !matches!(state.read().phase, Phase::Idle | Phase::Ready),
                     value: format!("{:?}", state.read().settings.host.selective_mode),
                     onchange: move |event: FormEvent| {
-                        if state.read().phase != Phase::Idle {
+                        if !matches!(state.read().phase, Phase::Idle | Phase::Ready)
+                            || state.read().saving || state.read().file.is_none()
+                        {
                             return;
                         }
                         let mode = match event.value().as_str() {
@@ -286,12 +307,38 @@ pub(super) fn SettingsPane() -> Element {
                 TextArea {
                     id: "selective-names".to_owned(),
                     value: state.read().settings.host.selective_names.clone(),
-                    disabled: disabled || state.read().phase != Phase::Idle,
+                    disabled: disabled || !matches!(state.read().phase, Phase::Idle | Phase::Ready),
                     oninput: move |event: FormEvent| {
-                        if state.read().phase == Phase::Idle {
+                        if matches!(state.read().phase, Phase::Idle | Phase::Ready)
+                            && !state.read().saving && state.read().file.is_some()
+                        {
                             state.write().settings.host.selective_names = event.value();
                         }
                     },
+                }
+                Button {
+                    variant: ButtonVariant::Outline,
+                    disabled: disabled || state.read().phase != Phase::Ready,
+                    onclick: move |_| {
+                        let mut current = state.write();
+                        if current.phase != Phase::Ready || current.saving || current.file.is_none() {
+                            return;
+                        }
+                        let Some(handle) = current.handle() else {
+                            return;
+                        };
+                        let session = current.revision.session;
+                        let options = current.settings.host.selective_options();
+                        current.phase = Phase::UpdatingCorrections;
+                        let message = tr("selective-applied");
+                        drop(current);
+                        spawn_forever(async move {
+                            let result = handle.apply_selective_options(&options).await;
+                            let mut current = state.write();
+                            current.receive_selective_apply(session, result, message);
+                        });
+                    },
+                    {tr("selective-apply")}
                 }
                 p { class: "text-xs leading-6 text-muted-foreground", {tr("selective-help")} }
             }
@@ -560,5 +607,23 @@ fn MiscSoundPreferences() -> Element {
                 }
             },
         }
+    }
+}
+
+#[cfg(test)]
+mod selective_tests {
+    use super::*;
+    #[test]
+    fn selective_apply_preserves_draft_and_rejects_old_sessions() {
+        let mut state = AppState::new(camino::Utf8PathBuf::from("/synthetic"));
+        state.settings.host.selective_names = "Source".into();
+        state.revision.session = 4;
+        state.phase = Phase::UpdatingCorrections;
+        assert!(!state.receive_selective_apply(3, Ok(()), "old".into()));
+        assert!(state.phase == Phase::UpdatingCorrections);
+        assert!(state.receive_selective_apply(4, Err(aftercast::Error::Closed), "saved".into()));
+        assert!(state.phase == Phase::Ready);
+        assert_eq!(state.settings.host.selective_names, "Source");
+        assert!(state.error.is_some());
     }
 }

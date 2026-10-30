@@ -85,7 +85,12 @@ internal sealed partial class PluginSession
     {
         var host = Host();
         object result;
-        if (command == 12)
+        if (command == 14)
+        {
+            host.ConfigureSelectiveParsing((SelectiveParsingModeEnum)request.SelectiveMode, request.Selected ?? throw new ArgumentException("Missing selection"));
+            result = true;
+        }
+        else if (command == 12)
         {
             var preview = host.PreviewMixedConfig(request.Snippet ?? throw new ArgumentException("Missing Config"));
             result = new { triggers = preview.Triggers, timers = preview.Timers };
