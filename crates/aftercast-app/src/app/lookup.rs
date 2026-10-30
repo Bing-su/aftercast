@@ -565,6 +565,7 @@ pub(super) fn saved_layout(
     let known: BTreeSet<&str> = catalog
         .columns
         .iter()
+        .filter(|column| column.can_read)
         .map(|column| column.key.as_str())
         .collect();
     let mut unique = BTreeSet::new();

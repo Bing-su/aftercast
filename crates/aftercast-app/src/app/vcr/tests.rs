@@ -479,6 +479,24 @@ async fn verify_lookup_save(
     let layout =
         saved_layout(Some(&with_missing), &catalog, &["fixture".into()]).expect("missing retained");
     assert!(layout.visible.iter().any(|key| key == "missing-plugin"));
+    let mut unreadable = catalog.clone();
+    unreadable
+        .columns
+        .iter_mut()
+        .find(|column| column.key == "fixture")
+        .expect("fixture")
+        .can_read = false;
+    let retained = saved_layout(Some(&layout), &unreadable, &[]).expect("unreadable key preserved");
+    assert!(retained.visible.iter().any(|key| key == "fixture"));
+    assert!(
+        retained
+            .reconcile(&catalog)
+            .expect("callback restored")
+            .preferences
+            .selected()
+            .iter()
+            .any(|key| key == "fixture")
+    );
     assert_eq!(
         layout.order.first().map(String::as_str),
         Some("missing-plugin")
