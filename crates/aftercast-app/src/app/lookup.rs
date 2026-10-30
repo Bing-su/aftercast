@@ -383,6 +383,7 @@ pub(super) struct RequestState {
     pub(super) sort: Option<TableSort>,
     pub(super) columns: Option<Vec<String>>,
     pub(super) epoch: u64,
+    pub(super) layout: Option<crate::table_settings::Preferences>,
 }
 pub(super) fn request_is_current(requested: &RequestState, current: &RequestState) -> bool {
     requested == current
@@ -425,6 +426,7 @@ pub(super) async fn load_aggregate(
             sort,
             columns: None,
             epoch: 0,
+            layout: None,
         },
     )
     .await
@@ -444,6 +446,7 @@ pub(super) async fn load_aggregate_selected(
             offset,
             sort,
             columns: selected,
+            layout,
             ..
         } = request;
         let catalog = endpoint
@@ -464,6 +467,21 @@ pub(super) async fn load_aggregate_selected(
                 return Err("Selected columns are unavailable; reload the table.".into());
             }
             selected
+        } else if let Some(layout) = layout {
+            let reconciled = layout.reconcile(&catalog).map_err(str::to_owned)?;
+            let selected = reconciled.preferences.selected();
+            if selected.len() > 32 {
+                return Err("At most 32 columns can be displayed.".into());
+            }
+            selected
+                .into_iter()
+                .filter(|key| {
+                    catalog
+                        .columns
+                        .iter()
+                        .any(|column| column.key == *key && column.can_read)
+                })
+                .collect()
         } else {
             let mut defaults: Vec<String> = catalog
                 .columns
@@ -480,7 +498,7 @@ pub(super) async fn load_aggregate_selected(
             defaults
         };
         if columns.is_empty() {
-            return Err("No readable plugin columns are registered for this table.".into());
+            return Err("No readable columns are selected or registered for this table.".into());
         }
         let query = TableQuery {
             scope,
@@ -546,6 +564,9 @@ fn AggregateTable(
         },
     };
     let source = endpoint.0.clone();
+    let app = use_context::<Signal<AppState>>();
+    let level_key = crate::table_settings::level_key(scope.level());
+    let layout = use_memo(move || app.read().settings.tables.get(level_key).cloned());
     let request_skill = skill.clone();
     let mut resource = use_resource(move || {
         let endpoint = source.clone();
@@ -557,6 +578,7 @@ fn AggregateTable(
             sort: sort(),
             columns: selected_columns(),
             epoch: request_epoch(),
+            layout: layout(),
         };
         async move {
             let result =
@@ -567,6 +589,7 @@ fn AggregateTable(
                 sort: sort(),
                 columns: selected_columns(),
                 epoch: request_epoch(),
+                layout: layout(),
             };
             if !request_is_current(&requested, &current) {
                 return Err("Lookup request was superseded.".into());

@@ -355,6 +355,7 @@ fn lookup_request_state_rejects_canceled_and_superseded_results() {
         sort: None,
         columns: Some(vec!["fixture".into()]),
         epoch: 1,
+        layout: None,
     };
     assert!(request_is_current(&initial, &initial));
     let mut newer = initial.clone();
@@ -373,6 +374,9 @@ fn lookup_request_state_rejects_canceled_and_superseded_results() {
     newer = initial.clone();
     newer.epoch += 1;
     assert!(!request_is_current(&initial, &newer));
+    newer = initial.clone();
+    newer.layout = Some(crate::table_settings::Preferences::default());
+    assert!(!request_is_current(&initial, &newer));
 }
 
 async fn verify_lookup_columns(
@@ -385,6 +389,7 @@ async fn verify_lookup_columns(
         sort: None,
         columns: Some(vec!["fixture".into()]),
         epoch: 0,
+        layout: None,
     };
     let picked = super::super::lookup::load_aggregate_selected(
         endpoint,
@@ -398,6 +403,31 @@ async fn verify_lookup_columns(
     .expect("selected column");
     assert_eq!(
         picked
+            .page
+            .columns
+            .first()
+            .map(|column| column.key.as_str()),
+        Some("fixture")
+    );
+    let mut saved = selected.clone();
+    saved.columns = None;
+    saved.layout = Some(crate::table_settings::Preferences {
+        order: vec!["fixture".into(), "temporarily-missing".into()],
+        visible: vec!["fixture".into()],
+        ..Default::default()
+    });
+    let saved_page = super::super::lookup::load_aggregate_selected(
+        endpoint,
+        snapshot,
+        root.clone(),
+        None,
+        None,
+        saved,
+    )
+    .await
+    .expect("saved layout with missing plugin");
+    assert_eq!(
+        saved_page
             .page
             .columns
             .first()
