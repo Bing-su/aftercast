@@ -2,6 +2,8 @@ using System.Text.Json;
 
 namespace Aftercast.ActCompat;
 
+internal sealed class MixedConfigConflictException(string message) : IOException(message);
+
 // A recoverable publication unit for the two existing definition files only.
 // It is not an ACT plugin API or a general transaction manager.
 public static class MixedConfigFiles
@@ -40,7 +42,7 @@ public static class MixedConfigFiles
         for(var i=0;i<Names.Length;i++)
         {
             var current=Read(Path.Combine(directory,Names[i])); var item=record.Entries[i];
-            if(!Same(current,item.Before) && !Same(current,item.After)) throw new IOException("Mixed Config recovery conflicts with an external edit: "+Names[i]);
+            if(!Same(current,item.Before) && !Same(current,item.After)) throw new MixedConfigConflictException("Mixed Config recovery conflicts with an external edit: "+Names[i]);
         }
     }
     private static void Rollback(string directory, Record record)
@@ -72,6 +74,7 @@ public static class MixedConfigFiles
         try { RecoverOwned(directory); return lease; }
         catch { lease.Dispose(); throw; }
     }
+    internal static byte[]? ReadBeforeImage(string directory, string name) => Read(Path.Combine(directory, name));
     /// Restore an interrupted publication before either registry is loaded. Conflicts fail closed.
     public static void Recover(string directory)
     {
@@ -83,14 +86,14 @@ public static class MixedConfigFiles
     /// suspend parsing, and prebuild a nonthrowing memory publication before calling.
     public static void Commit(string directory, byte[]? expectedTriggers, byte[]? expectedTimers, byte[] triggers, byte[] timers) =>
         CommitCore(directory,expectedTriggers,expectedTimers,triggers,timers,null);
-    private static void CommitCore(string directory, byte[]? expectedTriggers, byte[]? expectedTimers, byte[] triggers, byte[] timers, Action<string>? fault)
+    internal static void CommitCore(string directory, byte[]? expectedTriggers, byte[]? expectedTimers, byte[] triggers, byte[] timers, Action<string>? fault)
     {
         ArgumentNullException.ThrowIfNull(triggers); ArgumentNullException.ThrowIfNull(timers);
         if(triggers.Length>Limit || timers.Length>Limit || expectedTriggers?.Length>Limit || expectedTimers?.Length>Limit) throw new InvalidDataException("Mixed Config definition exceeds limit");
         var record=new Record(1,[new(expectedTriggers?.ToArray(),triggers.ToArray()),new(expectedTimers?.ToArray(),timers.ToArray())]);
         using var lease=Lease(directory);
         RecoverOwned(directory);
-        for(var i=0;i<Names.Length;i++) if(!Same(Read(Path.Combine(directory,Names[i])),record.Entries[i].Before)) throw new IOException("Mixed Config files changed since preview");
+        for(var i=0;i<Names.Length;i++) if(!Same(Read(Path.Combine(directory,Names[i])),record.Entries[i].Before)) throw new MixedConfigConflictException("Mixed Config files changed since preview");
         fault?.Invoke("before-journal");
         Write(Path.Combine(directory,Journal),JsonSerializer.SerializeToUtf8Bytes(record));
         try

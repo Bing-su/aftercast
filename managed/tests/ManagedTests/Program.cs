@@ -542,6 +542,7 @@ internal static class Program
         TimerSnippetChecks.Run();
         ConfigBatchChecks.Run();
         MixedConfigFileChecks.Run();
+        MixedConfigPublicationChecks.Run();
         SpeechRuleChecks.Run();
         ArchiveTriggerBudgetChecks.Run();
         NotificationChecks.Run();

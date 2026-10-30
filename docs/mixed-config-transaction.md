@@ -1,10 +1,12 @@
 # Mixed Config publication core
 
-This is a managed storage/design checkpoint, not completed mixed Config import.
-Existing single-section importers still reject mixed Trigger/Spell sections. `HostEnvironment.PreviewMixedConfig` now validates both allowlisted sections and returns their existing previews without mutation; it does not admit or save a mixed import. The two revisions are observed independently and must both be revalidated under the future publication gates. Existing homogeneous
-imports and the two XML file formats are unchanged. Original ACT Config serializers
-and the allowlist remain documented in [Config batches](config-batch.md): ACT may
-continue after per-section failures, whereas aftercast intends all-or-none admission.
+The managed `HostEnvironment.PreviewMixedConfig` and `ImportMixedConfig` now validate
+and publish a mixed Trigger/Spell Config. Existing single-section importers and
+Bridge/Rust/UI still reject mixed input; their combined owner/session-bound request
+is the next integration step. Both existing XML file formats remain unchanged.
+The allowlist and original ACT serializers are documented in
+[Config batches](config-batch.md). ACT can continue after per-section failures;
+aftercast rejects the whole mixed admission on validation/conflict failure.
 
 ## Chosen boundary
 
@@ -21,8 +23,7 @@ before plugin initialization. Recovery is idempotent, including midway rollback.
 A shared file lease excludes cooperating transactions. The existing standalone
 trigger and timer file writers now acquire that lease while their registry gate
 is held and recover a pending journal before writing. Synthetic tests cover both
-writers refusing a held lease without changing disk or memory. This does not yet
-connect mixed publication or prevent noncooperating external writers. Expected before-images
+writers refusing a held lease without changing disk or memory. This does not prevent noncooperating external writers. Expected before-images
 reject stale previews/duplicate publication. Recovery accepts only exact before
 or after bytes; an unrelated external edit causes a visible conflict and no
 attempt to overwrite that edited content. Checks are not a lock against a
@@ -35,29 +36,52 @@ exercise **process interruption with an operating filesystem**, not OS crash,
 power loss, disk failure, or universal filesystem rename guarantees. The journal
 is local rollback material, not a new archive/backup policy.
 
-## Remaining managed integration before enabling mixed input
+## Managed publication and fail-stop boundary
 
-1. Mixed preview enforces the total 16 KiB/32-item budget and compiles both definitions. The future import must revalidate both revisions and reject all conflicts under the publication gates.
-2. Suspend parsing and obtain both definition gates in one fixed order. Snapshot
-   both registry revisions and both file before-images. Standalone file writers now
-   participate in the common lease; the mixed caller still must acquire both
-   registry gates in a fixed order before entering that lease.
-3. Reuse existing XML serializers to prepare and validate the complete resulting
-   pair. Prebuild registry updates without changing active timer frames or firing
-   sound/TTS/trigger effects. The file core accepts bytes, not validated ACT XML.
-4. Commit the file pair, then publish prepared memory state without user callbacks.
-   A post-commit publication failure must retire the session and restore both
-   registries from the committed pair; continuing with one old registry is unsafe.
-   Catastrophic allocation/process failure is handled by restart, not rollback
-   promises about arbitrary plugin references or native callbacks.
-5. Only then add a combined revision/session-owned preview/import operation to
-   HostEnvironment/Bridge/Rust and the existing Trigger/Timer UI. A stale request,
-   duplicate, canceled preview or failure before admission must change nothing.
-   Once commit is admitted, cancellation cannot pretend completed writes vanished.
+`ImportMixedConfig(text, triggerRevision, timerRevision)` revalidates the 16 KiB /
+32-item allowlist, compiles both sections, suspends log reading/combat actions,
+and locks trigger then timer registries. Both supplied revisions and existing-key
+conflicts are checked before admission. It prepares complete XML images through
+the unchanged serializers in a private staging directory, retaining existing timer
+objects/countdown frames and existing trigger objects. Staging is removed on both
+success and failure. The file before-images are captured before preparation and
+rechecked under the shared file lease, so a detected external edit is never adopted
+as permission to replace that file. Preview revisions describe registries, not the
+historical identity of a file or a filesystem lock.
 
-The current tests cover injected failures before journal publication, after journal
-publication, after each target replacement and before commit; actual child-process
-exit/restart recovery at all journaled boundaries; external conflict preservation,
-cooperating lease exclusion and stale before-image rejection. Memory publication,
-combined XML admission, mixed stale-session handling and Bridge/Rust/UI are not
-implemented or verified in this checkpoint. Independent review remains quota-pending.
+After the pair commit point, both prepared registries are published and lookup /
+active indexes rebuilt under the same gates, without invoking sound/TTS/timer or
+plugin callbacks. A failure after commit retires the host: parsing is stopped,
+ACT globals are released, and Dispose **skips both definition saves**. A detected
+external-file conflict or retained recovery journal also retires the host to prevent
+normal Dispose overwriting an external edit or unresolved transaction. Cleanup
+errors are aggregated with the original failure. The error does not mean committed
+writes were rolled back. A fresh HostEnvironment loads both committed files (or
+recovers an unfinished journal before loading either). There is no in-session
+rollback promise for arbitrary plugin-held object references.
+
+PluginSession rejects further owner-dispatched requests on a faulted environment
+and marks the worker unsafe for reuse. The integration must terminate/recreate the
+worker, rather than retrying plugin requests or DeInit callbacks against partial
+memory; Stop cannot make that worker reusable. Ordinary shutdown and single-kind
+saves keep their previous persistence behavior. Lease contention and stale registry
+revisions before admission leave memory/files unchanged and allow a fresh retry.
+Mixed import has no mid-commit cancellation: cancellation belongs before admission.
+
+Synthetic managed tests cover successful mixed import/restart, duplicate retry,
+stale revisions, existing keys, both standalone writers contending with mixed
+publication, held file lease, external edit preservation through Dispose/restart,
+file-stage rollback and memory failures immediately after commit / first registry /
+second registry. The latter prove Dispose cannot overwrite the committed pair and
+faulted session requests are rejected. Existing core tests separately exercise
+real child-process exits and startup recovery at journaled file boundaries.
+These are process-failure/contract checks, not native ACT UI or OS/power-loss tests.
+Independent review remains quota-pending.
+
+## Next connection
+
+Bridge/Rust/UI must carry both preview revisions and session ownership together,
+retain preview text/selection as a snapshot, call the managed operation once after
+explicit admission, and treat post-commit fail-stop errors as requiring a new worker.
+Single-kind preview/import APIs remain unchanged and must keep rejecting mixed
+sections. No external subscription, clipboard access or network import is added.

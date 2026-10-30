@@ -99,7 +99,7 @@ namespace Aftercast.ActCompat
     using Advanced_Combat_Tracker;
 
     // Keep lifecycle operations on the creating thread; background plugin threads own only their action submissions.
-    public class HostEnvironment : IDisposable
+    public partial class HostEnvironment : IDisposable
     {
         private readonly FormActMain main;
         private readonly FormSpellTimers timers;
@@ -229,6 +229,7 @@ namespace Aftercast.ActCompat
         public Task<int> ArchiveOperationAsync(int command, string text, ulong id, bool compressed, bool includeLogs = true, bool processTriggers = false) => main.ArchiveOperationAsync(command, text, id, compressed, includeLogs: includeLogs, processTriggers: processTriggers);
         public (TriggerBatchPreview Triggers, TimerBatchPreview Timers) PreviewMixedConfig(string text)
         {
+            ObjectDisposedException.ThrowIf(disposed, this);
             var sections=ConfigBatchXml.SplitMixed(text);
             return (main.PreviewTriggerConfig(sections.Triggers),timers.PreviewTimerConfig(sections.Timers));
         }
@@ -367,8 +368,10 @@ namespace Aftercast.ActCompat
             try
             {
                 try { StopProcessing(); } catch (Exception error) { errors.Add(error); }
-                try { main.SaveCustomTriggers(Path.Combine(main.AppDataFolder.FullName, "CustomTriggers.xml")); } catch (Exception error) { errors.Add(error); }
-                try { timers.SaveSpellTimers(Path.Combine(main.AppDataFolder.FullName,"SpellTimers.xml")); } catch (Exception error) { errors.Add(error); }
+                if (!IsFaulted)
+                    try { main.SaveCustomTriggers(Path.Combine(main.AppDataFolder.FullName, "CustomTriggers.xml")); } catch (Exception error) { errors.Add(error); }
+                if (!IsFaulted)
+                    try { timers.SaveSpellTimers(Path.Combine(main.AppDataFolder.FullName,"SpellTimers.xml")); } catch (Exception error) { errors.Add(error); }
                 try { main.Dispose(); } catch (Exception error) { errors.Add(error); }
                 try { timers.Dispose(); } catch (Exception error) { errors.Add(error); }
                 try { encounterLogs.Dispose(); } catch (Exception error) { errors.Add(error); }

@@ -39,7 +39,19 @@ internal sealed partial class PluginSession
     private System.Drawing.Color colorAlly = System.Drawing.Color.ForestGreen, colorPersonal = System.Drawing.Color.FromArgb(200,255,200);
     private readonly LogBuffer logs = new();
     internal Tuple<long, string[]> DiagnosticsSnapshot => environment?.DiagnosticsSnapshot ?? Tuple.Create(0L, Array.Empty<string>());
-    internal T OnOwner<T>(Func<T> action) => context is null ? action() : context.Run(action);
+    internal T OnOwner<T>(Func<T> action)
+    {
+        T Checked()
+        {
+            if (environment?.IsFaulted == true)
+            {
+                workerReuse.MarkUnsafe();
+                throw new InvalidOperationException("Host retired after mixed Config publication failure; restart the worker");
+            }
+            return action();
+        }
+        return context is null ? Checked() : context.Run(Checked);
+    }
     internal byte[] TextReportOperation(TextReportRequest request) => OnOwner(() =>
     {
         var host = Host();
@@ -419,7 +431,8 @@ internal sealed partial class PluginSession
     {
         // Reject a reader's own dispatched callback before forgetting any session-owned resources.
         EnsureCanStop();
-        OnOwner(() => { environment?.BeginClosing(); return 0; });
+        if (environment?.IsFaulted == true) workerReuse.MarkUnsafe();
+        if (environment?.IsFaulted != true) OnOwner(() => { environment?.BeginClosing(); return 0; });
         var errors = new List<Exception>();
         // Cancel bounded source I/O before plugin callbacks and retain every release failure.
         try { ReleaseCapture(); } catch (Exception error) { errors.Add(error); }

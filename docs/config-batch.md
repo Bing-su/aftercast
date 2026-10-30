@@ -27,8 +27,11 @@ batch. Controller tests cover cancellation, navigation and stale/session respons
 The pinned original `ConfigBatchProbe` executes its serializers to check attribute
 names and values; native ACT UI and actual native desktop clicks are unverified.
 
-The [mixed publication core](mixed-config-transaction.md) now provides bounded
-before/after journaling and startup recovery for the two existing files. This
-alone does not enable mixed import: combined validation, registry publication,
-revision ownership and Bridge/Rust/UI are still pending. Do not remove the mixed
-section rejection until that integration is verified.
+The [mixed publication path](mixed-config-transaction.md) now supports managed
+combined preview/import with bounded journaling, startup recovery, both registry
+revisions, and fail-stop shutdown when committed memory publication fails. Existing
+single-kind importers and Bridge/Rust/UI still reject mixed input until their
+combined session-owned integration is implemented; the restrictions above describe
+those currently exposed interfaces. Synthetic managed publication tests prove both
+registry admission and committed-pair preservation through failed publication and
+restart. They do not prove OS crash/power-loss durability or native ACT UI parity.
