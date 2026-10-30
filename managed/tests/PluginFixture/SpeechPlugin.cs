@@ -12,7 +12,8 @@ public sealed class SpeechPlugin : IActPluginV1
 
 public sealed class FailingSpeechPlugin : IActPluginV1
 {
-    public void InitPlugin(TabPage tab, Label label) { ActGlobals.oFormActMain!.TTS("fail"); }
+    private static int sequence;
+    public void InitPlugin(TabPage tab, Label label) { ActGlobals.oFormActMain!.TTS("fail" + Interlocked.Increment(ref sequence)); }
     public void DeInitPlugin() { }
 }
 

@@ -26,7 +26,7 @@ impl Recorder {
     fn record(&mut self, text: &str, volume: u8) -> Result<(), aftercast_tts::Error> {
         writeln!(self.file, "{volume}|{text}")
             .map_err(|error| aftercast_tts::Error::Backend(error.to_string()))?;
-        if text == "fail" {
+        if text.starts_with("fail") {
             return Err(aftercast_tts::Error::Backend(
                 "fixture playback failure".into(),
             ));

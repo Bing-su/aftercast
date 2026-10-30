@@ -6,6 +6,8 @@ public partial class FormActMain
     private readonly Queue<byte[]> speech = new();
     private bool speechEnabled;
     private int speechDepth;
+    private DateTime lastSpeechTime = DateTime.Now;
+    private string lastSpeechText = "";
     internal void ConfigureSpeech(bool enabled)
     {
         lock (speechGate) { speechEnabled = enabled; speech.Clear(); }
@@ -37,6 +39,14 @@ public partial class FormActMain
             if (IsActClosing) throw new InvalidOperationException("TTS is closing");
             if (!speechEnabled) throw new NotSupportedException("Configure a Rust TTS backend before requesting speech");
             if (speech.Count == 32) throw new InvalidOperationException("TTS request queue is full");
+            var now = audioNow();
+            if (now - lastSpeechTime < TimeSpan.FromMilliseconds(10))
+            {
+                if (lastSpeechText == SpeechText) return;
+                audioWait(10);
+            }
+            lastSpeechTime = audioNow();
+            lastSpeechText = SpeechText;
             // Copy before returning: plugins may invoke TTS on workers while Rust drains requests on its owner thread.
             speech.Enqueue(text);
         }
