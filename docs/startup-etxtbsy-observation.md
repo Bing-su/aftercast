@@ -20,3 +20,31 @@ to obtain a passing run. If it recurs, capture the writable descriptor owner dur
 the failing spawn before choosing a limited fix. Tests use only generated synthetic
 executables and temporary deployment data; no user executable or system settings
 were modified.
+
+## Bounded follow-up — 2026-10-30
+
+A controlled Linux-only synthetic experiment opened and flushed a temporary
+shell executable with `FD_CLOEXEC` set, forked a child while the writer was open,
+and held that child at a pipe barrier. After the parent closed its writer, an
+attempted exec failed with `ETXTBSY`; after the child was released and reaped,
+the same exec succeeded. This demonstrates that close-on-exec does not close an
+inherited writer until the child actually executes. It does **not** establish
+that either historical failure had this cause: the experiment injected a holder
+and did not run the original test's naturally occurring failure path.
+
+One isolated run of `startup_deadline_covers_a_worker_that_never_authenticates`
+and one eight-thread run of the existing ignored `process_isolation` test binary
+(14 tests) were traced only through their own spawned descendants. Both passed;
+no `ETXTBSY` occurred in either trace. In the observed runs, `stalled-worker`
+was opened with `O_CLOEXEC`, the writing thread's descriptor closed, and the
+script subsequently executed. Other processes did spawn during the parallel run,
+but the trace did not capture a process inheriting that particular open writer.
+One successful run cannot exclude a rare interleaving or identify the historical
+writer. No user data, external process attachment, environment setting changes,
+retries, added sleeps or weakened deadline assertions were used.
+
+**Status:** no root cause is established and no code fix or deterministic
+regression for the actual intermittent path is claimed. On a future occurrence,
+capture the open writer/descriptor owner for that synthetic inode during the
+failed exec. Do not attribute the original failures to inherited descriptors
+without such evidence.

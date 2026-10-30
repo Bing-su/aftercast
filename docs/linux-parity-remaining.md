@@ -256,5 +256,8 @@ The synthetic `startup_deadline_covers_a_worker_that_never_authenticates` test
 has intermittently failed to start its temporary `stalled-worker` with `ETXTBSY`;
 a focused retry and subsequent aggregate check passed, but the writer/FD owner
 was not captured and the cause is not resolved. See [observation](startup-etxtbsy-observation.md).
-Do not label a passing retry as a fix; capture the owner on a recurrence before
-changing the fixture or supervisor.
+A bounded follow-up reproduced `ETXTBSY` with a deliberately inherited
+close-on-exec writer, but one isolated and one parallel trace of the actual tests
+passed without capturing that inheritance. This confirms a possible mechanism,
+not the cause of either historical failure. Do not label a passing retry as a fix;
+capture the owner on a recurrence before changing the fixture or supervisor.
