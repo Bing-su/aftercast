@@ -34,7 +34,9 @@ not duplicate report/export/Options code simply because it appears in two famili
 | Stronger recording durability | Keep approved ACT/vendor behavior and explicit errors. Journaling, acknowledgement/backpressure and crash recovery need the already documented product policy decision; no absolute lossless claim. |
 | AI extensions                 | Explicitly deferred and outside ACT parity work.                                                                                                                                                    |
 
-## Read-only L6–L9 audit after S1/S2 GUI
+## Historical L6–L9 audit after S1/S2 GUI
+
+The dated slice descriptions below are historical; the current A–E classification at the end of this file supersedes any conflicting remaining-work or recommendation text.
 
 The ACT requirements come from the existing [GUI source/interaction ledger](gui-plan.md),
 [analysis-tool investigation](act-analysis-tools.md) and [range contract](source-range-import.md).
@@ -86,7 +88,7 @@ features. Do not reimplement them under L6.
 | ID / family                   | Implemented portion / evidence                                                                                                                                            | Exact missing integration and boundary                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
 | ----------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | L9a general/sound             | [AudioSettings](../crates/aftercast/src/speech.rs), managed sound/TTS queues and trigger/timer audio selection exist                                                      | App settings now persist ACT sound/TTS volumes and expose bounded ordered speech-correction rules with explicit editing. This app has no configured built-in audio or voice provider; no test-play button is provided. PlayMiscSound uses a replaceable delegate for beep and persists a disabled-by-default setting; native system beep differs. Voice selection, duplicate suppression and native audio remain incomplete. See [speech preferences](speech-preferences.md); native devices/Windows remain separate QA.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| L9b import/export preferences | Trigger/timer files, trigger option persistence and managed trigger XML sharing exist                                                                                     | The ACT-saved combat-extension and archive-log inclusion controls now have persisted application defaults and operation-local overrides; old configs retain aftercast defaults. Raw-log trigger processing already persists with trigger definitions. The separate archive log trigger-result option now has saved defaults and per-request selection; see [interchange](act-interchange.md). Single ACT Trigger and Spell snippets now have local text previews and explicit revision-checked atomic import; see [trigger snippets](trigger-snippets.md). Homogeneous Config batches are supported with single-file atomicity; mixed or unrelated sections and subscription configuration remain unsupported. See [Config batches](config-batch.md). External downloads and publishing are unauthorized. Local schema/parse/save/reload and previews are Linux work; actual subscription downloads or publishing require separately authorized URLs/services. Share implementation with L6/L7 instead of inventing another interchange engine.                                                                                                                                                                                                                                                                                                                                                                |
+| L9b import/export preferences | Trigger/timer definitions, local ACT sharing and persisted import/export defaults are connected.                                                                          | Single Trigger/Spell snippets, homogeneous Config batches and mixed Trigger/Spell Config preview/import are implemented; mixed publication has session/revision ownership, process-recovery journal and fail-stop behavior. Unknown sections are rejected. See [Config batches](config-batch.md) and [mixed publication](mixed-config-transaction.md). Native UI and OS/power-loss durability are not established; network subscriptions and sharing require authorization.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | L9c main tables               | Dynamic Encounter/Combatant/Category/Attack/Action columns, colors, ordering and primary/secondary sort persist atomically                                                | Log-time idle encounter termination now has persisted enablement and a 2–600 second limit (ACT defaults: enabled, 6). The separate wall-clock option defaults on and counts owner-pump one-second ticks only while idle ending is enabled, combat is active and log reading is unlocked; it ends after more than the configured seconds plus two ticks. Delayed owner pumps coalesce missed ticks, and imports suspend this timer. ACT native timer scheduling remains unverified. [ACT silence-cut segmentation](silence-cut.md) is available with persisted disabled-by-default, 6-second (1–60) settings. It drains earlier admitted actions before reading the prior end time so worker queue latency does not corrupt the segment; ACT native scheduling equivalence remains unverified. [Main table options](main-table-options.md) now include 0–60 second refresh, ACT numeric grouping, and a global direction for explicitly selected combatant/attack/action comparers. Default main comparers, selected-Zone filtering including empty zones, and publication of applied plugin-visible sort keys are implemented with synthetic/ACT-reference checks. Native timing and remaining encounter timing/culling controls remain open; header-click semantics and live list snapshot limits are documented separately. The existing encounter-level column editor corresponds to ACT Zone View columns. |
 | L9d output/display            | Contribution chart and managed text export formatting exist                                                                                                               | Named local text-report profiles now persist templates, ally flags and sort keys; ACT/plugin presets remain separate. A bounded local text mini parse now has an independent nonmodal window, retains the last ended encounter, and reuses ACT formatting with saved profiles and 1–60 s refresh; the local Simple graph is available; graph bar colors and culture-aware labels use ACT-derived rules; native GDI surface colors, alpha, layout and timing remain unverified or different. See [mini parse](mini-parse.md). ODBC setup and web-server settings remain incomplete. Local rendering/configuration shares L7b/c; starting listeners or writing real external outputs is outside this audit's authorization.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | L9e appearance                | Korean/English, four Catppuccin themes and notification blink preference persist in [config](../crates/aftercast-app/src/config.rs)                                       | App-local table/mini generic fonts and base colors persist; ACT default ally-first-cell and personal-background rules apply above plugin colors on combatant rows. Plugin callback colors now have ACT HSL adjustment/inversion and persisted controls, validated against 1,024 original synthetic values. Plugin-facing invert/luminosity/saturation getters/events and ally/personal ColorControl values/events now reach the worker; other ColorControl getters/events and runtime-to-app grid propagation are available; FontColorControl properties/events, arbitrary fonts and other ACT control/graph surface rendering remain incomplete; see [appearance](appearance.md).                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                             |
@@ -118,16 +120,11 @@ compared the cited current code and contracts; it did not run the ACT desktop,
 read user data, contact services or validate native parity. Existing test results
 are synthetic/IL evidence, not proof of Windows runtime behavior.
 
-### Linux work within the current authorization
+### Historical candidates (superseded by A–E below)
 
-| ID                         | Verified remaining gap and code evidence                                                                                                                                                                                                                                                                                      | Bounded completion criterion                                                                                                                                                                                                                                                  |
-| -------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| L9c repeated sort          | [`main-table-options.md`](main-table-options.md) documents owner-thread key transitions, a bounded click queue and recovery; the Chorale adapter requests whole-scope worker sorting.                                                                                                                                         | Synthetic managed, worker and Controller checks cover the transition. Native header input and timing remain QA.                                                                                                                                                               |
-| L9f selection changes      | [`selective-parsing.md`](selective-parsing.md) and [`SelectiveList.cs`](../managed/ActCompat/SelectiveList.cs) document session-only plugin list changes and explicit app runtime apply.                                                                                                                                      | Confirm remaining ACT plugin-list persistence semantics and native timing; plugin runtime edits are intentionally not copied into persisted defaults or user drafts. Excluded historical actions cannot be recovered without reparse.                                         |
-| L9d mini graph             | [Mini parse](mini-parse.md) now provides a saved text/graph choice and an independent bounded Simple graph capture, reusing the selected text-format sorter, ACT-derived numeric model and global ally/totals settings. Synthetic worker/controller and original-derived numeric checks cover values, ordering and lifecycle. | ACT default/custom opaque bar colors, exact character-name selection, suffix settings and culture-aware labels are connected. Native GDI surface colors, alpha, layout, GUI, scheduling and Windows visual equivalence remain unverified; callback hangs cannot be preempted. |
-| L9a non-device semantics   | [`speech-preferences.md`](speech-preferences.md) identifies duplicate suppression and timer cue defaults as incomplete; fake sinks and stored speech rules already exist.                                                                                                                                                     | Verify each ACT policy first, implement only the confirmed local behavior and test with in-memory sinks; no sound/TTS playback or device access. Voice/provider implementation is separately constrained below.                                                               |
-| L8h local column selection | [`combatant-lookup.md`](combatant-lookup.md) says column selection is view-local rather than ACT-wide.                                                                                                                                                                                                                        | Confirm the original persistence scope and, if required, reuse existing registered-key preferences with unavailable/stale key and session tests. Do not rebuild lookup tables.                                                                                                |
-| L6/L3 decoding edge        | [Follower encoding](follower-encoding.md) now recognizes the first appended Unicode BOM at a known record boundary, including split bytes, alignment and CR boundaries; later BOMs remain content. Synthetic files and the ACT StreamReader tail probe cover the contract.                                                    | A partial historical record remains discarded rather than being reinterpreted as a fresh stream. Strict fallback survives BOM override, unlike ACT's replacement fallback reset; native reader timing remains unverified.                                                     |
+Repeated header sorting, explicit live selective parsing, source tail BOM handling,
+and mini graph bar colors/number formatting have since been implemented. Do not
+reimplement them. Their native/runtime limits remain listed in their linked contracts.
 
 Other existing differences must not be silently described as solved: L8e displays
 only its retained encounter snapshot, not the entire game log; L8g omits native
@@ -140,7 +137,6 @@ connected and must not be reimplemented merely to close an audit row.
 
 ### Additional design or dependencies before implementation
 
-- **Mixed Config integration (L9b):** The [managed publication path](mixed-config-transaction.md) validates combined XML, commits the recoverable file pair, publishes both registries and retires failed publication without Dispose overwrites. Synthetic stage failures, contention, external edit, retry and restart are covered. Bridge/Rust and the Trigger-pane UI expose session/revision-owned preview and explicit import; a faulted or uncertain worker is retired without retry while retaining the draft. Synthetic controller and isolated-worker tests cover selection, stale state and publication failure. Native GUI and Windows execution remain unverified. Existing single-kind endpoints keep rejecting mixed input. Process interruption recovery is tested, not OS/power-loss durability.
 - **Font compatibility (L9e):** [`ColorSettings.cs`](../managed/ActCompat/ColorSettings.cs) exposes ColorControl values; [appearance](appearance.md) records that original FontColorControl requires `System.Drawing.Font`/System.Drawing.Common, absent from this project. Decide dependency and Linux font semantics separately; do not present a stub as complete. Colors for ACT surfaces not yet rendered also remain open.
 - **Graph/native resources (L7b/L9d):** [hierarchy reports](hierarchical-reports.md) have bounded static SVG and Simple/Advanced data paths. Native custom GDI delegates, arbitrary dimensions and font/DPI fidelity need a supported rendering design; static SVG is not native GDI parity.
 - **Durability and external writers:** stronger disk journal/acknowledgement and automatic crash recovery require the documented product policy decision. Existing correction/speech file hash checks do not lock noncooperating writers; design a safe concurrency contract before claiming stronger guarantees.
@@ -172,7 +168,107 @@ not become complete when the quota clears.
 L9d final mini-frame refresh now uses the existing post-end snapshot publication
 and a session-owned worker notification; see [mini parse](mini-parse.md). It no
 longer waits for the configured interval in the normal ready state. ACT native
-callback and rendering timing remain unverified. The next bounded offline candidate
-can be chosen from the remaining Linux gaps above. L7c now has bounded multi-encounter
+callback and rendering timing remain unverified. The next bounded offline candidate is identified in the current A–E ledger below. L7c now has bounded multi-encounter
 plans and restricted template-level SQL rules; literal-value-dependent rules and
 real database behavior remain unsupported. No real database access is implied.
+
+## Current A–E completion ledger (after mini graph palette)
+
+This section supersedes the earlier historical inventories. It records code and
+existing evidence, not an estimate of completion percentage or Windows runtime
+parity. Work trees, tests and source links refer to this checkout; no live data,
+clipboard, audio, external database or native desktop was accessed for this audit.
+
+Completed Linux paths relevant to this audit: mixed Trigger/Spell Config has an
+explicit, revision-owned preview/import and recoverable two-file publication with
+fail-stop cleanup ([contract](mixed-config-transaction.md)); selective parsing
+supports explicit session apply while keeping persisted defaults and plugin changes
+separate ([contract](selective-parsing.md)); main-table header clicks use bounded
+owner-thread transitions, a serialized queue and last-operation recovery
+([contract](main-table-options.md)); forward follower tail BOM detection handles
+known record boundaries ([contract](follower-encoding.md)); and mini graph bars,
+self identity, suffix settings and culture-aware number strings are implemented
+([contract](mini-parse.md)). These are synthetic/IL contract results, not native
+Windows or GDI claims. Mixed Config supports process-restart recovery, not a
+power-loss durability promise.
+
+### A. Confirmed local contract gaps: no extra approval or dependency needed
+
+1. **Mini graph surface colors (L9d; recommended next unit).**
+   [GraphView](../crates/aftercast-app/src/app/mini_parse.rs) still renders the
+   graph container, axis, text and totals with app/theme styles; only the three
+   [bar colors](../crates/aftercast-app/src/config.rs) are configurable. The
+   pinned ACT `Options_ColorGraphing` and `FormActMain.GenEncounterGraph`
+   separately choose graph background, legend, text, outline, grid and translucent
+   total/average colors. The local original decompilation established these as
+   graph-specific controls, not plugin cell colors or ally/self table colors.
+   **Acceptance:** map the existing graph surfaces to the confirmed ACT color
+   roles without claiming pixel parity; persist/validate any supported settings,
+   preserve the bar/self rules and user drafts, and test default/custom/invalid
+   values, alpha semantics where supported, reset/restart and independent-window
+   propagation with synthetic Host/controller data. System-dependent colors,
+   native GDI geometry and unsupported alpha must be stated separately.
+2. **Intermittent synthetic startup failure (test infrastructure).**
+   The [process-isolation fixture](../crates/aftercast/tests/process_isolation.rs)
+   has produced `ETXTBSY` on its own temporary executable twice; the cause is
+   still unknown. **Acceptance:** reproduce or capture the writer/descriptor owner
+   with synthetic temporary files, then make and test a narrowly justified fix;
+   do not weaken the deadline assertion or count a passing retry as resolution.
+
+Other candidates require verification before calling them confirmed gaps: audio
+duplicate suppression and timer cue defaults ([speech](speech-preferences.md)),
+and whether ACT persists Lookup-by-Combatant column choices globally
+([lookup](combatant-lookup.md)). Use the existing ACT binary and fake sinks;
+do not infer semantics or perform actual audio playback.
+
+### B. Additional design or dependency decision
+
+- `FontColorControl`/`System.Drawing.Font` needs a supported dependency and Linux
+  font model ([appearance](appearance.md)); the existing ColorControl API is not
+  equivalent. Native custom GDI graph delegates and arbitrary font/DPI rendering
+  need a rendering design ([reports](hierarchical-reports.md)).
+- The desktop has no built-in audio/voice provider; provider choice and any new
+  dependency are separate from fake-sink policy tests ([speech](speech-preferences.md)).
+- The [partial WinForms bridge](gui-plan.md#planned-partial-winforms-configuration-bridge) is **plan only** and needs
+  explicit later implementation authorization; do not substitute Mono/Wine.
+- ODBC literal-value-dependent rewrite rules cannot generally be mapped safely to
+  positional parameters ([offline ODBC](odbc-synthetic.md)); strong disk durability
+  and noncooperating external-writer races need an explicit policy/design. The
+  strict BOM fallback and initial partial-tail behavior in [follower](follower-encoding.md)
+  are deliberate compatibility/safety boundaries; do not silently weaken strict mode.
+- ACT's retained/full game-log distinction, bounded matching and simplified VCR
+  graph presentation remain documented in their L8 contracts. Reproducing missing
+  historical data or bypassing bounds requires a separate evidence/policy decision.
+
+### C. Native GUI or Windows execution needed
+
+Actual Windows plugin lifecycle, WinForms input/focus, GDI colors/alpha/layout,
+clipboard interaction, device/audio timing, native timers, filesystem behavior and
+ACT thread scheduling require authorized real-environment checks. On ser7 the
+reported missing accessibility connection prevents supported actual click/focus QA;
+synthetic Controller tests and Linux builds are not substitutes. Do not change
+system/security settings or switch machines as a workaround.
+
+### D. Explicit approval needed
+
+- The OS clipboard provider addition/connection was rejected and awaits direct
+  approval; no retry or real clipboard access is authorized. Synthetic in-memory
+  import remains available ([clipboard](clipboard-import.md)).
+- Real database driver/DSN/credentials access or writes, external subscriptions,
+  uploads, network transmission and actual audio playback require separate user
+  authorization. Offline SQL plans do not establish real driver acceptance.
+
+### E. Independent review pending
+
+The prior independent-review quota rejection remains unresolved. Do not retry or
+bypass it without a meaningful change in authorization/availability. Self-review,
+synthetic tests and native validation are separate from independent review.
+
+### Known intermittent test issue
+
+The synthetic `startup_deadline_covers_a_worker_that_never_authenticates` test
+has intermittently failed to start its temporary `stalled-worker` with `ETXTBSY`;
+a focused retry and subsequent aggregate check passed, but the writer/FD owner
+was not captured and the cause is not resolved. See [observation](startup-etxtbsy-observation.md).
+Do not label a passing retry as a fix; capture the owner on a recurrence before
+changing the fixture or supervisor.

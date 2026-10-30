@@ -4,7 +4,7 @@ During the first post-`ef76527` whole check, the existing Unix
 `startup_deadline_covers_a_worker_that_never_authenticates` failed to spawn
 `/tmp/.tmpREnQly/stalled-worker` with `Text file busy (os error 26)` instead of
 reaching its authentication deadline. The isolated rerun passed in 0.16 seconds;
-the next whole check passed. This is an unresolved observation, not a fixed race.
+the next whole check passed. The same synthetic test failed again during the post-`12a8a8f` whole check with `ETXTBSY`; its focused rerun and the next whole check passed. This is an unresolved observation, not a fixed race.
 
 | Evidence                                                                                          | Conclusion                                                                                                                               |
 | ------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
