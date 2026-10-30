@@ -12,7 +12,7 @@ public static partial class EntryPoint
         const int header = 32;
         if (buffer == 0 || sizeBytes < header) throw new ArgumentException("Invalid table capacity");
         var command = Marshal.ReadInt32(buffer, 16);
-        var capacity = command switch { 1 => 4 * 1024 * 1024, 2 or 3 => 16 * 1024 * 1024, _ => throw new ArgumentException("Invalid table command") };
+        var capacity = command switch { 1 or 4 => 4 * 1024 * 1024, 2 or 3 => 16 * 1024 * 1024, _ => throw new ArgumentException("Invalid table command") };
         // Reserve the entire reply before callbacks: no capacity-probing retry may execute plugin code twice.
         if (sizeBytes != header + capacity) throw new ArgumentException("Invalid table capacity");
         ValidateHeader(buffer, sizeBytes, "Table ABI size/version mismatch");
@@ -23,7 +23,7 @@ public static partial class EntryPoint
         var input = new byte[length]; Marshal.Copy(buffer + header, input, 0, length);
         var request = JsonSerializer.Deserialize<TableRequest>(new UTF8Encoding(false, true).GetString(input), HostJson.Options)
             ?? throw new ArgumentException("Missing table request");
-        if (command == 1 ? request.Level is null || request.Query is not null : request.Query is null || request.Level is not null)
+        if (command switch { 1 => request.Level is null || request.Query is not null || request.Click is not null, 4 => request.Click is null || request.Level is not null || request.Query is not null, _ => request.Query is null || request.Level is not null || request.Click is not null })
             throw new ArgumentException("Table request does not match command");
         if (command == 3 ? request.LookupRevision is null or 0 : request.LookupRevision is not null || request.Peer is not null || request.Skill is not null)
             throw new ArgumentException("Invalid lookup table request");
@@ -34,12 +34,14 @@ public static partial class EntryPoint
         return 0;
     });
 }
-internal sealed record TableRequest(TableLevel? Level = null, TableQuery? Query = null, ulong? LookupRevision = null, string? Peer = null, string? Skill = null);
+internal sealed record MainSortClickRequest(TableLevel Level, ulong Revision, string Key, bool Descending);
+internal sealed record TableRequest(TableLevel? Level = null, TableQuery? Query = null, ulong? LookupRevision = null, string? Peer = null, string? Skill = null, MainSortClickRequest? Click = null);
 internal static class TableEncoding
 {
     internal static byte[] Encode(HostEnvironment host, TableRequest request, int capacity)
     {
         // Query exactly once, then encode owned data. Encoding never invokes plugin callbacks.
+        var click = request.Click is { } input ? host.ClickMainSort(input.Level, input.Revision, input.Key, input.Descending) : null;
         var catalog = request.Level is { } level ? host.ReadTableColumns(level) : null;
         var page = request.Query is { } query ? request.LookupRevision is { } revision ? host.ReadLookupTable(revision, query, request.Peer, request.Skill) : host.ReadTable(query) : null;
         using var stream = new MemoryStream();
@@ -66,7 +68,11 @@ internal static class TableEncoding
                 Number((column.DefaultVisible ? 1u : 0u) | (column.CanRead ? 2u : 0u) | (column.CanSort ? 4u : 0u));
             }
         }
-        if (catalog is not null)
+        if (click is not null)
+        {
+            Text(click.Primary); Text(click.Secondary); Number(click.Descending ? 1u : 0u);
+        }
+        else if (catalog is not null)
         {
             Number((uint)catalog.Level); Wide(catalog.Revision); Columns(catalog.Columns);
             Number((uint)catalog.Categories.Length);

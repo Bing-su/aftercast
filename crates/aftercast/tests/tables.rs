@@ -584,11 +584,43 @@ async fn published_main_sort_is_observed_by_plugin_and_auto_reads_do_not_change_
         .expect("automatic read")
         .expect("scope");
     assert_eq!(page.rows[0].cells[0].text.as_deref(), Some("fixture|probe"));
+    let catalog = host
+        .table_columns(TableLevel::Combatant)
+        .await
+        .expect("click catalog");
+    let click = host
+        .click_main_sort(&catalog, "fixture", false)
+        .await
+        .expect("click");
+    assert_eq!(click.primary, "fixture");
+    assert_eq!(click.secondary.as_deref(), Some("fixture"));
+    assert!(click.descending);
+    let click = host
+        .click_main_sort(&catalog, "probe", click.descending)
+        .await
+        .expect("different click");
+    assert_eq!(click.secondary.as_deref(), Some("fixture"));
+    assert!(click.descending);
+    let page = host
+        .main_table_rows(&request, click.descending, false)
+        .await
+        .expect("clicked page")
+        .expect("scope");
+    assert_eq!(page.rows[0].cells[0].text.as_deref(), Some("probe|fixture"));
     host.deinitialize_plugin(plugin_id).await.expect("remove");
+    host.click_main_sort(&catalog, "fixture", false)
+        .await
+        .expect_err("stale click catalog");
     host.main_table_rows(&request, false, true)
         .await
         .expect_err("stale catalog");
     host.shutdown().await.expect("stop");
+    let restarted = Host::start(deployment.config()).await.expect("restart");
+    restarted
+        .click_main_sort(&catalog, "fixture", false)
+        .await
+        .expect_err("old catalog session");
+    restarted.shutdown().await.expect("restart stop");
 }
 
 #[rstest::rstest]

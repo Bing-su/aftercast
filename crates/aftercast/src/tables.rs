@@ -244,6 +244,31 @@ impl HostHandle {
             .await?;
         decode::catalog(&output, self.session, level)
     }
+    /// Apply one ACT header click on the worker owner thread. Callers must serialize clicks.
+    pub async fn click_main_sort(
+        &self,
+        catalog: &TableCatalog,
+        key: &str,
+        descending: bool,
+    ) -> Result<TableSort, Error> {
+        if catalog.revision.session != self.session
+            || catalog.revision.level != catalog.level
+            || catalog.revision.value == 0
+            || !matches!(
+                catalog.level,
+                TableLevel::Combatant | TableLevel::Attack | TableLevel::Action
+            )
+            || !valid_text(key, 1024, true)
+            || !catalog
+                .columns
+                .iter()
+                .any(|column| column.key == key && column.can_sort)
+        {
+            return Err(invalid("invalid header click ownership or column"));
+        }
+        let output = self.table_call(4, &serde_json::json!({"click": {"level": catalog.level, "revision": catalog.revision.value, "key": key, "descending": descending}})).await?;
+        decode_main_sort_click(&output, key)
+    }
     /// Reads one owned page after bounded whole-scope sorting. No callback capacity retry is performed.
     /// Cells/sort errors remain explicit. Plugin code is not preempted here; shutdown uses the existing process boundary.
     pub async fn table_rows(&self, query: &TableQuery) -> Result<Option<TablePage>, Error> {
@@ -331,7 +356,7 @@ impl HostHandle {
         if !(2..=256 * 1024).contains(&input.len()) {
             return Err(invalid("table request exceeds bounded input"));
         }
-        let capacity = if command == 1 {
+        let capacity = if command == 1 || command == 4 {
             CATALOG_CAPACITY
         } else {
             ROW_CAPACITY
@@ -361,6 +386,21 @@ impl HostHandle {
             .ok_or_else(|| invalid("truncated table reply"))?
             .to_vec())
     }
+}
+fn decode_main_sort_click(output: &[u8], key: &str) -> Result<TableSort, Error> {
+    let mut reader = decode::Reader(output);
+    let primary = reader.text(1024)?;
+    let secondary = reader.text(1024)?;
+    let descending = reader.boolean()?;
+    reader.finish()?;
+    if primary != key || !valid_text(&secondary, 1024, false) {
+        return Err(invalid("invalid header click response"));
+    }
+    Ok(TableSort {
+        primary,
+        secondary: Some(secondary),
+        descending,
+    })
 }
 fn invalid(error: impl std::fmt::Display) -> Error {
     Error::InvalidTableRequest(error.to_string())

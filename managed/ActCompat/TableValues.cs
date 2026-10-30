@@ -234,6 +234,7 @@ namespace Advanced_Combat_Tracker
                 SelectTableColumn(columnSnapshots[level].Snapshot, key, true);
                 static MainSortClickResult Click(ref string primary, ref string secondary, string key, bool descending)
                 {
+                    ColumnText(primary); // Validate the plugin-visible prior key before mutating either global.
                     if (primary == key) descending = !descending;
                     secondary = primary;
                     primary = key;

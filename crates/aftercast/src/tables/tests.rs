@@ -275,3 +275,21 @@ fn main_sort_decoder_keeps_general_unsorted_contract_strict() {
     page.truncate(last);
     decode::main_page(&page, 9, &request).expect_err("truncated");
 }
+
+#[test]
+fn header_click_response_rejects_bad_key_flags_and_trailing_bytes() {
+    let mut bytes = Vec::new();
+    text(&mut bytes, Some("new"));
+    text(&mut bytes, Some("old"));
+    bytes.put_u32_le(1);
+    let result = decode_main_sort_click(&bytes, "new").expect("click");
+    assert_eq!(result.secondary.as_deref(), Some("old"));
+    assert!(result.descending);
+    assert!(decode_main_sort_click(&bytes, "other").is_err());
+    let mut malformed = bytes.clone();
+    let n = malformed.len();
+    malformed[n - 4..].copy_from_slice(&2u32.to_le_bytes());
+    assert!(decode_main_sort_click(&malformed, "new").is_err());
+    bytes.push(0);
+    assert!(decode_main_sort_click(&bytes, "new").is_err());
+}

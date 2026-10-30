@@ -202,6 +202,10 @@ internal static class TableValueChecks
             Throws<ArgumentException>(() => fixture.Host.ClickMainSort(TableLevel.Combatant, catalog.Revision, "missing", true));
             Throws<InvalidOperationException>(() => fixture.Host.ClickMainSort(TableLevel.Combatant, catalog.Revision + 1, "name", true));
             Check(ActGlobals.eDSort == "damage" && ActGlobals.eDSort2 == "name");
+            ActGlobals.eDSort = new string('x', 1025);
+            Throws<InvalidDataException>(() => fixture.Host.ClickMainSort(TableLevel.Combatant, catalog.Revision, "name", true));
+            Check(ActGlobals.eDSort.Length == 1025 && ActGlobals.eDSort2 == "name");
+            ActGlobals.eDSort = "damage";
             fixture.Plugin.OnCell = () => Throws<InvalidOperationException>(() => fixture.Host.ClickMainSort(TableLevel.Combatant, catalog.Revision, "name", true));
             fixture.Read(fixture.Query(columns: ["fixture"]));
         }
