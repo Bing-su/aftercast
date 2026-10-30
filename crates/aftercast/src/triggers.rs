@@ -81,6 +81,22 @@ pub struct MiniGraph {
     column: String,
     pub no_actors: bool,
     pub data: Option<MiniGraphSeries>,
+    pub display: Option<MiniGraphDisplay>,
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MiniGraphRowDisplay {
+    pub label: String,
+    pub tooltip_value: String,
+    pub is_self: bool,
+}
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MiniGraphDisplay {
+    pub axis_label: String,
+    pub totals_text: String,
+    pub rows: Vec<MiniGraphRowDisplay>,
 }
 
 /// An immutable mixed Config preview owned by one host session.
@@ -572,6 +588,19 @@ fn validate_mini_graph(graph: &MiniGraph, encounter: u64, column: &str) -> Resul
                         || item.value > data.axis
                 })
         })
+        || match (&graph.data, &graph.display) {
+            (None, None) => false,
+            (Some(data), Some(display)) => {
+                display.rows.len() != data.values.len()
+                    || display.axis_label.len() > 1024
+                    || display.totals_text.len() > 1024
+                    || display
+                        .rows
+                        .iter()
+                        .any(|row| row.label.len() > 1024 || row.tooltip_value.len() > 1024)
+            }
+            _ => true,
+        }
         || graph.no_actors && graph.data.is_some()
     {
         return Err(trigger_error("invalid mini graph response"));
@@ -645,10 +674,20 @@ mod tests {
     use super::*;
     #[test]
     fn mini_graph_response_rejects_malformed_values_and_identity() {
-        let valid = serde_json::json!({"encounterId":1,"column":"Damage","noActors":false,"data":{"values":[{"name":"A","value":100.0}],"axis":110.0,"total":100.0,"average":100.0}});
+        let valid = serde_json::json!({"encounterId":1,"column":"Damage","noActors":false,"data":{"values":[{"name":"A","value":100.0}],"axis":110.0,"total":100.0,"average":100.0},"display":{"axisLabel":"110","totalsText":"Total: 100\nAVG: 100.00","rows":[{"label":"100","tooltipValue":"100","isSelf":false}]}});
         let parse = |value| serde_json::from_value::<MiniGraph>(value).expect("graph JSON");
         validate_mini_graph(&parse(valid.clone()), 1, "Damage").expect("valid graph");
         for bad in [
+            {
+                let mut v = valid.clone();
+                v["display"]["rows"] = serde_json::json!([]);
+                v
+            },
+            {
+                let mut v = valid.clone();
+                v["display"] = serde_json::Value::Null;
+                v
+            },
             {
                 let mut v = valid.clone();
                 v["encounterId"] = 2.into();

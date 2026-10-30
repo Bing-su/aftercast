@@ -66,6 +66,15 @@ internal static class SimpleGraphContractChecks
         try
         {
             CultureInfo.CurrentCulture=CultureInfo.GetCultureInfo("de-DE");
+            var format = typeof(Advanced_Combat_Tracker.FormActMain).GetMethod("FormatMiniGraph", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+            var sample = Aftercast.ActCompat.GraphNumeric.Simple([new("YOU", 1234.75), new("you", 1000), new("zero", 0), new("negative", -1)])!;
+            var display = (Aftercast.ActCompat.MiniGraphDisplay)format.Invoke(null, [sample, "YOU"])!;
+            if (display.Rows.Length != 2 || display.Rows[0].Label != "1,23K" || display.Rows[0].TooltipValue != "1.235" || !display.Rows[0].IsSelf || display.Rows[1].IsSelf) throw new Exception("Mini graph color identity / culture labels");
+            if (display.TotalsText != string.Format(CultureInfo.CurrentCulture, "Total: {0:0,0}\nAVG: {1:0,0.00}", sample.Total, sample.Average)) throw new Exception("Mini graph totals culture");
+            var tooLarge = new Aftercast.ActCompat.GraphNumeric.SimpleResult([new("big", 1)], 9223372036854775808.0, 1, 1);
+            try { format.Invoke(null, [tooLarge, "YOU"]); throw new Exception("Expected mini label overflow"); }
+            catch (System.Reflection.TargetInvocationException error) when (error.InnerException is InvalidDataException) { }
+
             var svg=Aftercast.ActCompat.GraphSvg.Simple("<Simple>",Aftercast.ActCompat.GraphNumeric.Simple([new("<A>",1234.5)])!,true);
             if(!svg.Contains("&lt;Simple&gt;",StringComparison.Ordinal)||!svg.Contains("Total: 1.235",StringComparison.Ordinal)||!svg.Contains("AVG: 1.234,50",StringComparison.Ordinal)||!svg.Contains("<tspan",StringComparison.Ordinal))throw new Exception("Simple SVG escaping or culture");
         }

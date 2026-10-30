@@ -2,7 +2,9 @@ using System.Diagnostics;
 
 namespace Aftercast.ActCompat
 {
-    public sealed record MiniGraphData(ulong EncounterId, string Column, bool NoActors, GraphNumeric.SimpleResult? Data);
+    public sealed record MiniGraphRowDisplay(string Label, string TooltipValue, bool IsSelf);
+    public sealed record MiniGraphDisplay(string AxisLabel, string TotalsText, MiniGraphRowDisplay[] Rows);
+    public sealed record MiniGraphData(ulong EncounterId, string Column, bool NoActors, GraphNumeric.SimpleResult? Data, MiniGraphDisplay? Display);
 }
 namespace Advanced_Combat_Tracker
 {
@@ -19,9 +21,26 @@ namespace Advanced_Combat_Tracker
                 var nameBytes = utf8.GetByteCount(item.Name);
                 if (item.Name.Length > 4096 || nameBytes > 8192) throw new InvalidDataException("Mini graph label exceeds limit");
                 // JSON can escape every byte as six ASCII characters; include row overhead.
-                bytes = checked(bytes + 6 * nameBytes + 128);
+                bytes = checked(bytes + 6 * nameBytes + 320);
                 if (bytes > 3 * 1024 * 1024) throw new InvalidDataException("Mini graph response exceeds limit");
             }
+        }
+        internal static MiniGraphDisplay? FormatMiniGraph(GraphNumeric.SimpleResult? data, string? character)
+        {
+            if (data is null) return null;
+            static long Truncate(double value)
+            {
+                // ACT converts labels to Int64. Avoid undefined or platform-specific conversion for unrepresentable values.
+                if (!double.IsFinite(value) || value < 0 || value >= 9223372036854775808.0)
+                    throw new InvalidDataException("Mini graph label exceeds Int64 range");
+                return (long)value;
+            }
+            var rows = data.Values.Select(item => new MiniGraphRowDisplay(
+                DeathNumericTooltip(Truncate(item.Value)),
+                item.Value.ToString("#,0", System.Globalization.CultureInfo.CurrentCulture),
+                string.Equals(item.Name, character, StringComparison.Ordinal))).ToArray();
+            return new(DeathNumericTooltip(Truncate(data.Axis)),
+                string.Format(System.Globalization.CultureInfo.CurrentCulture, "Total: {0:0,0}\nAVG: {1:0,0.00}", data.Total, data.Average), rows);
         }
         // This capture is local to the call: periodic mini refresh must not invalidate a user's report capture.
         internal MiniGraphData ReadMiniGraph(ulong encounterId, string column, bool onlyAllies)
@@ -51,7 +70,7 @@ namespace Advanced_Combat_Tracker
                     var (data, noActors) = ReadSimpleGraph(node, options, Check);
                     ValidateMiniGraphOutput(data);
                     Check();
-                    return new(encounterId, column, noActors, data);
+                    return new(encounterId, column, noActors, data, FormatMiniGraph(data, ActGlobals.charName));
                 }
                 finally { activeTableQuery = false; }
             }

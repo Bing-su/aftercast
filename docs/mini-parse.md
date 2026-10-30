@@ -63,11 +63,9 @@ default. The existing global Simple graph ally and totals options are reused and
 saved with graph preferences. Positive finite values, ACT order, axis, total and
 average are computed by `GraphNumeric.Simple`; zero and negative values are not
 plotted, no actors and no positive values are distinct, and nonfinite geometry is
-rejected explicitly. The UI builds escaped text and bounded horizontal blue bars,
+rejected explicitly. The UI builds escaped text and bounded horizontal bars using ACT default DarkRed/DarkBlue alternation and DarkViolet for an exact case-sensitive character-name match,
 never runs graph HTML, and displays at most 512 rows with the omitted count; the
-axis and totals still include all accepted rows. The blue color, horizontal layout
-and two-decimal labels are simplified aftercast presentation, not ACT's native GDI
-palette, label formatting, dimensions or pixel alignment. A capture is limited to
+axis and totals still include all accepted rows. Labels use the owner culture and ACT default suffix/decimal settings, with ACT's distinct tooltip and total/average formats. User-configurable graph palette and suffix options are not yet connected; horizontal layout, dimensions and pixel alignment differ from native GDI. A capture is limited to
 16,384 rows, two seconds, 4,096 UTF-16 units / 8 KiB UTF-8 per label and a conservative 3 MiB JSON-expansion budget; the worker reply limit is 4 MiB. Callbacks already running cannot be preempted.
 
 Synthetic worker/controller tests cover numeric axes/order/totals, zero/negative,
@@ -77,3 +75,5 @@ hierarchy report capture. The checked-in original-derived Simple numeric oracle
 verifies arithmetic, not native GDI execution. Native window clicks, native ACT
 scheduling, WinForms drawing, font measurement, click-through, opacity and Windows
 execution remain unverified.
+
+ACT `GenEncounterGraph` uses graph-specific ColorControls, not plugin cell colors, ally text color or personal table background; it selects self by ordinal exact `ActGlobals.charName` equality before alternating colors. These conclusions are from local original decompilation; native GDI rendering has not been executed. Label/axis values outside Int64 range are rejected explicitly, rather than relying on platform-dependent conversion.

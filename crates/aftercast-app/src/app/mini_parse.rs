@@ -469,8 +469,15 @@ async fn fetch_graph(
     Ok(Some((graph, ended)))
 }
 
-fn mini_bar_style(value: f64, axis: f64) -> String {
-    format!("background:#3568a8;width:{:.3}%;", value / axis * 100.0)
+fn mini_bar_style(value: f64, axis: f64, index: usize, is_self: bool) -> String {
+    let color = if is_self {
+        "#9400d3"
+    } else if index.is_multiple_of(2) {
+        "#8b0000"
+    } else {
+        "#00008b"
+    };
+    format!("background:{color};width:{:.3}%;", value / axis * 100.0)
 }
 
 #[component]
@@ -489,19 +496,26 @@ fn GraphView(graph: aftercast::MiniGraph, totals: bool, style: String) -> Elemen
         }
         Some(data) => {
             let omitted = data.values.len().saturating_sub(512);
+            let Some(display) = graph.display else {
+                return rsx! {
+                    p { role: "alert", "Invalid graph display" }
+                };
+            };
             rsx! {
                 div { class: "space-y-2 rounded-md border border-border p-3 text-sm",
                     p {
                         {tr("mini-graph-axis")}
-                        ": {data.axis:.2}"
+                        ": {display.axis_label}"
                     }
-                    for item in data.values.iter().take(512) {
+                    for (index, (item, formatted)) in data.values.iter().zip(display.rows.iter()).take(512).enumerate() {
                         div { class: "space-y-1",
-                            p { "{item.name}: {item.value:.2}" }
+                            p { title: "{item.name}: {formatted.tooltip_value}",
+                                "{item.name}: {formatted.label}"
+                            }
                             div { class: "h-3 w-full rounded bg-muted",
                                 div {
                                     class: "h-3 rounded",
-                                    style: mini_bar_style(item.value, data.axis),
+                                    style: mini_bar_style(item.value, data.axis, index, formatted.is_self),
                                 }
                             }
                         }
@@ -513,7 +527,7 @@ fn GraphView(graph: aftercast::MiniGraph, totals: bool, style: String) -> Elemen
                         }
                     }
                     if totals {
-                        p { "Total: {data.total:.2} · AVG: {data.average:.2}" }
+                        p { class: "whitespace-pre-line", "{display.totals_text}" }
                     }
                 }
             }
@@ -830,12 +844,16 @@ mod tests {
     #[test]
     fn graph_bar_color_and_axis_scale_are_deterministic() {
         assert_eq!(
-            mini_bar_style(50.0, 100.0),
-            "background:#3568a8;width:50.000%;"
+            mini_bar_style(50.0, 100.0, 0, false),
+            "background:#8b0000;width:50.000%;"
         );
         assert_eq!(
-            mini_bar_style(100.0, 110.0),
-            "background:#3568a8;width:90.909%;"
+            mini_bar_style(25.0, 100.0, 1, true),
+            "background:#9400d3;width:25.000%;"
+        );
+        assert_eq!(
+            mini_bar_style(100.0, 110.0, 1, false),
+            "background:#00008b;width:90.909%;"
         );
     }
     #[test]
@@ -896,6 +914,11 @@ mod tests {
         cached.missing_profile(Duration::ZERO, "missing profile".into());
         assert!(cached.graph.is_none());
         assert_eq!(cached.error.as_deref(), Some("missing profile"));
+        let display = graph.display.clone().expect("formatted graph");
+        assert_eq!(display.rows.len(), 2);
+        assert_eq!(display.rows[0].label, "100");
+        assert_eq!(display.rows[1].label, "50");
+        assert_eq!(display.axis_label, "110");
         let data = graph.data.unwrap();
         assert_eq!(data.values.len(), 2);
         assert_eq!(data.values[0].name, "Synthetic Source");
