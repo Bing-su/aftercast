@@ -194,14 +194,27 @@ power-loss durability promise.
 
 ### A. Confirmed local contract gaps: no extra approval or dependency needed
 
-1. **Intermittent synthetic startup failure (test infrastructure).**
-   The [process-isolation fixture](../crates/aftercast/tests/process_isolation.rs)
-   has produced `ETXTBSY` on its own temporary executable twice; the cause is
-   still unknown. **Acceptance:** reproduce or capture the writer/descriptor owner
-   with synthetic temporary files, then make and test a narrowly justified fix;
-   do not weaken the deadline assertion or count a passing retry as resolution.
+1. **Timer sound defaults and local preferences (L9a).** Pinned ACT 3.8.5.288
+   `Options_Sound.InitializeComponent` selects None for timer start and expiry,
+   and Beep for warning; `FormSpellTimers.TimerSound` uses these controls when a
+   start/warning definition has no override, and for expiry. These are designer
+   defaults: actual ACT startup/settings restoration was not run. Aftercast's
+   [AudioSettings](../crates/aftercast/src/speech.rs) defaults all three to `none`;
+   [AudioPreferences](../crates/aftercast-app/src/config.rs) forwards those
+   defaults without exposing saved timer-cue choices in the app. **Acceptance:**
+   verify ACT startup/restoration and per-definition override semantics; connect
+   the three existing cue choices to local settings and existing Rust/UI, with
+   explicit migration for prior settings and bounded fake-sink tests for default,
+   override, save failure and restart. Do not play audio, install a provider or
+   change OS settings while implementing or testing this offline contract.
 
-The pinned ACT implementation has default audio duplicate windows and uses the shared table column preferences for Lookup-by-Combatant. The queue-admission timing differs from native playback ([speech](speech-preferences.md)); the lookup picker can explicitly save shared preferences, while unsaved edits remain local ([lookup](combatant-lookup.md)). Timer cue defaults still require verification. Native playback has not been tested.
+The pinned ACT implementation has default audio duplicate windows and uses the
+shared table column preferences for Lookup-by-Combatant. Queue-admission timing
+differs from native playback ([speech](speech-preferences.md)); the lookup picker
+can explicitly save shared preferences while unsaved edits remain local
+([lookup](combatant-lookup.md)). Native playback has not been tested. The
+unexplained intermittent `ETXTBSY` fixture failure remains a separate known test
+issue below; a passing retry is not a fix.
 
 ### B. Additional design or dependency decision
 
