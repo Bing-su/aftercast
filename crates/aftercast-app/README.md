@@ -95,7 +95,8 @@ the working directory. Invalid configuration is reported and never silently rese
 | `src/app/analysis.rs`                               | Participant/attack aggregates, Chorale tables, collapsible Dioxus chart and log-import pane                                     |
 | `src/app/plugins.rs`                                | Plugin order/enablement, type overrides, status, fresh-worker retry and native settings; overlay management remains future work |
 | `src/app/preferences.rs`                            | Fluent locale, Catppuccin flavour and runtime preferences                                                                       |
-| `src/config.rs`                                     | Validated, comment-preserving TOML and atomic replacement                                                                       |
+| `src/config.rs`                                     | Serde-driven, comment-preserving TOML updates and atomic replacement                                                            |
+| `src/config/settings.rs`                            | Settings model, defaults, validation and presentation values                                                                    |
 | `src/session.rs`                                    | Private bridge deployment and asynchronous host lifetime                                                                        |
 | `src/components/`                                   | Rust/UI button, input, label, separator, outline badge and progress; provenance in `THIRD_PARTY.md`                             |
 | `build.rs`, `build_support.rs`, `runtime-lock.toml` | Target-specific, pinned runtime download, validation and embedding                                                              |
