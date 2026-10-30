@@ -466,6 +466,16 @@ impl AppState {
         true
     }
 }
+pub(super) fn sync_lookup_layout(state: &mut AppState, level: &str, preferences: &Preferences) {
+    if let Some(editor) = state.plugin_tables.editors.get_mut(level) {
+        if editor.draft == editor.applied {
+            editor.draft = preferences.clone();
+        }
+        editor.applied = preferences.clone();
+        editor.version += 1;
+    }
+    state.plugin_tables.invalidate();
+}
 fn refreshed_draft(
     editor: Option<&Editor>,
     token: &Token,

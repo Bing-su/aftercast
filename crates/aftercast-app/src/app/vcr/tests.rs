@@ -290,6 +290,7 @@ async fn lookup_table_ui_contract_uses_revision_sort_pages_and_session() {
         Some("Target")
     );
     verify_lookup_columns(&endpoint, report.snapshot, root.clone()).await;
+    Box::pin(verify_lookup_save(&endpoint, report.snapshot, root.clone())).await;
     let empty = super::super::lookup::load_aggregate(
         &endpoint,
         report.snapshot,
@@ -340,6 +341,7 @@ async fn lookup_table_ui_contract_uses_revision_sort_pages_and_session() {
     )
     .await
     .expect_err("stale");
+    verify_empty_lookup(&endpoint, report.snapshot, root.clone(), false).await;
     lifetime.invalidate();
     super::super::lookup::load_aggregate(&endpoint, report.snapshot, root, None, None, 0, None)
         .await
@@ -446,6 +448,161 @@ async fn verify_lookup_columns(
     )
     .await
     .expect_err("missing column");
+}
+
+async fn verify_lookup_save(
+    endpoint: &ContextEndpoint,
+    snapshot: aftercast::ActionSnapshot,
+    scope: aftercast::TableScope,
+) {
+    use super::super::lookup::saved_layout;
+    use crate::app::AppState;
+    use crate::config::ConfigFile;
+    let temporary = tempfile::tempdir().expect("config fixture");
+    let directory = Utf8Path::from_path(temporary.path()).expect("UTF8");
+    let catalog = endpoint
+        .handle
+        .table_columns(scope.level())
+        .await
+        .expect("catalog");
+    assert!(
+        catalog
+            .columns
+            .iter()
+            .any(|column| column.key == "fixture" && column.can_read)
+    );
+    let mut with_missing = crate::table_settings::Preferences {
+        order: vec!["missing-plugin".into(), "fixture".into()],
+        visible: vec!["missing-plugin".into(), "fixture".into()],
+        ..Default::default()
+    };
+    let layout =
+        saved_layout(Some(&with_missing), &catalog, &["fixture".into()]).expect("missing retained");
+    assert!(layout.visible.iter().any(|key| key == "missing-plugin"));
+    assert_eq!(
+        layout.order.first().map(String::as_str),
+        Some("missing-plugin")
+    );
+    let mut returned = catalog.clone();
+    let mut column = returned
+        .columns
+        .iter()
+        .find(|column| column.key == "fixture")
+        .expect("fixture")
+        .clone();
+    column.key = "missing-plugin".into();
+    returned.columns.push(column);
+    let restored = layout.reconcile(&returned).expect("reappearing key");
+    assert_eq!(
+        restored.preferences.selected().first().map(String::as_str),
+        Some("missing-plugin")
+    );
+    saved_layout(
+        Some(&layout),
+        &catalog,
+        &["fixture".into(), "fixture".into()],
+    )
+    .expect_err("duplicate key");
+    with_missing = saved_layout(Some(&layout), &catalog, &[]).expect("empty visible");
+    assert!(!with_missing.visible.iter().any(|key| key == "fixture"));
+    let mut state = AppState::new(directory.to_owned());
+    state.file = Some(ConfigFile::load(directory).expect("load old config"));
+    state
+        .settings
+        .tables
+        .insert("category".into(), layout.clone());
+    let mut draft = Vec::new();
+    let (token, root, file) = state
+        .begin_lookup_save(endpoint, &catalog, &draft)
+        .expect("begin save");
+    draft.push("fixture".into());
+    assert!(
+        state
+            .begin_lookup_save(endpoint, &catalog, &["fixture".into()])
+            .is_err()
+    );
+    let saved = file.save(&root).expect("write temporary config");
+    assert!(state.receive_lookup_save(token.clone(), Ok(saved)));
+    assert!(!state.receive_lookup_save(token, Err("late".into())));
+    let reloaded = ConfigFile::load(directory).expect("restart");
+    let restored = reloaded
+        .settings
+        .tables
+        .get("category")
+        .expect("saved category");
+    assert_eq!(restored, &with_missing);
+    verify_empty_lookup(endpoint, snapshot, scope, true).await;
+    verify_lookup_save_failure_and_late(&mut state, endpoint, &catalog, directory, restored);
+}
+
+async fn verify_empty_lookup(
+    endpoint: &ContextEndpoint,
+    snapshot: aftercast::ActionSnapshot,
+    scope: aftercast::TableScope,
+    valid: bool,
+) {
+    use super::super::lookup::{RequestState, load_aggregate_selected};
+    let result = load_aggregate_selected(
+        endpoint,
+        snapshot,
+        scope,
+        None,
+        None,
+        RequestState {
+            offset: 0,
+            sort: None,
+            columns: Some(vec![]),
+            epoch: 0,
+            layout: None,
+        },
+    )
+    .await;
+    if valid {
+        let empty = result.expect("empty lookup");
+        assert!(empty.no_columns && empty.page.rows.is_empty());
+    } else {
+        result.expect_err("empty lookup must reject stale snapshot");
+    }
+}
+
+fn verify_lookup_save_failure_and_late(
+    state: &mut crate::app::AppState,
+    endpoint: &ContextEndpoint,
+    catalog: &aftercast::TableCatalog,
+    directory: &Utf8Path,
+    restored: &crate::table_settings::Preferences,
+) {
+    let before = std::fs::read(directory.join("config.toml")).expect("original bytes");
+    let (token, _, file) = state
+        .begin_lookup_save(endpoint, catalog, &["fixture".into()])
+        .expect("retry save");
+    let failure = file
+        .save(&directory.join("missing-directory"))
+        .err()
+        .expect("injected save failure");
+    assert!(state.receive_lookup_save(token, Err(failure.to_string())));
+    assert_eq!(
+        std::fs::read(directory.join("config.toml")).expect("preserved"),
+        before
+    );
+    assert_eq!(state.settings.tables.get("category"), Some(restored));
+    let mut ending = endpoint.clone();
+    ending.lifetime = Arc::new(WindowLifetime::default());
+    ending.generation = ending.lifetime.generation();
+    let (token, root, file) = state
+        .begin_lookup_save(&ending, catalog, &["fixture".into()])
+        .expect("admit before end");
+    ending.lifetime.invalidate();
+    let saved = file.save(&root).expect("accepted app settings save");
+    assert!(state.receive_lookup_save(token, Ok(saved)));
+    assert!(
+        !state.lookup_save_has_message(),
+        "late session must not show success"
+    );
+    assert!(
+        state.begin_lookup_save(&ending, catalog, &[]).is_err(),
+        "ended session rejects new save"
+    );
 }
 
 #[tokio::test(flavor = "current_thread")]

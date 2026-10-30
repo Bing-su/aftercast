@@ -403,6 +403,7 @@ impl PartialEq for LookupEndpoint {
 pub(super) struct AggregateData {
     pub(super) page: TablePage,
     catalog: aftercast::TableCatalog,
+    pub(super) no_columns: bool,
 }
 
 #[cfg(test)]
@@ -455,8 +456,7 @@ pub(super) async fn load_aggregate_selected(
             .await
             .map_err(|error| error.to_string())?;
         let columns: Vec<String> = if let Some(selected) = selected {
-            if selected.is_empty()
-                || selected.len() > 32
+            if selected.len() > 32
                 || selected.iter().any(|key| {
                     !catalog
                         .columns
@@ -498,7 +498,23 @@ pub(super) async fn load_aggregate_selected(
             defaults
         };
         if columns.is_empty() {
-            return Err("No readable columns are selected or registered for this table.".into());
+            // Check snapshot ownership even when no column callback is needed.
+            endpoint
+                .handle
+                .action_snapshot_page(snapshot, 0, 1)
+                .await
+                .map_err(|error| error.to_string())?;
+            return Ok(AggregateData {
+                page: TablePage {
+                    revision: catalog.revision,
+                    total: 0,
+                    columns: Vec::new(),
+                    rows: Vec::new(),
+                    sort_error: None,
+                },
+                catalog,
+                no_columns: true,
+            });
         }
         let query = TableQuery {
             scope,
@@ -513,9 +529,193 @@ pub(super) async fn load_aggregate_selected(
             .lookup_table_rows(snapshot, &query, peer.as_deref(), skill.as_deref())
             .await
             .map_err(|error| error.to_string())?;
-        Ok(AggregateData { page, catalog })
+        Ok(AggregateData {
+            page,
+            catalog,
+            no_columns: false,
+        })
     })
     .await
+}
+
+#[derive(Default)]
+pub(super) struct SaveState {
+    next: u64,
+    pending: Option<u64>,
+    error: Option<String>,
+    message: Option<String>,
+}
+
+#[derive(Clone)]
+pub(super) struct SaveToken {
+    id: u64,
+    level: String,
+    preferences: crate::table_settings::Preferences,
+    session: u64,
+    endpoint: ContextEndpoint,
+}
+
+pub(super) fn saved_layout(
+    base: Option<&crate::table_settings::Preferences>,
+    catalog: &aftercast::TableCatalog,
+    selected: &[String],
+) -> Result<crate::table_settings::Preferences, String> {
+    let mut result = base.cloned().unwrap_or_default();
+    result.validate().map_err(str::to_owned)?;
+    let known: BTreeSet<&str> = catalog
+        .columns
+        .iter()
+        .map(|column| column.key.as_str())
+        .collect();
+    let mut unique = BTreeSet::new();
+    if selected.iter().any(|key| {
+        !unique.insert(key.as_str())
+            || !catalog
+                .columns
+                .iter()
+                .any(|column| column.key == *key && column.can_read)
+    }) {
+        return Err("Selected columns changed; reload before saving.".into());
+    }
+    let missing_visible: Vec<_> = result
+        .visible
+        .iter()
+        .filter(|key| !known.contains(key.as_str()))
+        .cloned()
+        .collect();
+    let mut order = result.order.clone();
+    for column in &catalog.columns {
+        if !order.contains(&column.key) {
+            order.push(column.key.clone());
+        }
+    }
+    let mut reordered = selected.iter();
+    for key in &mut order {
+        if unique.contains(key.as_str()) {
+            *key = reordered
+                .next()
+                .expect("one position per selected key")
+                .clone();
+        }
+    }
+    result.order = order;
+    result.visible = selected.iter().cloned().chain(missing_visible).collect();
+    result.validate().map_err(str::to_owned)?;
+    Ok(result)
+}
+
+impl AppState {
+    #[cfg(test)]
+    pub(super) fn lookup_save_has_message(&self) -> bool {
+        self.lookup_saves.message.is_some()
+    }
+    pub(super) fn begin_lookup_save(
+        &mut self,
+        endpoint: &ContextEndpoint,
+        catalog: &aftercast::TableCatalog,
+        selected: &[String],
+    ) -> Result<(SaveToken, camino::Utf8PathBuf, crate::config::ConfigFile), String> {
+        if !endpoint.valid() {
+            return Err("Session ended.".into());
+        }
+        if !self.can_save_settings() {
+            return Err("Another settings save is in progress or settings are unavailable.".into());
+        }
+        let level = crate::table_settings::level_key(catalog.level).to_owned();
+        let preferences = saved_layout(self.settings.tables.get(&level), catalog, selected)?;
+        let mut file = self.file.clone().ok_or("Settings are unavailable.")?;
+        file.settings = self.settings.clone();
+        file.settings
+            .tables
+            .insert(level.clone(), preferences.clone());
+        self.lookup_saves.next = self
+            .lookup_saves
+            .next
+            .checked_add(1)
+            .ok_or("Save counter exhausted.")?;
+        let token = SaveToken {
+            id: self.lookup_saves.next,
+            level,
+            preferences,
+            session: self.revision.session,
+            endpoint: endpoint.clone(),
+        };
+        self.lookup_saves.pending = Some(token.id);
+        self.lookup_saves.error = None;
+        self.lookup_saves.message = None;
+        self.saving = true;
+        Ok((token, self.root.clone(), file))
+    }
+    pub(super) fn receive_lookup_save(
+        &mut self,
+        token: SaveToken,
+        result: Result<crate::config::ConfigFile, String>,
+    ) -> bool {
+        if self.lookup_saves.pending != Some(token.id) {
+            return false;
+        }
+        self.lookup_saves.pending = None;
+        self.saving = false;
+        let current = self.revision.session == token.session && token.endpoint.valid();
+        match result {
+            Ok(file) => {
+                self.settings
+                    .tables
+                    .insert(token.level.clone(), token.preferences.clone());
+                self.file = Some(file);
+                super::plugin_tables::sync_lookup_layout(self, &token.level, &token.preferences);
+                if current {
+                    self.lookup_saves.message = Some("Shared columns saved.".into());
+                }
+            }
+            Err(error) if current => self.lookup_saves.error = Some(error),
+            Err(_) => {}
+        }
+        true
+    }
+}
+
+fn save_columns(
+    mut state: Signal<AppState>,
+    endpoint: ContextEndpoint,
+    catalog: aftercast::TableCatalog,
+    selected: Vec<String>,
+) {
+    let pending = {
+        state
+            .write()
+            .begin_lookup_save(&endpoint, &catalog, &selected)
+    };
+    let (token, root, file) = match pending {
+        Ok(save) => save,
+        Err(error) => {
+            state.write().lookup_saves.error = Some(error);
+            return;
+        }
+    };
+    dioxus::core::spawn_forever(async move {
+        let result = match guard(&endpoint, async {
+            let current = endpoint
+                .handle
+                .table_columns(catalog.level)
+                .await
+                .map_err(|error| error.to_string())?;
+            if current.revision != catalog.revision {
+                return Err("Column registration changed; reload before saving.".into());
+            }
+            Ok(())
+        })
+        .await
+        {
+            Ok(()) if endpoint.valid() => tokio::task::spawn_blocking(move || file.save(&root))
+                .await
+                .map_err(|error| error.to_string())
+                .and_then(|result| result.map_err(|error| error.to_string())),
+            Ok(()) => Err("Session ended before saving.".into()),
+            Err(error) => Err(error),
+        };
+        state.write().receive_lookup_save(token, result);
+    });
 }
 
 pub(super) fn aggregate_row_label(row: &aftercast::TableRow) -> String {
@@ -625,6 +825,18 @@ fn AggregateTable(
                 },
                 "Retry table"
             }
+            Button {
+                variant: ButtonVariant::Outline,
+                disabled: pending || selected_columns().is_none(),
+                onclick: move |_| {
+                    selected_columns.set(None);
+                    sort.set(None);
+                    offset.set(0);
+                    request_epoch.set(request_epoch().wrapping_add(1));
+                    resource.restart();
+                },
+                "Discard column draft"
+            }
             if stopped {
                 p { "Table request canceled." }
             } else if pending {
@@ -638,6 +850,7 @@ fn AggregateTable(
                         p { "Table unavailable." }
                     },
                     Some(Ok(result)) => {
+                        let no_columns = result.no_columns;
                         let page = result.page;
                         let catalog = result.catalog;
                         let visible: Vec<String> = page
@@ -649,7 +862,11 @@ fn AggregateTable(
                             if let Some(error) = page.sort_error {
                                 p { role: "alert", "Plugin sort failed: {error:?}" }
                             }
-                            p { "{page.total} rows; offset {offset}" }
+                            if no_columns {
+                                p { "No columns selected; row count is unavailable." }
+                            } else {
+                                p { "{page.total} rows; offset {offset}" }
+                            }
                             Accordion {
                                 class: "border border-border rounded-md".to_owned(),
                                 default_open: false,
@@ -660,7 +877,7 @@ fn AggregateTable(
                                         let key = column.key.clone();
                                         let mut next = visible.clone();
                                         let checked = next.contains(&key);
-                                        let disabled = (checked && next.len() == 1) || (!checked && next.len() >= 32);
+                                        let disabled = !checked && next.len() >= 32;
                                         rsx! {
                                             Button {
                                                 variant: ButtonVariant::Outline,
@@ -679,6 +896,65 @@ fn AggregateTable(
                                             }
                                         }
                                     }
+                                }
+                                for (index, key) in visible.iter().enumerate() {
+                                    {
+                                        let mut earlier = visible.clone();
+                                        let mut later = visible.clone();
+                                        let label = key.clone();
+                                        let last = visible.len().saturating_sub(1);
+                                        rsx! {
+                                            div { class: "flex gap-2 items-center",
+                                                span { "{label}" }
+                                                Button {
+                                                    variant: ButtonVariant::Outline,
+                                                    disabled: index == 0,
+                                                    onclick: move |_| {
+                                                        if index > 0 {
+                                                            earlier.swap(index, index - 1);
+                                                            selected_columns.set(Some(earlier.clone()));
+                                                            offset.set(0);
+                                                        }
+                                                    },
+                                                    "Earlier"
+                                                }
+                                                Button {
+                                                    variant: ButtonVariant::Outline,
+                                                    disabled: index == last,
+                                                    onclick: move |_| {
+                                                        if index < last {
+                                                            later.swap(index, index + 1);
+                                                            selected_columns.set(Some(later.clone()));
+                                                            offset.set(0);
+                                                        }
+                                                    },
+                                                    "Later"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                {
+                                    let catalog_for_save = catalog.clone();
+                                    let endpoint_for_save = endpoint.0.clone();
+                                    let visible_for_save = visible.clone();
+                                    rsx! {
+                                        Button {
+                                            variant: ButtonVariant::Outline,
+                                            disabled: app.read().saving,
+                                            onclick: move |_| {
+                                                let draft = selected_columns().unwrap_or_else(|| visible_for_save.clone());
+                                                save_columns(app, endpoint_for_save.clone(), catalog_for_save.clone(), draft);
+                                            },
+                                            "Save shared columns"
+                                        }
+                                    }
+                                }
+                                if let Some(message) = &app.read().lookup_saves.message {
+                                    p { role: "status", "{message}" }
+                                }
+                                if let Some(error) = &app.read().lookup_saves.error {
+                                    p { role: "alert", "{error}" }
                                 }
                             }
                             div { class: "flex flex-wrap gap-2",

@@ -704,3 +704,36 @@ async fn header_click_ui_contract_serializes_and_preserves_draft_and_rejects_sta
     assert!(ui.plugin_tables.header_queue.is_empty());
     host.shutdown().await.expect("shutdown");
 }
+
+#[test]
+fn lookup_save_sync_preserves_an_unrelated_dirty_table_draft() {
+    let mut state = AppState::new(".".into());
+    let old = Preferences {
+        order: vec!["old".into()],
+        visible: vec!["old".into()],
+        ..Default::default()
+    };
+    let draft = Preferences {
+        order: vec!["draft".into()],
+        visible: vec!["draft".into()],
+        ..Default::default()
+    };
+    let saved = Preferences {
+        order: vec!["saved".into()],
+        visible: vec!["saved".into()],
+        ..Default::default()
+    };
+    state.plugin_tables.editors.insert(
+        "category".into(),
+        Editor {
+            draft: draft.clone(),
+            applied: old,
+            version: 1,
+        },
+    );
+    sync_lookup_layout(&mut state, "category", &saved);
+    let editor = state.plugin_tables.editors.get("category").expect("editor");
+    assert_eq!(editor.draft, draft);
+    assert_eq!(editor.applied, saved);
+    assert_eq!(editor.version, 2);
+}

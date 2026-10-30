@@ -201,7 +201,7 @@ power-loss durability promise.
    with synthetic temporary files, then make and test a narrowly justified fix;
    do not weaken the deadline assertion or count a passing retry as resolution.
 
-The pinned ACT implementation has default audio duplicate windows and uses the shared table column preferences for Lookup-by-Combatant. The queue-admission timing differs from native playback ([speech](speech-preferences.md)); the lookup picker remains a temporary override even though saved shared preferences initialize the view ([lookup](combatant-lookup.md)). Timer cue defaults still require verification. Native playback has not been tested.
+The pinned ACT implementation has default audio duplicate windows and uses the shared table column preferences for Lookup-by-Combatant. The queue-admission timing differs from native playback ([speech](speech-preferences.md)); the lookup picker can explicitly save shared preferences, while unsaved edits remain local ([lookup](combatant-lookup.md)). Timer cue defaults still require verification. Native playback has not been tested.
 
 ### B. Additional design or dependency decision
 
