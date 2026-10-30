@@ -68,6 +68,7 @@ public sealed class MiniGraphFixturePlugin : IActPluginV1
             actor => actor.Damage.ToString(System.Globalization.CultureInfo.InvariantCulture),
             actor => actor.Damage.ToString(System.Globalization.CultureInfo.InvariantCulture),
             (left, right) => left.Damage.CompareTo(right.Damage));
+        CombatantData.ColumnDefs["mini-graph-scaled"] = new("Scaled", true, "REAL", "scaled", _ => "", actor => (actor.Damage * 20).ToString(System.Globalization.CultureInfo.InvariantCulture), (left, right) => left.Damage.CompareTo(right.Damage));
         CombatantData.ColumnDefs["mini-graph-zero"] = new("Zero", true, "REAL", "zero", _ => "0", _ => "0", (_, _) => 0);
         CombatantData.ColumnDefs["mini-graph-negative"] = new("Negative", true, "REAL", "negative", _ => "-1", _ => "-1", (_, _) => 0);
         CombatantData.ColumnDefs["mini-graph-infinite"] = new("Infinite", true, "REAL", "infinite", _ => "∞", _ => System.Globalization.CultureInfo.GetCultureInfo("en-US").NumberFormat.PositiveInfinitySymbol, (_, _) => 0);
@@ -77,7 +78,7 @@ public sealed class MiniGraphFixturePlugin : IActPluginV1
     }
     public void DeInitPlugin()
     {
-        foreach (var key in new[] { "mini-graph-value", "mini-graph-zero", "mini-graph-negative", "mini-graph-infinite", "mini-graph-fail", "mini-graph-partial", "mini-graph-badsort" }) CombatantData.ColumnDefs.Remove(key);
+        foreach (var key in new[] { "mini-graph-value", "mini-graph-scaled", "mini-graph-zero", "mini-graph-negative", "mini-graph-infinite", "mini-graph-fail", "mini-graph-partial", "mini-graph-badsort" }) CombatantData.ColumnDefs.Remove(key);
         inner.DeInitPlugin();
     }
 }

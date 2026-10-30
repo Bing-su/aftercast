@@ -33,7 +33,7 @@ public static partial class EntryPoint
 }
 
 internal sealed record TriggerRequest(ulong Revision = 0, string? PreviousKey = null, TriggerDefinition? Definition = null,
-    string? Key = null, int Offset = 0, int Limit = 16, bool OriginalLines = false, bool ProcessImports = false, ulong After = 0, ulong Snapshot = 0, ulong TimerRevision = 0, int SelectiveMode = 0, string[]? Selected = null, string[]? Keys = null, string? Snippet = null, TriggerDefinition[]? Definitions = null);
+    string? Key = null, int Offset = 0, int Limit = 16, bool OriginalLines = false, bool ProcessImports = false, ulong After = 0, ulong Snapshot = 0, ulong TimerRevision = 0, int SelectiveMode = 0, string[]? Selected = null, string[]? Keys = null, string? Snippet = null, TriggerDefinition[]? Definitions = null, bool GraphUseSuffix = true, bool GraphSuffixDecimals = true);
 
 internal static class HostJson
 {

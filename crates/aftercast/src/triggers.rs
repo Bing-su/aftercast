@@ -277,6 +277,17 @@ impl HostHandle {
         column: &str,
         only_allies: bool,
     ) -> Result<MiniGraph, Error> {
+        self.mini_graph_with_format(encounter, column, only_allies, true, true)
+            .await
+    }
+    pub async fn mini_graph_with_format(
+        &self,
+        encounter: crate::EncounterId,
+        column: &str,
+        only_allies: bool,
+        use_suffix: bool,
+        suffix_decimals: bool,
+    ) -> Result<MiniGraph, Error> {
         if encounter.session != self.session
             || encounter.value == 0
             || column.is_empty()
@@ -285,7 +296,7 @@ impl HostHandle {
         {
             return Err(trigger_error("invalid mini graph encounter or column"));
         }
-        let graph: MiniGraph = self.trigger_call(15, &serde_json::json!({"snapshot":encounter.value,"key":column,"originalLines":only_allies})).await?;
+        let graph: MiniGraph = self.trigger_call(15, &serde_json::json!({"snapshot":encounter.value,"key":column,"originalLines":only_allies,"graphUseSuffix":use_suffix,"graphSuffixDecimals":suffix_decimals})).await?;
         validate_mini_graph(&graph, encounter.value, column)?;
         Ok(graph)
     }

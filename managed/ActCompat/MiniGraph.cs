@@ -25,7 +25,7 @@ namespace Advanced_Combat_Tracker
                 if (bytes > 3 * 1024 * 1024) throw new InvalidDataException("Mini graph response exceeds limit");
             }
         }
-        internal static MiniGraphDisplay? FormatMiniGraph(GraphNumeric.SimpleResult? data, string? character)
+        internal static MiniGraphDisplay? FormatMiniGraph(GraphNumeric.SimpleResult? data, string? character, bool useSuffix, bool suffixDecimals)
         {
             if (data is null) return null;
             static long Truncate(double value)
@@ -35,15 +35,23 @@ namespace Advanced_Combat_Tracker
                     throw new InvalidDataException("Mini graph label exceeds Int64 range");
                 return (long)value;
             }
+            static string Label(long value, bool suffix, bool decimals)
+            {
+                if (!suffix) return value.ToString(System.Globalization.CultureInfo.CurrentCulture);
+                if (decimals) return DeathNumericTooltip(value);
+                foreach (var (threshold, letter) in DeathTooltipSuffixes)
+                    if (value >= threshold * 10) return (value / threshold).ToString(System.Globalization.CultureInfo.CurrentCulture) + letter;
+                return value.ToString(System.Globalization.CultureInfo.CurrentCulture);
+            }
             var rows = data.Values.Select(item => new MiniGraphRowDisplay(
-                DeathNumericTooltip(Truncate(item.Value)),
+                Label(Truncate(item.Value), useSuffix, suffixDecimals),
                 item.Value.ToString("#,0", System.Globalization.CultureInfo.CurrentCulture),
                 string.Equals(item.Name, character, StringComparison.Ordinal))).ToArray();
-            return new(DeathNumericTooltip(Truncate(data.Axis)),
+            return new(Label(Truncate(data.Axis), useSuffix, suffixDecimals),
                 string.Format(System.Globalization.CultureInfo.CurrentCulture, "Total: {0:0,0}\nAVG: {1:0,0.00}", data.Total, data.Average), rows);
         }
         // This capture is local to the call: periodic mini refresh must not invalidate a user's report capture.
-        internal MiniGraphData ReadMiniGraph(ulong encounterId, string column, bool onlyAllies)
+        internal MiniGraphData ReadMiniGraph(ulong encounterId, string column, bool onlyAllies, bool useSuffix = true, bool suffixDecimals = true)
         {
             EnsureTextReportOwner();
             if (encounterId == 0 || string.IsNullOrWhiteSpace(column) || column.Length > 256 || column.Any(char.IsControl))
@@ -70,7 +78,7 @@ namespace Advanced_Combat_Tracker
                     var (data, noActors) = ReadSimpleGraph(node, options, Check);
                     ValidateMiniGraphOutput(data);
                     Check();
-                    return new(encounterId, column, noActors, data, FormatMiniGraph(data, ActGlobals.charName));
+                    return new(encounterId, column, noActors, data, FormatMiniGraph(data, ActGlobals.charName, useSuffix, suffixDecimals));
                 }
                 finally { activeTableQuery = false; }
             }

@@ -85,7 +85,7 @@ internal sealed partial class PluginSession
     {
         var host = Host();
         object result;
-        if (command == 15) result = host.ReadMiniGraph(request.Snapshot, request.Key ?? throw new ArgumentException("Missing graph column"), request.OriginalLines);
+        if (command == 15) result = host.ReadMiniGraph(request.Snapshot, request.Key ?? throw new ArgumentException("Missing graph column"), request.OriginalLines, request.GraphUseSuffix, request.GraphSuffixDecimals);
         else if (command == 14)
         {
             host.ConfigureSelectiveParsing((SelectiveParsingModeEnum)request.SelectiveMode, request.Selected ?? throw new ArgumentException("Missing selection"));
