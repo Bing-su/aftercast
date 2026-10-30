@@ -731,23 +731,28 @@ pub(super) async fn monitor_combat(state: Signal<AppState>) {
     }
 }
 
+impl AppState {
+    fn sync_mini_appearance(&mut self) {
+        let style = self.settings.appearance.mini_style();
+        let colors = self.settings.graphs.bar_colors.clone();
+        let surface = self.settings.graphs.surface_colors.clone();
+        if self.mini_parse.mini_style != style
+            || self.mini_parse.bar_colors != colors
+            || self.mini_parse.surface_colors != surface
+        {
+            self.mini_parse.mini_style = style;
+            self.mini_parse.bar_colors = colors;
+            self.mini_parse.surface_colors = surface;
+            self.mini_parse.publish();
+        }
+    }
+}
 pub(super) async fn poll(mut state: Signal<AppState>) {
     loop {
         dioxus_sdk::time::sleep(Duration::from_secs(1)).await;
         {
             let mut current = state.write();
-            let style = current.settings.appearance.mini_style();
-            let colors = current.settings.graphs.bar_colors.clone();
-            let surface = current.settings.graphs.surface_colors.clone();
-            if current.mini_parse.mini_style != style
-                || current.mini_parse.bar_colors != colors
-                || current.mini_parse.surface_colors != surface
-            {
-                current.mini_parse.mini_style = style;
-                current.mini_parse.bar_colors = colors;
-                current.mini_parse.surface_colors = surface;
-                current.mini_parse.publish();
-            }
+            current.sync_mini_appearance();
             if current.exit_requested {
                 current.mini_parse.reset_session();
                 continue;
@@ -982,6 +987,7 @@ pub(super) fn Panel() -> Element {
                                             && let Some(color) = s.settings.graphs.surface_colors.field_mut(index)
                                         {
                                             *color = event.value();
+                                            s.sync_mini_appearance();
                                         }
                                     },
                                 }
@@ -1204,7 +1210,7 @@ mod tests {
         controller.mini_parse.pending_graph_settings = Some((true, true, true, true, true));
         // A graph request must not overwrite a surface-color draft edited in the meantime.
         controller.settings.graphs.surface_colors.background = "#123456".into();
-        controller.mini_parse.surface_colors = controller.settings.graphs.surface_colors.clone();
+        controller.sync_mini_appearance();
         controller.mini_finish_graph(ticket, Ok(Some((String::new(), None))), Some(graph.clone()));
         assert_eq!(
             controller.settings.graphs.surface_colors.background,
