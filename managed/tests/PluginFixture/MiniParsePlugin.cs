@@ -54,3 +54,30 @@ public sealed class MiniParseEmptyPlugin : IActPluginV1
     }
     public void DeInitPlugin() { }
 }
+
+// Fixed numeric column and original objects; this fixture never accesses user data.
+public sealed class MiniGraphFixturePlugin : IActPluginV1
+{
+    private readonly MiniParsePlugin inner = new();
+    public void InitPlugin(TabPage page, Label label)
+    {
+        inner.InitPlugin(page, label);
+        var root = ActGlobals.oFormActMain!;
+        root.AddCombatAction(new MasterSwing(1, false, "", new Dnum(50), DateTime.Now, root.GlobalTimeSorter, "Strike", "Second Source", "Physical", "Synthetic Target"));
+        CombatantData.ColumnDefs["mini-graph-value"] = new("Mini graph value", true, "REAL", "value",
+            actor => actor.Damage.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            actor => actor.Damage.ToString(System.Globalization.CultureInfo.InvariantCulture),
+            (left, right) => left.Damage.CompareTo(right.Damage));
+        CombatantData.ColumnDefs["mini-graph-zero"] = new("Zero", true, "REAL", "zero", _ => "0", _ => "0", (_, _) => 0);
+        CombatantData.ColumnDefs["mini-graph-negative"] = new("Negative", true, "REAL", "negative", _ => "-1", _ => "-1", (_, _) => 0);
+        CombatantData.ColumnDefs["mini-graph-infinite"] = new("Infinite", true, "REAL", "infinite", _ => "∞", _ => System.Globalization.CultureInfo.GetCultureInfo("en-US").NumberFormat.PositiveInfinitySymbol, (_, _) => 0);
+        CombatantData.ColumnDefs["mini-graph-fail"] = new("Fail", true, "REAL", "fail", _ => "", _ => throw new InvalidOperationException("synthetic SQL failure"), (_, _) => 0);
+        CombatantData.ColumnDefs["mini-graph-partial"] = new("Partial", true, "REAL", "partial", _ => "", actor => actor.Name == "Synthetic Target" ? throw new InvalidOperationException("synthetic row failure") : actor.Damage.ToString(System.Globalization.CultureInfo.InvariantCulture), (left, right) => left.Damage.CompareTo(right.Damage));
+        CombatantData.ColumnDefs["mini-graph-badsort"] = new("Bad sort", true, "REAL", "bad", _ => "1", _ => "1", (_, _) => throw new InvalidOperationException("synthetic sort failure"));
+    }
+    public void DeInitPlugin()
+    {
+        foreach (var key in new[] { "mini-graph-value", "mini-graph-zero", "mini-graph-negative", "mini-graph-infinite", "mini-graph-fail", "mini-graph-partial", "mini-graph-badsort" }) CombatantData.ColumnDefs.Remove(key);
+        inner.DeInitPlugin();
+    }
+}

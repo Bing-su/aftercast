@@ -19,6 +19,9 @@ struct Ticket {
 #[derive(Clone, Default)]
 struct Frame {
     output: Option<String>,
+    graph: Option<aftercast::MiniGraph>,
+    graph_mode: bool,
+    graph_totals: bool,
     error: Option<String>,
     truncated: bool,
     pending: bool,
@@ -63,12 +66,17 @@ pub(super) struct State {
     generation: u64,
     pending: Option<Ticket>,
     pending_settings: Option<(String, u8, Option<TextReportOptions>)>,
+    pending_graph_settings: Option<(bool, bool, bool)>,
+    last_ended_graph_settings: Option<(bool, bool, bool)>,
     last: Option<Duration>,
     clock: Option<Instant>,
     force_refresh: bool,
     last_ended: Option<EndedKey>,
     last_ended_profile: Option<Option<TextReportOptions>>,
     output: Option<String>,
+    graph: Option<aftercast::MiniGraph>,
+    graph_mode: bool,
+    graph_totals: bool,
     truncated: bool,
     error: Option<String>,
     window: WindowState,
@@ -91,6 +99,17 @@ impl State {
             .then_some(self.last_ended)
             .flatten()
     }
+    fn missing_profile(&mut self, now: Duration, error: String) {
+        self.error = Some(error);
+        self.last = Some(now);
+        self.output = None;
+        self.graph = None;
+        self.truncated = false;
+        self.last_ended = None;
+        self.last_ended_profile = None;
+        self.last_ended_graph_settings = None;
+        self.publish();
+    }
     fn window_open(&self) -> bool {
         self.window.alive.load(Ordering::SeqCst)
     }
@@ -105,6 +124,9 @@ impl State {
             .unwrap_or_else(std::sync::PoisonError::into_inner);
         *frame = Frame {
             output: self.output.clone(),
+            graph: self.graph.clone(),
+            graph_mode: self.graph_mode,
+            graph_totals: self.graph_totals,
             error: self.error.clone(),
             truncated: self.truncated,
             pending: self.pending.is_some(),
@@ -125,6 +147,7 @@ impl State {
         self.enabled = false;
         self.pending = None;
         self.pending_settings = None;
+        self.pending_graph_settings = None;
         self.invalidate();
     }
     fn observe_window(&mut self) {
@@ -141,7 +164,9 @@ impl State {
         self.force_refresh = false;
         self.last_ended = None;
         self.last_ended_profile = None;
+        self.last_ended_graph_settings = None;
         self.output = None;
+        self.graph = None;
         self.truncated = false;
         self.error = None;
         self.publish();
@@ -226,13 +251,8 @@ impl AppState {
             {
                 Some(profile) => Some(profile),
                 None => {
-                    self.mini_parse.error = Some(tr("mini-missing-profile"));
-                    self.mini_parse.last = Some(now);
-                    self.mini_parse.output = None;
-                    self.mini_parse.truncated = false;
-                    self.mini_parse.last_ended = None;
-                    self.mini_parse.last_ended_profile = None;
-                    self.mini_parse.publish();
+                    self.mini_parse
+                        .missing_profile(now, tr("mini-missing-profile"));
                     return None;
                 }
             }
@@ -241,6 +261,14 @@ impl AppState {
             session: self.revision.session,
             generation: self.mini_parse.generation,
         };
+        let graph_settings = (
+            self.settings.mini_parse.graph,
+            self.settings.graphs.only_allies,
+            self.settings.graphs.totals,
+        );
+        self.mini_parse.graph_mode = graph_settings.0;
+        self.mini_parse.graph_totals = graph_settings.2;
+        self.mini_parse.pending_graph_settings = Some(graph_settings);
         self.mini_parse.last = Some(now);
         self.mini_parse.pending = Some(ticket);
         self.mini_parse.pending_settings = Some((
@@ -250,12 +278,26 @@ impl AppState {
         ));
         self.mini_parse.publish();
         let forced = std::mem::take(&mut self.mini_parse.force_refresh);
-        let last_ended = if forced {
-            None
-        } else {
-            self.mini_parse.reusable_end(&profile)
-        };
+        let last_ended =
+            if forced || self.mini_parse.last_ended_graph_settings != Some(graph_settings) {
+                None
+            } else {
+                self.mini_parse.reusable_end(&profile)
+            };
         Some((ticket, handle, profile, last_ended))
+    }
+    fn mini_finish_graph(
+        &mut self,
+        ticket: Ticket,
+        result: Result<Option<(String, Option<EndedKey>)>, String>,
+        graph: Option<aftercast::MiniGraph>,
+    ) {
+        if self.mini_finish(ticket, result)
+            && let Some(graph) = graph
+        {
+            self.mini_parse.graph = Some(graph);
+            self.mini_parse.publish();
+        }
     }
     fn mini_finish(
         &mut self,
@@ -277,7 +319,17 @@ impl AppState {
                 .and_then(|file| file.settings.text_profiles.get(&name))
                 .cloned()
         };
-        if self.settings.mini_parse.profile != name
+        let graph_settings = (
+            self.settings.mini_parse.graph,
+            self.settings.graphs.only_allies,
+            self.settings.graphs.totals,
+        );
+        if self
+            .mini_parse
+            .pending_graph_settings
+            .take()
+            .is_some_and(|captured| captured != graph_settings)
+            || self.settings.mini_parse.profile != name
             || self.settings.mini_parse.interval_seconds != interval
             || current != profile
         {
@@ -299,6 +351,7 @@ impl AppState {
             || self.mini_parse.generation != ticket.generation
         {
             self.mini_parse.output = None;
+            self.mini_parse.graph = None;
             self.mini_parse.truncated = false;
             self.mini_parse.publish();
             return false;
@@ -306,6 +359,7 @@ impl AppState {
         match result {
             Ok(Some((output, ended))) => {
                 self.mini_parse.last_ended = ended;
+                self.mini_parse.last_ended_graph_settings = ended.map(|_| graph_settings);
                 self.mini_parse.last_ended_profile = ended.map(|_| profile);
                 let (output, truncated) = bounded_preview(output);
                 self.mini_parse.output = output;
@@ -318,6 +372,7 @@ impl AppState {
             }
             Err(error) => {
                 self.mini_parse.output = None;
+                self.mini_parse.graph = None;
                 self.mini_parse.truncated = false;
                 self.mini_parse.error = Some(error);
             }
@@ -370,6 +425,105 @@ async fn fetch(
         .then_some((active.summary.id, catalog.revision));
     Ok(report.map(|report| (report.text, ended)))
 }
+async fn fetch_graph(
+    handle: &HostHandle,
+    profile: Option<TextReportOptions>,
+    last_ended: Option<EndedKey>,
+    only_allies: bool,
+) -> Result<Option<(aftercast::MiniGraph, Option<EndedKey>)>, String> {
+    let Some(active) = handle
+        .current_zone_encounter()
+        .await
+        .map_err(|e| e.to_string())?
+    else {
+        return Ok(None);
+    };
+    let catalog = handle
+        .text_report_catalog()
+        .await
+        .map_err(|e| e.to_string())?;
+    let options = profile.unwrap_or_else(|| catalog.default_options.clone());
+    if options.sorting.is_empty() || !catalog.sort_columns.contains(&options.sorting) {
+        return Err("report-sort-missing".into());
+    }
+    if active.summary.status == EncounterStatus::Ended
+        && last_ended == Some((active.summary.id, catalog.revision))
+    {
+        return Ok(None);
+    }
+    let graph = handle
+        .mini_graph(active.summary.id, &options.sorting, only_allies)
+        .await
+        .map_err(|e| e.to_string())?;
+    let current = handle
+        .current_zone_encounter()
+        .await
+        .map_err(|e| e.to_string())?;
+    if current.as_ref().is_none_or(|current| {
+        current.summary.id != active.summary.id || current.summary.status != active.summary.status
+    }) {
+        return Ok(None);
+    }
+    let ended = (active.summary.status == EncounterStatus::Ended)
+        .then_some((active.summary.id, catalog.revision));
+    Ok(Some((graph, ended)))
+}
+
+fn mini_bar_style(value: f64, axis: f64) -> String {
+    format!("background:#3568a8;width:{:.3}%;", value / axis * 100.0)
+}
+
+#[component]
+fn GraphView(graph: aftercast::MiniGraph, totals: bool, style: String) -> Element {
+    let content = match graph.data {
+        None => {
+            rsx! {
+                p {
+                    if graph.no_actors {
+                        {tr("mini-graph-no-actors")}
+                    } else {
+                        {tr("mini-graph-empty")}
+                    }
+                }
+            }
+        }
+        Some(data) => {
+            let omitted = data.values.len().saturating_sub(512);
+            rsx! {
+                div { class: "space-y-2 rounded-md border border-border p-3 text-sm",
+                    p {
+                        {tr("mini-graph-axis")}
+                        ": {data.axis:.2}"
+                    }
+                    for item in data.values.iter().take(512) {
+                        div { class: "space-y-1",
+                            p { "{item.name}: {item.value:.2}" }
+                            div { class: "h-3 w-full rounded bg-muted",
+                                div {
+                                    class: "h-3 rounded",
+                                    style: mini_bar_style(item.value, data.axis),
+                                }
+                            }
+                        }
+                    }
+                    if omitted > 0 {
+                        p {
+                            "{omitted} "
+                            {tr("mini-graph-omitted")}
+                        }
+                    }
+                    if totals {
+                        p { "Total: {data.total:.2} · AVG: {data.average:.2}" }
+                    }
+                }
+            }
+        }
+    };
+    rsx! {
+        div { style, {content} }
+    }
+}
+
 fn launch(mut state: Signal<AppState>) {
     let work = {
         let mut current = state.write();
@@ -377,9 +531,22 @@ fn launch(mut state: Signal<AppState>) {
         current.mini_begin(now)
     };
     if let Some((ticket, handle, profile, last_ended)) = work {
+        let graph_settings = state
+            .peek()
+            .mini_parse
+            .pending_graph_settings
+            .unwrap_or((false, true, true));
         spawn_forever(async move {
-            let result = fetch(&handle, profile, last_ended).await;
-            state.write().mini_finish(ticket, result);
+            let (result, graph) = if graph_settings.0 {
+                match fetch_graph(&handle, profile, last_ended, graph_settings.1).await {
+                    Ok(Some((graph, ended))) => (Ok(Some((String::new(), ended))), Some(graph)),
+                    Ok(None) => (Ok(None), None),
+                    Err(error) => (Err(error), None),
+                }
+            } else {
+                (fetch(&handle, profile, last_ended).await, None)
+            };
+            state.write().mini_finish_graph(ticket, result, graph);
             let refresh = state.read().mini_parse.force_refresh;
             if refresh {
                 launch(state);
@@ -483,6 +650,10 @@ pub(super) fn Panel() -> Element {
     let missing_profile = !profile.is_empty() && !profiles.contains(&profile);
     let mini_style = current.settings.appearance.mini_style();
     let output = current.mini_parse.output.clone();
+    let graph = current.mini_parse.graph.clone();
+    let graph_mode = current.settings.mini_parse.graph;
+    let graph_totals = current.settings.graphs.totals;
+    let graph_allies = current.settings.graphs.only_allies;
     let truncated = current.mini_parse.truncated;
     let error = current.mini_parse.error.clone();
     let ready = current.phase == Phase::Ready && !current.exit_requested;
@@ -543,6 +714,58 @@ pub(super) fn Panel() -> Element {
                 div { class: "flex flex-wrap gap-2",
                     Button {
                         variant: ButtonVariant::Outline,
+                        disabled: !can_save,
+                        aria_pressed: graph_mode,
+                        onclick: move |_| {
+                            let mut s = state.write();
+                            if !s.can_save_settings() || s.settings.mini_parse.graph != graph_mode {
+                                return;
+                            }
+                            s.settings.mini_parse.graph = !graph_mode;
+                            s.mini_parse.graph_mode = !graph_mode;
+                            s.mini_parse.invalidate();
+                        },
+                        {tr("mini-graph-toggle")}
+                    }
+                    if graph_mode {
+                        Button {
+                            variant: ButtonVariant::Outline,
+                            disabled: !can_save,
+                            aria_pressed: graph_allies,
+                            onclick: move |_| {
+                                let mut s = state.write();
+                                if !s.can_save_settings() || !s.settings.mini_parse.graph
+                                    || s.settings.graphs.only_allies != graph_allies
+                                {
+                                    return;
+                                }
+                                s.settings.graphs.only_allies = !graph_allies;
+                                s.mini_parse.invalidate();
+                            },
+                            {tr("mini-graph-allies")}
+                        }
+                        Button {
+                            variant: ButtonVariant::Outline,
+                            disabled: !can_save,
+                            aria_pressed: graph_totals,
+                            onclick: move |_| {
+                                let mut s = state.write();
+                                if !s.can_save_settings() || !s.settings.mini_parse.graph
+                                    || s.settings.graphs.totals != graph_totals
+                                {
+                                    return;
+                                }
+                                s.settings.graphs.totals = !graph_totals;
+                                s.mini_parse.graph_totals = !graph_totals;
+                                s.mini_parse.invalidate();
+                            },
+                            {tr("mini-graph-totals")}
+                        }
+                    }
+                }
+                div { class: "flex flex-wrap gap-2",
+                    Button {
+                        variant: ButtonVariant::Outline,
                         disabled: !ready,
                         onclick: move |_| window::open(state),
                         {tr("mini-open-window")}
@@ -566,7 +789,20 @@ pub(super) fn Panel() -> Element {
                         {if error == "report-sort-missing" { tr("report-sort-missing") } else { error }}
                     }
                 }
-                if enabled {
+                if enabled && graph_mode {
+                    if let Some(graph) = graph {
+                        GraphView {
+                            graph,
+                            totals: graph_totals,
+                            style: mini_style.clone(),
+                        }
+                    } else if pending {
+                        p { {tr("mini-loading")} }
+                    } else {
+                        p { {tr("mini-empty")} }
+                    }
+                }
+                if enabled && !graph_mode {
                     pre {
                         class: "max-h-80 overflow-auto whitespace-pre-wrap rounded-md border border-border p-3 text-sm",
                         style: mini_style,
@@ -591,6 +827,186 @@ pub(super) fn Panel() -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn graph_bar_color_and_axis_scale_are_deterministic() {
+        assert_eq!(
+            mini_bar_style(50.0, 100.0),
+            "background:#3568a8;width:50.000%;"
+        );
+        assert_eq!(
+            mini_bar_style(100.0, 110.0),
+            "background:#3568a8;width:90.909%;"
+        );
+    }
+    #[test]
+    fn graph_options_retire_pending_work_and_window_state() {
+        let mut ui = AppState::new("/tmp".into());
+        ui.phase = Phase::Ready;
+        ui.screen = "analysis";
+        ui.revision.session = 7;
+        ui.mini_parse.enabled = true;
+        let ticket = Ticket {
+            session: 7,
+            generation: ui.mini_parse.generation,
+        };
+        ui.mini_parse.pending = Some(ticket);
+        ui.mini_parse.pending_settings = Some((String::new(), 5, None));
+        ui.mini_parse.pending_graph_settings = Some((true, true, true));
+        ui.settings.mini_parse.graph = true;
+        ui.settings.graphs.only_allies = false;
+        assert!(!ui.mini_finish(ticket, Ok(Some((String::new(), None)))));
+        assert!(ui.mini_parse.graph.is_none());
+        let first = ui.mini_parse.window.reserve().unwrap();
+        assert!(ui.mini_parse.window.resolve(first, true));
+        ui.mini_parse.reset_session();
+        assert!(!ui.mini_parse.window.resolve(first, true));
+        assert!(ui.mini_parse.graph.is_none());
+    }
+    #[tokio::test(flavor = "current_thread")]
+    #[ignore = "requires managed fixture; run mise run test:gui-state"]
+    async fn mini_graph_ui_contract_worker_reads_numeric_values_without_report_capture_mutation() {
+        let (_temp, host) = start_synthetic_host().await;
+        assert!(
+            fetch_graph(&host.handle(), None, None, false)
+                .await
+                .unwrap()
+                .is_none()
+        );
+        add_plugin(&host, "MiniGraphFixturePlugin").await;
+        let active = tokio::time::timeout(Duration::from_secs(2), wait_for_graph_actors(&host))
+            .await
+            .expect("synthetic actions drained");
+        let capture = host
+            .capture_hierarchy_html(&[active.summary.id], aftercast::TableLevel::Combatant)
+            .await
+            .unwrap()
+            .unwrap();
+        let profile = TextReportOptions {
+            sorting: "mini-graph-value".into(),
+            ..Default::default()
+        };
+        let (graph, _) = fetch_graph(&host.handle(), Some(profile.clone()), None, false)
+            .await
+            .unwrap()
+            .unwrap();
+        let mut cached = State {
+            graph: Some(graph.clone()),
+            ..Default::default()
+        };
+        cached.missing_profile(Duration::ZERO, "missing profile".into());
+        assert!(cached.graph.is_none());
+        assert_eq!(cached.error.as_deref(), Some("missing profile"));
+        let data = graph.data.unwrap();
+        assert_eq!(data.values.len(), 2);
+        assert_eq!(data.values[0].name, "Synthetic Source");
+        assert_eq!(data.values[0].value, 100.0);
+        assert_eq!(data.values[1].name, "Second Source");
+        assert_eq!(data.values[1].value, 50.0);
+        assert!((data.axis - 110.0).abs() < 0.00001);
+        assert_eq!(data.total, 150.0);
+        assert_eq!(data.average, 75.0);
+        let partial = host
+            .mini_graph(active.summary.id, "mini-graph-partial", false)
+            .await
+            .expect("row exception is skipped");
+        assert_eq!(partial.data.expect("remaining rows").total, 150.0);
+        for key in ["mini-graph-zero", "mini-graph-negative", "mini-graph-fail"] {
+            let empty = host
+                .mini_graph(active.summary.id, key, false)
+                .await
+                .expect("empty numeric graph");
+            assert!(!empty.no_actors && empty.data.is_none());
+        }
+        host.mini_graph(active.summary.id, "mini-graph-infinite", false)
+            .await
+            .expect_err("nonfinite graph must fail explicitly");
+        host.mini_graph(active.summary.id, "mini-graph-badsort", false)
+            .await
+            .expect_err("sort callback must fail explicitly");
+        verify_graph_capture_and_transition(&host, active.summary.id, &capture, profile).await;
+        host.shutdown().await.unwrap();
+    }
+
+    async fn verify_graph_capture_and_transition(
+        host: &aftercast::Host,
+        id: EncounterId,
+        capture: &aftercast::HierarchyHtmlSelection,
+        profile: TextReportOptions,
+    ) {
+        let levels = [aftercast::HierarchyHtmlLevel {
+            level: aftercast::TableLevel::Combatant,
+            columns: vec!["mini-graph-value".into()],
+            sort: None,
+        }];
+        host.hierarchy_html(capture, &levels)
+            .await
+            .expect("mini graph must not retire independent HTML capture");
+        host.mini_graph(id, "missing-column", false)
+            .await
+            .expect_err("missing graph key");
+        let mut invalid = profile;
+        invalid.sorting = "missing-column".into();
+        fetch_graph(&host.handle(), Some(invalid), None, false)
+            .await
+            .expect_err("missing profile key");
+        add_plugin(host, "MiniParseEndPlugin").await;
+        let (ended, key) = fetch_graph(
+            &host.handle(),
+            Some(TextReportOptions {
+                sorting: "mini-graph-value".into(),
+                ..Default::default()
+            }),
+            None,
+            false,
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(ended.data.is_some());
+        assert!(key.is_some());
+        add_plugin(host, "MiniParseNextPlugin").await;
+        let next = tokio::time::timeout(Duration::from_secs(2), wait_for_next_graph(host, key))
+            .await
+            .expect("next encounter transition");
+        assert!(next.0.data.is_some());
+    }
+    async fn wait_for_graph_actors(host: &aftercast::Host) -> aftercast::EncounterDetail {
+        loop {
+            if let Some(active) = host
+                .current_zone_encounter()
+                .await
+                .expect("current encounter")
+                && let Ok(graph) = host
+                    .mini_graph(active.summary.id, "mini-graph-value", false)
+                    .await
+                && graph
+                    .data
+                    .as_ref()
+                    .is_some_and(|data| data.values.len() == 2)
+            {
+                return active;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
+    async fn wait_for_next_graph(
+        host: &aftercast::Host,
+        key: Option<EndedKey>,
+    ) -> (aftercast::MiniGraph, Option<EndedKey>) {
+        loop {
+            let options = TextReportOptions {
+                sorting: "mini-graph-value".into(),
+                ..Default::default()
+            };
+            if let Some(next) = fetch_graph(&host.handle(), Some(options), key, false)
+                .await
+                .expect("next graph")
+            {
+                return next;
+            }
+            tokio::time::sleep(Duration::from_millis(5)).await;
+        }
+    }
     #[test]
     fn window_style_snapshot_survives_session_reset() {
         let mut state = State {
@@ -869,6 +1285,7 @@ mod tests {
     #[ignore = "requires managed fixture; run mise run test:gui-state"]
     async fn empty_combat_publishes_notification_and_safe_frame() {
         let (_temp, host) = start_synthetic_host().await;
+        add_plugin(&host, "MiniParseRegistryPlugin").await;
         let mut changes = host.handle().combat_changes();
         changes.borrow_and_update();
         add_plugin(&host, "MiniParseEmptyPlugin").await;
@@ -882,6 +1299,19 @@ mod tests {
             .expect("current")
             .expect("ended empty");
         assert_eq!(current.summary.combatants, 0);
+        let (empty, _) = fetch_graph(
+            &host.handle(),
+            Some(TextReportOptions {
+                sorting: "mini-extra".into(),
+                ..Default::default()
+            }),
+            None,
+            false,
+        )
+        .await
+        .expect("empty graph")
+        .expect("empty encounter");
+        assert!(empty.no_actors && empty.data.is_none());
         let frame = fetch(&host.handle(), None, None)
             .await
             .expect("empty frame");

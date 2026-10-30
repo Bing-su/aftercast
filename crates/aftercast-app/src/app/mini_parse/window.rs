@@ -144,6 +144,7 @@ fn root(props: Props) -> Element {
         };
     }
     let current = frame.read().clone();
+    let body = frame_content(current.clone());
     rsx! {
         style { {include_str!("../../../assets/tailwind.css")} }
         main {
@@ -162,6 +163,30 @@ fn root(props: Props) -> Element {
                     {if error == "report-sort-missing" { tr("report-sort-missing") } else { error }}
                 }
             }
+            {body}
+            if current.truncated && !current.graph_mode {
+                p { class: "text-xs text-muted-foreground", {tr("mini-truncated")} }
+            }
+        }
+    }
+}
+
+fn frame_content(current: Frame) -> Element {
+    rsx! {
+        if current.graph_mode {
+            if let Some(graph) = current.graph {
+                GraphView {
+                    graph,
+                    totals: current.graph_totals,
+                    style: current.style.clone(),
+                }
+            } else if current.pending {
+                p { {tr("mini-loading")} }
+            } else {
+                p { {tr("mini-empty")} }
+            }
+        }
+        if !current.graph_mode {
             pre {
                 class: "max-h-[70vh] overflow-auto whitespace-pre-wrap rounded-md border border-border p-3 text-sm",
                 style: current.style,
@@ -173,9 +198,6 @@ fn root(props: Props) -> Element {
                         None => tr("mini-empty"),
                     }
                 }
-            }
-            if current.truncated {
-                p { class: "text-xs text-muted-foreground", {tr("mini-truncated")} }
             }
         }
     }

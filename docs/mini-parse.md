@@ -42,13 +42,38 @@ behavior. Plugin presets can be copied to a local profile in the report editor.
 
 Output is escaped text with an explicit 64 KiB preview limit; empty text and no
 current encounter are distinct. No clipboard, network, audio or game input is
-used by this preview. ACT's native mini window, click-through, opacity, graph and
-native font alignment are not reproduced. No native window clicks or Windows
+used by this preview. ACT's native mini window, click-through, opacity and native font alignment are not reproduced. No native window clicks or Windows
 execution have been validated.
 
 ACT’s native graph branch passes the selected format’s sorting key and the
 mini picture-box dimensions to `GenEncounterGraph`; its aligned text branch
-passes the native control font to the `GetTextExport` overload. The existing
-`GraphNumeric`/`GraphSvg` path serves static hierarchy reports and is not yet
-wired to this window or validated as the native mini graph. Font measurement,
-click-through and opacity remain separate native compatibility work.
+passes the native control font to the `GetTextExport` overload. The app can now
+select a local Simple graph instead of text. The same registered sorting key and
+SQL callback, owner-thread guard, selective export filter and Simple numeric
+calculation used by hierarchy reports are reused. A local combatant-only capture
+does not replace a user's separate hierarchy report capture. The current-zone
+encounter identity/status is checked before and after the request, and the normal
+mini ticket prevents a late frame entering a replaced session or closed window.
+The selected key disappearing or a sort callback failure is an explicit error.
+Per-row SQL failures follow the existing ACT-derived Simple contract and are skipped.
+
+The graph mode is saved with the mini preferences and defaults to text for existing
+settings; that migration default is an aftercast choice, not a verified native ACT
+default. The existing global Simple graph ally and totals options are reused and
+saved with graph preferences. Positive finite values, ACT order, axis, total and
+average are computed by `GraphNumeric.Simple`; zero and negative values are not
+plotted, no actors and no positive values are distinct, and nonfinite geometry is
+rejected explicitly. The UI builds escaped text and bounded horizontal blue bars,
+never runs graph HTML, and displays at most 512 rows with the omitted count; the
+axis and totals still include all accepted rows. The blue color, horizontal layout
+and two-decimal labels are simplified aftercast presentation, not ACT's native GDI
+palette, label formatting, dimensions or pixel alignment. A capture is limited to
+16,384 rows, two seconds, 4,096 UTF-16 units / 8 KiB UTF-8 per label and a conservative 3 MiB JSON-expansion budget; the worker reply limit is 4 MiB. Callbacks already running cannot be preempted.
+
+Synthetic worker/controller tests cover numeric axes/order/totals, zero/negative,
+nonfinite input, row/sort callback failure, missing keys, empty combat, final frame,
+new encounter, session/window invalidation and preservation of an independent
+hierarchy report capture. The checked-in original-derived Simple numeric oracle
+verifies arithmetic, not native GDI execution. Native window clicks, native ACT
+scheduling, WinForms drawing, font measurement, click-through, opacity and Windows
+execution remain unverified.

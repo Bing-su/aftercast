@@ -54,6 +54,14 @@ internal static class SimpleGraphContractChecks
         try { Aftercast.ActCompat.GraphNumeric.Simple([new("a",double.MaxValue),new("b",double.MaxValue)]);throw new Exception("Expected overflow rejection"); } catch(InvalidDataException) { }
         _=Aftercast.ActCompat.GraphNumeric.Simple(Enumerable.Repeat(new Aftercast.ActCompat.GraphNumeric.SimpleValue("a",1),16384));
         try { Aftercast.ActCompat.GraphNumeric.Simple(Enumerable.Repeat(new Aftercast.ActCompat.GraphNumeric.SimpleValue("a",1),16385));throw new Exception("Expected row limit"); } catch(InvalidDataException) { }
+        var validate = typeof(Advanced_Combat_Tracker.FormActMain).GetMethod("ValidateMiniGraphOutput", System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static)!;
+        static Aftercast.ActCompat.GraphNumeric.SimpleResult Result(Aftercast.ActCompat.GraphNumeric.SimpleValue[] rows) => new(rows, 110, 100, 100);
+        validate.Invoke(null, [Result([new("normal", 100)])]);
+        foreach (var rows in new[] { new[] { new Aftercast.ActCompat.GraphNumeric.SimpleValue(new string('x', 4097), 1) }, Enumerable.Repeat(new Aftercast.ActCompat.GraphNumeric.SimpleValue(new string('x', 256), 1), 16384).ToArray() })
+        {
+            try { validate.Invoke(null, [Result(rows)]); throw new Exception("Mini graph budget accepted oversized labels"); }
+            catch (System.Reflection.TargetInvocationException error) when (error.InnerException is InvalidDataException) { }
+        }
         var previous=CultureInfo.CurrentCulture;
         try
         {

@@ -858,3 +858,11 @@ odbc-rule-invalid = SQL 규칙이 잘못됐거나 너무 많습니다.
 
 selective-apply = 현재 세션에 적용
 selective-applied = 선택적 파싱 설정을 현재 세션에 적용했습니다.
+
+mini-graph-toggle = 그래프
+mini-graph-allies = 아군만
+mini-graph-totals = 합계 표시
+mini-graph-axis = 축
+mini-graph-no-actors = 전투원이 없습니다
+mini-graph-empty = 양수 값이 없습니다
+mini-graph-omitted = 개 행 생략

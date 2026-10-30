@@ -59,6 +59,30 @@ struct RawTriggerBatchPreview {
     conflicts: Vec<String>,
 }
 
+/// Bounded ACT Simple mini graph data, rendered as text and bars by the caller.
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MiniGraphValue {
+    pub name: String,
+    pub value: f64,
+}
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MiniGraphSeries {
+    pub values: Vec<MiniGraphValue>,
+    pub axis: f64,
+    pub total: f64,
+    pub average: f64,
+}
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct MiniGraph {
+    encounter_id: u64,
+    column: String,
+    pub no_actors: bool,
+    pub data: Option<MiniGraphSeries>,
+}
+
 /// An immutable mixed Config preview owned by one host session.
 #[derive(Debug, Clone)]
 pub struct MixedConfigPreview {
@@ -229,6 +253,25 @@ impl HostHandle {
             process_imports: page.process_imports,
             items: page.items,
         })
+    }
+    /// Capture a Simple graph without invalidating independent report selections.
+    pub async fn mini_graph(
+        &self,
+        encounter: crate::EncounterId,
+        column: &str,
+        only_allies: bool,
+    ) -> Result<MiniGraph, Error> {
+        if encounter.session != self.session
+            || encounter.value == 0
+            || column.is_empty()
+            || column.len() > 256
+            || column.chars().any(char::is_control)
+        {
+            return Err(trigger_error("invalid mini graph encounter or column"));
+        }
+        let graph: MiniGraph = self.trigger_call(15, &serde_json::json!({"snapshot":encounter.value,"key":column,"originalLines":only_allies})).await?;
+        validate_mini_graph(&graph, encounter.value, column)?;
+        Ok(graph)
     }
     /// Apply explicit session-only parsing options. Active imports must finish first.
     pub async fn apply_selective_options(
@@ -512,6 +555,29 @@ impl HostHandle {
         decode_reply(&packet)
     }
 }
+fn validate_mini_graph(graph: &MiniGraph, encounter: u64, column: &str) -> Result<(), Error> {
+    if graph.encounter_id != encounter
+        || graph.column != column
+        || graph.data.as_ref().is_some_and(|data| {
+            data.values.is_empty()
+                || data.values.len() > 16384
+                || !data.axis.is_finite()
+                || data.axis <= 0.0
+                || !data.total.is_finite()
+                || !data.average.is_finite()
+                || data.values.iter().any(|item| {
+                    item.name.len() > 8192
+                        || !item.value.is_finite()
+                        || item.value <= 0.0
+                        || item.value > data.axis
+                })
+        })
+        || graph.no_actors && graph.data.is_some()
+    {
+        return Err(trigger_error("invalid mini graph response"));
+    }
+    Ok(())
+}
 fn validate_mixed_preview(
     raw: MixedResponse,
     session: u64,
@@ -577,6 +643,49 @@ fn decode_reply<T: DeserializeOwned>(packet: &[u8]) -> Result<T, Error> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn mini_graph_response_rejects_malformed_values_and_identity() {
+        let valid = serde_json::json!({"encounterId":1,"column":"Damage","noActors":false,"data":{"values":[{"name":"A","value":100.0}],"axis":110.0,"total":100.0,"average":100.0}});
+        let parse = |value| serde_json::from_value::<MiniGraph>(value).expect("graph JSON");
+        validate_mini_graph(&parse(valid.clone()), 1, "Damage").expect("valid graph");
+        for bad in [
+            {
+                let mut v = valid.clone();
+                v["encounterId"] = 2.into();
+                v
+            },
+            {
+                let mut v = valid.clone();
+                v["column"] = "other".into();
+                v
+            },
+            {
+                let mut v = valid.clone();
+                v["noActors"] = true.into();
+                v
+            },
+            {
+                let mut v = valid.clone();
+                v["data"]["axis"] = 0.into();
+                v
+            },
+            {
+                let mut v = valid.clone();
+                v["data"]["values"][0]["value"] = (-1).into();
+                v
+            },
+            {
+                let mut v = valid.clone();
+                v["data"]["values"][0]["value"] = 111.into();
+                v
+            },
+        ] {
+            validate_mini_graph(&parse(bad), 1, "Damage").expect_err("invalid graph");
+        }
+        let mut extra = valid;
+        extra["unexpected"] = true.into();
+        serde_json::from_value::<MiniGraph>(extra).expect_err("unknown graph field");
+    }
     #[test]
     fn mixed_preview_rejects_malformed_worker_responses() {
         let trigger = TriggerDefinition {

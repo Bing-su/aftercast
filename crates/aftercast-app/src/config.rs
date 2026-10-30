@@ -154,12 +154,14 @@ impl AppearancePreferences {
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct MiniParsePreferences {
+    pub graph: bool,
     pub interval_seconds: u8,
     pub profile: String,
 }
 impl Default for MiniParsePreferences {
     fn default() -> Self {
         Self {
+            graph: false,
             interval_seconds: 5,
             profile: String::new(),
         }
@@ -706,6 +708,7 @@ pub(crate) fn valid_text_profile(name: &str, profile: &aftercast::TextReportOpti
     reason = "TOML indexing inserts mini parse settings"
 )]
 fn save_mini_parse(document: &mut DocumentMut, settings: &MiniParsePreferences) {
+    set(&mut document["mini_parse"]["graph"], value(settings.graph));
     set(
         &mut document["mini_parse"]["interval_seconds"],
         value(i64::from(settings.interval_seconds)),
@@ -1412,11 +1415,14 @@ mod text_profile_checks {
         let mut file = ConfigFile::load(root).expect("old config");
         assert_eq!(file.settings.mini_parse.interval_seconds, 5);
         assert!(file.settings.mini_parse.profile.is_empty());
+        assert!(!file.settings.mini_parse.graph);
+        file.settings.mini_parse.graph = true;
         file.settings.mini_parse.interval_seconds = 12;
         file.settings.mini_parse.profile = "synthetic".into();
         file.save(root).expect("save");
         let mut loaded = ConfigFile::load(root).expect("reload");
         assert_eq!(loaded.settings.mini_parse.interval_seconds, 12);
+        assert!(loaded.settings.mini_parse.graph);
         assert_eq!(loaded.settings.mini_parse.profile, "synthetic");
         loaded.settings.mini_parse.interval_seconds = 0;
         assert!(loaded.save(root).is_err());

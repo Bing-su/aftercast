@@ -18,7 +18,7 @@ public static partial class EntryPoint
         Owner(unchecked((ulong)Marshal.ReadInt64(buffer, 8)));
         var command = Marshal.ReadInt32(buffer, 16);
         var length = Marshal.ReadInt32(buffer, 20);
-        if (command is < 1 or > 14 || length is < 2 or > 128 * 1024 || Marshal.ReadInt64(buffer, 24) != 0)
+        if (command is < 1 or > 15 || length is < 2 or > 128 * 1024 || Marshal.ReadInt64(buffer, 24) != 0)
             throw new ArgumentException("Invalid trigger command fields");
         var bytes = new byte[length]; Marshal.Copy(buffer + header, bytes, 0, length);
         var text = new UTF8Encoding(false, true).GetString(bytes);

@@ -172,6 +172,7 @@ namespace Aftercast.ActCompat
             add => main.OriginalLogRecordRead += value;
             remove => main.OriginalLogRecordRead -= value;
         }
+        public MiniGraphData ReadMiniGraph(ulong encounterId, string column, bool onlyAllies) => main.ReadMiniGraph(encounterId, column, onlyAllies);
         public Tuple<long, string> Errors => main.OwnerErrors;
         public Tuple<long, string> Diagnostics => main.Errors;
         public string[] RecentDiagnostics => main.RecentDiagnostics;

@@ -858,3 +858,11 @@ odbc-rule-invalid = Invalid or too many SQL rules.
 
 selective-apply = Apply to current session
 selective-applied = Selective parsing applied to the current session.
+
+mini-graph-toggle = Graph
+mini-graph-allies = Only allies
+mini-graph-totals = Show totals
+mini-graph-axis = Axis
+mini-graph-no-actors = No actors
+mini-graph-empty = No positive values
+mini-graph-omitted = additional rows omitted
