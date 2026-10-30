@@ -191,6 +191,7 @@ impl Draft {
             use_suffix: true,
             suffix_decimals: true,
             bar_colors: crate::config::GraphSettings::default().bar_colors,
+            surface_colors: crate::config::GraphSurfaceColors::default(),
             distribution: self.graph_distribution.clone(),
             action_sort: self.graph_action_sort.clone(),
             all_label: self.graph_all.clone(),
@@ -359,6 +360,7 @@ impl AppState {
         graph.use_suffix = self.settings.graphs.use_suffix;
         graph.suffix_decimals = self.settings.graphs.suffix_decimals;
         graph.bar_colors = self.settings.graphs.bar_colors.clone();
+        graph.surface_colors = self.settings.graphs.surface_colors.clone();
         self.settings.graphs = graph;
         Ok(true)
     }

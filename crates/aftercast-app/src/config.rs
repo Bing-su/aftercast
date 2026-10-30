@@ -198,6 +198,58 @@ impl AudioPreferences {
     }
 }
 
+/// ACT encounter-bar graph surface colors. System colors use explicit cross-platform fallbacks.
+#[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(default)]
+pub struct GraphSurfaceColors {
+    pub background: String,
+    pub legend: String,
+    pub outline: String,
+    pub grid: String,
+    pub text: String,
+    pub totals: String,
+}
+impl Default for GraphSurfaceColors {
+    fn default() -> Self {
+        Self {
+            background: "#f5f5f5".into(),
+            legend: "#000000".into(),
+            outline: "#000000".into(),
+            grid: "#a0a0a0".into(),
+            text: "#ffffff".into(),
+            totals: "#000000".into(),
+        }
+    }
+}
+impl GraphSurfaceColors {
+    pub(crate) fn fields(&self) -> [&str; 6] {
+        [
+            &self.background,
+            &self.legend,
+            &self.outline,
+            &self.grid,
+            &self.text,
+            &self.totals,
+        ]
+    }
+    pub(crate) fn field_mut(&mut self, index: usize) -> Option<&mut String> {
+        match index {
+            0 => Some(&mut self.background),
+            1 => Some(&mut self.legend),
+            2 => Some(&mut self.outline),
+            3 => Some(&mut self.grid),
+            4 => Some(&mut self.text),
+            5 => Some(&mut self.totals),
+            _ => None,
+        }
+    }
+    pub(crate) fn valid(&self) -> bool {
+        self.fields()
+            .iter()
+            .all(|color| !color.is_empty() && valid_color(color))
+    }
+}
+
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(default)]
 pub struct GraphSettings {
@@ -211,6 +263,7 @@ pub struct GraphSettings {
     pub use_suffix: bool,
     pub suffix_decimals: bool,
     pub bar_colors: [String; 3],
+    pub surface_colors: GraphSurfaceColors,
     pub distribution: String,
     pub action_sort: String,
     pub all_label: String,
@@ -230,6 +283,7 @@ impl Default for GraphSettings {
             use_suffix: true,
             suffix_decimals: true,
             bar_colors: ["#8b0000".into(), "#00008b".into(), "#9400d3".into()],
+            surface_colors: GraphSurfaceColors::default(),
             distribution: String::new(),
             action_sort: String::new(),
             all_label: "All".into(),
@@ -241,6 +295,7 @@ impl Default for GraphSettings {
 impl GraphSettings {
     pub(crate) fn validate(&self) -> Result<()> {
         if !(1..=120).contains(&self.window)
+            || !self.surface_colors.valid()
             || self
                 .bar_colors
                 .iter()
@@ -707,6 +762,12 @@ fn save_graphs(document: &mut DocumentMut, graph: &GraphSettings) {
                 .collect::<toml_edit::Array>(),
         ),
     );
+    for (key, color) in ["background", "legend", "outline", "grid", "text", "totals"]
+        .into_iter()
+        .zip(graph.surface_colors.fields())
+    {
+        set(&mut document["graphs"]["surface_colors"][key], value(color));
+    }
     if let Some(keys) = &graph.solo_categories {
         set(
             &mut document["graphs"]["solo_categories"],
@@ -964,11 +1025,15 @@ mod tests {
         changed.settings.graphs.use_suffix = false;
         changed.settings.graphs.suffix_decimals = false;
         changed.settings.graphs.bar_colors = ["#123456".into(), "#abcdef".into(), "#abcdef".into()];
+        changed.settings.graphs.surface_colors.background = "#112233".into();
+        changed.settings.graphs.surface_colors.totals = "#fedcba".into();
         changed.save(root).expect("save changed levels");
         let loaded = super::ConfigFile::load(root).expect("restart");
         assert_eq!(loaded.settings.graphs.levels, [false, true, false, false]);
         assert!(!loaded.settings.graphs.use_suffix && !loaded.settings.graphs.suffix_decimals);
         assert_eq!(loaded.settings.graphs.bar_colors[0], "#123456");
+        assert_eq!(loaded.settings.graphs.surface_colors.background, "#112233");
+        assert_eq!(loaded.settings.graphs.surface_colors.totals, "#fedcba");
         let saved = std::fs::read_to_string(root.join("config.toml")).expect("changed config");
         assert_eq!(
             loaded.settings.graphs.solo_categories,
@@ -984,6 +1049,13 @@ mod tests {
         assert!(bad_color.save(root).is_err());
         assert_eq!(
             std::fs::read_to_string(root.join("config.toml")).expect("unchanged colors"),
+            saved
+        );
+        let mut bad_surface = loaded.clone();
+        bad_surface.settings.graphs.surface_colors.grid = "red;display:none".into();
+        assert!(bad_surface.save(root).is_err());
+        assert_eq!(
+            std::fs::read_to_string(root.join("config.toml")).expect("unchanged surface"),
             saved
         );
         let mut bad = loaded.clone();

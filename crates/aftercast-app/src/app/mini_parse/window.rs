@@ -36,6 +36,7 @@ pub(super) fn open(mut state: Signal<AppState>) {
         };
         current.mini_parse.mini_style = current.settings.appearance.mini_style();
         current.mini_parse.bar_colors = current.settings.graphs.bar_colors.clone();
+        current.mini_parse.surface_colors = current.settings.graphs.surface_colors.clone();
         current.mini_parse.publish();
         let appearance = super::super::log_window::WindowAppearance {
             title: tr("mini-title"),
@@ -181,6 +182,7 @@ fn frame_content(current: Frame) -> Element {
                     totals: current.graph_totals,
                     style: current.style.clone(),
                     colors: current.bar_colors.clone(),
+                    surface: current.surface_colors.clone(),
                 }
             } else if current.pending {
                 p { {tr("mini-loading")} }

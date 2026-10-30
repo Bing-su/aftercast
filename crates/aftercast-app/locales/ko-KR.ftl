@@ -873,3 +873,10 @@ mini-graph-suffix-decimals = 접미사 소수점
 mini-graph-color-one = 막대 색상 1 (#RRGGBB)
 mini-graph-color-two = 막대 색상 2 (#RRGGBB)
 mini-graph-color-self = 내 막대 색상 (#RRGGBB)
+
+mini-surface-background = 그래프 배경 (#RRGGBB)
+mini-surface-legend = 축 범례 (#RRGGBB)
+mini-surface-outline = 테두리 (#RRGGBB)
+mini-surface-grid = 격자선 (#RRGGBB)
+mini-surface-text = 막대 글자 (#RRGGBB)
+mini-surface-totals = 합계와 평균 (#RRGGBB)

@@ -873,3 +873,10 @@ mini-graph-suffix-decimals = Suffix decimals
 mini-graph-color-one = Bar color 1 (#RRGGBB)
 mini-graph-color-two = Bar color 2 (#RRGGBB)
 mini-graph-color-self = Personal bar color (#RRGGBB)
+
+mini-surface-background = Graph background (#RRGGBB)
+mini-surface-legend = Axis legend (#RRGGBB)
+mini-surface-outline = Outline (#RRGGBB)
+mini-surface-grid = Grid lines (#RRGGBB)
+mini-surface-text = Bar text (#RRGGBB)
+mini-surface-totals = Total and average (#RRGGBB)

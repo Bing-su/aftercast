@@ -1,0 +1,10 @@
+source = "ACT 3.8.5.288 Options_ColorGraphing and FormActMain.GenEncounterGraph; SystemColors values are cross-platform fallbacks"
+total_alpha = 100
+
+[defaults]
+background = "#f5f5f5"
+legend = "#000000"
+outline = "#000000"
+grid = "#a0a0a0"
+text = "#ffffff"
+totals = "#000000"

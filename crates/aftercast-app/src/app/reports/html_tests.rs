@@ -781,6 +781,7 @@ fn graph_settings_loading_and_save_snapshot_are_guarded() {
     ui.settings.graphs.use_suffix = false;
     ui.settings.graphs.suffix_decimals = false;
     ui.settings.graphs.bar_colors = ["#123456".into(), "#abcdef".into(), "#334455".into()];
+    ui.settings.graphs.surface_colors.legend = "#112233".into();
     assert!(ui.report_html_graph_edit(ui.report_token(), "window", "20".into()));
     assert!(
         !ui.report_html_prepare_graph_save(token)
@@ -807,6 +808,7 @@ fn graph_settings_loading_and_save_snapshot_are_guarded() {
         .graphs;
     assert!(!persisted.use_suffix && !persisted.suffix_decimals);
     assert_eq!(persisted.bar_colors, ["#123456", "#abcdef", "#334455"]);
+    assert_eq!(persisted.surface_colors.legend, "#112233");
     assert_eq!(ui.reports.html.graph_window, "20");
 }
 

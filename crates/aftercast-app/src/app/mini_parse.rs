@@ -23,6 +23,7 @@ struct Frame {
     graph_mode: bool,
     graph_totals: bool,
     bar_colors: [String; 3],
+    surface_colors: crate::config::GraphSurfaceColors,
     error: Option<String>,
     truncated: bool,
     pending: bool,
@@ -83,6 +84,7 @@ pub(super) struct State {
     window: WindowState,
     mini_style: String,
     bar_colors: [String; 3],
+    surface_colors: crate::config::GraphSurfaceColors,
 }
 impl State {
     fn now(&mut self) -> Duration {
@@ -130,6 +132,7 @@ impl State {
             graph_mode: self.graph_mode,
             graph_totals: self.graph_totals,
             bar_colors: self.bar_colors.clone(),
+            surface_colors: self.surface_colors.clone(),
             error: self.error.clone(),
             truncated: self.truncated,
             pending: self.pending.is_some(),
@@ -493,6 +496,16 @@ async fn fetch_graph_options(
     Ok(Some((graph, ended)))
 }
 
+fn mini_bar_color(index: usize, is_self: bool, colors: &[String; 3]) -> &str {
+    let slot = if is_self { 2 } else { index % 2 };
+    let defaults = ["#8b0000", "#00008b", "#9400d3"];
+    let candidate = colors.get(slot).map(String::as_str).unwrap_or("");
+    if !candidate.is_empty() && crate::config::valid_color(candidate) {
+        candidate
+    } else {
+        defaults.get(slot).copied().unwrap_or("#8b0000")
+    }
+}
 fn mini_bar_style(
     value: f64,
     axis: f64,
@@ -500,28 +513,66 @@ fn mini_bar_style(
     is_self: bool,
     colors: &[String; 3],
 ) -> String {
-    let slot = if is_self { 2 } else { index % 2 };
-    let defaults = ["#8b0000", "#00008b", "#9400d3"];
-    let candidate = colors.get(slot).map(String::as_str).unwrap_or("");
-    let color = if !candidate.is_empty() && crate::config::valid_color(candidate) {
-        candidate
-    } else {
-        defaults.get(slot).copied().unwrap_or("#8b0000")
-    };
+    let color = mini_bar_color(index, is_self, colors);
     format!("background:{color};width:{:.3}%;", value / axis * 100.0)
 }
 
+fn safe_surface_color<'a>(candidate: &'a str, fallback: &'a str) -> &'a str {
+    if !candidate.is_empty() && crate::config::valid_color(candidate) {
+        candidate
+    } else {
+        fallback
+    }
+}
+fn total_color(color: &str) -> String {
+    let value = u32::from_str_radix(
+        safe_surface_color(color, "#000000")
+            .strip_prefix('#')
+            .unwrap_or("000000"),
+        16,
+    )
+    .unwrap_or(0);
+    format!(
+        "rgba({},{},{},0.392157)",
+        (value >> 16) & 255,
+        (value >> 8) & 255,
+        value & 255
+    )
+}
+fn graph_surface_style(surface: &crate::config::GraphSurfaceColors) -> String {
+    format!(
+        "background:{};border-color:{};color:{};",
+        safe_surface_color(&surface.background, "#f5f5f5"),
+        safe_surface_color(&surface.outline, "#000000"),
+        safe_surface_color(&surface.legend, "#000000")
+    )
+}
+fn graph_track_style(surface: &crate::config::GraphSurfaceColors) -> String {
+    let grid = safe_surface_color(&surface.grid, "#a0a0a0");
+    let outline = safe_surface_color(&surface.outline, "#000000");
+    format!(
+        "border:1px solid {outline};background:repeating-linear-gradient(to right,transparent 0,transparent calc(25% - 1px),{grid} calc(25% - 1px),{grid} 25%);"
+    )
+}
 #[component]
 fn GraphView(
     graph: aftercast::MiniGraph,
     totals: bool,
     style: String,
     colors: [String; 3],
+    surface: crate::config::GraphSurfaceColors,
 ) -> Element {
+    let container_style = graph_surface_style(&surface);
+    let track_style = graph_track_style(&surface);
+    let outline_color = safe_surface_color(&surface.outline, "#000000").to_owned();
+    let text_color = safe_surface_color(&surface.text, "#ffffff").to_owned();
+    let totals_color = total_color(&surface.totals);
     let content = match graph.data {
         None => {
             rsx! {
                 p {
+                    class: "rounded-md border p-3",
+                    style: container_style.clone(),
                     if graph.no_actors {
                         {tr("mini-graph-no-actors")}
                     } else {
@@ -538,20 +589,32 @@ fn GraphView(
                 };
             };
             rsx! {
-                div { class: "space-y-2 rounded-md border border-border p-3 text-sm",
+                div {
+                    class: "space-y-2 rounded-md border p-3 text-sm",
+                    style: container_style,
                     p {
                         {tr("mini-graph-axis")}
                         ": {display.axis_label}"
                     }
                     for (index, (item, formatted)) in data.values.iter().zip(display.rows.iter()).take(512).enumerate() {
                         div { class: "space-y-1",
-                            p { title: "{item.name}: {formatted.tooltip_value}",
+                            p {
+                                title: "{item.name}: {formatted.tooltip_value}",
+                                style: "color:{mini_bar_color(index, false, &colors)};",
                                 "{item.name}: {formatted.label}"
                             }
-                            div { class: "h-3 w-full rounded bg-muted",
+                            div {
+                                class: "h-3 w-full rounded",
+                                style: track_style.clone(),
                                 div {
-                                    class: "h-3 rounded",
-                                    style: mini_bar_style(item.value, data.axis, index, formatted.is_self, &colors),
+                                    class: "h-full overflow-hidden rounded",
+                                    style: "{mini_bar_style(item.value, data.axis, index, formatted.is_self, &colors)}border:1px solid {outline_color};",
+                                    span {
+                                        class: "block truncate",
+                                        "aria-hidden": "true",
+                                        style: "color:{text_color};font-size:10px;line-height:10px;",
+                                        "{item.name}"
+                                    }
                                 }
                             }
                         }
@@ -563,7 +626,11 @@ fn GraphView(
                         }
                     }
                     if totals {
-                        p { class: "whitespace-pre-line", "{display.totals_text}" }
+                        p {
+                            class: "whitespace-pre-line",
+                            style: "color:{totals_color};",
+                            "{display.totals_text}"
+                        }
                     }
                 }
             }
@@ -671,9 +738,14 @@ pub(super) async fn poll(mut state: Signal<AppState>) {
             let mut current = state.write();
             let style = current.settings.appearance.mini_style();
             let colors = current.settings.graphs.bar_colors.clone();
-            if current.mini_parse.mini_style != style || current.mini_parse.bar_colors != colors {
+            let surface = current.settings.graphs.surface_colors.clone();
+            if current.mini_parse.mini_style != style
+                || current.mini_parse.bar_colors != colors
+                || current.mini_parse.surface_colors != surface
+            {
                 current.mini_parse.mini_style = style;
                 current.mini_parse.bar_colors = colors;
+                current.mini_parse.surface_colors = surface;
                 current.mini_parse.publish();
             }
             if current.exit_requested {
@@ -716,6 +788,7 @@ pub(super) fn Panel() -> Element {
     let graph_totals = current.settings.graphs.totals;
     let graph_allies = current.settings.graphs.only_allies;
     let bar_colors = current.settings.graphs.bar_colors.clone();
+    let surface_colors = current.settings.graphs.surface_colors.clone();
     let use_suffix = current.settings.graphs.use_suffix;
     let suffix_decimals = current.settings.graphs.suffix_decimals;
     let truncated = current.mini_parse.truncated;
@@ -886,6 +959,36 @@ pub(super) fn Panel() -> Element {
                         }
                     }
                 }
+                if graph_mode {
+                    div { class: "grid gap-2 sm:grid-cols-3",
+                        for (index, id, label) in [
+                            (0, "mini-surface-background", "mini-surface-background"),
+                            (1, "mini-surface-legend", "mini-surface-legend"),
+                            (2, "mini-surface-outline", "mini-surface-outline"),
+                            (3, "mini-surface-grid", "mini-surface-grid"),
+                            (4, "mini-surface-text", "mini-surface-text"),
+                            (5, "mini-surface-totals", "mini-surface-totals"),
+                        ]
+                        {
+                            div {
+                                Label { html_for: id, {tr(label)} }
+                                Input {
+                                    id: id.to_owned(),
+                                    value: surface_colors.fields().get(index).copied().unwrap_or_default().to_owned(),
+                                    disabled: !can_save,
+                                    oninput: move |event: FormEvent| {
+                                        let mut s = state.write();
+                                        if s.can_save_settings()
+                                            && let Some(color) = s.settings.graphs.surface_colors.field_mut(index)
+                                        {
+                                            *color = event.value();
+                                        }
+                                    },
+                                }
+                            }
+                        }
+                    }
+                }
                 div { class: "flex flex-wrap gap-2",
                     Button {
                         variant: ButtonVariant::Outline,
@@ -919,6 +1022,7 @@ pub(super) fn Panel() -> Element {
                             totals: graph_totals,
                             style: mini_style.clone(),
                             colors: bar_colors.clone(),
+                            surface: surface_colors.clone(),
                         }
                     } else if pending {
                         p { {tr("mini-loading")} }
@@ -952,6 +1056,56 @@ pub(super) fn Panel() -> Element {
 mod tests {
     use super::*;
     #[test]
+    fn graph_surface_roles_alpha_and_invalid_drafts_are_bounded() {
+        let fixture: toml_edit::DocumentMut =
+            include_str!("../../tests/fixtures/mini-graph-surfaces.toml")
+                .parse()
+                .expect("original-derived fixture");
+        assert_eq!(
+            fixture
+                .get("total_alpha")
+                .and_then(toml_edit::Item::as_integer),
+            Some(100)
+        );
+        let defaults = fixture
+            .get("defaults")
+            .and_then(toml_edit::Item::as_table_like)
+            .expect("fixture defaults");
+        let mut surface = crate::config::GraphSurfaceColors::default();
+        for (key, actual) in ["background", "legend", "outline", "grid", "text", "totals"]
+            .into_iter()
+            .zip(surface.fields())
+        {
+            assert_eq!(
+                defaults.get(key).and_then(toml_edit::Item::as_str),
+                Some(actual)
+            );
+        }
+        assert_eq!(
+            graph_surface_style(&surface),
+            "background:#f5f5f5;border-color:#000000;color:#000000;"
+        );
+        assert_eq!(total_color(&surface.totals), "rgba(0,0,0,0.392157)");
+        surface.background = "#123456".into();
+        surface.legend = "#654321".into();
+        surface.outline = "#abcdef".into();
+        surface.grid = "#112233".into();
+        surface.text = "#13579b".into();
+        surface.totals = "#ff8001".into();
+        assert_eq!(
+            graph_surface_style(&surface),
+            "background:#123456;border-color:#abcdef;color:#654321;"
+        );
+        assert!(graph_track_style(&surface).contains("#112233"));
+        assert_eq!(safe_surface_color(&surface.text, "#ffffff"), "#13579b");
+        assert_eq!(total_color(&surface.totals), "rgba(255,128,1,0.392157)");
+        surface.background = "red;display:none".into();
+        surface.totals = "bad".into();
+        assert!(!surface.valid());
+        assert!(graph_surface_style(&surface).contains("background:#f5f5f5;"));
+        assert_eq!(total_color(&surface.totals), "rgba(0,0,0,0.392157)");
+    }
+    #[test]
     fn graph_bar_color_and_axis_scale_are_deterministic() {
         let custom = ["#123456".into(), "bad;color:red".into(), "#654321".into()];
         assert_eq!(
@@ -962,6 +1116,8 @@ mod tests {
             mini_bar_style(1.0, 2.0, 1, false, &custom),
             "background:#00008b;width:50.000%;"
         );
+        assert_eq!(mini_bar_color(1, false, &custom), "#00008b");
+        assert_eq!(mini_bar_color(1, true, &custom), "#654321");
         assert_eq!(
             mini_bar_style(1.0, 2.0, 1, true, &custom),
             "background:#654321;width:50.000%;"
@@ -1032,6 +1188,71 @@ mod tests {
         assert!(!ui.mini_parse.window.resolve(first, true));
         assert!(ui.mini_parse.graph.is_none());
     }
+    fn verify_surface_controller(graph: &aftercast::MiniGraph) {
+        let mut controller = AppState::new("/tmp".into());
+        controller.phase = Phase::Ready;
+        controller.screen = "analysis";
+        controller.revision.session = 7;
+        controller.mini_parse.enabled = true;
+        controller.settings.mini_parse.graph = true;
+        let ticket = Ticket {
+            session: 7,
+            generation: controller.mini_parse.generation,
+        };
+        controller.mini_parse.pending = Some(ticket);
+        controller.mini_parse.pending_settings = Some((String::new(), 5, None));
+        controller.mini_parse.pending_graph_settings = Some((true, true, true, true, true));
+        // A graph request must not overwrite a surface-color draft edited in the meantime.
+        controller.settings.graphs.surface_colors.background = "#123456".into();
+        controller.mini_parse.surface_colors = controller.settings.graphs.surface_colors.clone();
+        controller.mini_finish_graph(ticket, Ok(Some((String::new(), None))), Some(graph.clone()));
+        assert_eq!(
+            controller.settings.graphs.surface_colors.background,
+            "#123456"
+        );
+        assert_eq!(
+            controller
+                .mini_parse
+                .window
+                .frame
+                .lock()
+                .expect("window frame")
+                .surface_colors
+                .background,
+            "#123456"
+        );
+        let stale = Ticket {
+            session: 7,
+            generation: controller.mini_parse.generation,
+        };
+        controller.mini_parse.pending = Some(stale);
+        controller.mini_parse.pending_settings = Some((String::new(), 5, None));
+        controller.revision.session = 8;
+        controller.mini_finish_graph(stale, Ok(Some((String::new(), None))), Some(graph.clone()));
+        assert_eq!(
+            controller.settings.graphs.surface_colors.background,
+            "#123456"
+        );
+        let mut window_state = State {
+            graph: Some(graph.clone()),
+            ..Default::default()
+        };
+        window_state.surface_colors.background = "#123456".into();
+        window_state.surface_colors.totals = "#ff8001".into();
+        window_state.publish();
+        let snapshot = window_state
+            .window
+            .frame
+            .lock()
+            .expect("window frame")
+            .clone();
+        assert_eq!(snapshot.surface_colors.background, "#123456");
+        assert_eq!(
+            total_color(&snapshot.surface_colors.totals),
+            "rgba(255,128,1,0.392157)"
+        );
+        assert!(snapshot.graph.is_some());
+    }
     #[tokio::test(flavor = "current_thread")]
     #[ignore = "requires managed fixture; run mise run test:gui-state"]
     async fn mini_graph_ui_contract_worker_reads_numeric_values_without_report_capture_mutation() {
@@ -1066,6 +1287,7 @@ mod tests {
         cached.missing_profile(Duration::ZERO, "missing profile".into());
         assert!(cached.graph.is_none());
         assert_eq!(cached.error.as_deref(), Some("missing profile"));
+        verify_surface_controller(&graph);
         let display = graph.display.clone().expect("formatted graph");
         assert_eq!(display.rows.len(), 2);
         assert_eq!(display.rows[0].label, "100");
@@ -1202,12 +1424,33 @@ mod tests {
             mini_style: "font-size:16px;color:#abcdef;".into(),
             ..Default::default()
         };
+        state.surface_colors.background = "#123456".into();
         state.publish();
+        assert_eq!(
+            state
+                .window
+                .frame
+                .lock()
+                .expect("frame")
+                .surface_colors
+                .background,
+            "#123456"
+        );
         assert_eq!(
             state.window.frame.lock().expect("frame").style,
             "font-size:16px;color:#abcdef;"
         );
         state.reset_session();
+        assert_eq!(
+            state
+                .window
+                .frame
+                .lock()
+                .expect("frame")
+                .surface_colors
+                .background,
+            "#123456"
+        );
         assert_eq!(
             state.window.frame.lock().expect("frame").style,
             "font-size:16px;color:#abcdef;"
